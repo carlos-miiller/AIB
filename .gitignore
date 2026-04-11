@@ -1,0 +1,45 @@
+# .gitignore para Projeto AIB (Python + C# WPF)
+
+### --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.env
+build/
+dist/
+*.spec
+.pytest_cache/
+.coverage
+htmlcov/
+
+### --- C# / .NET ---
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+TestResults/
+[Dd]ebug/
+[Rr]elease/
+
+### --- IDEs & OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
+
+### --- Build Artifacts ---
+publish/
+*.exe
+*.dll
+*.pdb
+*.nupkg

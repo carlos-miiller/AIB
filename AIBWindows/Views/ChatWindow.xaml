@@ -1,0 +1,193 @@
+<Window x:Class="AIB.Views.ChatWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AIB" 
+        WindowStyle="None" 
+        AllowsTransparency="True" 
+        Background="#01000000" 
+        Topmost="True" 
+        ShowInTaskbar="False" 
+        Visibility="Hidden"
+        Opacity="0">
+
+    <Window.Resources>
+        <!-- Transparent tint for Acrylic. The OS will provide the blur. -->
+        <SolidColorBrush x:Key="FlyoutBg" Color="#33121214" />
+        <SolidColorBrush x:Key="SystemBorder" Color="#3FFFFFFF" /> <!-- Subtle 1px contour -->
+        
+        <!-- Premium UI Accents -->
+        <LinearGradientBrush x:Key="AiAccent" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#2B5BFF" Offset="0"/>
+            <GradientStop Color="#6A3BFF" Offset="1"/>
+        </LinearGradientBrush>
+        
+        <LinearGradientBrush x:Key="AiAccentHover" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#3E6AFF" Offset="0"/>
+            <GradientStop Color="#7C52FF" Offset="1"/>
+        </LinearGradientBrush>
+
+        <SolidColorBrush x:Key="SystemText" Color="#F2F2F5" />
+        <SolidColorBrush x:Key="InputBg" Color="#15FFFFFF" />
+        <SolidColorBrush x:Key="AiBubbleBg" Color="#1C1C20" />
+        <SolidColorBrush x:Key="AiBubbleBorder" Color="#2A2A30" />
+        
+        <!-- Premium Chat Bubbles -->
+        <Style x:Key="UserBubbleStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource AiAccent}"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="Margin" Value="0,6,0,6"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#6A3BFF" BlurRadius="10" ShadowDepth="0" Opacity="0.3"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        <Style x:Key="AIBubbleStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource AiBubbleBg}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AiBubbleBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="Margin" Value="0,6,0,6"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+        </Style>
+
+        <Style x:Key="BubbleTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource SystemText}"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontFamily" Value="Segoe UI, Inter"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="MaxWidth" Value="380"/>
+            <Setter Property="LineHeight" Value="20"/>
+        </Style>
+
+        <!-- Button Styles -->
+        <Style x:Key="PremiumAccentButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource AiAccent}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="BgBorder" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BgBorder" Property="Background" Value="{StaticResource AiAccentHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        <Style x:Key="GhostButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#BBBBCC"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="GhostBorder" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="GhostBorder" Property="Background" Value="#1AFFFFFF"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
+        <Style TargetType="TextBox">
+             <Setter Property="Background" Value="{StaticResource InputBg}"/>
+             <Setter Property="Foreground" Value="{StaticResource SystemText}"/>
+             <Setter Property="BorderBrush" Value="#2A2A30"/>
+             <Setter Property="BorderThickness" Value="1"/>
+             <Setter Property="FontSize" Value="14"/>
+             <Setter Property="Padding" Value="10"/>
+             <Setter Property="Template">
+                 <Setter.Value>
+                     <ControlTemplate TargetType="TextBox">
+                         <Border Background="{TemplateBinding Background}" 
+                                 BorderBrush="{TemplateBinding BorderBrush}" 
+                                 BorderThickness="{TemplateBinding BorderThickness}" 
+                                 CornerRadius="6">
+                             <ScrollViewer x:Name="PART_ContentHost"/>
+                         </Border>
+                     </ControlTemplate>
+                 </Setter.Value>
+             </Setter>
+             <Style.Triggers>
+                 <Trigger Property="IsFocused" Value="True">
+                     <Setter Property="BorderBrush" Value="#4B6BFF"/>
+                 </Trigger>
+             </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <!-- Root layout WITHOUT margins to avoid the black border glitch -->
+    <Border Background="{StaticResource FlyoutBg}" 
+            BorderBrush="{StaticResource SystemBorder}" 
+            BorderThickness="1" 
+            CornerRadius="10"
+            ClipToBounds="True">
+        
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Accent Line -->
+                <RowDefinition Height="*"/>    <!-- Chat Area -->
+                <RowDefinition Height="Auto"/> <!-- Input Area -->
+            </Grid.RowDefinitions>
+
+            <Border Height="2" Background="{StaticResource AiAccent}" Margin="0,0,0,2"/>
+
+            <!-- Chat Area -->
+            <ScrollViewer x:Name="ChatScrollViewer" 
+                            Grid.Row="1"
+                            VerticalScrollBarVisibility="Auto" 
+                            HorizontalScrollBarVisibility="Disabled"
+                            Margin="12,4,12,12">
+                <StackPanel x:Name="MessagesPanel" VerticalAlignment="Bottom" />
+            </ScrollViewer>
+
+            <!-- Input Area -->
+            <Border Grid.Row="2" Background="#08FFFFFF" BorderBrush="#11FFFFFF" BorderThickness="0,1,0,0">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox x:Name="InputBox" 
+                                TextWrapping="Wrap" 
+                                AcceptsReturn="True" 
+                                MinHeight="42" 
+                                MaxHeight="120" 
+                                VerticalAlignment="Center"
+                                PreviewKeyDown="InputBox_PreviewKeyDown"/>
+
+                    <StackPanel Grid.Column="2" VerticalAlignment="Bottom" Orientation="Horizontal">
+                        <Button x:Name="ScreenshotButton" Width="36" Height="42" Style="{StaticResource GhostButtonStyle}" Click="ScreenshotButton_Click" ToolTip="Anexar Captura">
+                            <TextBlock Text="📷" FontSize="16" x:Name="CameraIcon"/>
+                        </Button>
+                        <Border Width="4"/>
+                        <Button x:Name="SendButton" Width="42" Height="42" Style="{StaticResource PremiumAccentButtonStyle}" Click="SendButton_Click">
+                            <TextBlock Text="➤" FontSize="15" Margin="0,0,0,2"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
