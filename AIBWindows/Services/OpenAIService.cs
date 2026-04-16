@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ClientModel;
 using OpenAI.Chat;
 
 namespace AIB.Services;
@@ -22,8 +23,22 @@ Seja conciso e objetivo, mas completo quando necessário.";
         {
             throw new Exception("OPENAI_API_KEY não definida. Configure o arquivo .env");
         }
+
+        var customModel = Environment.GetEnvironmentVariable("MODEL");
+        if (!string.IsNullOrWhiteSpace(customModel))
+        {
+            _model = customModel;
+        }
+
+        var customUrl = Environment.GetEnvironmentVariable("URL");
+        OpenAI.OpenAIClientOptions? options = null;
+
+        if (!string.IsNullOrWhiteSpace(customUrl) && Uri.TryCreate(customUrl, UriKind.Absolute, out var endpoint))
+        {
+            options = new OpenAI.OpenAIClientOptions { Endpoint = endpoint };
+        }
         
-        _client = new ChatClient(_model, apiKey);
+        _client = new ChatClient(_model, new ApiKeyCredential(apiKey), options);
         _history.Add(ChatMessage.CreateSystemMessage(SYSTEM_PROMPT));
     }
 
@@ -33,8 +48,9 @@ Seja conciso e objetivo, mas completo quando necessário.";
         
         if (!string.IsNullOrWhiteSpace(imageBase64))
         {
+            var imageBytes = Convert.FromBase64String(imageBase64);
             contentParts.Add(ChatMessageContentPart.CreateImagePart(
-                new Uri($"data:image/jpeg;base64,{imageBase64}"), ChatImageDetailLevel.High));
+                BinaryData.FromBytes(imageBytes), "image/jpeg", ChatImageDetailLevel.High));
         }
 
         contentParts.Add(ChatMessageContentPart.CreateTextPart(text));

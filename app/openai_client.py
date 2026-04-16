@@ -15,8 +15,11 @@ class OpenAIClient:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY não definida. Configure o arquivo .env")
-        self.client = OpenAI(api_key=api_key)
-        self.model = "gpt-4o"
+        
+        base_url = os.getenv("URL")
+        # Se URL estiver vazia ou não definida, OpenAI usa o padrão (api.openai.com)
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.model = os.getenv("MODEL", "gpt-4o")
         self.history: list = []
 
     def send_message(

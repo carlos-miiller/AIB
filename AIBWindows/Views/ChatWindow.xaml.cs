@@ -13,6 +13,7 @@ namespace AIB.Views;
 public partial class ChatWindow : Window
 {
     private readonly OpenAIService _openAIService;
+    private readonly OcrService _ocrService;
     private bool _includeScreenshot = false;
     private bool _isAnimating = false;
 
@@ -20,6 +21,7 @@ public partial class ChatWindow : Window
     {
         InitializeComponent();
         _openAIService = new OpenAIService();
+        _ocrService = new OcrService();
         Deactivated += ChatWindow_Deactivated;
     }
 
@@ -213,9 +215,19 @@ public partial class ChatWindow : Window
         AddBubble(text, true);
 
         string? b64Image = null;
+        string promptWithContext = text;
+
         if (_includeScreenshot)
         {
             b64Image = ScreenshotService.CapturePrimaryScreenAsBase64();
+            
+            // Tenta extrair texto via OCR nativo para ajudar modelos que não veem imagem (ou dar contexto extra)
+            string ocrText = await _ocrService.ExtractTextFromBase64Async(b64Image);
+            if (!string.IsNullOrWhiteSpace(ocrText))
+            {
+                promptWithContext += $"\n\n[Texto extraído da tela para contexto]:\n{ocrText}";
+            }
+
             _includeScreenshot = false;
             UpdateCameraButton();
         }
@@ -224,7 +236,7 @@ public partial class ChatWindow : Window
 
         try
         {
-            var stream = _openAIService.SendMessageStreamAsync(text, b64Image);
+            var stream = _openAIService.SendMessageStreamAsync(promptWithContext, b64Image);
             aiBubble.Text = ""; 
             
             await foreach (var chunk in stream)
