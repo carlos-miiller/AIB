@@ -14,15 +14,57 @@ public partial class ChatWindow : Window
 {
     private readonly OpenAIService _openAIService;
     private readonly OcrService _ocrService;
+    private readonly VoiceService _voiceService;
     private bool _includeScreenshot = false;
     private bool _isAnimating = false;
+    private bool _isVoiceActive = false;
+    private Storyboard? _pulseStoryboard;
 
     public ChatWindow()
     {
         InitializeComponent();
         _openAIService = new OpenAIService();
         _ocrService = new OcrService();
+        _voiceService = new VoiceService();
+        
+        SetupVoiceService();
+        SetupPulseAnimation();
+        
         Deactivated += ChatWindow_Deactivated;
+    }
+
+    private async void SetupVoiceService()
+    {
+        try
+        {
+            await _voiceService.InitializeAsync();
+            _voiceService.OnTranscriptionUpdated += VoiceService_OnTranscriptionUpdated;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao inicializar Voz: {ex.Message}");
+        }
+    }
+
+    private void SetupPulseAnimation()
+    {
+        _pulseStoryboard = new Storyboard();
+        
+        var opacityAnim = new DoubleAnimation(0, 0.6, TimeSpan.FromMilliseconds(800)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever };
+        Storyboard.SetTarget(opacityAnim, VoicePulse);
+        Storyboard.SetTargetProperty(opacityAnim, new PropertyPath(OpacityProperty));
+        
+        var scaleXAnim = new DoubleAnimation(1, 1.4, TimeSpan.FromMilliseconds(800)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever };
+        Storyboard.SetTarget(scaleXAnim, VoicePulse);
+        Storyboard.SetTargetProperty(scaleXAnim, new PropertyPath("RenderTransform.ScaleX"));
+
+        var scaleYAnim = new DoubleAnimation(1, 1.4, TimeSpan.FromMilliseconds(800)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever };
+        Storyboard.SetTarget(scaleYAnim, VoicePulse);
+        Storyboard.SetTargetProperty(scaleYAnim, new PropertyPath("RenderTransform.ScaleY"));
+
+        _pulseStoryboard.Children.Add(opacityAnim);
+        _pulseStoryboard.Children.Add(scaleXAnim);
+        _pulseStoryboard.Children.Add(scaleYAnim);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -187,6 +229,44 @@ public partial class ChatWindow : Window
     {
         _includeScreenshot = !_includeScreenshot;
         UpdateCameraButton();
+    }
+
+    private void VoiceButton_Click(object sender, RoutedEventArgs e)
+    {
+        _isVoiceActive = !_isVoiceActive;
+        
+        if (_isVoiceActive)
+        {
+            _voiceService.StartListening();
+            MicIcon.Text = "🔴";
+            _pulseStoryboard?.Begin();
+        }
+        else
+        {
+            _voiceService.StopListening();
+            MicIcon.Text = "🎙️";
+            _pulseStoryboard?.Stop();
+            VoicePulse.Opacity = 0;
+        }
+    }
+
+    private void VoiceService_OnTranscriptionUpdated(object? sender, TranscriptionEventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            // Se for final, envia. Se for parcial, mostra no InputBox (ghost text style)
+            if (e.IsFinal)
+            {
+                InputBox.Text = e.Text;
+                _ = ProcessMessageAsync();
+            }
+            else
+            {
+                // Mostra o texto atual, mas permite que o usuário veja o que está sendo captado
+                InputBox.Text = e.Text;
+                InputBox.SelectionStart = InputBox.Text.Length;
+            }
+        });
     }
 
     private void UpdateCameraButton()

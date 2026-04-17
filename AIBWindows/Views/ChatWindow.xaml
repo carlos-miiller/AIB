@@ -178,6 +178,17 @@
                                 PreviewKeyDown="InputBox_PreviewKeyDown"/>
 
                     <StackPanel Grid.Column="2" VerticalAlignment="Bottom" Orientation="Horizontal">
+                        <Button x:Name="VoiceButton" Width="36" Height="42" Style="{StaticResource GhostButtonStyle}" Click="VoiceButton_Click" ToolTip="Modo Voz (AIB Live)">
+                            <Grid>
+                                <TextBlock x:Name="MicIcon" Text="🎙️" FontSize="16" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                <Ellipse x:Name="VoicePulse" Width="30" Height="30" Stroke="{StaticResource AiAccent}" StrokeThickness="2" Opacity="0" IsHitTestVisible="False">
+                                    <Ellipse.RenderTransform>
+                                        <ScaleTransform CenterX="15" CenterY="15" ScaleX="1" ScaleY="1"/>
+                                    </Ellipse.RenderTransform>
+                                </Ellipse>
+                            </Grid>
+                        </Button>
+                        <Border Width="4"/>
                         <Button x:Name="ScreenshotButton" Width="36" Height="42" Style="{StaticResource GhostButtonStyle}" Click="ScreenshotButton_Click" ToolTip="Anexar Captura">
                             <TextBlock Text="📷" FontSize="16" x:Name="CameraIcon"/>
                         </Button>
