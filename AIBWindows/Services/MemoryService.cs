@@ -139,4 +139,34 @@ public static class MemoryService
             return $"ERRO ao listar memória: {ex.Message}";
         }
     }
+
+    public static List<MemoryRecord> GetRecentMemories(int count = 5)
+    {
+        try
+        {
+            using var db = new LiteDatabase(DbPath);
+            var col = db.GetCollection<MemoryRecord>("memories");
+            return col.FindAll().OrderByDescending(r => r.CreatedAt).Take(count).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERRO ao buscar memórias recentes: {ex.Message}");
+            return new List<MemoryRecord>();
+        }
+    }
+
+    public static bool DeleteMemory(int id)
+    {
+        try
+        {
+            using var db = new LiteDatabase(DbPath);
+            var col = db.GetCollection<MemoryRecord>("memories");
+            return col.Delete(id);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERRO ao deletar memória {id}: {ex.Message}");
+            return false;
+        }
+    }
 }

@@ -66,7 +66,11 @@ public class OpenAIService
 
     public void ResetHistory()
     {
-        _history.Clear();
+        if (_history != null && _history.Count > 1)
+        {
+            ChatHistoryService.SaveCurrentSession(_history);
+        }
+        _history?.Clear();
         var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var contextualPrompt = SYSTEM_PROMPT + $"\n\nContexto Local:\n- Diretório Home do Usuário (Raiz): {userHome}";
         _history.Add(ChatMessage.CreateSystemMessage(contextualPrompt));
@@ -163,12 +167,25 @@ public class OpenAIService
 
                 foreach (var tc in toolCalls)
                 {
-                    yield return $"\n\n🛠 **AIB:** Acionando ferramenta `{tc.Name}`...\n";
                     onTechnicalContent?.Invoke($"[FERRAMENTA] Nome: {tc.Name} | Args: {tc.Args}");
 
                     string result = await _toolRegistry.ExecuteToolAsync(tc.Name, tc.Args, userLevel);
                     onTechnicalContent?.Invoke($"[FERRAMENTA] Resultado: {result}\n");
                     _history.Add(ChatMessage.CreateToolMessage(tc.Id, result));
+
+                    // Atualiza a lista de arquivos recentes acessados
+                    if (tc.Name == "read_file" || tc.Name == "view_file" || tc.Name == "write_to_file" || tc.Name == "replace_file_content" || tc.Name == "multi_replace_file_content")
+                    {
+                        try {
+                            var dict = System.Text.Json.JsonSerializer.Deserialize<System.Collections.Generic.Dictionary<string, System.Text.Json.JsonElement>>(tc.Args);
+                            string? path = null;
+                            if (dict != null && dict.ContainsKey("AbsolutePath")) path = dict["AbsolutePath"].GetString();
+                            else if (dict != null && dict.ContainsKey("TargetFile")) path = dict["TargetFile"].GetString();
+                            else if (dict != null && dict.ContainsKey("path")) path = dict["path"].GetString();
+                            
+                            if (!string.IsNullOrEmpty(path)) ContextService.AddRecentFile(path);
+                        } catch { }
+                    }
 
                     // Se uma skill foi materializada, refresca o registry para disponibilizar imediatamente
                     if (tc.Name == "materialize_skill") _toolRegistry.Refresh();

@@ -30,7 +30,7 @@ internal static class ToolArgParser
         {
             using var doc = JsonDocument.Parse(json);
             if (doc.RootElement.TryGetProperty(key, out var val))
-                return val.GetString() ?? string.Empty;
+                return val.ToString() ?? string.Empty;
         }
         catch { /* Falha silenciosa, tenta fallback */ }
 
@@ -659,5 +659,62 @@ public class ActiveWindowTool : ITool
         {
             return Task.FromResult($"ERRO ao ler janela ativa: {ex.Message}");
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FERRAMENTA: set_reminder — Cria um lembrete para o usuário
+// ─────────────────────────────────────────────────────────────────────────────
+
+public class SetReminderTool : ITool
+{
+    public string Name => "set_reminder";
+    public string Description => "Agenda um lembrete ou alerta para o usuário. O AIB irá notificar o usuário quando o tempo acabar.";
+    public int RequiredLevel => 1;
+
+    public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
+        Name, Description,
+        BinaryData.FromString("""
+        {
+          "type": "object",
+          "properties": {
+            "message": { "type": "string", "description": "A mensagem do lembrete." },
+            "delay_minutes": { "type": "integer", "description": "Opcional. Daqui a quantos minutos o lembrete deve disparar." },
+            "target_time": { "type": "string", "description": "Opcional. Horário exato para o lembrete (formato HH:mm, ex: '14:00'). Use preferencialmente este para horários definidos." }
+          },
+          "required": ["message"]
+        }
+        """));
+
+    public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
+    {
+        string message = ToolArgParser.Get(argumentsJson, "message");
+        string delayStr = ToolArgParser.Get(argumentsJson, "delay_minutes");
+        string targetTimeStr = ToolArgParser.Get(argumentsJson, "target_time");
+        
+        if (string.IsNullOrWhiteSpace(message))
+            return Task.FromResult("ERRO: 'message' é obrigatório.");
+
+        int delayMinutes = 0;
+
+        if (!string.IsNullOrWhiteSpace(targetTimeStr) && DateTime.TryParseExact(targetTimeStr, "HH:mm", null, System.Globalization.DateTimeStyles.None, out DateTime targetTime))
+        {
+            var now = DateTime.Now;
+            var target = new DateTime(now.Year, now.Month, now.Day, targetTime.Hour, targetTime.Minute, 0);
+            
+            if (target < now) target = target.AddDays(1); // Se já passou hoje, agenda pro dia seguinte
+            
+            delayMinutes = (int)Math.Round((target - now).TotalMinutes);
+        }
+        else if (int.TryParse(delayStr, out int parsedDelay))
+        {
+            delayMinutes = parsedDelay;
+        }
+        else
+        {
+            return Task.FromResult("ERRO: É necessário fornecer 'target_time' (ex: '14:00') ou 'delay_minutes'.");
+        }
+
+        return Task.FromResult(ReminderService.AddReminder(message, delayMinutes));
     }
 }

@@ -126,6 +126,7 @@ public class ToolRegistry
             new ClipboardReadTool(),
             new ClipboardWriteTool(),
             new ActiveWindowTool(),
+            new SetReminderTool(),
         };
 
         foreach (var tool in nativeTools)

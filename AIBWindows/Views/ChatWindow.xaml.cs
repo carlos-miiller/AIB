@@ -46,6 +46,22 @@ public partial class ChatWindow : Window
         AddWelcomeBubble();
         InputBox.Focus();
 
+        ContextSidebarControl.OnRecoverChat += (session) =>
+        {
+            if (string.IsNullOrWhiteSpace(session.Content)) return;
+            
+            _openAIService.History.Add(OpenAI.Chat.ChatMessage.CreateUserMessage($"[CONTEXTO RECUPERADO DO CHAT: {session.Title}]\n\n{session.Content}"));
+            _openAIService.History.Add(OpenAI.Chat.ChatMessage.CreateAssistantMessage($"Contexto compreendido. Em que posso ajudar com isso?"));
+            
+            AddUserBubble($"Recuperando contexto: {session.Title}");
+            AddAgentBubble("Contexto antigo carregado com sucesso. Como deseja continuar?");
+            
+            // Auto close sidebar after recovery
+            if (_isSidebarOpen) SidebarButton_Click(null, null);
+        };
+
+
+
         // Posiciona a janela: centralizada horizontal, flutuando 45px acima da barra de tarefas
         this.Left = (SystemParameters.PrimaryScreenWidth - this.Width) / 2;
         this.Top = SystemParameters.WorkArea.Bottom - this.ActualHeight - 45;
@@ -445,7 +461,7 @@ public partial class ChatWindow : Window
                 Console.Write(tech);
 
                 // Exibe visualmente o uso de ferramentas
-                var match = System.Text.RegularExpressions.Regex.Match(tech, @"\[(?:FALLBACK )?ACTION\] ([a-zA-Z_]+)");
+                var match = System.Text.RegularExpressions.Regex.Match(tech, @"\[(?:FALLBACK REGEX )?FERRAMENTA\] Nome: ([a-zA-Z_]+)");
                 if (match.Success)
                 {
                     string toolName = match.Groups[1].Value;
@@ -823,8 +839,38 @@ public partial class ChatWindow : Window
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => this.Hide();
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Side Panel (Dashboard) Handlers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private bool _isSidebarOpen = false;
+
+    private void SidebarButton_Click(object sender, RoutedEventArgs e)
+    {
+        _isSidebarOpen = !_isSidebarOpen;
+        
+        var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
+        
+        double targetWindowWidth = _isSidebarOpen ? 1065 : 760;
+        double targetSidebarWidth = _isSidebarOpen ? 300 : 0;
+
+        var winAnim = new DoubleAnimation(targetWindowWidth, new Duration(TimeSpan.FromMilliseconds(300))) { EasingFunction = ease };
+        var sidebarAnim = new DoubleAnimation(targetSidebarWidth, new Duration(TimeSpan.FromMilliseconds(300))) { EasingFunction = ease };
+
+        this.BeginAnimation(Window.WidthProperty, winAnim);
+        SidebarPanel.BeginAnimation(Border.WidthProperty, sidebarAnim);
+        
+        if (_isSidebarOpen)
+        {
+            ContextSidebarControl.Refresh();
+        }
+    }
+
+
+
     protected override void OnClosed(EventArgs e)
     {
+        _openAIService?.ResetHistory();
         _voiceService?.Dispose();
         base.OnClosed(e);
     }
