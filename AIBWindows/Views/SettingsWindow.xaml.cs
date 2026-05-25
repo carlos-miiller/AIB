@@ -39,6 +39,7 @@ public partial class SettingsWindow : Window
         UrlTextBox.Text = _currentSettings.ApiUrl;
         KeyTextBox.Text = _currentSettings.ApiKey;
         ModelComboBox.Text = _currentSettings.ModelName;
+        ShadowModelComboBox.Text = _currentSettings.ShadowModelName;
 
         DataDirTextBox.Text = string.IsNullOrEmpty(_currentSettings.DataDirectory) 
             ? DirectoryService.DataDir : _currentSettings.DataDirectory;
@@ -50,6 +51,8 @@ public partial class SettingsWindow : Window
         MaxHistoryTextBox.Text = maxTokens.ToString();
         ConfirmCmdCheckBox.IsChecked = _currentSettings.ConfirmDangerousCommands;
         EphemeralSkillCheckBox.IsChecked = _currentSettings.EphemeralSkillContext;
+        SendSystemPromptCheckBox.IsChecked = _currentSettings.SendSystemPrompt;
+        EnableIntelligentToolsCheckBox.IsChecked = _currentSettings.EnableIntelligentTools;
         SearchEngineComboBox.Text = _currentSettings.SearchEngine;
 
         UpdateUiForProvider();
@@ -70,7 +73,7 @@ public partial class SettingsWindow : Window
         {
             AdvancedConnectionPanel.Visibility = Visibility.Collapsed;
             // Se o usuário mudou para Google, sugerimos preencher a URL se estiver vazia/ollama
-            if (UrlTextBox.Text.Contains("localhost"))
+            if (UrlTextBox.Text.Contains("localhost") || UrlTextBox.Text.Contains("127.0.0.1"))
             {
                 UrlTextBox.Text = "https://generativelanguage.googleapis.com/v1beta/openai/";
                 KeyTextBox.Text = "";
@@ -92,8 +95,13 @@ public partial class SettingsWindow : Window
             if (models.Any())
             {
                 var currentModel = ModelComboBox.Text;
+                var currentShadowModel = ShadowModelComboBox.Text;
+                
                 ModelComboBox.ItemsSource = models;
+                ShadowModelComboBox.ItemsSource = models;
+                
                 ModelComboBox.Text = currentModel;
+                ShadowModelComboBox.Text = currentShadowModel;
             }
         }
         finally
@@ -113,6 +121,7 @@ public partial class SettingsWindow : Window
         _currentSettings.ApiUrl = UrlTextBox.Text;
         _currentSettings.ApiKey = KeyTextBox.Text;
         _currentSettings.ModelName = ModelComboBox.Text;
+        _currentSettings.ShadowModelName = ShadowModelComboBox.Text;
 
         _currentSettings.DataDirectory = DataDirTextBox.Text;
         _currentSettings.TempDirectory = TempDirTextBox.Text;
@@ -121,6 +130,8 @@ public partial class SettingsWindow : Window
 
         _currentSettings.ConfirmDangerousCommands = ConfirmCmdCheckBox.IsChecked ?? true;
         _currentSettings.EphemeralSkillContext = EphemeralSkillCheckBox.IsChecked ?? true;
+        _currentSettings.SendSystemPrompt = SendSystemPromptCheckBox.IsChecked ?? true;
+        _currentSettings.EnableIntelligentTools = EnableIntelligentToolsCheckBox.IsChecked ?? true;
         _currentSettings.SearchEngine = SearchEngineComboBox.Text;
 
         _settingsService.SaveSettings(_currentSettings);

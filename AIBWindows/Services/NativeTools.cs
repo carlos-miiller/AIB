@@ -395,7 +395,7 @@ public class SearchWebTool : ITool
 public class ReadScreenTool : ITool
 {
     public string Name => "read_screen";
-    public string Description => "Captura o título da janela ativa E o texto completo de todas as telas (OCR).";
+    public string Description => "Captura o título da janela ativa E o texto da tela onde o usuário está focado (OCR). Lê apenas a tela com o cursor para reduzir ruído de payload.";
     public int RequiredLevel => 3;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
@@ -424,7 +424,9 @@ public class ReadScreenTool : ITool
             }
 
             var ocr = new OcrService();
-            string text = await ocr.ExtractTextFromAllScreensAsync();
+            // Apenas tela ativa: reduz drasticamente o payload de OCR (problema dos 7k+ tokens
+            // em multi-monitor). Para varrer todas as telas, use `read_all_screens`.
+            string text = await ocr.ExtractTextFromActiveScreenAsync();
             string context = string.IsNullOrWhiteSpace(text)
                 ? "[Nenhum texto detectado via OCR]"
                 : text;

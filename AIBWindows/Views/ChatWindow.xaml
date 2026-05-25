@@ -164,6 +164,8 @@
                         <!-- Token Counter -->
                         <TextBlock x:Name="TokenCounterText" Text="0/30k tokens" FontSize="11" Foreground="#888899" VerticalAlignment="Center" Margin="0,0,12,0"/>
                         
+                        <Button x:Name="BtnToggleShadow" Content="👁" Style="{StaticResource CapsuleIconButton}"
+                                FontSize="15" Click="BtnToggleShadow_Click" ToolTip="Shadow Assistant (Alpha)"/>
                         <Button x:Name="SidebarButton" Content="◨" Style="{StaticResource CapsuleIconButton}"
                                 FontSize="15" Click="SidebarButton_Click" ToolTip="Painel de Contexto"/>
                         <Button x:Name="SettingsButton" Content="⚙" Style="{StaticResource CapsuleIconButton}"

@@ -141,25 +141,31 @@ public class OpenAIService
             ChatHistoryService.SaveCurrentSession(_history);
         }
         _history?.Clear();
-        var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var contextualPrompt = SYSTEM_PROMPT + $"\n\nContexto Local:\n- Diretório Home do Usuário (Raiz): {userHome}";
-        
-        try
+
+        // Setting "SendSystemPrompt": permite desligar quando o usuário tem um Modelfile
+        // do Ollama com SYSTEM embutido (evita duplicação de instruções).
+        if (_settingsService.LoadSettings().SendSystemPrompt)
         {
-            var skills = SkillService.ListLocalSkills();
-            if (skills.Count > 0)
+            var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var contextualPrompt = SYSTEM_PROMPT + $"\n\nContexto Local:\n- Diretório Home do Usuário (Raiz): {userHome}";
+
+            try
             {
-                contextualPrompt += "\n\nHabilidades dinâmicas disponíveis (use a ferramenta 'execute_skill' para chamá-las passando 'skill_name'):\n";
-                foreach (var skill in skills)
+                var skills = SkillService.ListLocalSkills();
+                if (skills.Count > 0)
                 {
-                    if (skill.Interpreter.Equals("markdown", StringComparison.OrdinalIgnoreCase)) continue;
-                    contextualPrompt += $"- {skill.Name}: {skill.Description}\n";
+                    contextualPrompt += "\n\nHabilidades dinâmicas disponíveis (use a ferramenta 'execute_skill' para chamá-las passando 'skill_name'):\n";
+                    foreach (var skill in skills)
+                    {
+                        if (skill.Interpreter.Equals("markdown", StringComparison.OrdinalIgnoreCase)) continue;
+                        contextualPrompt += $"- {skill.Name}: {skill.Description}\n";
+                    }
                 }
             }
-        }
-        catch { }
+            catch { }
 
-        _history.Add(ChatMessage.CreateSystemMessage(contextualPrompt));
+            _history.Add(ChatMessage.CreateSystemMessage(contextualPrompt));
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -189,7 +195,14 @@ public class OpenAIService
         {
             requiresAction = false;
             var chatOptions = new ChatCompletionOptions() { Temperature = 0.1f };
-            foreach (var tool in tools) chatOptions.Tools.Add(tool);
+
+            // Setting "EnableIntelligentTools": permite desligar todas as tool defs
+            // quando o usuário quer chat puro/rápido (útil para Ollama em hardware modesto,
+            // já que cada tool inflada a gramática JSON e adiciona latência de prefill).
+            if (_settingsService.LoadSettings().EnableIntelligentTools)
+            {
+                foreach (var tool in tools) chatOptions.Tools.Add(tool);
+            }
 
             var updates = _client!.CompleteChatStreamingAsync(_history, chatOptions, ct);
 
@@ -321,6 +334,47 @@ public class OpenAIService
 
     public IAsyncEnumerable<string> SendMessageStreamAsync(string text) => StreamResponseAsync(text);
 
+    public async Task<string> AskStatelessAsync(string systemPrompt, string userPrompt, string? overrideModel = null)
+    {
+        var settings = _settingsService.LoadSettings();
+        string modelName = overrideModel ?? settings.ModelName;
+
+        string apiUrl = settings.ApiUrl;
+        string apiKey = settings.ApiKey;
+
+        if (settings.AiProvider == "Ollama")
+        {
+            if (string.IsNullOrEmpty(apiUrl)) apiUrl = "http://127.0.0.1:11434/v1";
+            if (string.IsNullOrEmpty(apiKey)) apiKey = "ollama";
+            
+            // Bypass IPv6 DNS resolution issues that cause 2-minute timeouts
+            apiUrl = apiUrl.Replace("localhost", "127.0.0.1");
+        }
+        if (string.IsNullOrEmpty(apiKey)) apiKey = "placeholder";
+
+        var options = new OpenAIClientOptions();
+        if (!string.IsNullOrEmpty(apiUrl)) options.Endpoint = new Uri(apiUrl);
+        var localClient = new ChatClient(modelName, new ApiKeyCredential(apiKey), options);
+
+        var msgs = new List<ChatMessage>();
+        if (settings.SendSystemPrompt)
+        {
+            msgs.Add(ChatMessage.CreateSystemMessage(systemPrompt));
+        }
+        msgs.Add(ChatMessage.CreateUserMessage(userPrompt));
+        
+        var chatOptions = new ChatCompletionOptions();
+        try
+        {
+            var response = await localClient.CompleteChatAsync(msgs, chatOptions);
+            return response.Value.Content[0].Text;
+        }
+        catch (Exception ex)
+        {
+            return $"[ERROR]: {ex.Message}";
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers Privados
     // ─────────────────────────────────────────────────────────────────────────
@@ -338,8 +392,11 @@ public class OpenAIService
 
             if (settings.AiProvider == "Ollama")
             {
-                if (string.IsNullOrEmpty(apiUrl)) apiUrl = "http://localhost:11434/v1";
+                if (string.IsNullOrEmpty(apiUrl)) apiUrl = "http://127.0.0.1:11434/v1";
                 if (string.IsNullOrEmpty(apiKey)) apiKey = "ollama";
+                
+                // Bypass IPv6 DNS resolution issues that cause 2-minute timeouts
+                apiUrl = apiUrl.Replace("localhost", "127.0.0.1");
             }
 
             if (string.IsNullOrEmpty(apiKey)) apiKey = "placeholder";

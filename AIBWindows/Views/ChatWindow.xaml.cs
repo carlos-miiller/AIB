@@ -23,6 +23,9 @@ namespace AIB.Views;
 public partial class ChatWindow : Window
 {
     private readonly OpenAIService _openAIService;
+    private readonly ShadowAssistantService _shadowService;
+    private ShadowWidget? _shadowWidget;
+    private bool _isShadowModeEnabled = false;
     private readonly SettingsService _settingsService;
     private readonly VoiceService _voiceService;
 
@@ -37,6 +40,13 @@ public partial class ChatWindow : Window
         _openAIService = new OpenAIService(_settingsService);
         _openAIService.OnTokenCountChanged += UpdateTokenCounterUI;
         _openAIService.OnWarmupStateChanged += HandleWarmupState;
+
+        _shadowService = new ShadowAssistantService(_openAIService);
+        _shadowService.OnSuggestionReceived += OnShadowSuggestion;
+
+        StateChanged += ChatWindow_StateChanged;
+        IsVisibleChanged += ChatWindow_IsVisibleChanged;
+
         _voiceService = new VoiceService();
 
         // Inicializa UI
@@ -596,7 +606,7 @@ public partial class ChatWindow : Window
         try
         {
             var ocr = new OcrService();
-            string text = await ocr.ExtractTextFromAllScreensAsync();
+            string text = await ocr.ExtractTextFromActiveScreenAsync();
 
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -896,6 +906,84 @@ public partial class ChatWindow : Window
     {
         _openAIService?.ResetHistory();
         _voiceService?.Dispose();
+        _shadowService?.Stop();
+        _shadowWidget?.Close();
         base.OnClosed(e);
+    }
+
+    private void BtnToggleShadow_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_isShadowModeEnabled)
+        {
+            var result = System.Windows.MessageBox.Show(
+                "O Shadow Assistant roda em segundo plano capturando o texto da sua tela e tentando prever o que você precisa.\n\n" +
+                "Como é uma função Alpha, a AIB às vezes pode alucinar ou interpretar a tela erroneamente.\n\n" +
+                "Tem certeza que deseja ativar o monitoramento em segundo plano?",
+                "Shadow Assistant (Alpha)", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                
+            if (result == MessageBoxResult.Yes)
+            {
+                _isShadowModeEnabled = true;
+                BtnToggleShadow.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#9B51E0"));
+                ManageShadowState();
+            }
+        }
+        else
+        {
+            _isShadowModeEnabled = false;
+            BtnToggleShadow.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#888899"));
+            ManageShadowState();
+        }
+    }
+
+    private void ChatWindow_StateChanged(object? sender, EventArgs e)
+    {
+        ManageShadowState();
+    }
+
+    private void ChatWindow_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        ManageShadowState();
+    }
+
+    private void ManageShadowState()
+    {
+        if (!_isShadowModeEnabled)
+        {
+            _shadowService.Stop();
+            _shadowWidget?.Close();
+            _shadowWidget = null;
+            return;
+        }
+
+        if (this.Visibility == Visibility.Visible && this.WindowState == WindowState.Normal)
+        {
+            _shadowService.Stop();
+            _shadowWidget?.Hide();
+        }
+        else
+        {
+            if (_shadowWidget == null)
+            {
+                _shadowWidget = new ShadowWidget();
+                
+                if (!double.IsNaN(SystemParameters.WorkArea.Width))
+                {
+                    _shadowWidget.Left = (SystemParameters.WorkArea.Width / 2) - (_shadowWidget.Width / 2);
+                    _shadowWidget.Top = SystemParameters.WorkArea.Bottom - _shadowWidget.Height - 40;
+                }
+            }
+            
+            _shadowWidget.Show();
+            _shadowService.Start();
+        }
+    }
+
+    private void OnShadowSuggestion(string suggestion)
+    {
+        if (_shadowWidget != null && _shadowWidget.IsVisible)
+        {
+            _shadowWidget.ShowSuggestion(suggestion);
+        }
     }
 }
