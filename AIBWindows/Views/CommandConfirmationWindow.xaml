@@ -1,0 +1,63 @@
+<Window x:Class="AIB.Views.CommandConfirmationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Confirmação de Ação" 
+        Height="300" Width="450"
+        WindowStyle="None" 
+        AllowsTransparency="True" 
+        Background="#01000000" 
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Topmost="True">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="FlyoutBg" Color="#EE121214" />
+        <SolidColorBrush x:Key="SystemBorder" Color="#3FFFFFFF" />
+        <SolidColorBrush x:Key="SystemText" Color="#F2F2F5" />
+        
+        <LinearGradientBrush x:Key="WarningAccent" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#FFB800" Offset="0"/>
+            <GradientStop Color="#FF7A00" Offset="1"/>
+        </LinearGradientBrush>
+    </Window.Resources>
+
+    <Border Background="{StaticResource FlyoutBg}" 
+            BorderBrush="{StaticResource SystemBorder}" 
+            BorderThickness="1" 
+            CornerRadius="12">
+        <Grid Margin="25">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Title -->
+                <RowDefinition Height="*"/>    <!-- Content -->
+                <RowDefinition Height="Auto"/> <!-- Footer -->
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,15">
+                <TextBlock Text="⚠" FontSize="24" Foreground="{StaticResource WarningAccent}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBlock Text="CONFIRMAÇÃO DE COMANDO" FontSize="16" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1">
+                <TextBlock Text="A AIB solicitou a execução do seguinte comando:" Foreground="#AAA" Margin="0,0,0,5"/>
+                <Border Background="#1AFFFFFF" Padding="10" CornerRadius="6" BorderBrush="#2A2A30" BorderThickness="1">
+                    <TextBlock x:Name="CommandText" Text="git status" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas" FontSize="13"/>
+                </Border>
+                
+                <CheckBox x:Name="AlwaysAllowCheckBox" Content="Sempre permitir este comando/ação" Foreground="#888" Margin="0,15,0,0" FontSize="12"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+                <Button Content="Recusar" Click="Deny_Click" Width="80" Height="35" Background="Transparent" Foreground="#AAA" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0"/>
+                <Button Content="Permitir" Click="Allow_Click" Width="100" Height="35" Cursor="Hand" FontWeight="Bold">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{StaticResource WarningAccent}" CornerRadius="6">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

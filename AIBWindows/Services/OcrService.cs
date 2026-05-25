@@ -24,21 +24,68 @@ public class OcrService
         }
     }
 
-    public async Task<string> ExtractTextFromBase64Async(string base64Image)
+    public async Task<string> ExtractTextFromAllScreensAsync()
     {
-        if (string.IsNullOrWhiteSpace(base64Image)) return string.Empty;
+        var screens = System.Windows.Forms.Screen.AllScreens;
+        var sb = new System.Text.StringBuilder();
+
+        for (int i = 0; i < screens.Length; i++)
+        {
+            var screen = screens[i];
+            string screenLabel = $"--- TELA {i + 1} {(screen.Primary ? "(Principal)" : "")} ---";
+            
+            try
+            {
+                using var bitmap = new System.Drawing.Bitmap(screen.Bounds.Width, screen.Bounds.Height);
+                using (var g = System.Drawing.Graphics.FromImage(bitmap))
+                {
+                    g.CopyFromScreen(screen.Bounds.X, screen.Bounds.Y, 0, 0, screen.Bounds.Size);
+                }
+
+                using var stream = new MemoryStream();
+                bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+                byte[] bytes = stream.ToArray();
+
+                string text = await ExtractTextFromBytesAsync(bytes);
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    sb.AppendLine(screenLabel);
+                    sb.AppendLine(text);
+                    sb.AppendLine();
+                }
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine($"{screenLabel} (Erro ao capturar: {ex.Message})");
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private async Task<string> ExtractTextFromBytesAsync(byte[] imageBytes)
+    {
+        using var stream = new MemoryStream(imageBytes);
+        using var randomStream = stream.AsRandomAccessStream();
+        
+        var decoder = await BitmapDecoder.CreateAsync(randomStream);
+        using var softwareBitmap = await decoder.GetSoftwareBitmapAsync();
+
+        var engine = OcrEngine.TryCreateFromUserProfileLanguages();
+        if (engine == null) return "OCR Engine not available.";
+
+        var result = await engine.RecognizeAsync(softwareBitmap);
+        return result?.Text ?? string.Empty;
+    }
+
+    public async Task<string> ExtractTextFromBase64Async(string base64)
+    {
+        if (string.IsNullOrWhiteSpace(base64)) return string.Empty;
 
         try
         {
-            byte[] bytes = Convert.FromBase64String(base64Image);
-            using var ms = new MemoryStream(bytes);
-            using var randomStream = ms.AsRandomAccessStream();
-
-            var decoder = await BitmapDecoder.CreateAsync(randomStream);
-            using var softwareBitmap = await decoder.GetSoftwareBitmapAsync();
-
-            var result = await _engine.RecognizeAsync(softwareBitmap);
-            return result.Text;
+            byte[] bytes = Convert.FromBase64String(base64);
+            return await ExtractTextFromBytesAsync(bytes);
         }
         catch (Exception ex)
         {

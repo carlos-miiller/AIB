@@ -7,26 +7,34 @@ namespace AIB.Services;
 
 public static class ScreenshotService
 {
-    public static string CapturePrimaryScreenAsBase64()
+    public static string CaptureAllScreensAsBase64()
     {
-        // 1. Get primary screen bounds
-        int screenWidth = System.Windows.Forms.Screen.PrimaryScreen!.Bounds.Width;
-        int screenHeight = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height;
-        
-        using var bitmap = new Bitmap(screenWidth, screenHeight);
+        var screens = System.Windows.Forms.Screen.AllScreens;
+        int left = screens.Min(s => s.Bounds.X);
+        int top = screens.Min(s => s.Bounds.Y);
+        int right = screens.Max(s => s.Bounds.Right);
+        int bottom = screens.Max(s => s.Bounds.Bottom);
+        int width = right - left;
+        int height = bottom - top;
+
+        using var bitmap = new Bitmap(width, height);
         using (var g = Graphics.FromImage(bitmap))
         {
-            g.CopyFromScreen(0, 0, 0, 0, bitmap.Size, CopyPixelOperation.SourceCopy);
+            foreach (var screen in screens)
+            {
+                // Desenha cada monitor na sua posição relativa correta na imagem final
+                g.CopyFromScreen(screen.Bounds.X, screen.Bounds.Y, 
+                                screen.Bounds.X - left, screen.Bounds.Y - top, 
+                                screen.Bounds.Size, CopyPixelOperation.SourceCopy);
+            }
         }
 
-        // 2. Resize maintaining aspect ratio (equivalent to max_size=(1920, 1080))
-        int maxW = 1920, maxH = 1080;
+        // Resizing logic (mantemos o aumento de resolução para panoramas)
+        int maxW = 3840, maxH = 2160; 
         int newW = bitmap.Width, newH = bitmap.Height;
         if (bitmap.Width > maxW || bitmap.Height > maxH)
         {
-            float ratioX = (float)maxW / bitmap.Width;
-            float ratioY = (float)maxH / bitmap.Height;
-            float ratio = Math.Min(ratioX, ratioY);
+            float ratio = Math.Min((float)maxW / bitmap.Width, (float)maxH / bitmap.Height);
             newW = (int)(bitmap.Width * ratio);
             newH = (int)(bitmap.Height * ratio);
         }

@@ -5,6 +5,7 @@ using Hardcodet.Wpf.TaskbarNotification;
 using NHotkey;
 using NHotkey.Wpf;
 using AIB.Views;
+using AIB.Services;
 
 namespace AIB;
 
@@ -13,19 +14,27 @@ public partial class App : System.Windows.Application
     private TaskbarIcon? _notifyIcon;
     private ChatWindow? _chatWindow;
 
+    public void ShowNotification(string title, string message)
+    {
+        if (_notifyIcon != null)
+        {
+            _notifyIcon.ShowBalloonTip(title, message, BalloonIcon.Info);
+            System.Media.SystemSounds.Beep.Play();
+        }
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
         try
         {
-            // Load Environment (.env) looking upwards in the directory tree
-            DotNetEnv.Env.TraversePath().Load();
+            DirectoryService.EnsureDirectories();
+            var settings = new SettingsService().LoadSettings();
+            DirectoryService.ApplyFromSettings(settings);
 
-            // Initialize Window
             _chatWindow = new ChatWindow();
-            
-            // Initialize System Tray
+
             _notifyIcon = new TaskbarIcon
             {
                 Icon = System.Drawing.SystemIcons.Information,
@@ -33,35 +42,40 @@ public partial class App : System.Windows.Application
             };
 
             var contextMenu = new System.Windows.Controls.ContextMenu();
-            
-            var openItem = new System.Windows.Controls.MenuItem { Header = "✦  Abrir Chat" };
+
+            var openItem = new System.Windows.Controls.MenuItem { Header = "✦ Abrir Chat" };
             openItem.Click += (s, ev) => _chatWindow.ToggleWindow();
-            
+
             var exitItem = new System.Windows.Controls.MenuItem { Header = "Sair" };
             exitItem.Click += (s, ev) => Current.Shutdown();
-            
+
             contextMenu.Items.Add(openItem);
             contextMenu.Items.Add(new System.Windows.Controls.Separator());
             contextMenu.Items.Add(exitItem);
 
             _notifyIcon.ContextMenu = contextMenu;
             _notifyIcon.TrayLeftMouseDown += (s, ev) => _chatWindow.ToggleWindow();
-            
-            _notifyIcon.ShowBalloonTip("AIB iniciado", "Pressione Ctrl+Shift+Space para abrir o chat.", BalloonIcon.Info);
 
-            // Initialize Global Hotkey
             try
             {
-                HotkeyManager.Current.AddOrReplace("ToggleChat", Key.Space, ModifierKeys.Control | ModifierKeys.Shift, OnHotkeyDetected);
+                HotkeyManager.Current.AddOrReplace(
+                    "ToggleChat",
+                    Key.Space,
+                    ModifierKeys.Control | ModifierKeys.Shift,
+                    OnHotkeyDetected);
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"Failed to register hotkey: {ex.Message}", "HotKey Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Console.WriteLine($"[HOTKEY] Não foi possível registrar o atalho global: {ex.Message}");
             }
         }
         catch (Exception ex)
         {
-            System.Windows.MessageBox.Show($"Crash fatal na inicialização:\n\n{ex.Message}\n\n{ex.StackTrace}", "Erro Crítico", MessageBoxButton.OK, MessageBoxImage.Error);
+            System.Windows.MessageBox.Show(
+                $"Erro crítico ao iniciar o AIB:\n\n{ex.Message}",
+                "AIB — Erro de Inicialização",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
             Current.Shutdown();
         }
     }

@@ -43,3 +43,8 @@ publish/
 *.dll
 *.pdb
 *.nupkg
+
+### --- Banco de Dados e Dados Locais ---
+*.db
+memory.db
+*.litedb
