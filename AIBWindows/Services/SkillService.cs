@@ -19,20 +19,54 @@ public class SkillMetadata
 public static class SkillService
 {
     private static string SkillsDir => Path.Combine(DirectoryService.DataDir, "skills");
+    private static string DefaultSkillsDir => Path.Combine(DirectoryService.DataDir, ".default_skills");
 
     public static void EnsureDir()
     {
         if (!Directory.Exists(SkillsDir))
             Directory.CreateDirectory(SkillsDir);
+
+        if (!Directory.Exists(DefaultSkillsDir))
+        {
+            Directory.CreateDirectory(DefaultSkillsDir);
+            foreach (var skill in DefaultSkills.Skills)
+            {
+                try
+                {
+                    string skillPath = Path.Combine(DefaultSkillsDir, skill.Name);
+                    Directory.CreateDirectory(skillPath);
+                    string scriptContent = DefaultSkills.GetScriptContent(skill.Name);
+                    
+                    File.WriteAllText(Path.Combine(skillPath, "skill.json"), JsonSerializer.Serialize(skill));
+                    File.WriteAllText(Path.Combine(skillPath, skill.ScriptFile), scriptContent);
+                }
+                catch { }
+            }
+        }
     }
 
     public static List<SkillMetadata> ListLocalSkills()
     {
         EnsureDir();
         var skills = new List<SkillMetadata>();
-        var allSubDirs = Directory.GetDirectories(SkillsDir);
+        
+        var dirsToScan = new List<string>();
+        if (Directory.Exists(DefaultSkillsDir)) dirsToScan.AddRange(Directory.GetDirectories(DefaultSkillsDir));
+        if (Directory.Exists(SkillsDir)) dirsToScan.AddRange(Directory.GetDirectories(SkillsDir));
+
+        // Evita duplicatas se o usuário tiver uma skill com o mesmo nome que a default (sobrescreve com a do usuário)
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Ordem inversa: processa as do usuário primeiro, assim a do usuário tem precedência
+        var allSubDirs = new List<string>();
+        if (Directory.Exists(SkillsDir)) allSubDirs.AddRange(Directory.GetDirectories(SkillsDir));
+        if (Directory.Exists(DefaultSkillsDir)) allSubDirs.AddRange(Directory.GetDirectories(DefaultSkillsDir));
+
         foreach (var dir in allSubDirs)
         {
+            string skillName = Path.GetFileName(dir);
+            if (seenNames.Contains(skillName)) continue; // Já carregou a versão prioritária
+
             string jsonPath = Path.Combine(dir, "skill.json");
             if (File.Exists(jsonPath))
             {
@@ -43,6 +77,7 @@ public static class SkillService
                     if (meta != null) {
                         if (!Path.IsPathRooted(meta.ScriptFile)) meta.ScriptFile = Path.Combine(dir, meta.ScriptFile);
                         skills.Add(meta);
+                        seenNames.Add(skillName);
                     }
                     continue;
                 }
@@ -56,7 +91,11 @@ public static class SkillService
                 {
                     string content = File.ReadAllText(file);
                     var meta = ParseMarkdownSkill(content, file);
-                    if (meta != null) skills.Add(meta);
+                    if (meta != null && !seenNames.Contains(meta.Name))
+                    {
+                        skills.Add(meta);
+                        seenNames.Add(meta.Name);
+                    }
                 }
                 catch { }
             }

@@ -1,8 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -10,20 +7,6 @@ namespace AIB.Services;
 
 public static class CommandService
 {
-    private static readonly HashSet<string> SafePrefixes = new()
-    {
-        "dir", "ls", "git status", "git log", "git branch", "git diff",
-        "dotnet --version", "python --version", "node --version",
-        "whoami", "hostname", "ipconfig", "systeminfo", "type", "cat", "echo"
-    };
-
-    public static bool IsSafeCommand(string cmd)
-    {
-        if (string.IsNullOrWhiteSpace(cmd)) return false;
-        string lowerCmd = cmd.Trim().ToLower();
-        return SafePrefixes.Any(prefix => lowerCmd.StartsWith(prefix));
-    }
-
     public static async Task<string> ExecuteAsync(string command, string? workDir = null, int timeoutMs = 20000)
     {
         try

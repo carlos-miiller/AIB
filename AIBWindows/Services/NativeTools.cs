@@ -9,32 +9,22 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using DocumentFormat.OpenXml.Spreadsheet;
 using System.Text;
+using System.Runtime.InteropServices;
 
 namespace AIB.Services;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UTILITÁRIO: Helper de extração de argumentos JSON com auto-reparo
-// ─────────────────────────────────────────────────────────────────────────────
-
 internal static class ToolArgParser
 {
-    /// <summary>
-    /// Tenta extrair uma propriedade string de um JSON. Se o parse falhar,
-    /// tenta um fallback via busca textual simples para tolerar JSONs malformados
-    /// gerados por modelos locais menores.
-    /// </summary>
     internal static string Get(string json, string key)
     {
-        // 1. Parse nativo (caminho feliz)
         try
         {
             using var doc = JsonDocument.Parse(json);
             if (doc.RootElement.TryGetProperty(key, out var val))
                 return val.ToString() ?? string.Empty;
         }
-        catch { /* Falha silenciosa, tenta fallback */ }
+        catch { }
 
-        // 2. Fallback: sanitização básica (remove lixo antes do '{' e depois do '}')
         try
         {
             int start = json.IndexOf('{');
@@ -47,9 +37,8 @@ internal static class ToolArgParser
                     return val.GetString() ?? string.Empty;
             }
         }
-        catch { /* Falha silenciosa, tenta regex */ }
+        catch { }
 
-        // 3. Último recurso: extração textual via busca de padrão "key":"value"
         try
         {
             string pattern = $"\"{key}\"";
@@ -76,13 +65,13 @@ internal static class ToolArgParser
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: remember — Memoriza fatos relevantes em arquivos locais
+// FERRAMENTA: manage_memory — Guarda e recupera fatos
 // ─────────────────────────────────────────────────────────────────────────────
 
-public class RememberTool : ITool
+public class ManageMemoryTool : ITool
 {
-    public string Name => "remember";
-    public string Description => "Salva uma informação importante na memória de longo prazo.";
+    public string Name => "manage_memory";
+    public string Description => "Gerencia a memória de longo prazo. Pode salvar ('remember') ou buscar ('recall') informações.";
     public int RequiredLevel => 1;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
@@ -91,70 +80,42 @@ public class RememberTool : ITool
         {
           "type": "object",
           "properties": {
-            "key": {
-              "type": "string",
-              "description": "Identificador curto e descritivo do fato (ex: 'nome_usuario', 'empresa_cliente')."
-            },
-            "info": {
-              "type": "string",
-              "description": "O conteúdo completo do fato a ser memorizado."
-            }
+            "action": { "type": "string", "description": "'remember' para salvar, 'recall' para buscar." },
+            "key": { "type": "string", "description": "Para remember: Identificador do fato. Para recall: Palavra-chave da busca." },
+            "info": { "type": "string", "description": "Para remember: O conteúdo a ser memorizado." }
           },
-          "required": ["key", "info"]
+          "required": ["action", "key"]
         }
         """));
 
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
+        string action = ToolArgParser.Get(argumentsJson, "action");
         string key = ToolArgParser.Get(argumentsJson, "key");
         string info = ToolArgParser.Get(argumentsJson, "info");
-        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(info))
-            return "ERRO: 'key' e 'info' são obrigatórios.";
-        return await MemoryService.RememberAsync(key, info);
-    }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: recall — Busca na memória persistente local
-// ─────────────────────────────────────────────────────────────────────────────
-
-public class RecallTool : ITool
-{
-    public string Name => "recall";
-    public string Description => "Recupera todas as informações armazenadas na memória de longo prazo.";
-    public int RequiredLevel => 1;
-
-    public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
-        Name, Description,
-        BinaryData.FromString("""
+        if (action == "remember")
         {
-          "type": "object",
-          "properties": {
-            "query": {
-              "type": "string",
-              "description": "Palavra-chave ou tema do que deseja buscar na memória."
-            }
-          },
-          "required": ["query"]
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(info)) return "ERRO: 'key' e 'info' são obrigatórios para remember.";
+            return await MemoryService.RememberAsync(key, info);
         }
-        """));
-
-    public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
-    {
-        string query = ToolArgParser.Get(argumentsJson, "query");
-        if (string.IsNullOrWhiteSpace(query)) return Task.FromResult("ERRO: 'query' é obrigatório.");
-        return Task.FromResult(MemoryService.Recall(query));
+        else if (action == "recall")
+        {
+            if (string.IsNullOrWhiteSpace(key)) return "ERRO: 'key' (query) é obrigatório para recall.";
+            return MemoryService.Recall(key);
+        }
+        return "ERRO: 'action' deve ser 'remember' ou 'recall'.";
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: store_credential — Armazena credenciais via DPAPI
+// FERRAMENTA: manage_vault — Guarda ou recupera credenciais
 // ─────────────────────────────────────────────────────────────────────────────
 
-public class StoreCredentialTool : ITool
+public class ManageVaultTool : ITool
 {
     public string Name => "manage_vault";
-    public string Description => "Guarda ou atualiza uma credencial sensível no cofre nativo criptografado do Windows (DPAPI). Apenas senhas, chaves de API e tokens.";
+    public string Description => "Guarda ('store') ou recupera ('retrieve') credenciais do cofre nativo criptografado.";
     public int RequiredLevel => 7;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
@@ -163,66 +124,46 @@ public class StoreCredentialTool : ITool
         {
           "type": "object",
           "properties": {
-            "system": { "type": "string", "description": "Nome do sistema/serviço (ex: 'bitrix', 'openai')." },
-            "key":    { "type": "string", "description": "Nome da chave (ex: 'api_key', 'token')." },
-            "value":  { "type": "string", "description": "O valor secreto a armazenar." }
+            "action": { "type": "string", "description": "'store' ou 'retrieve'." },
+            "system": { "type": "string", "description": "Nome do sistema/serviço." },
+            "key": { "type": "string", "description": "Nome da chave." },
+            "value": { "type": "string", "description": "Para store: O valor secreto." }
           },
-          "required": ["system", "key", "value"]
+          "required": ["action", "system", "key"]
         }
         """));
 
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
+        string action = ToolArgParser.Get(argumentsJson, "action");
         string system = ToolArgParser.Get(argumentsJson, "system");
         string key = ToolArgParser.Get(argumentsJson, "key");
         string value = ToolArgParser.Get(argumentsJson, "value");
-        if (string.IsNullOrWhiteSpace(system) || string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
-            return "ERRO: 'system', 'key' e 'value' são obrigatórios.";
-        return await CredentialService.StoreCredentialAsync(system, key, value);
-    }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: retrieve_credential — Recupera credenciais do cofre
-// ─────────────────────────────────────────────────────────────────────────────
-
-public class RetrieveCredentialTool : ITool
-{
-    public string Name => "read_vault";
-    public string Description => "Recupera uma credencial armazenada no cofre local criptografado. Use ANTES de qualquer integração que exija API key ou token.";
-    public int RequiredLevel => 7;
-
-    public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
-        Name, Description,
-        BinaryData.FromString("""
-        {
-          "type": "object",
-          "properties": {
-            "system": { "type": "string", "description": "Nome do sistema (ex: 'bitrix', 'openai')." },
-            "key":    { "type": "string", "description": "Nome da chave a recuperar." }
-          },
-          "required": ["system", "key"]
-        }
-        """));
-
-    public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
-    {
-        string system = ToolArgParser.Get(argumentsJson, "system");
-        string key = ToolArgParser.Get(argumentsJson, "key");
         if (string.IsNullOrWhiteSpace(system) || string.IsNullOrWhiteSpace(key))
-            return Task.FromResult("ERRO: 'system' e 'key' são obrigatórios.");
-        return Task.FromResult(CredentialService.RetrieveCredential(system, key));
+            return "ERRO: 'system' e 'key' são obrigatórios.";
+
+        if (action == "store")
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "ERRO: 'value' obrigatório para store.";
+            return await CredentialService.StoreCredentialAsync(system, key, value);
+        }
+        else if (action == "retrieve")
+        {
+            return CredentialService.RetrieveCredential(system, key);
+        }
+        return "ERRO: 'action' deve ser 'store' ou 'retrieve'.";
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: read_file — Lê arquivos de texto, PDF, DOCX e XLSX
+// FERRAMENTA: read_file — Lê arquivos
 // ─────────────────────────────────────────────────────────────────────────────
 
 public class ReadFileTool : ITool
 {
     public string Name => "read_file";
-    public string Description => "Lê o conteúdo de um arquivo do sistema (texto, .pdf, .docx, .xlsx). Use para evitar erros de terminal com caminhos complexos. Aceita apenas caminhos absolutos.";
+    public string Description => "Lê o conteúdo de um arquivo do sistema (texto, .pdf, .docx, .xlsx). Aceita apenas caminhos absolutos.";
     public int RequiredLevel => 1;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
@@ -254,7 +195,6 @@ public class ReadFileTool : ITool
                 if (ext == ".docx") return ReadWord(path);
                 if (ext == ".xlsx") return ReadExcel(path);
                 
-                // Fallback para texto comum
                 return File.ReadAllText(path);
             });
         }
@@ -327,7 +267,7 @@ public class ReadFileTool : ITool
                     }
                     sb.AppendLine(string.Join(" | ", rowData));
                 }
-                sb.AppendLine("---"); // Separador de abas/planilhas
+                sb.AppendLine("---");
             }
         }
         return sb.ToString();
@@ -335,14 +275,14 @@ public class ReadFileTool : ITool
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: run_command — Executa comandos no terminal local
+// FERRAMENTA: run_command — Executa comandos de terminal
 // ─────────────────────────────────────────────────────────────────────────────
 
 public class RunCommandTool : ITool
 {
-    public string Name => "windows_console_execution";
-    public string Description => "Executa comandos no terminal do usuário (PowerShell) e retorna a saída. Para caminhos longos com espaço, use aspas. Ex: ls 'C:\\Meu Caminho\\'";
-    public int RequiredLevel => 2; // Bloqueios finos serão aplicados dentro do ExecuteAsync
+    public string Name => "run_command";
+    public string Description => "Executa comandos no shell do usuário (cmd.exe /c) e retorna a saída. Para invocar cmdlets PowerShell, prefixe com 'powershell -NoProfile -Command \"...\"'. Para caminhos com espaço, use aspas.";
+    public int RequiredLevel => 2;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         Name, Description,
@@ -359,67 +299,73 @@ public class RunCommandTool : ITool
         }
         """));
 
+    // Helper: matcher por palavra ("rm ", "del", "ping") usando \b para evitar falsos positivos
+    // como "firm" engatilhando "rm" ou "appending" engatilhando "ping".
+    private static bool ContainsWord(string cmdLower, string token)
+    {
+        string trimmed = token.Trim();
+        if (trimmed.Length == 0) return false;
+        // Para tokens compostos por símbolo (ex: ">", ">>") usamos contains direto.
+        if (!char.IsLetterOrDigit(trimmed[0]) && !char.IsLetterOrDigit(trimmed[^1]))
+            return cmdLower.Contains(trimmed);
+        string pattern = $@"(?<![A-Za-z0-9_-]){System.Text.RegularExpressions.Regex.Escape(trimmed)}(?![A-Za-z0-9_-])";
+        return System.Text.RegularExpressions.Regex.IsMatch(cmdLower, pattern);
+    }
+
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
         string command = ToolArgParser.Get(argumentsJson, "command");
         if (string.IsNullOrWhiteSpace(command)) return "ERRO: 'command' é obrigatório.";
 
-        // --- INÍCIO DO SANDBOX ---
         if (userLevel < 9)
         {
             string cmdLower = command.ToLowerInvariant();
-            
-            // 1. Hard-block de sistema
+
             string[] sysDirs = { "appdata", "windows", "program files", "programdata" };
-            if (sysDirs.Any(d => cmdLower.Contains(d)))
+            if (sysDirs.Any(d => ContainsWord(cmdLower, d)))
                 return "ACESSO NEGADO (SANDBOX): Diretórios de sistema protegidos.";
 
-            // 2. Confinamento de Diretórios (Níveis Baixos)
             if (userLevel <= 4)
             {
-                // Se tentou usar caminhos absolutos fora das áreas permitidas
                 if (cmdLower.Contains("c:\\") || cmdLower.Contains("d:\\"))
                 {
                     bool allow = false;
-                    if (cmdLower.Contains("documents") || cmdLower.Contains("documentos")) allow = true;
-                    if (userLevel >= 3 && (cmdLower.Contains("downloads"))) allow = true;
+                    if (ContainsWord(cmdLower, "documents") || ContainsWord(cmdLower, "documentos")) allow = true;
+                    if (userLevel >= 3 && ContainsWord(cmdLower, "downloads")) allow = true;
                     if (!allow) return $"ACESSO NEGADO (SANDBOX): Nível {userLevel} restrito à Documentos/Downloads.";
                 }
 
-                if (userLevel <= 2 && (cmdLower.Contains("ls ") || cmdLower.Contains("dir ")))
-                    return "ACESSO NEGADO (SANDBOX): Listagem em massa bloqueada no Nível 2. Tente usar Select-String ou Get-Content em um arquivo exato.";
+                if (userLevel <= 2 && (ContainsWord(cmdLower, "ls") || ContainsWord(cmdLower, "dir")))
+                    return "ACESSO NEGADO (SANDBOX): Listagem em massa bloqueada no Nível 2.";
             }
 
-            // 3. Bloqueio Destrutivo (Nível < 8)
             if (userLevel < 8)
             {
-                string[] destructives = { "rm ", "del ", "remove-item", "out-file", "set-content", "new-item", ">", ">>", "mkdir", "md " };
-                if (destructives.Any(b => cmdLower.Contains(b)))
-                    return "ACESSO NEGADO (SANDBOX): Comandos de gravação, criação ou exclusão requerem Nível 8.";
+                string[] destructives = { "rm", "del", "erase", "remove-item", "ri", "out-file", "set-content", "add-content", "new-item", ">", ">>", "mkdir", "md", "rmdir", "rd", "format" };
+                if (destructives.Any(b => ContainsWord(cmdLower, b)))
+                    return "ACESSO NEGADO (SANDBOX): Comandos de gravação/exclusão requerem Nível 8.";
             }
 
-            // 4. Bloqueio de Rede (Nível < 7)
             if (userLevel < 7)
             {
-                string[] netCmds = { "curl", "wget", "invoke-webrequest", "ping" };
-                if (netCmds.Any(b => cmdLower.Contains(b)))
+                string[] netCmds = { "curl", "wget", "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "ping", "tracert", "nslookup", "ftp", "scp", "ssh" };
+                if (netCmds.Any(b => ContainsWord(cmdLower, b)))
                     return "ACESSO NEGADO (SANDBOX): Comandos de rede requerem Nível 7.";
             }
         }
-        // --- FIM DO SANDBOX ---
 
         return await CommandService.ExecuteAsync(command, DirectoryService.DataDir);
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: search_web — Pesquisa na internet via DuckDuckGo
+// FERRAMENTA: search_web — Pesquisa web
 // ─────────────────────────────────────────────────────────────────────────────
 
 public class SearchWebTool : ITool
 {
     public string Name => "search_web";
-    public string Description => "Pesquisa na internet em tempo real usando DuckDuckGo. Ideal para buscar informações atualizadas, eventos recentes ou dados que não estão na memória.";
+    public string Description => "Pesquisa na internet em tempo real via DuckDuckGo.";
     public int RequiredLevel => 3;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
@@ -428,10 +374,7 @@ public class SearchWebTool : ITool
         {
           "type": "object",
           "properties": {
-            "query": {
-              "type": "string",
-              "description": "O termo ou pergunta a pesquisar na internet."
-            }
+            "query": { "type": "string", "description": "O termo a pesquisar na internet." }
           },
           "required": ["query"]
         }
@@ -446,60 +389,47 @@ public class SearchWebTool : ITool
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: ocr_screen — Extrai texto de todas as telas via OCR nativo
+// FERRAMENTA: read_screen — Lê tudo que está na tela (Nome da Janela e OCR)
 // ─────────────────────────────────────────────────────────────────────────────
 
-public class OcrScreenTool : ITool
+public class ReadScreenTool : ITool
 {
-    public string Name => "ocr_screen";
-    public string Description => "Captura e lê o texto de TODAS as telas conectadas usando o OCR nativo do Windows. Use quando o usuário pedir para ler, analisar ou descrever o que está na tela.";
-    public int RequiredLevel => 4;
-
-    public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
-        Name, Description,
-        BinaryData.FromString("""{ "type": "object", "properties": {} }"""));
-
-    public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
-    {
-        try
-        {
-            var ocr = new OcrService();
-            string text = await ocr.ExtractTextFromAllScreensAsync();
-            if (string.IsNullOrWhiteSpace(text))
-                return "[OCR] Nenhum texto foi encontrado nas telas.";
-            return $"[CONTEÚDO LIDO DAS TELAS VIA OCR]:\n\n{text}";
-        }
-        catch (Exception ex)
-        {
-            return $"ERRO no OCR: {ex.Message}";
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: capture_screen — Captura screenshot panorâmica e descreve via OCR
-// ─────────────────────────────────────────────────────────────────────────────
-
-public class CaptureScreenTool : ITool
-{
-    public string Name => "capture_screen";
-    public string Description => "Tira uma captura de tela panorâmica de todos os monitores e extrai o texto via OCR para fornecer contexto visual completo ao agente.";
+    public string Name => "read_screen";
+    public string Description => "Captura o título da janela ativa E o texto completo de todas as telas (OCR).";
     public int RequiredLevel => 3;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         Name, Description,
         BinaryData.FromString("""{ "type": "object", "properties": {} }"""));
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
         try
         {
+            string windowTitle = "[NENHUMA JANELA ATIVA]";
+            IntPtr handle = GetForegroundWindow();
+            if (handle != IntPtr.Zero)
+            {
+                var sb = new StringBuilder(256);
+                if (GetWindowText(handle, sb, 256) > 0)
+                {
+                    windowTitle = sb.ToString();
+                }
+            }
+
             var ocr = new OcrService();
             string text = await ocr.ExtractTextFromAllScreensAsync();
             string context = string.IsNullOrWhiteSpace(text)
-                ? "[Nenhum texto detectado na captura]"
+                ? "[Nenhum texto detectado via OCR]"
                 : text;
-            return $"[CONTEXTO VISUAL DA TELA - OCR]:\n{context}";
+
+            return $"JANELA ATIVA: {windowTitle}\n\n[CONTEXTO VISUAL DA TELA - OCR]:\n{context}";
         }
         catch (Exception ex)
         {
@@ -509,14 +439,14 @@ public class CaptureScreenTool : ITool
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: materialize_skill — Cria ou atualiza um script de skill local
+// FERRAMENTA: execute_skill — Executa skill dinâmica local
 // ─────────────────────────────────────────────────────────────────────────────
 
-public class MaterializeSkillTool : ITool
+public class ExecuteSkillTool : ITool
 {
-    public string Name => "materialize_skill";
-    public string Description => "Cria ou atualiza um script Python ou PowerShell na pasta de skills local. Após materializar, a skill fica disponível como uma ferramenta direta nas próximas conversas.";
-    public int RequiredLevel => 9;
+    public string Name => "execute_skill";
+    public string Description => "Executa uma habilidade dinâmica local (script python/powershell).";
+    public int RequiredLevel => 1;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         Name, Description,
@@ -524,8 +454,41 @@ public class MaterializeSkillTool : ITool
         {
           "type": "object",
           "properties": {
-            "skill_name":     { "type": "string", "description": "Nome único da skill (ex: 'consultar_bitrix')." },
-            "script_content": { "type": "string", "description": "Conteúdo completo do script Python ou PowerShell." },
+            "skill_name": { "type": "string", "description": "Nome da skill." },
+            "arguments": { "type": "string", "description": "String de argumentos para a linha de comando do script." }
+          },
+          "required": ["skill_name"]
+        }
+        """));
+
+    public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
+    {
+        string skillName = ToolArgParser.Get(argumentsJson, "skill_name");
+        string args = ToolArgParser.Get(argumentsJson, "arguments");
+        if (string.IsNullOrWhiteSpace(skillName)) return "ERRO: 'skill_name' é obrigatório.";
+        
+        return await SkillService.RunSkillAsync(skillName, args);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FERRAMENTA: materialize_skill — Cria script de skill
+// ─────────────────────────────────────────────────────────────────────────────
+
+public class MaterializeSkillTool : ITool
+{
+    public string Name => "materialize_skill";
+    public string Description => "Cria ou atualiza uma skill local (script).";
+    public int RequiredLevel => 5;
+
+    public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
+        Name, Description,
+        BinaryData.FromString("""
+        {
+          "type": "object",
+          "properties": {
+            "skill_name":     { "type": "string", "description": "Nome único da skill." },
+            "script_content": { "type": "string", "description": "Conteúdo completo do script." },
             "interpreter":    { "type": "string", "description": "'python' ou 'powershell'.", "enum": ["python", "powershell"] }
           },
           "required": ["skill_name", "script_content", "interpreter"]
@@ -545,49 +508,14 @@ public class MaterializeSkillTool : ITool
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: read_clipboard — Lê o conteúdo da área de transferência
+// FERRAMENTA: manage_clipboard — Lê ou Escreve no Clipboard
 // ─────────────────────────────────────────────────────────────────────────────
 
-public class ClipboardReadTool : ITool
+public class ManageClipboardTool : ITool
 {
-    public string Name => "read_clipboard";
-    public string Description => "Lê o texto atual que está na área de transferência (Ctrl+C) do usuário.";
+    public string Name => "manage_clipboard";
+    public string Description => "Lê ('read') ou grava ('write') conteúdo na área de transferência (clipboard).";
     public int RequiredLevel => 1;
-
-    public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
-        Name, Description,
-        BinaryData.FromString("""{ "type": "object", "properties": {} }"""));
-
-    public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
-    {
-        try
-        {
-            return await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                if (System.Windows.Clipboard.ContainsText())
-                {
-                    string text = System.Windows.Clipboard.GetText();
-                    return string.IsNullOrWhiteSpace(text) ? "[CLIPBOARD VAZIO]" : text;
-                }
-                return "[NENHUM TEXTO NO CLIPBOARD]";
-            });
-        }
-        catch (Exception ex)
-        {
-            return $"ERRO ao ler clipboard: {ex.Message}";
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: write_clipboard — Grava conteúdo na área de transferência
-// ─────────────────────────────────────────────────────────────────────────────
-
-public class ClipboardWriteTool : ITool
-{
-    public string Name => "write_clipboard";
-    public string Description => "Copia um texto (código, resumo, etc.) diretamente para a área de transferência do usuário.";
-    public int RequiredLevel => 6;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         Name, Description,
@@ -595,81 +523,61 @@ public class ClipboardWriteTool : ITool
         {
           "type": "object",
           "properties": {
-            "text": { "type": "string", "description": "O texto a ser copiado para o clipboard." }
+            "action": { "type": "string", "description": "'read' ou 'write'." },
+            "text": { "type": "string", "description": "Se action='write', o texto a ser copiado." }
           },
-          "required": ["text"]
+          "required": ["action"]
         }
         """));
 
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
+        string action = ToolArgParser.Get(argumentsJson, "action");
         string text = ToolArgParser.Get(argumentsJson, "text");
-        if (string.IsNullOrEmpty(text)) return "ERRO: 'text' é obrigatório.";
 
         try
         {
-            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            if (action == "write")
             {
-                System.Windows.Clipboard.SetText(text);
-            });
-            return "Texto copiado com sucesso para a área de transferência.";
-        }
-        catch (Exception ex)
-        {
-            return $"ERRO ao gravar no clipboard: {ex.Message}";
-        }
-    }
-}
+                if (userLevel < 6) return "ACESSO NEGADO: 'write' requer nível 6.";
+                if (string.IsNullOrEmpty(text)) return "ERRO: 'text' é obrigatório para write.";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: read_active_window — Obtém o título da janela ativa
-// ─────────────────────────────────────────────────────────────────────────────
-
-public class ActiveWindowTool : ITool
-{
-    public string Name => "read_active_window";
-    public string Description => "Obtém o título da janela atualmente em foco no desktop do usuário. Útil para descobrir em qual site ou documento ele está trabalhando.";
-    public int RequiredLevel => 3;
-
-    public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
-        Name, Description,
-        BinaryData.FromString("""{ "type": "object", "properties": {} }"""));
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
-    private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
-
-    public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
-    {
-        try
-        {
-            IntPtr handle = GetForegroundWindow();
-            if (handle == IntPtr.Zero) return Task.FromResult("[NENHUMA JANELA ATIVA]");
-            
-            var sb = new System.Text.StringBuilder(256);
-            if (GetWindowText(handle, sb, 256) > 0)
-            {
-                return Task.FromResult(sb.ToString());
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    System.Windows.Clipboard.SetText(text);
+                });
+                return "Texto copiado com sucesso para a área de transferência.";
             }
-            return Task.FromResult("[NÃO FOI POSSÍVEL LER O TÍTULO DA JANELA]");
+            else if (action == "read")
+            {
+                return await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    if (System.Windows.Clipboard.ContainsText())
+                    {
+                        string content = System.Windows.Clipboard.GetText();
+                        return string.IsNullOrWhiteSpace(content) ? "[CLIPBOARD VAZIO]" : content;
+                    }
+                    return "[NENHUM TEXTO NO CLIPBOARD]";
+                });
+            }
+            
+            return "ERRO: 'action' deve ser 'read' ou 'write'.";
         }
         catch (Exception ex)
         {
-            return Task.FromResult($"ERRO ao ler janela ativa: {ex.Message}");
+            return $"ERRO ao interagir com o clipboard: {ex.Message}";
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FERRAMENTA: set_reminder — Cria um lembrete para o usuário
+// FERRAMENTA: set_reminder — Cria lembrete
 // ─────────────────────────────────────────────────────────────────────────────
 
 public class SetReminderTool : ITool
 {
     public string Name => "set_reminder";
-    public string Description => "Agenda um lembrete ou alerta para o usuário. O AIB irá notificar o usuário quando o tempo acabar.";
+    public string Description => "Agenda um lembrete ou alerta para o usuário.";
     public int RequiredLevel => 1;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
@@ -679,8 +587,8 @@ public class SetReminderTool : ITool
           "type": "object",
           "properties": {
             "message": { "type": "string", "description": "A mensagem do lembrete." },
-            "delay_minutes": { "type": "integer", "description": "Opcional. Daqui a quantos minutos o lembrete deve disparar." },
-            "target_time": { "type": "string", "description": "Opcional. Horário exato para o lembrete (formato HH:mm, ex: '14:00'). Use preferencialmente este para horários definidos." }
+            "delay_minutes": { "type": "integer", "description": "Opcional. Daqui a quantos minutos." },
+            "target_time": { "type": "string", "description": "Opcional. Horário exato para o lembrete (HH:mm)." }
           },
           "required": ["message"]
         }
@@ -702,7 +610,7 @@ public class SetReminderTool : ITool
             var now = DateTime.Now;
             var target = new DateTime(now.Year, now.Month, now.Day, targetTime.Hour, targetTime.Minute, 0);
             
-            if (target < now) target = target.AddDays(1); // Se já passou hoje, agenda pro dia seguinte
+            if (target < now) target = target.AddDays(1);
             
             delayMinutes = (int)Math.Round((target - now).TotalMinutes);
         }
@@ -712,7 +620,7 @@ public class SetReminderTool : ITool
         }
         else
         {
-            return Task.FromResult("ERRO: É necessário fornecer 'target_time' (ex: '14:00') ou 'delay_minutes'.");
+            return Task.FromResult("ERRO: Forneça 'target_time' ou 'delay_minutes'.");
         }
 
         return Task.FromResult(ReminderService.AddReminder(message, delayMinutes));

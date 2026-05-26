@@ -38,16 +38,16 @@ public class OpenAIService
     private const string SYSTEM_PROMPT =
         """
         Identidade: Você é o AIB, um Agente Autônomo SOTA (State of the Art) rodando localmente no Windows do usuário.
-        
+
         # Padrão de Operação: ReAct Puro
         Para TODA solicitação que exija busca de informação, memória, execução de script ou visão de tela:
         1. PENSE brevemente no plano (uma linha).
         2. EXECUTE a ferramenta mais adequada (SEMPRE use chamada de ferramenta nativa, não escreva em texto).
         3. OBSERVE o resultado retornado.
         4. RESPONDA ao usuário com base na observação.
-        
+
         # Regras Absolutas
-        - NUNCA afirme que não possui uma informação sem antes chamar `recall` e `retrieve_credential`.
+        - NUNCA afirme que não possui uma informação sem antes tentar `manage_memory` com action="recall" e, para credenciais, `manage_vault` com action="retrieve".
         - SEMPRE use as ferramentas disponíveis — você tem acesso a memória, terminal, web, OCR e visão de tela.
         - Se uma ferramenta falhar, analise o erro na Observation e tente no máximo mais uma alternativa. Se falhar novamente, informe o usuário do erro e pare. Não entre em loop infinito tentando a mesma coisa.
         - Não peça permissão para executar ferramentas. Aja.
@@ -60,6 +60,76 @@ public class OpenAIService
         _settingsService = settingsService;
         _toolRegistry = new ToolRegistry();
         _tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
+        
+        // Inicia o aquecimento e trava de memória em background
+        Task.Run(() => WarmupAndKeepAliveAsync());
+    }
+
+    public event Action<bool>? OnWarmupStateChanged;
+
+    private async Task WarmupAndKeepAliveAsync()
+    {
+        try
+        {
+            EnsureClient();
+            var settings = _settingsService.LoadSettings();
+            if (settings.AiProvider != "Ollama") return;
+
+            string apiUrl = string.IsNullOrEmpty(settings.ApiUrl) ? "http://127.0.0.1:11434" : settings.ApiUrl.Replace("/v1", "").TrimEnd('/');
+            
+            Console.WriteLine($"[WARMUP] Iniciando trava de memória (Keep-Alive Infinita) para {settings.ModelName}...");
+            using var httpClient = new System.Net.Http.HttpClient();
+            var payload = new { model = settings.ModelName, keep_alive = -1 };
+            var content = new System.Net.Http.StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json");
+            
+            // 1. Envia requisição crua para travar o modelo na VRAM
+            await httpClient.PostAsync($"{apiUrl}/api/generate", content);
+            Console.WriteLine("[WARMUP] Modelo trancado na memória com sucesso.");
+
+            // Dispara evento para travar a interface
+            OnWarmupStateChanged?.Invoke(true);
+
+            // 2. Compila a Árvore de Gramática com o Histórico Real
+            Console.WriteLine("[WARMUP] Compilando gramática das Nativas no histórico oficial...");
+
+            // Força a criação do System Prompt Oficial se estiver vazio
+            if (_history.Count == 0) ResetHistory();
+
+            // Snapshot do histórico real para restaurar depois (descarta as mensagens fantasma)
+            int realHistoryCount = _history.Count;
+
+            // Adiciona a mensagem fantasma de heartbeat (transitória)
+            _history.Add(ChatMessage.CreateUserMessage("[SYSTEM_HEARTBEAT] O sistema acabou de iniciar. Responda apenas 'SISTEMA ONLINE'. Não use nenhuma ferramenta."));
+
+            int userLevel = LevelService.GetLevel(settings.MessageCount);
+            var tools = _toolRegistry.GetActiveTools(userLevel);
+            var chatOptions = new ChatCompletionOptions() { Temperature = 0.1f };
+            foreach (var tool in tools) chatOptions.Tools.Add(tool);
+
+            try
+            {
+                // Faz a requisição completa usando o _history para garantir Prefix Match perfeito
+                var completion = await _client!.CompleteChatAsync(_history, chatOptions, CancellationToken.None);
+                string responseText = completion.Value.Content[0].Text;
+                Console.WriteLine($"[WARMUP] Gramática em cache! Resposta final: {responseText}");
+            }
+            finally
+            {
+                // Remove tudo que foi adicionado durante o warmup (heartbeat + resposta).
+                // Mantemos apenas o histórico "real" anterior ao warmup para não desperdiçar tokens.
+                if (_history.Count > realHistoryCount)
+                    _history.RemoveRange(realHistoryCount, _history.Count - realHistoryCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WARMUP ERRO] {ex.Message}");
+        }
+        finally
+        {
+            // Libera a interface
+            OnWarmupStateChanged?.Invoke(false);
+        }
     }
 
     public List<ChatMessage> History => _history;
@@ -73,6 +143,22 @@ public class OpenAIService
         _history?.Clear();
         var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var contextualPrompt = SYSTEM_PROMPT + $"\n\nContexto Local:\n- Diretório Home do Usuário (Raiz): {userHome}";
+        
+        try
+        {
+            var skills = SkillService.ListLocalSkills();
+            if (skills.Count > 0)
+            {
+                contextualPrompt += "\n\nHabilidades dinâmicas disponíveis (use a ferramenta 'execute_skill' para chamá-las passando 'skill_name'):\n";
+                foreach (var skill in skills)
+                {
+                    if (skill.Interpreter.Equals("markdown", StringComparison.OrdinalIgnoreCase)) continue;
+                    contextualPrompt += $"- {skill.Name}: {skill.Description}\n";
+                }
+            }
+        }
+        catch { }
+
         _history.Add(ChatMessage.CreateSystemMessage(contextualPrompt));
     }
 
@@ -102,7 +188,7 @@ public class OpenAIService
         while (requiresAction && maxLoops-- > 0)
         {
             requiresAction = false;
-            var chatOptions = new ChatCompletionOptions();
+            var chatOptions = new ChatCompletionOptions() { Temperature = 0.1f };
             foreach (var tool in tools) chatOptions.Tools.Add(tool);
 
             var updates = _client!.CompleteChatStreamingAsync(_history, chatOptions, ct);
@@ -208,9 +294,12 @@ public class OpenAIService
                     string result = await _toolRegistry.ExecuteToolAsync(toolName, argsJson, userLevel);
                     onTechnicalContent?.Invoke($"[FALLBACK REGEX FERRAMENTA] Resultado: {result}\n");
 
-                    // Injeta no histórico como mensagem de usuário técnica para simular a tool call
-                    _history.Add(ChatMessage.CreateAssistantMessage(pendingTextAction));
-                    _history.Add(ChatMessage.CreateUserMessage($"[SYSTEM - Tool Result for {toolName}]: {result}"));
+                    // Simula uma tool call coerente: emite Assistant com ToolCall + ToolMessage com mesmo Id.
+                    // Isso mantém o histórico em formato ReAct legítimo para a próxima iteração.
+                    string syntheticId = $"fallback_{Guid.NewGuid():N}";
+                    var syntheticCall = ChatToolCall.CreateFunctionToolCall(syntheticId, toolName, BinaryData.FromString(argsJson));
+                    _history.Add(ChatMessage.CreateAssistantMessage(new[] { syntheticCall }));
+                    _history.Add(ChatMessage.CreateToolMessage(syntheticId, result));
                 }
             }
             // ── Resposta final de texto (sem tool calls) ──────────────────────
@@ -223,6 +312,10 @@ public class OpenAIService
                 // Trim do histórico para não estourar o contexto
                 await TrimHistoryAsync(userLevel);
             }
+
+            // Notifica a UI a cada iteração do loop ReAct para que o contador de tokens
+            // reflita o histórico real (e não só os momentos de trim).
+            NotifyTokenCount(userLevel);
         }
     }
 
@@ -306,48 +399,32 @@ public class OpenAIService
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
         int currentTokens = CalculateCurrentTokens();
 
-        if (currentTokens > maxTokens && _history.Count > 3)
+        // Sliding window: enquanto estiver acima do limite, remove a mensagem mais antiga
+        // (mantendo SEMPRE o System Prompt no índice 0). Cuidado especial para não deixar
+        // um Assistant com tool_calls sem suas ToolMessages correspondentes — a API rejeita.
+        int safetyCounter = 0;
+        while (currentTokens > maxTokens && _history.Count > 3 && safetyCounter++ < 200)
         {
-            // Pega a metade das mensagens antigas (ignorando o System Prompt no índice 0)
-            int half = (_history.Count - 1) / 2;
-            if (half == 0) return;
+            int removeIdx = 1; // primeiro após o System Prompt
+            var msg = _history[removeIdx];
 
-            var oldMessages = _history.Skip(1).Take(half).ToList();
-            
-            // Gerar resumo
-            string summaryPrompt = "Resuma brevemente os principais pontos, contexto e decisões da conversa a seguir:\n";
-            foreach (var m in oldMessages) 
+            _history.RemoveAt(removeIdx);
+
+            // Se a mensagem removida era um Assistant com tool_calls, remova também as ToolMessages
+            // imediatamente seguintes (são as respostas dessas tool_calls).
+            if (msg is AssistantChatMessage acm && acm.ToolCalls != null && acm.ToolCalls.Count > 0)
             {
-                string txt = string.Join(" ", m.Content.Select(c => c.Text));
-                summaryPrompt += $"- {txt}\n";
+                while (_history.Count > 1 && _history[1] is ToolChatMessage)
+                    _history.RemoveAt(1);
             }
 
-            var summaryRequest = new List<ChatMessage> {
-                ChatMessage.CreateSystemMessage("Você é um sumarizador eficiente. Retorne apenas o resumo sem saudações."),
-                ChatMessage.CreateUserMessage(summaryPrompt)
-            };
-
-            try
-            {
-                var completion = await _client!.CompleteChatAsync(summaryRequest);
-                string summary = completion.Value.Content[0].Text;
-
-                // Remove the old messages
-                _history.RemoveRange(1, half);
-
-                // Insert the summary
-                _history.Insert(1, ChatMessage.CreateAssistantMessage($"[RESUMO DO CONTEXTO ANTERIOR]: {summary}"));
-            }
-            catch
-            {
-                // Em caso de erro (ex: offline), removemos a mais velha
-                _history.RemoveAt(1);
-            }
-            
-            // Recalcula após podar
             currentTokens = CalculateCurrentTokens();
         }
-        
+
+        // (Sumarização agressiva foi removida: gastava 1 chamada LLM por trim e perdia nuance.
+        // Para resumos sob demanda, considere uma tool 'summarize_context' explícita.)
+        await System.Threading.Tasks.Task.CompletedTask;
+
         // Sempre notifica a interface
         NotifyTokenCount(userLevel);
     }

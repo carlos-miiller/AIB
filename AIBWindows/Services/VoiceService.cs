@@ -77,7 +77,10 @@ namespace AIB.Services
 
             _waveIn.DataAvailable += (s, e) =>
             {
-                _audioBuffer.Write(e.Buffer, 0, e.BytesRecorded);
+                lock (_audioBuffer)
+                {
+                    _audioBuffer.Write(e.Buffer, 0, e.BytesRecorded);
+                }
             };
 
             _cts = new CancellationTokenSource();

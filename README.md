@@ -24,8 +24,10 @@ Versão original baseada em **Python**, ideal para experimentação e ambientes 
 ## 🛠️ Requisitos Globais
 
 - [Ollama](https://ollama.com/) rodando localmente.
-- Modelo recomendado: `qwen3:4b` ou superior.
-- Arquivo `.env` configurado na raiz com as chaves de API necessárias (OpenAI para processamento em nuvem ou URL local para Ollama).
+- Modelo recomendado: **`gemma4:e2b`** (Extremamente otimizado, veloz e com suporte multimodal) ou superior.
+- O sistema possui **Warmup e Trava de Memória (Heartbeat)** no boot para mascarar a compilação de gramática.
+- As skills customizadas (em Python) ficam salvas em `~/.AIB/skills` e são chamadas sob demanda (Lazy Loading).
+- Arquivo `.env` configurado na raiz com as chaves de API necessárias (caso não use Ollama).
 
 ## 📄 Licença
 

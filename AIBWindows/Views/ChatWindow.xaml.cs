@@ -36,6 +36,7 @@ public partial class ChatWindow : Window
         _settingsService = new SettingsService();
         _openAIService = new OpenAIService(_settingsService);
         _openAIService.OnTokenCountChanged += UpdateTokenCounterUI;
+        _openAIService.OnWarmupStateChanged += HandleWarmupState;
         _voiceService = new VoiceService();
 
         // Inicializa UI
@@ -81,6 +82,29 @@ public partial class ChatWindow : Window
     // Controle de Visibilidade
     // ─────────────────────────────────────────────────────────────────────────
 
+    private void HandleWarmupState(bool isWarmingUp)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (isWarmingUp)
+            {
+                InputBox.IsEnabled = false;
+                SendButton.IsEnabled = false;
+                StatusBar.Visibility = Visibility.Visible;
+                StatusText.Text = "⏳ AIB conectando e aquecendo motores (pode levar 2 min na 1ª vez)...";
+                InputBox.Text = "";
+            }
+            else
+            {
+                InputBox.IsEnabled = true;
+                SendButton.IsEnabled = true;
+                StatusBar.Visibility = Visibility.Collapsed;
+                StatusText.Text = "🧠 Pensando...";
+                InputBox.Focus();
+            }
+        });
+    }
+
     private void Window_Deactivated(object? sender, EventArgs e)
     {
         if (this.Visibility == Visibility.Visible) this.Hide();
@@ -110,10 +134,10 @@ public partial class ChatWindow : Window
 
     public void RefreshLevelUI(bool incrementXp = false)
     {
+        var settings = _settingsService.LoadSettings();
+
         if (incrementXp)
         {
-            _settingsService.LoadSettings(); // Atualiza local
-            var settings = _settingsService.LoadSettings();
             int oldLevel = LevelService.GetLevel(settings.MessageCount);
             settings.MessageCount++;
             _settingsService.SaveSettings(settings);
@@ -126,7 +150,7 @@ public partial class ChatWindow : Window
             }
         }
 
-        var s = _settingsService.LoadSettings();
+        var s = settings;
         int lvl = LevelService.GetLevel(s.MessageCount);
         int xpBase = LevelService.GetXPForCurrentLevel(lvl);
         int xpNext = LevelService.GetXPForNextLevel(lvl);

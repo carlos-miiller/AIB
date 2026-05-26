@@ -19,6 +19,6 @@ A espinha dorsal da inteligência do assistente reside na interação entre `Cha
 
 Todo o poder cognitivo do AIB está concentrado em serviços estritos e singulares de Responsabilidade Única (SOLID):
 - **Camada Física/OS**: `ScreenshotService`, `VoiceService`, `OcrService`. Lidamos com telas e microfones do Windows nativamente.
-- **Camada Cognitiva**: `OpenAIService`, `WebSearchService`, `MemoryService` (RAG local).
+- **Camada Cognitiva (`OpenAIService`)**: Gerencia o motor do LLM. Possui um sistema integrado de **Heartbeat e Warmup** no momento do boot: ele envia um prefill fantasma (`[SYSTEM_HEARTBEAT]`) para trancar o modelo na VRAM (`keep_alive = -1`) e forçar a compilação pesada da Árvore de Gramática das ferramentas JSON em background. Isso mascara a latência de 3 minutos do motor, resultando em interações instantâneas.
 - **Camada de Core Application**: `SettingsService` (persiste as chaves de API e contadores no disco local), `LevelService` (Gamifica e limita o consumo da API).
-- **Camada de Ações (Tools)**: `ToolRegistry` acopla dinamicamente todas as funções descritas em `NativeTools.cs` (Interface `ITool`), permitindo o LLM invocar código C# direto da nuvem.
+- **Camada de Ações (Tools)**: `ToolRegistry` acopla as funções nativas (`ITool`). Ferramentas customizadas (Python) não sobrecarregam mais o LLM (Lazy Loading via `execute_skill`).

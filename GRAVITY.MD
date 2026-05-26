@@ -5,7 +5,7 @@ O **AIB (AIBWindows)** é um assistente de IA autônomo e de desktop para Window
 
 A interface atual é profundamente inspirada no "Google Gemini Mobile", trazendo uma cápsula escura minimalista, efeitos de *Glassmorphism* (fundo translúcido), e interações fluidas estilo chat (com balões de conversa simétricos animados e entrada de texto arredondada com botões rápidos).
 
-A aplicação foi rigorosamente limpa e focada. Integrações legadas com Telegram ou interfaces secundárias foram inteiramente removidas.
+A aplicação foi rigorosamente limpa e focada. A integração legada com Telegram foi removida do projeto (assembly `Telegram.Bot` desreferenciado em `AIB.csproj`, `TelegramService.cs` deletado).
 
 ---
 
