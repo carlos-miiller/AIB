@@ -1,0 +1,109 @@
+<Window x:Class="AIB.Views.ShadowWidget"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AIB Shadow Widget"
+        Height="450" Width="780"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize">
+
+    <Grid>
+        <!-- Bolha de Pensamento (Sugestão) — glassmorphism alinhado à paleta da AIB -->
+        <Border x:Name="ThoughtBubble" CornerRadius="22" BorderThickness="1"
+                VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                Margin="0,0,0,105" MaxWidth="585" Padding="22,16,22,18"
+                Visibility="Collapsed" Opacity="0">
+
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#E81C1C2A" Offset="0"/>
+                    <GradientStop Color="#E8181826" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+
+            <Border.BorderBrush>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#609B51E0" Offset="0"/>
+                    <GradientStop Color="#503182CE" Offset="0.5"/>
+                    <GradientStop Color="#60D53F8C" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.BorderBrush>
+
+            <Border.Effect>
+                <!-- Drop shadow com leve tom roxo (em vez de preto puro) — combina com o
+                     glow do ícone do olho e com os balões do chat principal. -->
+                <DropShadowEffect Color="#7B3BCC" BlurRadius="30" Opacity="0.35" Direction="270" ShadowDepth="6"/>
+            </Border.Effect>
+
+            <Grid>
+                <!-- Texto da sugestão -->
+                <TextBlock x:Name="SuggestionText"
+                           Text="Sugestão da AIB aparecerá aqui"
+                           Foreground="#F2F2FA" TextWrapping="Wrap" FontSize="17"
+                           LineHeight="22" Margin="0,2,26,0"/>
+
+                <!-- Botão X no canto superior direito -->
+                <Button x:Name="CloseSuggestionButton"
+                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Width="20" Height="20" Margin="0,-2,-4,0"
+                        Cursor="Hand" Focusable="False" ToolTip="Fechar sugestão"
+                        Click="CloseSuggestionButton_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <Ellipse x:Name="hoverBg" Fill="Transparent"/>
+                                <Path x:Name="xPath" Data="M 5,5 L 13,13 M 13,5 L 5,13"
+                                      Stroke="#8C8C9C" StrokeThickness="1.6"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="hoverBg" Property="Fill" Value="#26FFFFFF"/>
+                                    <Setter TargetName="xPath" Property="Stroke" Value="#F2F2FA"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Cauda do balão (cor batendo com o fundo da bolha) -->
+        <Path x:Name="ThoughtTail" Fill="#E8181826" Stretch="Fill"
+              HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,75" Width="15" Height="30"
+              Visibility="Collapsed" Opacity="0">
+            <Path.Data>
+                <PathGeometry>
+                    <PathFigure StartPoint="0,0">
+                        <LineSegment Point="10,0"/>
+                        <LineSegment Point="5,20"/>
+                        <LineSegment Point="0,0"/>
+                    </PathFigure>
+                </PathGeometry>
+            </Path.Data>
+        </Path>
+
+        <!-- O Olho (Botão 50x50) — opacidade controlada via SetActiveState() -->
+        <Border x:Name="EyeBorder" CornerRadius="25" Opacity="0.15"
+                Width="50" Height="50" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,0"
+                ToolTip="Shadow Assistant (Ativo)" Padding="2">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#9B51E0" Offset="0"/>
+                    <GradientStop Color="#3182CE" Offset="0.33"/>
+                    <GradientStop Color="#D53F8C" Offset="0.66"/>
+                    <GradientStop Color="#E28743" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <Border.Effect>
+                <DropShadowEffect Color="Black" BlurRadius="10" Opacity="0.5" ShadowDepth="2"/>
+            </Border.Effect>
+
+            <Border Background="#F0101013" CornerRadius="23">
+                <!-- Ícone Olho Google Material -->
+                <Path Data="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
+                      Fill="#FFFFFF" Stretch="Uniform" Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

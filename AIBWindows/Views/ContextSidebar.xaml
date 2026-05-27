@@ -41,18 +41,22 @@
 
         <!-- Aba / Menu Superior -->
         <Border Background="Transparent" CornerRadius="12" Margin="16,16,16,8" Padding="4">
-            <UniformGrid Columns="5" Height="34">
-                
+            <UniformGrid Columns="6" Height="34">
+
                 <RadioButton x:Name="TabHistory" Style="{StaticResource IconTabStyle}" IsChecked="True" Checked="Tab_Checked" ToolTip="Histórico de Chats">
                     <Path Data="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zM12.5 7H11v6l5.25 3.15.75-1.23-4.5-2.67z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Stretch="Uniform" Width="18" Height="18"/>
                 </RadioButton>
-                
+
                 <RadioButton x:Name="TabReminders" Style="{StaticResource IconTabStyle}" Checked="Tab_Checked" ToolTip="Lembretes Ativos">
                     <Path Data="M22 5.72l-4.6-3.86-1.29 1.53 4.6 3.86L22 5.72zM7.88 3.39L6.6 1.86 2 5.71l1.29 1.53 4.59-3.85zM12.5 8H11v6l4.75 2.85.75-1.23-4-2.37V8zM12 4c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Stretch="Uniform" Width="18" Height="18"/>
                 </RadioButton>
 
                 <RadioButton x:Name="TabMemories" Style="{StaticResource IconTabStyle}" Checked="Tab_Checked" ToolTip="Memória Recente">
                     <Path Data="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Stretch="Uniform" Width="18" Height="18"/>
+                </RadioButton>
+
+                <RadioButton x:Name="TabShadow" Style="{StaticResource IconTabStyle}" Checked="Tab_Checked" ToolTip="Shadow Assistant — últimas sugestões">
+                    <Path Data="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Stretch="Uniform" Width="18" Height="18"/>
                 </RadioButton>
 
                 <RadioButton x:Name="TabContextFiles" Style="{StaticResource IconTabStyle}" Checked="Tab_Checked" ToolTip="Arquivos em Contexto">
@@ -227,7 +231,51 @@
                     <Button x:Name="RefreshMemoriesBtn" Content="↻ Atualizar Memórias" Background="Transparent" Foreground="#888899" BorderThickness="0" Cursor="Hand" Click="RefreshMemories_Click" FontSize="11" HorizontalAlignment="Left" Margin="0,0,0,16"/>
                 </StackPanel>
 
-                <!-- Seção 4: Arquivos em Contexto -->
+                <!-- Seção 4: Shadow Assistant — últimas 5 sugestões -->
+                <StackPanel x:Name="PanelShadow" Visibility="Collapsed">
+                    <TextBlock Text="Últimas sugestões do Shadow" Foreground="#D53F8C" FontSize="12" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <ItemsControl x:Name="ShadowSuggestionsList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#1AFFFFFF" CornerRadius="8" Padding="10,8" Margin="0,0,0,6">
+                                    <Border.ToolTip>
+                                        <ToolTip Background="#222230" Foreground="#F2F2FA" BorderBrush="#33FFFFFF" BorderThickness="1">
+                                            <TextBlock Text="{Binding Text}" TextWrapping="Wrap" MaxWidth="380"/>
+                                        </ToolTip>
+                                    </Border.ToolTip>
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding WindowTitle}" Foreground="#E0E0E0" FontWeight="SemiBold"
+                                                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}"
+                                                       Foreground="#AAAAAA" FontSize="10" Margin="6,0,0,0"/>
+                                        </Grid>
+                                        <TextBlock Text="{Binding Text}" Foreground="#C9C9D3" FontSize="11" TextWrapping="Wrap"
+                                                   MaxHeight="44" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock x:Name="NoShadowText" Text="O Shadow ainda não fez sugestões." Foreground="#666677" FontSize="11" FontStyle="Italic" Margin="0,0,0,16">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasItems, ElementName=ShadowSuggestionsList}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- Seção 5: Arquivos em Contexto -->
                 <StackPanel x:Name="PanelContextFiles" Visibility="Collapsed">
                     <TextBlock Text="Arquivos em Contexto" Foreground="#E28743" FontSize="12" FontWeight="Bold" Margin="0,0,0,8"/>
                     <Border Background="#0AFFFFFF" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="10" MinHeight="60" AllowDrop="True" Drop="ContextFiles_Drop">

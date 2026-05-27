@@ -21,6 +21,7 @@ namespace AIB.Views
             RemindersList.ItemsSource = ReminderService.ActiveReminders;
             ContextFilesList.ItemsSource = ContextService.ActiveFiles;
             RecentAccessedFilesList.ItemsSource = ContextService.RecentFiles;
+            ShadowSuggestionsList.ItemsSource = ShadowHistoryService.Suggestions;
             
             // Force refresh of memories and history on load
             Refresh();
@@ -97,6 +98,7 @@ namespace AIB.Views
             PanelHistory.Visibility = Visibility.Collapsed;
             PanelReminders.Visibility = Visibility.Collapsed;
             PanelMemories.Visibility = Visibility.Collapsed;
+            PanelShadow.Visibility = Visibility.Collapsed;
             PanelContextFiles.Visibility = Visibility.Collapsed;
             PanelRecentFiles.Visibility = Visibility.Collapsed;
 
@@ -107,6 +109,7 @@ namespace AIB.Views
                 CheckApproachingReminders(); // Will stop animation if active
             }
             else if (TabMemories.IsChecked == true) PanelMemories.Visibility = Visibility.Visible;
+            else if (TabShadow.IsChecked == true) PanelShadow.Visibility = Visibility.Visible;
             else if (TabContextFiles.IsChecked == true) PanelContextFiles.Visibility = Visibility.Visible;
             else if (TabRecentFiles.IsChecked == true) PanelRecentFiles.Visibility = Visibility.Visible;
         }

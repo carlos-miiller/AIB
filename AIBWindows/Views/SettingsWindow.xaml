@@ -106,15 +106,20 @@
 
                     <StackPanel x:Name="AdvancedConnectionPanel">
                         <TextBlock Text="Base URL (Ollama ou OpenAI)"/>
-                        <TextBox x:Name="UrlTextBox" Text="http://localhost:11434/v1" LostFocus="UrlTextBox_LostFocus"/>
+                        <TextBox x:Name="UrlTextBox" Text="http://127.0.0.1:11434/v1" LostFocus="UrlTextBox_LostFocus"/>
 
                         <TextBlock Text="API Key"/>
                         <TextBox x:Name="KeyTextBox" Text="ollama"/>
 
-                        <TextBlock Text="Modelo LLM"/>
+                        <TextBlock Text="Modelo LLM (Principal)"/>
                         <Grid>
                             <ComboBox x:Name="ModelComboBox" IsEditable="True" Height="38" VerticalContentAlignment="Center"/>
                             <ProgressBar x:Name="LoadingProgress" IsIndeterminate="True" Height="2" VerticalAlignment="Bottom" Visibility="Collapsed"/>
+                        </Grid>
+                        
+                        <TextBlock Text="Modelo LLM (Shadow Assistant)"/>
+                        <Grid>
+                            <ComboBox x:Name="ShadowModelComboBox" IsEditable="True" Height="38" VerticalContentAlignment="Center"/>
                         </Grid>
                     </StackPanel>
 
@@ -157,6 +162,15 @@
 
                     <CheckBox x:Name="ConfirmCmdCheckBox" Content="Confirmar comandos perigosos" Foreground="White" Margin="0,15,0,0"/>
                     <CheckBox x:Name="EphemeralSkillCheckBox" Content="Contexto efêmero de skills (economiza tokens)" Foreground="White" Margin="0,10,0,0"/>
+                    <CheckBox x:Name="SendSystemPromptCheckBox" Content="Enviar System Prompt a cada requisição (desmarque se usar Modelfile)" Foreground="White" Margin="0,10,0,0"/>
+                    <CheckBox x:Name="EnableIntelligentToolsCheckBox" Content="Habilitar Ferramentas da AIB (Pode causar lentidão no Ollama local)" Foreground="White" Margin="0,10,0,0"/>
+                    <CheckBox x:Name="ShadowAssistantEnabledCheckBox" Foreground="White" Margin="0,10,0,0">
+                        <TextBlock TextWrapping="Wrap">
+                            <Run Text="Habilitar Shadow Assistant "/>
+                            <Run Text="(ALPHA)" Foreground="#D53F8C" FontWeight="Bold"/>
+                            <Run Text=" — sugestões automáticas baseadas na janela em foco"/>
+                        </TextBlock>
+                    </CheckBox>
                     
                     <TextBlock Text="Motor de Busca Web" Margin="0,15,0,5" Opacity="0.8"/>
                     <ComboBox x:Name="SearchEngineComboBox" Height="38">

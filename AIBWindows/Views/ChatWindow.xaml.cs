@@ -23,6 +23,12 @@ namespace AIB.Views;
 public partial class ChatWindow : Window
 {
     private readonly OpenAIService _openAIService;
+    private readonly ShadowAssistantService _shadowService;
+    // Um widget por monitor: o da tela do cursor fica com opacidade 0.7 (ativo),
+    // os outros com 0.3. O balão de sugestão aparece só no widget ativo.
+    private readonly List<ShadowWidget> _shadowWidgets = new();
+    private int _activeScreenIndex = -1;
+    private bool _isShadowModeEnabled = false;
     private readonly SettingsService _settingsService;
     private readonly VoiceService _voiceService;
 
@@ -37,6 +43,25 @@ public partial class ChatWindow : Window
         _openAIService = new OpenAIService(_settingsService);
         _openAIService.OnTokenCountChanged += UpdateTokenCounterUI;
         _openAIService.OnWarmupStateChanged += HandleWarmupState;
+
+        _shadowService = new ShadowAssistantService(_openAIService, _settingsService);
+        _shadowService.OnSuggestionReceived += OnShadowSuggestion;
+        _shadowService.OnActiveScreenChanged += OnActiveScreenChanged;
+
+        StateChanged += ChatWindow_StateChanged;
+        IsVisibleChanged += ChatWindow_IsVisibleChanged;
+
+        // Registra os HWNDs do próprio AIB no Shadow (evita auto-OCR da janela do chat
+        // e do widget). Precisa esperar Loaded para o HWND existir.
+        this.Loaded += (s, e) =>
+        {
+            var helper = new System.Windows.Interop.WindowInteropHelper(this);
+            _shadowService.RegisterOwnWindow(helper.Handle);
+        };
+
+        // Mostra/esconde botão do Shadow conforme setting opt-in
+        ApplyShadowAssistantSetting();
+
         _voiceService = new VoiceService();
 
         // Inicializa UI
@@ -596,7 +621,7 @@ public partial class ChatWindow : Window
         try
         {
             var ocr = new OcrService();
-            string text = await ocr.ExtractTextFromAllScreensAsync();
+            string text = await ocr.ExtractTextFromActiveScreenAsync();
 
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -821,6 +846,27 @@ public partial class ChatWindow : Window
         settingsWin.Owner = this;
         settingsWin.ShowDialog();
         this.Deactivated += Window_Deactivated; // Retorna o comportamento
+
+        // Settings podem ter mudado a flag Shadow Assistant — atualiza o botão.
+        // Se o usuário desligou o setting com o Shadow ativo, paramos o serviço.
+        ApplyShadowAssistantSetting();
+    }
+
+    /// <summary>
+    /// Mostra/esconde o botão do olho conforme a setting ShadowAssistantEnabled.
+    /// Se a setting estiver OFF e o Shadow estava rodando, para tudo e fecha os widgets.
+    /// </summary>
+    private void ApplyShadowAssistantSetting()
+    {
+        bool enabled = _settingsService.LoadSettings().ShadowAssistantEnabled;
+        BtnToggleShadow.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!enabled && _isShadowModeEnabled)
+        {
+            _isShadowModeEnabled = false;
+            BtnToggleShadow.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#888899"));
+            ManageShadowState();
+        }
     }
 
     private void ClearButton_Click(object sender, RoutedEventArgs e)
@@ -896,6 +942,140 @@ public partial class ChatWindow : Window
     {
         _openAIService?.ResetHistory();
         _voiceService?.Dispose();
+        _shadowService?.Stop();
+        CloseAllShadowWidgets();
         base.OnClosed(e);
+    }
+
+    private void BtnToggleShadow_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_isShadowModeEnabled)
+        {
+            var result = System.Windows.MessageBox.Show(
+                "O Shadow Assistant roda em segundo plano capturando o texto da sua tela e tentando prever o que você precisa.\n\n" +
+                "Como é uma função Alpha, a AIB às vezes pode alucinar ou interpretar a tela erroneamente.\n\n" +
+                "Tem certeza que deseja ativar o monitoramento em segundo plano?",
+                "Shadow Assistant (Alpha)", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                
+            if (result == MessageBoxResult.Yes)
+            {
+                _isShadowModeEnabled = true;
+                BtnToggleShadow.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#9B51E0"));
+                ManageShadowState();
+            }
+        }
+        else
+        {
+            _isShadowModeEnabled = false;
+            BtnToggleShadow.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#888899"));
+            ManageShadowState();
+        }
+    }
+
+    private void ChatWindow_StateChanged(object? sender, EventArgs e)
+    {
+        ManageShadowState();
+    }
+
+    private void ChatWindow_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        ManageShadowState();
+    }
+
+    private void ManageShadowState()
+    {
+        if (!_isShadowModeEnabled)
+        {
+            _shadowService.Stop();
+            CloseAllShadowWidgets();
+            return;
+        }
+
+        if (this.Visibility == Visibility.Visible && this.WindowState == WindowState.Normal)
+        {
+            _shadowService.Stop();
+            foreach (var w in _shadowWidgets) w.Hide();
+        }
+        else
+        {
+            EnsureShadowWidgetsForAllScreens();
+            foreach (var w in _shadowWidgets) w.Show();
+
+            // Sincroniza opacidade inicial baseada na tela do cursor agora
+            _activeScreenIndex = ShadowAssistantService.GetCurrentScreenIndex();
+            ApplyActiveScreenOpacity();
+
+            _shadowService.Start();
+        }
+    }
+
+    private void EnsureShadowWidgetsForAllScreens()
+    {
+        var screens = System.Windows.Forms.Screen.AllScreens;
+        if (_shadowWidgets.Count == screens.Length) return; // já está OK
+
+        // Configuração mudou (monitor conectado/desconectado): recria do zero
+        CloseAllShadowWidgets();
+
+        for (int i = 0; i < screens.Length; i++)
+        {
+            var screen = screens[i];
+            var widget = new ShadowWidget();
+
+            // Posiciona centralizado horizontal na WorkingArea da tela, flutuando 40px da base
+            widget.Left = screen.WorkingArea.X + (screen.WorkingArea.Width / 2.0) - (widget.Width / 2.0);
+            widget.Top = screen.WorkingArea.Bottom - widget.Height - 40;
+
+            widget.SetActiveState(false); // todos começam inativos (0.3)
+
+            // Registra HWND no Shadow para não fazer auto-OCR do próprio widget
+            widget.SourceInitialized += (s, args) =>
+            {
+                var helper = new System.Windows.Interop.WindowInteropHelper(widget);
+                _shadowService.RegisterOwnWindow(helper.Handle);
+            };
+
+            _shadowWidgets.Add(widget);
+        }
+    }
+
+    private void CloseAllShadowWidgets()
+    {
+        foreach (var w in _shadowWidgets)
+        {
+            try { w.Close(); } catch { }
+        }
+        _shadowWidgets.Clear();
+        _activeScreenIndex = -1;
+    }
+
+    private void ApplyActiveScreenOpacity()
+    {
+        for (int i = 0; i < _shadowWidgets.Count; i++)
+        {
+            _shadowWidgets[i].SetActiveState(i == _activeScreenIndex);
+        }
+    }
+
+    private void OnActiveScreenChanged(int screenIdx)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _activeScreenIndex = screenIdx;
+            ApplyActiveScreenOpacity();
+        });
+    }
+
+    private void OnShadowSuggestion(string suggestion)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            // Mostra o balão APENAS no widget da tela ativa (a do cursor)
+            if (_activeScreenIndex >= 0 && _activeScreenIndex < _shadowWidgets.Count)
+            {
+                var target = _shadowWidgets[_activeScreenIndex];
+                if (target.IsVisible) target.ShowSuggestion(suggestion);
+            }
+        });
     }
 }
