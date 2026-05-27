@@ -53,6 +53,7 @@ public partial class SettingsWindow : Window
         EphemeralSkillCheckBox.IsChecked = _currentSettings.EphemeralSkillContext;
         SendSystemPromptCheckBox.IsChecked = _currentSettings.SendSystemPrompt;
         EnableIntelligentToolsCheckBox.IsChecked = _currentSettings.EnableIntelligentTools;
+        ShadowAssistantEnabledCheckBox.IsChecked = _currentSettings.ShadowAssistantEnabled;
         SearchEngineComboBox.Text = _currentSettings.SearchEngine;
 
         UpdateUiForProvider();
@@ -132,6 +133,7 @@ public partial class SettingsWindow : Window
         _currentSettings.EphemeralSkillContext = EphemeralSkillCheckBox.IsChecked ?? true;
         _currentSettings.SendSystemPrompt = SendSystemPromptCheckBox.IsChecked ?? true;
         _currentSettings.EnableIntelligentTools = EnableIntelligentToolsCheckBox.IsChecked ?? true;
+        _currentSettings.ShadowAssistantEnabled = ShadowAssistantEnabledCheckBox.IsChecked ?? false;
         _currentSettings.SearchEngine = SearchEngineComboBox.Text;
 
         _settingsService.SaveSettings(_currentSettings);

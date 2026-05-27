@@ -59,6 +59,9 @@ public partial class ChatWindow : Window
             _shadowService.RegisterOwnWindow(helper.Handle);
         };
 
+        // Mostra/esconde botão do Shadow conforme setting opt-in
+        ApplyShadowAssistantSetting();
+
         _voiceService = new VoiceService();
 
         // Inicializa UI
@@ -843,6 +846,27 @@ public partial class ChatWindow : Window
         settingsWin.Owner = this;
         settingsWin.ShowDialog();
         this.Deactivated += Window_Deactivated; // Retorna o comportamento
+
+        // Settings podem ter mudado a flag Shadow Assistant — atualiza o botão.
+        // Se o usuário desligou o setting com o Shadow ativo, paramos o serviço.
+        ApplyShadowAssistantSetting();
+    }
+
+    /// <summary>
+    /// Mostra/esconde o botão do olho conforme a setting ShadowAssistantEnabled.
+    /// Se a setting estiver OFF e o Shadow estava rodando, para tudo e fecha os widgets.
+    /// </summary>
+    private void ApplyShadowAssistantSetting()
+    {
+        bool enabled = _settingsService.LoadSettings().ShadowAssistantEnabled;
+        BtnToggleShadow.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!enabled && _isShadowModeEnabled)
+        {
+            _isShadowModeEnabled = false;
+            BtnToggleShadow.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#888899"));
+            ManageShadowState();
+        }
     }
 
     private void ClearButton_Click(object sender, RoutedEventArgs e)

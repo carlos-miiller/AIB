@@ -18,6 +18,9 @@ public class UserAppSettings
     public string ShadowModelName { get; set; } = "qwen2.5:7b";
     public bool SendSystemPrompt { get; set; } = true;
     public bool EnableIntelligentTools { get; set; } = true;
+    // Opt-in: a funcionalidade Shadow Assistant fica desligada por default.
+    // Quando ligado, o botão do olho aparece no chat e o usuário decide quando ativar.
+    public bool ShadowAssistantEnabled { get; set; } = false;
     public string DataDir { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AIB");
 
     // Diretórios
