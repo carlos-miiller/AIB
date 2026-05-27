@@ -41,11 +41,19 @@ public partial class ChatWindow : Window
         _openAIService.OnTokenCountChanged += UpdateTokenCounterUI;
         _openAIService.OnWarmupStateChanged += HandleWarmupState;
 
-        _shadowService = new ShadowAssistantService(_openAIService);
+        _shadowService = new ShadowAssistantService(_openAIService, _settingsService);
         _shadowService.OnSuggestionReceived += OnShadowSuggestion;
 
         StateChanged += ChatWindow_StateChanged;
         IsVisibleChanged += ChatWindow_IsVisibleChanged;
+
+        // Registra os HWNDs do próprio AIB no Shadow (evita auto-OCR da janela do chat
+        // e do widget). Precisa esperar Loaded para o HWND existir.
+        this.Loaded += (s, e) =>
+        {
+            var helper = new System.Windows.Interop.WindowInteropHelper(this);
+            _shadowService.RegisterOwnWindow(helper.Handle);
+        };
 
         _voiceService = new VoiceService();
 
@@ -966,14 +974,21 @@ public partial class ChatWindow : Window
             if (_shadowWidget == null)
             {
                 _shadowWidget = new ShadowWidget();
-                
+
                 if (!double.IsNaN(SystemParameters.WorkArea.Width))
                 {
                     _shadowWidget.Left = (SystemParameters.WorkArea.Width / 2) - (_shadowWidget.Width / 2);
                     _shadowWidget.Top = SystemParameters.WorkArea.Bottom - _shadowWidget.Height - 40;
                 }
+
+                // Garante que o HWND do widget também é ignorado pelo OCR do Shadow
+                _shadowWidget.SourceInitialized += (s, args) =>
+                {
+                    var helper = new System.Windows.Interop.WindowInteropHelper(_shadowWidget);
+                    _shadowService.RegisterOwnWindow(helper.Handle);
+                };
             }
-            
+
             _shadowWidget.Show();
             _shadowService.Start();
         }

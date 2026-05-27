@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Graphics.Imaging;
@@ -42,6 +43,39 @@ public class OcrService
             catch (Exception ex)
             {
                 Console.WriteLine($"[OCR] Erro ao capturar tela ativa: {ex.Message}");
+                return string.Empty;
+            }
+        });
+    }
+
+    /// <summary>
+    /// Captura apenas a área de uma janela específica (HWND). Útil para o Shadow Assistant
+    /// quando se quer focar no que o usuário está olhando agora, evitando o ruído do desktop
+    /// e barras de tarefas. Reduz o payload de OCR em 5-20x vs tela inteira.
+    /// </summary>
+    public async Task<string> ExtractTextFromWindowAsync(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return string.Empty;
+
+        return await Task.Run(async () =>
+        {
+            try
+            {
+                if (!GetWindowRect(hwnd, out RECT rect)) return string.Empty;
+
+                int width = rect.Right - rect.Left;
+                int height = rect.Bottom - rect.Top;
+                // Janela minimizada (-32000,-32000) ou off-screen → ignora
+                if (width <= 0 || height <= 0 || rect.Left < -10000 || rect.Top < -10000)
+                    return string.Empty;
+
+                var bounds = new System.Drawing.Rectangle(rect.Left, rect.Top, width, height);
+                byte[] bytes = CapturePngBytes(bounds);
+                return await ExtractTextFromBytesAsync(bytes);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OCR] Erro ao capturar janela {hwnd}: {ex.Message}");
                 return string.Empty;
             }
         });
@@ -131,4 +165,12 @@ public class OcrService
             return $"[Erro ao processar OCR: {ex.Message}]";
         }
     }
+
+    // ── P/Invoke ────────────────────────────────────────────────────────────
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 }
