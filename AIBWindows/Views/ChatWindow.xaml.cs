@@ -24,7 +24,10 @@ public partial class ChatWindow : Window
 {
     private readonly OpenAIService _openAIService;
     private readonly ShadowAssistantService _shadowService;
-    private ShadowWidget? _shadowWidget;
+    // Um widget por monitor: o da tela do cursor fica com opacidade 0.7 (ativo),
+    // os outros com 0.3. O balão de sugestão aparece só no widget ativo.
+    private readonly List<ShadowWidget> _shadowWidgets = new();
+    private int _activeScreenIndex = -1;
     private bool _isShadowModeEnabled = false;
     private readonly SettingsService _settingsService;
     private readonly VoiceService _voiceService;
@@ -43,6 +46,7 @@ public partial class ChatWindow : Window
 
         _shadowService = new ShadowAssistantService(_openAIService, _settingsService);
         _shadowService.OnSuggestionReceived += OnShadowSuggestion;
+        _shadowService.OnActiveScreenChanged += OnActiveScreenChanged;
 
         StateChanged += ChatWindow_StateChanged;
         IsVisibleChanged += ChatWindow_IsVisibleChanged;
@@ -915,7 +919,7 @@ public partial class ChatWindow : Window
         _openAIService?.ResetHistory();
         _voiceService?.Dispose();
         _shadowService?.Stop();
-        _shadowWidget?.Close();
+        CloseAllShadowWidgets();
         base.OnClosed(e);
     }
 
@@ -959,46 +963,95 @@ public partial class ChatWindow : Window
         if (!_isShadowModeEnabled)
         {
             _shadowService.Stop();
-            _shadowWidget?.Close();
-            _shadowWidget = null;
+            CloseAllShadowWidgets();
             return;
         }
 
         if (this.Visibility == Visibility.Visible && this.WindowState == WindowState.Normal)
         {
             _shadowService.Stop();
-            _shadowWidget?.Hide();
+            foreach (var w in _shadowWidgets) w.Hide();
         }
         else
         {
-            if (_shadowWidget == null)
-            {
-                _shadowWidget = new ShadowWidget();
+            EnsureShadowWidgetsForAllScreens();
+            foreach (var w in _shadowWidgets) w.Show();
 
-                if (!double.IsNaN(SystemParameters.WorkArea.Width))
-                {
-                    _shadowWidget.Left = (SystemParameters.WorkArea.Width / 2) - (_shadowWidget.Width / 2);
-                    _shadowWidget.Top = SystemParameters.WorkArea.Bottom - _shadowWidget.Height - 40;
-                }
+            // Sincroniza opacidade inicial baseada na tela do cursor agora
+            _activeScreenIndex = ShadowAssistantService.GetCurrentScreenIndex();
+            ApplyActiveScreenOpacity();
 
-                // Garante que o HWND do widget também é ignorado pelo OCR do Shadow
-                _shadowWidget.SourceInitialized += (s, args) =>
-                {
-                    var helper = new System.Windows.Interop.WindowInteropHelper(_shadowWidget);
-                    _shadowService.RegisterOwnWindow(helper.Handle);
-                };
-            }
-
-            _shadowWidget.Show();
             _shadowService.Start();
         }
     }
 
+    private void EnsureShadowWidgetsForAllScreens()
+    {
+        var screens = System.Windows.Forms.Screen.AllScreens;
+        if (_shadowWidgets.Count == screens.Length) return; // já está OK
+
+        // Configuração mudou (monitor conectado/desconectado): recria do zero
+        CloseAllShadowWidgets();
+
+        for (int i = 0; i < screens.Length; i++)
+        {
+            var screen = screens[i];
+            var widget = new ShadowWidget();
+
+            // Posiciona centralizado horizontal na WorkingArea da tela, flutuando 40px da base
+            widget.Left = screen.WorkingArea.X + (screen.WorkingArea.Width / 2.0) - (widget.Width / 2.0);
+            widget.Top = screen.WorkingArea.Bottom - widget.Height - 40;
+
+            widget.SetActiveState(false); // todos começam inativos (0.3)
+
+            // Registra HWND no Shadow para não fazer auto-OCR do próprio widget
+            widget.SourceInitialized += (s, args) =>
+            {
+                var helper = new System.Windows.Interop.WindowInteropHelper(widget);
+                _shadowService.RegisterOwnWindow(helper.Handle);
+            };
+
+            _shadowWidgets.Add(widget);
+        }
+    }
+
+    private void CloseAllShadowWidgets()
+    {
+        foreach (var w in _shadowWidgets)
+        {
+            try { w.Close(); } catch { }
+        }
+        _shadowWidgets.Clear();
+        _activeScreenIndex = -1;
+    }
+
+    private void ApplyActiveScreenOpacity()
+    {
+        for (int i = 0; i < _shadowWidgets.Count; i++)
+        {
+            _shadowWidgets[i].SetActiveState(i == _activeScreenIndex);
+        }
+    }
+
+    private void OnActiveScreenChanged(int screenIdx)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _activeScreenIndex = screenIdx;
+            ApplyActiveScreenOpacity();
+        });
+    }
+
     private void OnShadowSuggestion(string suggestion)
     {
-        if (_shadowWidget != null && _shadowWidget.IsVisible)
+        Dispatcher.Invoke(() =>
         {
-            _shadowWidget.ShowSuggestion(suggestion);
-        }
+            // Mostra o balão APENAS no widget da tela ativa (a do cursor)
+            if (_activeScreenIndex >= 0 && _activeScreenIndex < _shadowWidgets.Count)
+            {
+                var target = _shadowWidgets[_activeScreenIndex];
+                if (target.IsVisible) target.ShowSuggestion(suggestion);
+            }
+        });
     }
 }

@@ -9,29 +9,39 @@ namespace AIB.Services;
 
 /// <summary>
 /// Shadow Assistant: observa qual janela está sob o cursor. Quando o usuário "dwellsˮ
-/// (mouse parado) sobre uma janela por >= DWELL_MS, captura OCR APENAS daquela janela
-/// e pede uma sugestão ao LLM.
+/// (mouse parado) sobre uma janela por >= DWELL_MS, extrai texto APENAS daquela janela
+/// (via UI Automation) e pede uma sugestão ao LLM.
 ///
-/// Por que mudou de "tela inteira a cada 3sˮ para "janela sob hover ≥ 3sˮ:
-///  - Payload OCR cai de ~7k+ tokens (tela inteira em multi-monitor) para 500-2k.
-///  - Sinal de intenção forte: mouse parado por 3s = usuário lendo/pensando ali.
-///  - Sem polling cego: só dispara LLM quando há dwelling em janela NOVA.
+/// Histórico das mudanças:
+///  v1: OCR de tela inteira a cada 3s → 7k+ tokens, hardware-pesado
+///  v2: OCR só da janela sob hover ≥ 3s → 2-3k tokens, mas ainda capturava UI chrome
+///      (abas, favoritos, URL do navegador) misturado com conteúdo
+///  v3 (atual): UI Automation só da janela sob hover ≥ 3s → 0.5-1.5k tokens, texto
+///      estruturado, sem chrome de UI, ~10x mais leve em CPU/RAM. Apps que não
+///      expõem UIA (jogos, viewers antigos) simplesmente não geram sugestão.
 /// </summary>
 public class ShadowAssistantService
 {
-    private const int POLL_MS = 400;        // Frequência de leitura da posição do cursor
-    private const int DWELL_MS = 3000;      // Tempo parado para considerar "dwellˮ
-    private const int MOVE_THRESHOLD_PX = 6; // Tolerância para considerar "parado"
+    private const int POLL_MS = 400;          // Frequência de leitura da posição do cursor
+    private const int DWELL_MS = 3000;        // Tempo parado para considerar "dwellˮ
+    private const int MOVE_THRESHOLD_PX = 6;  // Tolerância para considerar "parado"
 
     private readonly DispatcherTimer _pollTimer;
-    private readonly OcrService _ocrService;
     private readonly OpenAIService _openAIService;
     private readonly SettingsService _settingsService;
 
     // Estado de dwell
     private System.Drawing.Point _lastCursor;
     private DateTime _stillSince = DateTime.MinValue;
-    private IntPtr _lastProcessedHwnd = IntPtr.Zero;
+    // Identidade do último contexto processado:
+    //   - Chave = título da janela (ou "hwnd:{N}" se sem título)
+    //   - Trocou de aba no Chrome -> título muda -> chave nova -> processa
+    //   - Ficou parado na mesma aba -> mesma chave -> NÃO reprocessa (mesmo após muito tempo)
+    //   - Para "refresh" forçado, basta mover o mouse para outra janela e voltar.
+    private string _lastProcessedKey = "";
+    // Último texto extraído via UIA. Usado para evitar chamar o LLM quando o conteúdo
+    // não mudou (ex: título muda por causa de notificação `(99+)` mas página é a mesma).
+    private string _lastExtractedText = "";
     private bool _processing;
 
     // Filtros: HWNDs do próprio AIB que NUNCA devem ser processados
@@ -39,6 +49,15 @@ public class ShadowAssistantService
 
     public bool IsActive { get; private set; }
     public event Action<string>? OnSuggestionReceived;
+
+    /// <summary>
+    /// Disparado quando o cursor muda de tela. O int é o índice em
+    /// <see cref="System.Windows.Forms.Screen.AllScreens"/>. UI usa para destacar
+    /// qual widget está "ativo" (opacidade 0.7) e mostrar a bolha de sugestão
+    /// na tela certa.
+    /// </summary>
+    public event Action<int>? OnActiveScreenChanged;
+    private int _lastActiveScreen = -1;
 
     private const string SYSTEM_PROMPT =
         "Você é o Shadow Assistant. O texto abaixo é o que o usuário está olhando AGORA (OCR " +
@@ -52,7 +71,6 @@ public class ShadowAssistantService
     {
         _openAIService = openAIService;
         _settingsService = settingsService;
-        _ocrService = new OcrService();
 
         _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(POLL_MS) };
         _pollTimer.Tick += PollTimer_Tick;
@@ -73,9 +91,29 @@ public class ShadowAssistantService
         IsActive = true;
         _lastCursor = System.Windows.Forms.Cursor.Position;
         _stillSince = DateTime.Now;
-        _lastProcessedHwnd = IntPtr.Zero;
+        _lastProcessedKey = "";
+        _lastExtractedText = "";
+        _lastActiveScreen = -1; // força disparo inicial do OnActiveScreenChanged
         _pollTimer.Start();
         Console.WriteLine("[SHADOW] Serviço INICIADO (dwell-mode).");
+    }
+
+    /// <summary>
+    /// Retorna o índice da tela onde o cursor está agora (ou 0 se algo der errado).
+    /// Útil para a UI sincronizar widgets quando o Shadow é (re)ativado.
+    /// </summary>
+    public static int GetCurrentScreenIndex()
+    {
+        try
+        {
+            var pt = System.Windows.Forms.Cursor.Position;
+            var target = System.Windows.Forms.Screen.FromPoint(pt);
+            var all = System.Windows.Forms.Screen.AllScreens;
+            for (int i = 0; i < all.Length; i++)
+                if (all[i].DeviceName == target.DeviceName) return i;
+        }
+        catch { }
+        return 0;
     }
 
     public void Stop()
@@ -88,9 +126,20 @@ public class ShadowAssistantService
 
     private async void PollTimer_Tick(object? sender, EventArgs e)
     {
+        var current = System.Windows.Forms.Cursor.Position;
+
+        // Detecção de mudança de tela acontece SEMPRE (independente de processing/dwell).
+        // É barato e a UI precisa reagir em tempo real para acender o widget certo.
+        int currentScreen = GetScreenIndexAt(current);
+        if (currentScreen != _lastActiveScreen)
+        {
+            _lastActiveScreen = currentScreen;
+            try { OnActiveScreenChanged?.Invoke(currentScreen); }
+            catch (Exception ex) { Console.WriteLine($"[SHADOW] erro em OnActiveScreenChanged: {ex.Message}"); }
+        }
+
         if (_processing) return; // Uma sugestão em curso — não enfileira outra
 
-        var current = System.Windows.Forms.Cursor.Position;
         int dx = current.X - _lastCursor.X;
         int dy = current.Y - _lastCursor.Y;
         bool moved = (dx * dx + dy * dy) > (MOVE_THRESHOLD_PX * MOVE_THRESHOLD_PX);
@@ -109,9 +158,19 @@ public class ShadowAssistantService
         if (hwnd == IntPtr.Zero) return;
         if (_ownHwnds.Contains(hwnd)) return;
         if (IsShellOrDesktop(hwnd)) return;
-        if (hwnd == _lastProcessedHwnd) return; // Mesma janela que já comentamos, espera mudar
 
-        _lastProcessedHwnd = hwnd;
+        // Identidade baseada em TÍTULO, não em HWND. Razão: trocar de aba no Chrome
+        // mantém o mesmo HWND mas muda o título — comportamento que o usuário espera
+        // que dispare nova sugestão.
+        string title = GetWindowTitle(hwnd);
+        string key = string.IsNullOrWhiteSpace(title) ? $"hwnd:{hwnd}" : title;
+
+        // Só processa se o contexto MUDOU desde a última sugestão.
+        // Ficar parado na mesma tela não dispara nova análise (evita spam de sugestões).
+        // Para forçar refresh, basta passar o mouse por outra janela e voltar.
+        if (key == _lastProcessedKey) return;
+
+        _lastProcessedKey = key;
         _processing = true;
         try
         {
@@ -130,28 +189,49 @@ public class ShadowAssistantService
     private async Task ProcessHoveredWindow(IntPtr hwnd)
     {
         string windowTitle = GetWindowTitle(hwnd);
-        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [SHADOW] Dwell em '{windowTitle}' — extraindo OCR...");
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [SHADOW] Dwell em '{windowTitle}' — extraindo via UIA...");
 
-        string ocrText = await _ocrService.ExtractTextFromWindowAsync(hwnd);
-        if (string.IsNullOrWhiteSpace(ocrText) || ocrText.Length < 20)
+        // UI Automation: mais barato e limpo que OCR. Retorna null se a janela
+        // não expõe acessibilidade útil (jogos, alguns viewers). Nesse caso,
+        // o Shadow simplesmente não comenta nessa janela.
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        string? text = await WindowTextExtractor.ExtractTextAsync(hwnd);
+        sw.Stop();
+
+        if (string.IsNullOrWhiteSpace(text))
         {
-            Console.WriteLine("[SHADOW] OCR vazio ou insignificante. Ignorando.");
+            Console.WriteLine($"[SHADOW] UIA não retornou texto útil para '{windowTitle}' ({sw.ElapsedMilliseconds}ms). Ignorando.");
             return;
         }
 
-        // Limita o payload: o problema dos 7k tokens. Cortamos com folga em ~3000 chars.
-        const int MAX_CHARS = 3000;
-        if (ocrText.Length > MAX_CHARS)
+        Console.WriteLine($"[SHADOW] UIA OK ({text.Length} chars em {sw.ElapsedMilliseconds}ms).");
+
+        // Defesa contra reprocessamento desnecessário: se o texto extraído for IDÊNTICO
+        // ao último, não chama o LLM. Cobre o caso de título mudar sem mudança real de
+        // conteúdo (notificações `(99+)`, contadores), abas diferentes com mesmo conteúdo,
+        // etc. Pagamos só o custo barato do UIA (~100-300ms) e economizamos a chamada
+        // LLM (10-30s).
+        if (text == _lastExtractedText)
         {
-            ocrText = ocrText.Substring(0, MAX_CHARS) + "\n[...texto truncado pelo Shadow...]";
+            Console.WriteLine($"[SHADOW] Conteúdo idêntico ao último processado. Pulando LLM.");
+            return;
+        }
+        _lastExtractedText = text;
+
+        // Cap antes do LLM. UIA tende a ser mais denso/limpo que OCR, então
+        // baixamos o cap de 3000 para 1500 chars — sugestões mais rápidas.
+        const int MAX_CHARS = 1500;
+        if (text.Length > MAX_CHARS)
+        {
+            text = text.Substring(0, MAX_CHARS) + "\n[...texto truncado pelo Shadow...]";
         }
 
         var settings = _settingsService.LoadSettings();
         string userPrompt =
             $"[JANELA EM FOCO]: {windowTitle}\n\n" +
-            $"[OCR DESTA JANELA]:\n{ocrText}";
+            $"[TEXTO EXTRAÍDO DA JANELA]:\n{text}";
 
-        Console.WriteLine($"[SHADOW] Enviando para LLM ({ocrText.Length} chars OCR)...");
+        Console.WriteLine($"[SHADOW] Enviando para LLM ({text.Length} chars)...");
         string llm = await _openAIService.AskStatelessAsync(SYSTEM_PROMPT, userPrompt, settings.ShadowModelName);
         Console.WriteLine($"[SHADOW] Resposta: {llm}");
 
@@ -160,7 +240,25 @@ public class ShadowAssistantService
         if (trimmed.Equals("NOTHING", StringComparison.OrdinalIgnoreCase)) return;
         if (trimmed.StartsWith("[ERROR]", StringComparison.OrdinalIgnoreCase)) return;
 
+        // Registra no histórico para a aba "Shadow Ast" da sidebar exibir
+        ShadowHistoryService.Add(windowTitle, trimmed);
+
         OnSuggestionReceived?.Invoke(trimmed);
+    }
+
+    // ── Helpers de tela ─────────────────────────────────────────────────────
+
+    private static int GetScreenIndexAt(System.Drawing.Point pt)
+    {
+        try
+        {
+            var target = System.Windows.Forms.Screen.FromPoint(pt);
+            var all = System.Windows.Forms.Screen.AllScreens;
+            for (int i = 0; i < all.Length; i++)
+                if (all[i].DeviceName == target.DeviceName) return i;
+        }
+        catch { }
+        return 0;
     }
 
     // ── Detecção de janela top-level sob o cursor ───────────────────────────
