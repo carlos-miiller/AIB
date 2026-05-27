@@ -35,24 +35,22 @@ public class OpenAIService
         @"(?:Action|Ação|action):\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    // System prompt comprimido (~120 tokens vs ~250 antes). Modelos pequenos respondem
+    // melhor a regras curtas e diretivas. Encoraja:
+    //   - <think>...</think> para raciocínio explícito (preservado no histórico p/ continuidade)
+    //   - parallel tool calls quando aplicável (reduz # de iterações)
     private const string SYSTEM_PROMPT =
         """
-        Identidade: Você é o AIB, um Agente Autônomo SOTA (State of the Art) rodando localmente no Windows do usuário.
+        Você é o AIB, agente local de IA no Windows do usuário.
 
-        # Padrão de Operação: ReAct Puro
-        Para TODA solicitação que exija busca de informação, memória, execução de script ou visão de tela:
-        1. PENSE brevemente no plano (uma linha).
-        2. EXECUTE a ferramenta mais adequada (SEMPRE use chamada de ferramenta nativa, não escreva em texto).
-        3. OBSERVE o resultado retornado.
-        4. RESPONDA ao usuário com base na observação.
+        Operação: pense brevemente (use <think>...</think> para raciocinar), execute as ferramentas necessárias, responda.
 
-        # Regras Absolutas
-        - NUNCA afirme que não possui uma informação sem antes tentar `manage_memory` com action="recall" e, para credenciais, `manage_vault` com action="retrieve".
-        - SEMPRE use as ferramentas disponíveis — você tem acesso a memória, terminal, web, OCR e visão de tela.
-        - Se uma ferramenta falhar, analise o erro na Observation e tente no máximo mais uma alternativa. Se falhar novamente, informe o usuário do erro e pare. Não entre em loop infinito tentando a mesma coisa.
-        - Não peça permissão para executar ferramentas. Aja.
-        - Responda SEMPRE em Português (Brasil).
-        - Seja conciso nas respostas ao usuário — o raciocínio técnico pertence ao console, não ao chat.
+        Regras:
+        - Antes de dizer "não sei", chame manage_memory(action=recall) e, para credenciais, manage_vault(action=retrieve).
+        - SEMPRE use chamada nativa de ferramenta (não escreva no texto).
+        - Para múltiplas informações independentes, chame ferramentas em PARALELO na mesma resposta.
+        - Se uma ferramenta falhar, tente UMA alternativa. Falhou de novo? Informe e pare.
+        - Aja sem pedir permissão. Responda em Português (Brasil), conciso.
         """;
 
     public OpenAIService(SettingsService settingsService)
@@ -79,7 +77,15 @@ public class OpenAIService
             
             Console.WriteLine($"[WARMUP] Iniciando trava de memória (Keep-Alive Infinita) para {settings.ModelName}...");
             using var httpClient = new System.Net.Http.HttpClient();
-            var payload = new { model = settings.ModelName, keep_alive = -1 };
+            // num_ctx=8192: sweet spot para gemma4:e2b (5.1B) em CPU.
+            // Modelo nominalmente aceita 131k, mas em CPU cada token de prefill custa.
+            // 8192 cobre system+histórico+thinking+tools com folga, sem explodir o tempo.
+            // O Ollama mantém esse num_ctx para todas as chamadas enquanto keep_alive=-1.
+            var payload = new {
+                model = settings.ModelName,
+                keep_alive = -1,
+                options = new { num_ctx = 8192 }
+            };
             var content = new System.Net.Http.StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json");
             
             // 1. Envia requisição crua para travar o modelo na VRAM
@@ -189,7 +195,10 @@ public class OpenAIService
         var tools = _toolRegistry.GetActiveTools(userLevel);
         
         bool requiresAction = true;
-        int maxLoops = 5;
+        // maxLoops 18: permite tarefas multi-passo. Antes era 5 (muito restritivo —
+        // qualquer tarefa que precisasse de "ler 6 arquivos antes de decidir" abortava).
+        // Com gemma4:e2b (5.1B + thinking) consegue manter coerência por ~20 iterações.
+        int maxLoops = 18;
 
         while (requiresAction && maxLoops-- > 0)
         {
@@ -318,9 +327,12 @@ public class OpenAIService
             // ── Resposta final de texto (sem tool calls) ──────────────────────
             else if (!string.IsNullOrEmpty(fullResponse))
             {
-                // Remove blocos de raciocínio interno antes de salvar no histórico
-                string cleanedForHistory = CleanReasoningBlocks(fullResponse);
-                _history.Add(ChatMessage.CreateAssistantMessage(cleanedForHistory));
+                // Preserva blocos <think>...</think> no HISTÓRICO. Razão: a LLM (gemma4
+                // tem capability "thinking" treinada) consegue ver seu próprio raciocínio
+                // em iterações futuras, dando continuidade de plano em tarefas multi-passo.
+                // Para o USUÁRIO esses blocos não são exibidos — IsOnlyTechnicalContent
+                // (filtro do stream) já desvia chunks com <think> para onTechnicalContent.
+                _history.Add(ChatMessage.CreateAssistantMessage(fullResponse));
 
                 // Trim do histórico para não estourar o contexto
                 await TrimHistoryAsync(userLevel);
@@ -414,15 +426,6 @@ public class OpenAIService
     {
         string[] technicalMarkers = { "Thought:", "Action:", "Observation:", "Ação:", "<think>", "</think>" };
         return technicalMarkers.Any(m => chunk.Contains(m, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string CleanReasoningBlocks(string text)
-    {
-        // Remove blocos de raciocínio interno (ex: <think>...</think> do Qwen)
-        text = Regex.Replace(text, @"<think>[\s\S]*?</think>", "", RegexOptions.IgnoreCase);
-        // Remove linhas que iniciam com marcadores de raciocínio ReAct
-        text = Regex.Replace(text, @"(?m)^(Thought|Action|Observation|Ação):[^\n]*\n?", "");
-        return text.Trim();
     }
 
     private int CalculateCurrentTokens()
