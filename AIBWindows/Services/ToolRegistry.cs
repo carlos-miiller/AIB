@@ -73,7 +73,11 @@ public class ToolRegistry
             new MaterializeSkillTool(),
             new ManageClipboardTool(),
             new SetReminderTool(),
-            new ExecuteSkillTool()
+            new ExecuteSkillTool(),
+            // Filesystem exploration tools (commit 2):
+            new GlobTool(),
+            new GrepTool(),
+            new ListDirTool()
         };
 
         foreach (var tool in nativeTools)

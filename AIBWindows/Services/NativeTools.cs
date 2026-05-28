@@ -628,3 +628,318 @@ public class SetReminderTool : ITool
         return Task.FromResult(ReminderService.AddReminder(message, delayMinutes));
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FERRAMENTA: glob — Encontra arquivos por padrão (wildcards)
+// ─────────────────────────────────────────────────────────────────────────────
+
+public class GlobTool : ITool
+{
+    public string Name => "glob";
+    public string Description => "Encontra arquivos por padrão de wildcard (ex: '*.cs', 'temp*.log', 'Settings*.xaml'). Use ANTES de read_file quando não souber o caminho exato.";
+    public int RequiredLevel => 1;
+
+    public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
+        Name, Description,
+        BinaryData.FromString("""
+        {
+          "type": "object",
+          "properties": {
+            "pattern":     { "type": "string", "description": "Padrão de wildcard (ex: '*.cs', 'temp*.log'). Use simples wildcards, sem ** (use 'recursive' para varrer subpastas)." },
+            "directory":   { "type": "string", "description": "Caminho absoluto onde buscar. Default: pasta do usuário." },
+            "recursive":   { "type": "boolean", "description": "Se true, busca em subpastas. Default: true." },
+            "max_results": { "type": "integer", "description": "Limite de arquivos retornados. Default: 50." }
+          },
+          "required": ["pattern"]
+        }
+        """));
+
+    public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
+    {
+        string pattern = ToolArgParser.Get(argumentsJson, "pattern");
+        string directory = ToolArgParser.Get(argumentsJson, "directory");
+        string recursiveStr = ToolArgParser.Get(argumentsJson, "recursive");
+        string maxResultsStr = ToolArgParser.Get(argumentsJson, "max_results");
+
+        if (string.IsNullOrWhiteSpace(pattern)) return "ERRO: 'pattern' é obrigatório.";
+        // Limpa padrões estilo glob avançado que Directory.EnumerateFiles não entende
+        if (pattern.StartsWith("**/")) pattern = pattern.Substring(3);
+        if (pattern.StartsWith("**\\")) pattern = pattern.Substring(3);
+
+        if (string.IsNullOrWhiteSpace(directory))
+            directory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        directory = directory.Trim('\"', '\'');
+
+        bool recursive = string.IsNullOrEmpty(recursiveStr) || !bool.TryParse(recursiveStr, out var r) || r;
+        int maxResults = int.TryParse(maxResultsStr, out var m) ? Math.Max(1, Math.Min(m, 500)) : 50;
+
+        if (!Directory.Exists(directory)) return $"ERRO: Diretório não encontrado: {directory}";
+
+        // Sandbox por nível (igual RunCommandTool): níveis baixos restritos a pastas do usuário
+        if (userLevel < 4)
+        {
+            string dirLower = directory.ToLowerInvariant();
+            string[] sysDirs = { "\\windows", "\\program files", "\\programdata" };
+            if (sysDirs.Any(d => dirLower.Contains(d)))
+                return "ACESSO NEGADO (SANDBOX): Diretórios de sistema protegidos.";
+        }
+
+        try
+        {
+            var opt = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+            var matches = await Task.Run(() =>
+                Directory.EnumerateFiles(directory, pattern, opt)
+                    .Take(maxResults + 1)
+                    .ToList());
+
+            bool truncated = matches.Count > maxResults;
+            if (truncated) matches = matches.Take(maxResults).ToList();
+
+            if (matches.Count == 0)
+                return $"Nenhum arquivo encontrado em '{directory}' com padrão '{pattern}' (recursive={recursive}).";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"[GLOB] {matches.Count} arquivo(s){(truncated ? "+" : "")} encontrado(s):");
+            foreach (var path in matches) sb.AppendLine(path);
+            if (truncated) sb.AppendLine($"\n[AVISO: limite de {maxResults} atingido — pode haver mais arquivos. Refine o padrão ou aumente max_results.]");
+            return sb.ToString();
+        }
+        catch (UnauthorizedAccessException ex) { return $"ERRO de permissão: {ex.Message}"; }
+        catch (Exception ex) { return $"ERRO no glob: {ex.Message}"; }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FERRAMENTA: grep — Busca regex em arquivos texto
+// ─────────────────────────────────────────────────────────────────────────────
+
+public class GrepTool : ITool
+{
+    public string Name => "grep";
+    public string Description => "Busca padrão (regex ou texto) em arquivos texto. Retorna matches no formato 'arquivo:linha: trecho'. Use para localizar referências antes de ler arquivos inteiros.";
+    public int RequiredLevel => 2;
+
+    // Extensões que tratamos como texto (evita ler binários enormes)
+    private static readonly HashSet<string> TextExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".txt", ".md", ".cs", ".csproj", ".sln", ".xaml", ".json", ".yaml", ".yml",
+        ".xml", ".html", ".htm", ".css", ".js", ".ts", ".py", ".sh", ".ps1", ".bat",
+        ".log", ".ini", ".cfg", ".conf", ".env", ".gitignore", ".sql", ".http", ".rest"
+    };
+
+    public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
+        Name, Description,
+        BinaryData.FromString("""
+        {
+          "type": "object",
+          "properties": {
+            "pattern":               { "type": "string", "description": "Texto literal ou regex .NET a buscar." },
+            "directory":             { "type": "string", "description": "Caminho absoluto. Default: pasta do usuário." },
+            "file_pattern":          { "type": "string", "description": "Filtro de arquivos (ex: '*.cs'). Default: '*'." },
+            "case_sensitive":        { "type": "boolean", "description": "Default: false." },
+            "regex":                 { "type": "boolean", "description": "Se true, pattern é tratado como regex; senão, texto literal. Default: false." },
+            "max_files":             { "type": "integer", "description": "Máximo de arquivos varridos. Default: 100." },
+            "max_matches_per_file":  { "type": "integer", "description": "Máximo de matches por arquivo. Default: 10." }
+          },
+          "required": ["pattern"]
+        }
+        """));
+
+    public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
+    {
+        string pattern = ToolArgParser.Get(argumentsJson, "pattern");
+        string directory = ToolArgParser.Get(argumentsJson, "directory");
+        string filePattern = ToolArgParser.Get(argumentsJson, "file_pattern");
+        string caseSensitiveStr = ToolArgParser.Get(argumentsJson, "case_sensitive");
+        string regexStr = ToolArgParser.Get(argumentsJson, "regex");
+        string maxFilesStr = ToolArgParser.Get(argumentsJson, "max_files");
+        string maxMatchesPerFileStr = ToolArgParser.Get(argumentsJson, "max_matches_per_file");
+
+        if (string.IsNullOrWhiteSpace(pattern)) return "ERRO: 'pattern' é obrigatório.";
+
+        if (string.IsNullOrWhiteSpace(directory))
+            directory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        directory = directory.Trim('\"', '\'');
+        if (!Directory.Exists(directory)) return $"ERRO: Diretório não encontrado: {directory}";
+
+        if (string.IsNullOrWhiteSpace(filePattern)) filePattern = "*";
+        bool caseSensitive = bool.TryParse(caseSensitiveStr, out var cs) && cs;
+        bool useRegex = bool.TryParse(regexStr, out var ur) && ur;
+        int maxFiles = int.TryParse(maxFilesStr, out var mf) ? Math.Max(1, Math.Min(mf, 500)) : 100;
+        int maxMatchesPerFile = int.TryParse(maxMatchesPerFileStr, out var mm) ? Math.Max(1, Math.Min(mm, 50)) : 10;
+
+        // Sandbox idêntica ao Glob
+        if (userLevel < 4)
+        {
+            string dirLower = directory.ToLowerInvariant();
+            string[] sysDirs = { "\\windows", "\\program files", "\\programdata" };
+            if (sysDirs.Any(d => dirLower.Contains(d)))
+                return "ACESSO NEGADO (SANDBOX): Diretórios de sistema protegidos.";
+        }
+
+        // Compila regex (ou escapa pattern literal para virar regex segura)
+        System.Text.RegularExpressions.Regex re;
+        try
+        {
+            string regexPattern = useRegex ? pattern : System.Text.RegularExpressions.Regex.Escape(pattern);
+            var opts = caseSensitive
+                ? System.Text.RegularExpressions.RegexOptions.Compiled
+                : System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+            re = new System.Text.RegularExpressions.Regex(regexPattern, opts);
+        }
+        catch (Exception ex) { return $"ERRO ao compilar regex: {ex.Message}"; }
+
+        try
+        {
+            return await Task.Run(() =>
+            {
+                var sb = new StringBuilder();
+                int totalMatches = 0;
+                int filesScanned = 0;
+                int filesWithMatches = 0;
+
+                IEnumerable<string> files;
+                try
+                {
+                    files = Directory.EnumerateFiles(directory, filePattern, SearchOption.AllDirectories);
+                }
+                catch (Exception ex) { return $"ERRO ao listar arquivos: {ex.Message}"; }
+
+                foreach (var file in files)
+                {
+                    if (filesScanned >= maxFiles) break;
+
+                    // Pula binários por extensão
+                    string ext = Path.GetExtension(file).ToLowerInvariant();
+                    if (!string.IsNullOrEmpty(ext) && !TextExtensions.Contains(ext)) continue;
+
+                    filesScanned++;
+                    try
+                    {
+                        var lines = File.ReadAllLines(file);
+                        int inFile = 0;
+                        for (int i = 0; i < lines.Length; i++)
+                        {
+                            if (re.IsMatch(lines[i]))
+                            {
+                                string trimmed = lines[i].Trim();
+                                if (trimmed.Length > 240) trimmed = trimmed.Substring(0, 237) + "...";
+                                sb.AppendLine($"{file}:{i + 1}: {trimmed}");
+                                inFile++;
+                                totalMatches++;
+                                if (inFile >= maxMatchesPerFile)
+                                {
+                                    sb.AppendLine($"  [...mais matches em {file} omitidos]");
+                                    break;
+                                }
+                            }
+                        }
+                        if (inFile > 0) filesWithMatches++;
+                    }
+                    catch { /* arquivo inacessível ou binário disfarçado, skip */ }
+                }
+
+                if (totalMatches == 0)
+                    return $"Nenhum match para '{pattern}' em {filesScanned} arquivo(s) varridos.";
+
+                var header = new StringBuilder();
+                header.AppendLine($"[GREP] {totalMatches} match(es) em {filesWithMatches}/{filesScanned} arquivo(s):");
+                header.Append(sb);
+                if (filesScanned >= maxFiles) header.AppendLine($"\n[AVISO: limite de {maxFiles} arquivos varridos atingido]");
+                return header.ToString();
+            });
+        }
+        catch (Exception ex) { return $"ERRO no grep: {ex.Message}"; }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FERRAMENTA: list_dir — Lista conteúdo de um diretório
+// ─────────────────────────────────────────────────────────────────────────────
+
+public class ListDirTool : ITool
+{
+    public string Name => "list_dir";
+    public string Description => "Lista conteúdo de um diretório (pastas + arquivos com tamanhos). Para varrer recursivamente, use 'glob' em vez disso.";
+    public int RequiredLevel => 1;
+
+    public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
+        Name, Description,
+        BinaryData.FromString("""
+        {
+          "type": "object",
+          "properties": {
+            "path":         { "type": "string", "description": "Caminho absoluto do diretório a listar." },
+            "show_hidden":  { "type": "boolean", "description": "Inclui itens ocultos (que começam com '.'). Default: false." }
+          },
+          "required": ["path"]
+        }
+        """));
+
+    public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
+    {
+        string path = ToolArgParser.Get(argumentsJson, "path");
+        string showHiddenStr = ToolArgParser.Get(argumentsJson, "show_hidden");
+
+        if (string.IsNullOrWhiteSpace(path)) return Task.FromResult("ERRO: 'path' é obrigatório.");
+        path = path.Trim('\"', '\'');
+        if (!Directory.Exists(path)) return Task.FromResult($"ERRO: Diretório não encontrado: {path}");
+
+        bool showHidden = bool.TryParse(showHiddenStr, out var sh) && sh;
+
+        // Sandbox: níveis baixos não podem listar áreas de sistema
+        if (userLevel < 4)
+        {
+            string pathLower = path.ToLowerInvariant();
+            string[] sysDirs = { "\\windows", "\\program files", "\\programdata" };
+            if (sysDirs.Any(d => pathLower.Contains(d)))
+                return Task.FromResult("ACESSO NEGADO (SANDBOX): Diretórios de sistema protegidos.");
+        }
+
+        try
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"[LIST_DIR] {path}");
+
+            var dirs = Directory.EnumerateDirectories(path)
+                .Where(d => showHidden || !Path.GetFileName(d).StartsWith("."))
+                .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var files = Directory.EnumerateFiles(path)
+                .Where(f => showHidden || !Path.GetFileName(f).StartsWith("."))
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            sb.AppendLine($"({dirs.Count} pasta(s), {files.Count} arquivo(s))\n");
+
+            foreach (var d in dirs)
+                sb.AppendLine($"📁 {Path.GetFileName(d)}/");
+
+            foreach (var f in files)
+            {
+                try
+                {
+                    var info = new FileInfo(f);
+                    sb.AppendLine($"📄 {Path.GetFileName(f)} ({FormatSize(info.Length)})");
+                }
+                catch
+                {
+                    sb.AppendLine($"📄 {Path.GetFileName(f)} (tamanho indisponível)");
+                }
+            }
+
+            return Task.FromResult(sb.ToString());
+        }
+        catch (UnauthorizedAccessException ex) { return Task.FromResult($"ERRO de permissão: {ex.Message}"); }
+        catch (Exception ex) { return Task.FromResult($"ERRO ao listar: {ex.Message}"); }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes}B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1}KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1}MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F2}GB";
+    }
+}

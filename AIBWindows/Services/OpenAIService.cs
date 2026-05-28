@@ -243,6 +243,15 @@ public class OpenAIService
             bool anythingYielded = false;
             string[] finalChannelMarkers = { "<channel|>", "<|channel|>", "<|message|>" };
 
+            // Carry buffer dinâmico: alguns chunks do streaming chegam pequenos e podem
+            // partir markers (ex: "<th" + "ink>conteudo"). Antes do yield, calculamos se
+            // o fim do texto acumulado parece PREFIXO de algum marker que vigiamos —
+            // se sim, retemos no carry. Lógica de tamanho fixo (ex: 12 chars) falhava
+            // porque chunks muito pequenos faziam o conteúdo do marker chegar fragmentado
+            // ao yield antes da state machine conseguir reconstruí-lo.
+            string carry = "";
+            string[] markersToWatch = { "<think>", "</think>", "<channel|>", "<|channel|>", "<|message|>" };
+
             // Diagnóstico do stream. Em modo normal, só o [STREAM-END] resumido sai.
             // Em modo verbose (Configurações → "Logs detalhados no console"), saem também
             // contadores por tipo de update e [STREAM-DBG] do primeiro update relevante.
@@ -309,7 +318,12 @@ public class OpenAIService
                             continue;
                         }
 
-                        string remaining = chunk;
+                        // Combina com o carry e retém no novo carry só o que parece prefixo
+                        // de marker (ou nada se o fim for texto comum).
+                        string combined = carry + chunk;
+                        int retain = FindTrailingMarkerPrefix(combined, markersToWatch);
+                        string remaining = combined.Substring(0, combined.Length - retain);
+                        carry = retain > 0 ? combined.Substring(combined.Length - retain) : "";
                         while (remaining.Length > 0)
                         {
                             if (mode == 1) // InsideThink
@@ -414,6 +428,79 @@ public class OpenAIService
                 }
             }
 
+            // Processa o carry final (o que sobrou retido pra evitar quebra de marker).
+            // Roda a state machine mais uma vez sobre ele.
+            if (carry.Length > 0)
+            {
+                string remaining = carry;
+                carry = "";
+                while (remaining.Length > 0)
+                {
+                    if (mode == 1) // InsideThink
+                    {
+                        int closeIdx = remaining.IndexOf("</think>", StringComparison.OrdinalIgnoreCase);
+                        if (closeIdx < 0)
+                        {
+                            onTechnicalContent?.Invoke(remaining);
+                            thinkBuffer.Append(remaining);
+                            remaining = "";
+                        }
+                        else
+                        {
+                            int closeLen = "</think>".Length;
+                            onTechnicalContent?.Invoke(remaining.Substring(0, closeIdx + closeLen));
+                            thinkBuffer.Clear();
+                            remaining = remaining.Substring(closeIdx + closeLen);
+                            mode = 2;
+                        }
+                    }
+                    else if (mode == 2) // WaitingFinal
+                    {
+                        int markerIdx = -1;
+                        int markerLen = 0;
+                        foreach (var m in finalChannelMarkers)
+                        {
+                            int idx = remaining.IndexOf(m, StringComparison.OrdinalIgnoreCase);
+                            if (idx >= 0 && (markerIdx < 0 || idx < markerIdx)) { markerIdx = idx; markerLen = m.Length; }
+                        }
+                        if (markerIdx < 0)
+                        {
+                            waitBuffer.Append(remaining);
+                            onTechnicalContent?.Invoke(remaining);
+                            remaining = "";
+                        }
+                        else
+                        {
+                            if (markerIdx > 0) onTechnicalContent?.Invoke(remaining.Substring(0, markerIdx));
+                            waitBuffer.Clear();
+                            remaining = remaining.Substring(markerIdx + markerLen);
+                            mode = 0;
+                        }
+                    }
+                    else // Streaming
+                    {
+                        int thinkIdx = remaining.IndexOf("<think>", StringComparison.OrdinalIgnoreCase);
+                        if (thinkIdx < 0)
+                        {
+                            string userPart = StripTemplateTokens(remaining);
+                            if (!string.IsNullOrEmpty(userPart)) { anythingYielded = true; yield return userPart; }
+                            remaining = "";
+                        }
+                        else
+                        {
+                            if (thinkIdx > 0)
+                            {
+                                string userPart = StripTemplateTokens(remaining.Substring(0, thinkIdx));
+                                if (!string.IsNullOrEmpty(userPart)) { anythingYielded = true; yield return userPart; }
+                            }
+                            onTechnicalContent?.Invoke("<think>");
+                            remaining = remaining.Substring(thinkIdx + "<think>".Length);
+                            mode = 1;
+                        }
+                    }
+                }
+            }
+
             // Resumo de cada iteração do ReAct. Versão expandida sob VerboseConsoleLogging.
             if (verboseLogging)
             {
@@ -421,7 +508,7 @@ public class OpenAIService
             }
             else
             {
-                Console.WriteLine($"[STREAM-END] updates={updateCount} finish={finishReason ?? "none"} full={fullResponse.Length}ch tools={toolCallsByIndex.Count} yielded={anythingYielded}");
+                Console.WriteLine($"[STREAM-END] updates={updateCount} finish={finishReason ?? "none"} mode={mode} full={fullResponse.Length}ch tools={toolCallsByIndex.Count} yielded={anythingYielded}");
             }
 
             // Flush em camadas (do mais provável ao fallback de último recurso):
@@ -663,6 +750,11 @@ public class OpenAIService
     /// Remove tokens de chat-template que vazam crus de alguns modelos via Ollama
     /// (especialmente gemma4 e variantes que usam estilo Harmony/channels). Esses
     /// tokens NUNCA devem aparecer para o usuário final.
+    ///
+    /// Inclui também tags <think>/</think> ÓRFÃS (sem par correspondente). A state
+    /// machine principal já cuida dos pares válidos; este filtro pega o caso em que
+    /// o modelo emite uma tag solta como artefato (típico do gemma4 quando "muda
+    /// de canal" sem fechar adequadamente).
     /// </summary>
     private static readonly string[] ChatTemplateTokens = new[]
     {
@@ -681,6 +773,8 @@ public class OpenAIService
         // Role markers genéricos
         "<|user|>", "<|assistant|>", "<|system|>",
         "<user|>", "<assistant|>", "<system|>",
+        // Think tags órfãs (pares válidos são tratados pela state machine antes)
+        "<think>", "</think>",
     };
 
     private static string StripTemplateTokens(string text)
@@ -691,6 +785,31 @@ public class OpenAIService
             text = text.Replace(token, "", StringComparison.OrdinalIgnoreCase);
         }
         return text;
+    }
+
+    /// <summary>
+    /// Retorna o tamanho do maior sufixo de <paramref name="text"/> que é prefixo
+    /// (de pelo menos 1 char) de algum dos markers em <paramref name="markers"/>.
+    /// Usado para manter o carry buffer só pelo tempo necessário: enquanto o fim do
+    /// texto acumulado pode ser início de um marker, espera. Quando não pode, processa.
+    /// </summary>
+    private static int FindTrailingMarkerPrefix(string text, string[] markers)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        int maxOverlap = 0;
+        foreach (var marker in markers)
+        {
+            int maxK = Math.Min(marker.Length - 1, text.Length);
+            for (int k = maxK; k > maxOverlap; k--)
+            {
+                if (string.Compare(text, text.Length - k, marker, 0, k, StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    maxOverlap = k;
+                    break;
+                }
+            }
+        }
+        return maxOverlap;
     }
 
     private int CalculateCurrentTokens()
