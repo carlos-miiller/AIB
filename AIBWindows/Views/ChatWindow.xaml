@@ -228,13 +228,14 @@
                                     <ColumnDefinition Width="Auto"/>   <!-- Botões -->
                                 </Grid.ColumnDefinitions>
 
-                                <!-- Ícone da marca -->
+                                <!-- Ícone da marca — ancorado na base p/ ficar alinhado com a última
+                                     linha do TextBox quando ele expande para múltiplas linhas. -->
                                 <TextBlock Grid.Column="0"
                                            Text="✦"
                                            Foreground="#6644AA"
                                            FontSize="14"
-                                           VerticalAlignment="Center"
-                                           Margin="10,0,6,0"/>
+                                           VerticalAlignment="Bottom"
+                                           Margin="10,0,6,10"/>
 
                                 <!-- Campo de texto e Pop-up -->
                                 <Popup x:Name="CommandsPopup" PlacementTarget="{Binding ElementName=InputBox}" Placement="Top" StaysOpen="False" AllowsTransparency="True" VerticalOffset="-8">
@@ -278,10 +279,13 @@
                                          CaretBrush="#9B51E0"
                                          SelectionBrush="#559B51E0"
                                          FontSize="14"
-                                         VerticalAlignment="Center"
-                                         VerticalContentAlignment="Center"
+                                         VerticalAlignment="Stretch"
+                                         VerticalContentAlignment="Top"
                                          Padding="0,8"
-                                         AcceptsReturn="False"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         MinHeight="32"
+                                         MaxHeight="110"
                                          PreviewKeyDown="InputBox_PreviewKeyDown"
                                          TextChanged="InputBox_TextChanged">
                                     <TextBox.Style>
@@ -289,9 +293,11 @@
                                             <Setter Property="Template">
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="TextBox">
+                                                        <!-- Scroll vertical auto: aparece quando texto passa de ~4 linhas
+                                                             (MaxHeight=110 com FontSize=14 + line-height padrão). -->
                                                         <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
                                                                       HorizontalScrollBarVisibility="Hidden"
-                                                                      VerticalScrollBarVisibility="Hidden"/>
+                                                                      VerticalScrollBarVisibility="Auto"/>
                                                     </ControlTemplate>
                                                 </Setter.Value>
                                             </Setter>
@@ -299,8 +305,8 @@
                                     </TextBox.Style>
                                 </TextBox>
 
-                                <!-- Botões rápidos da cápsula -->
-                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0">
+                                <!-- Botões rápidos da cápsula — ancorados na base também -->
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="4,0,4,2">
                                     <Button x:Name="VisionButton"
                                             Content="📷"
                                             Style="{StaticResource CapsuleIconButton}"

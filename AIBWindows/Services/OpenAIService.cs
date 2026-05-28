@@ -77,14 +77,16 @@ public class OpenAIService
             
             Console.WriteLine($"[WARMUP] Iniciando trava de memória (Keep-Alive Infinita) para {settings.ModelName}...");
             using var httpClient = new System.Net.Http.HttpClient();
-            // num_ctx=8192: sweet spot para gemma4:e2b (5.1B) em CPU.
-            // Modelo nominalmente aceita 131k, mas em CPU cada token de prefill custa.
-            // 8192 cobre system+histórico+thinking+tools com folga, sem explodir o tempo.
-            // O Ollama mantém esse num_ctx para todas as chamadas enquanto keep_alive=-1.
+            // num_ctx=16384: ajustado de 8192 após observação de que respostas vazias
+            // ("Ação executada com sucesso") ocorrem quando o histórico + tool results
+            // somam ~5500 tokens e gemma4 decide não gerar resposta por falta de espaço.
+            // Gemma4:e2b suporta nominalmente 131k; 16k é equilíbrio entre folga e custo
+            // de prefill em CPU. Se sentir lentidão excessiva, voltar para 12288 ou 8192.
+            // Ollama mantém esse num_ctx para todas as chamadas enquanto keep_alive=-1.
             var payload = new {
                 model = settings.ModelName,
                 keep_alive = -1,
-                options = new { num_ctx = 8192 }
+                options = new { num_ctx = 16384 }
             };
             var content = new System.Net.Http.StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json");
             
@@ -216,11 +218,80 @@ public class OpenAIService
             var updates = _client!.CompleteChatStreamingAsync(_history, chatOptions, ct);
 
             string fullResponse = "";
-            var toolCalls = new List<(string Id, string Name, string Args)>();
+            // Agregado por Index (a chave estável entre chunks parciais de uma mesma tool call).
+            // ToolCallId e FunctionName só vêm no PRIMEIRO chunk de cada tool; chunks seguintes
+            // trazem só mais FunctionArgumentsUpdate. Agregar por ToolCallId perdia argumentos.
+            var toolCallsByIndex = new Dictionary<int, ToolCallAccumulator>();
             string? pendingTextAction = null; // Fallback: ação escrita como texto
+
+            // State machine de 3 modos para lidar com chat templates "Harmony" (gemma4 e similares):
+            //   Streaming    -> texto vai direto ao usuário (após strip de tokens)
+            //   InsideThink  -> dentro de <think>...</think>, descarta para technical
+            //   WaitingFinal -> após </think>, bufferiza até ver <channel|>/<|message|>.
+            //                   Esse intervalo é o canal "analysis/commentary" do gemma4 —
+            //                   conteúdo de pre-final que parece pensamento estruturado mas
+            //                   NÃO é a resposta de fato. Descarta o buffer ao ver o marker
+            //                   de canal final; emite ao usuário só o que vem depois.
+            //
+            //   Se o stream terminar AINDA em WaitingFinal (modelo sem channels, ex: qwen
+            //   puro), o buffer é a resposta real e é emitido no fim.
+            //   Se terminar em InsideThink (modelo abriu <think> e nunca fechou — bug),
+            //   também emitimos o conteúdo "think" como fallback para não engolir tudo.
+            int mode = 0; // 0=Streaming, 1=InsideThink, 2=WaitingFinal
+            var waitBuffer = new System.Text.StringBuilder();
+            var thinkBuffer = new System.Text.StringBuilder(); // só para fallback se </think> nunca chegar
+            bool anythingYielded = false;
+            string[] finalChannelMarkers = { "<channel|>", "<|channel|>", "<|message|>" };
+
+            // Diagnóstico do stream. Em modo normal, só o [STREAM-END] resumido sai.
+            // Em modo verbose (Configurações → "Logs detalhados no console"), saem também
+            // contadores por tipo de update e [STREAM-DBG] do primeiro update relevante.
+            bool verboseLogging = _settingsService.LoadSettings().VerboseConsoleLogging;
+            int updateCount = 0;
+            int updatesWithContent = 0;
+            int updatesWithTools = 0;
+            int updatesEmpty = 0;
+            int rawTextChars = 0;
+            string? finishReason = null;
+            bool firstUpdateLogged = false;
 
             await foreach (var update in updates.WithCancellation(ct))
             {
+                updateCount++;
+                if (update.FinishReason.HasValue) finishReason = update.FinishReason.Value.ToString();
+
+                if (verboseLogging)
+                {
+                    int contentParts = update.ContentUpdate?.Count ?? 0;
+                    int toolUpdates = update.ToolCallUpdates?.Count ?? 0;
+                    if (contentParts > 0) updatesWithContent++;
+                    if (toolUpdates > 0) updatesWithTools++;
+                    if (contentParts == 0 && toolUpdates == 0) updatesEmpty++;
+                    if (contentParts > 0)
+                    {
+                        foreach (var part in update.ContentUpdate)
+                            if (!string.IsNullOrEmpty(part.Text)) rawTextChars += part.Text.Length;
+                    }
+
+                    if (!firstUpdateLogged && (contentParts > 0 || toolUpdates > 0))
+                    {
+                        var dbg = new System.Text.StringBuilder();
+                        dbg.Append($"[STREAM-DBG] update#{updateCount}: contentParts={contentParts} toolUpdates={toolUpdates}");
+                        if (contentParts > 0)
+                        {
+                            for (int i = 0; i < update.ContentUpdate.Count; i++)
+                            {
+                                var p = update.ContentUpdate[i];
+                                string preview = p.Text?.Length > 0
+                                    ? p.Text.Substring(0, Math.Min(40, p.Text.Length)).Replace("\n", "\\n")
+                                    : "(no text)";
+                                dbg.Append($" | part{i} Kind={p.Kind} TextLen={p.Text?.Length ?? 0} \"{preview}\"");
+                            }
+                        }
+                        Console.WriteLine(dbg.ToString());
+                        firstUpdateLogged = true;
+                    }
+                }
                 // ── Processamento de chunks de texto ──────────────────────────
                 if (update.ContentUpdate.Count > 0)
                 {
@@ -235,67 +306,211 @@ public class OpenAIService
                         {
                             pendingTextAction = fullResponse;
                             onTechnicalContent?.Invoke($"\n[FALLBACK REGEX] Ação em texto detectada: {match.Value}\n");
-                            // Não emite mais texto para o usuário — este é conteúdo técnico
+                            continue;
                         }
-                        else if (!IsOnlyTechnicalContent(chunk))
+
+                        string remaining = chunk;
+                        while (remaining.Length > 0)
                         {
-                            yield return chunk;
-                        }
-                        else
-                        {
-                            onTechnicalContent?.Invoke(chunk);
+                            if (mode == 1) // InsideThink
+                            {
+                                int closeIdx = remaining.IndexOf("</think>", StringComparison.OrdinalIgnoreCase);
+                                if (closeIdx < 0)
+                                {
+                                    onTechnicalContent?.Invoke(remaining);
+                                    thinkBuffer.Append(remaining); // guarda para fallback caso </think> nunca chegue
+                                    remaining = "";
+                                }
+                                else
+                                {
+                                    int closeLen = "</think>".Length;
+                                    onTechnicalContent?.Invoke(remaining.Substring(0, closeIdx + closeLen));
+                                    thinkBuffer.Clear(); // think fechou normalmente, descarta fallback
+                                    remaining = remaining.Substring(closeIdx + closeLen);
+                                    mode = 2; // entra em WaitingFinal
+                                }
+                            }
+                            else if (mode == 2) // WaitingFinal — bufferiza até ver marker de canal final
+                            {
+                                int markerIdx = -1;
+                                int markerLen = 0;
+                                foreach (var m in finalChannelMarkers)
+                                {
+                                    int idx = remaining.IndexOf(m, StringComparison.OrdinalIgnoreCase);
+                                    if (idx >= 0 && (markerIdx < 0 || idx < markerIdx))
+                                    {
+                                        markerIdx = idx;
+                                        markerLen = m.Length;
+                                    }
+                                }
+
+                                if (markerIdx < 0)
+                                {
+                                    // Sem marker neste chunk — bufferiza, mostra no console
+                                    waitBuffer.Append(remaining);
+                                    onTechnicalContent?.Invoke(remaining);
+                                    remaining = "";
+                                }
+                                else
+                                {
+                                    // Marker encontrado: descarta buffer e tudo antes (pre-final)
+                                    if (markerIdx > 0)
+                                        onTechnicalContent?.Invoke(remaining.Substring(0, markerIdx));
+                                    waitBuffer.Clear();
+                                    remaining = remaining.Substring(markerIdx + markerLen);
+                                    mode = 0; // volta para Streaming — agora é canal final
+                                }
+                            }
+                            else // mode == 0, Streaming
+                            {
+                                int thinkIdx = remaining.IndexOf("<think>", StringComparison.OrdinalIgnoreCase);
+                                if (thinkIdx < 0)
+                                {
+                                    string userPart = StripTemplateTokens(remaining);
+                                    if (!string.IsNullOrEmpty(userPart))
+                                    {
+                                        anythingYielded = true;
+                                        yield return userPart;
+                                    }
+                                    remaining = "";
+                                }
+                                else
+                                {
+                                    if (thinkIdx > 0)
+                                    {
+                                        string userPart = StripTemplateTokens(remaining.Substring(0, thinkIdx));
+                                        if (!string.IsNullOrEmpty(userPart))
+                                        {
+                                            anythingYielded = true;
+                                            yield return userPart;
+                                        }
+                                    }
+                                    onTechnicalContent?.Invoke("<think>");
+                                    remaining = remaining.Substring(thinkIdx + "<think>".Length);
+                                    mode = 1; // entra em InsideThink
+                                }
+                            }
                         }
                     }
                 }
 
                 // ── Processamento de native tool call updates ─────────────────
+                // Indexa por tcUpdate.Index (estável entre chunks). Preenche Id/Name
+                // só quando ainda vazios — chunks subsequentes podem trazê-los nulos.
                 foreach (var tcUpdate in update.ToolCallUpdates)
                 {
-                    var existing = toolCalls.FirstOrDefault(tc => tc.Id == tcUpdate.ToolCallId);
-                    if (existing == default && !string.IsNullOrEmpty(tcUpdate.ToolCallId))
+                    int idx = tcUpdate.Index;
+                    if (!toolCallsByIndex.TryGetValue(idx, out var entry))
                     {
-                        toolCalls.Add((tcUpdate.ToolCallId, tcUpdate.FunctionName ?? "", tcUpdate.FunctionArgumentsUpdate?.ToString() ?? ""));
+                        entry = new ToolCallAccumulator();
+                        toolCallsByIndex[idx] = entry;
                     }
-                    else if (existing != default)
-                    {
-                        int idx = toolCalls.IndexOf(existing);
-                        toolCalls[idx] = (existing.Id, existing.Name, existing.Args + (tcUpdate.FunctionArgumentsUpdate?.ToString() ?? ""));
-                    }
+                    if (string.IsNullOrEmpty(entry.Id) && !string.IsNullOrEmpty(tcUpdate.ToolCallId))
+                        entry.Id = tcUpdate.ToolCallId;
+                    if (string.IsNullOrEmpty(entry.Name) && !string.IsNullOrEmpty(tcUpdate.FunctionName))
+                        entry.Name = tcUpdate.FunctionName;
+                    if (tcUpdate.FunctionArgumentsUpdate != null)
+                        entry.ArgsBuilder.Append(tcUpdate.FunctionArgumentsUpdate.ToString());
                 }
             }
 
+            // Resumo de cada iteração do ReAct. Versão expandida sob VerboseConsoleLogging.
+            if (verboseLogging)
+            {
+                Console.WriteLine($"[STREAM-END] updates={updateCount} (content={updatesWithContent} tools={updatesWithTools} empty={updatesEmpty}) rawText={rawTextChars}ch finish={finishReason ?? "none"} mode={mode} yielded={anythingYielded} wait={waitBuffer.Length}ch think={thinkBuffer.Length}ch full={fullResponse.Length}ch tools={toolCallsByIndex.Count}");
+            }
+            else
+            {
+                Console.WriteLine($"[STREAM-END] updates={updateCount} finish={finishReason ?? "none"} full={fullResponse.Length}ch tools={toolCallsByIndex.Count} yielded={anythingYielded}");
+            }
+
+            // Flush em camadas (do mais provável ao fallback de último recurso):
+            //
+            // 1. Terminou em WaitingFinal (modelo usou <think> mas nunca emitiu <channel|>):
+            //    o buffer É a resposta real. Acontece com qwen com thinking, modelos sem
+            //    harmony, ou gemma4 quando responde sem channels.
+            if (mode == 2 && waitBuffer.Length > 0)
+            {
+                string flushed = StripTemplateTokens(waitBuffer.ToString());
+                if (!string.IsNullOrEmpty(flushed))
+                {
+                    anythingYielded = true;
+                    yield return flushed;
+                }
+                waitBuffer.Clear();
+            }
+            // 2. Terminou em InsideThink (modelo abriu <think> e nunca fechou — bug do modelo):
+            //    o conteúdo do think era na verdade a resposta. Vaza para o user como
+            //    último recurso para não engolir resposta. Melhor mostrar "pensamento bruto"
+            //    do que mostrar "Ação executada com sucesso".
+            else if (mode == 1 && thinkBuffer.Length > 0 && !anythingYielded && toolCallsByIndex.Count == 0)
+            {
+                string flushed = StripTemplateTokens(thinkBuffer.ToString());
+                if (!string.IsNullOrEmpty(flushed))
+                {
+                    Console.WriteLine("[STREAM-END] Fallback: <think> nunca fechou, emitindo conteúdo do think como resposta.");
+                    anythingYielded = true;
+                    yield return flushed;
+                }
+            }
+            thinkBuffer.Clear();
+
             // ── Execução: Native Tool Calls (Modo Primário) ───────────────────
-            if (toolCalls.Count > 0)
+            if (toolCallsByIndex.Count > 0)
             {
                 requiresAction = true;
-                var chatToolCalls = toolCalls
-                    .Select(tc => ChatToolCall.CreateFunctionToolCall(tc.Id, tc.Name, BinaryData.FromString(tc.Args)))
+
+                // Ordena pelo Index (ordem original do modelo)
+                var orderedCalls = toolCallsByIndex
+                    .OrderBy(kv => kv.Key)
+                    .Select(kv => kv.Value)
+                    .ToList();
+
+                // Monta a mensagem assistant com TODAS as tool_calls de uma vez —
+                // essencial pro histórico ReAct: cada ToolCall id precisa estar
+                // referenciado por uma ToolMessage com o mesmo id depois.
+                var chatToolCalls = orderedCalls
+                    .Select(tc => ChatToolCall.CreateFunctionToolCall(tc.Id, tc.Name, BinaryData.FromString(tc.ArgsBuilder.ToString())))
                     .ToList();
                 _history.Add(ChatMessage.CreateAssistantMessage(chatToolCalls));
 
-                foreach (var tc in toolCalls)
-                {
-                    onTechnicalContent?.Invoke($"[FERRAMENTA] Nome: {tc.Name} | Args: {tc.Args}");
+                // Log de TODAS as chamadas antes de executar (deixa claro o paralelismo)
+                if (orderedCalls.Count > 1)
+                    onTechnicalContent?.Invoke($"\n[PARALELO] Executando {orderedCalls.Count} ferramentas em paralelo:\n");
+                foreach (var tc in orderedCalls)
+                    onTechnicalContent?.Invoke($"[FERRAMENTA] Nome: {tc.Name} | Args: {tc.ArgsBuilder}\n");
 
-                    string result = await _toolRegistry.ExecuteToolAsync(tc.Name, tc.Args, userLevel);
-                    onTechnicalContent?.Invoke($"[FERRAMENTA] Resultado: {result}\n");
+                // EXECUÇÃO PARALELA: dispara todas e espera o conjunto.
+                // Vantagem em CPU lenta: 3 leituras de arquivo independentes rodam concorrente
+                // em vez de seriadas. Cada ExecuteToolAsync é async, então o Task.WhenAll
+                // explora o paralelismo do scheduler .NET.
+                var tasks = orderedCalls
+                    .Select(tc => ExecuteToolPairedAsync(tc, userLevel))
+                    .ToArray();
+                var results = await Task.WhenAll(tasks);
+
+                // Processa resultados na ordem original (mesmo que tenham terminado fora de ordem)
+                foreach (var (tc, result) in results)
+                {
+                    onTechnicalContent?.Invoke($"[FERRAMENTA] Resultado ({tc.Name}): {result}\n");
                     _history.Add(ChatMessage.CreateToolMessage(tc.Id, result));
 
                     // Atualiza a lista de arquivos recentes acessados
                     if (tc.Name == "read_file" || tc.Name == "view_file" || tc.Name == "write_to_file" || tc.Name == "replace_file_content" || tc.Name == "multi_replace_file_content")
                     {
-                        try {
-                            var dict = System.Text.Json.JsonSerializer.Deserialize<System.Collections.Generic.Dictionary<string, System.Text.Json.JsonElement>>(tc.Args);
+                        try
+                        {
+                            var dict = System.Text.Json.JsonSerializer.Deserialize<System.Collections.Generic.Dictionary<string, System.Text.Json.JsonElement>>(tc.ArgsBuilder.ToString());
                             string? path = null;
                             if (dict != null && dict.ContainsKey("AbsolutePath")) path = dict["AbsolutePath"].GetString();
                             else if (dict != null && dict.ContainsKey("TargetFile")) path = dict["TargetFile"].GetString();
                             else if (dict != null && dict.ContainsKey("path")) path = dict["path"].GetString();
-                            
+
                             if (!string.IsNullOrEmpty(path)) ContextService.AddRecentFile(path);
-                        } catch { }
+                        }
+                        catch { }
                     }
 
-                    // Se uma skill foi materializada, refresca o registry para disponibilizar imediatamente
                     if (tc.Name == "materialize_skill") _toolRegistry.Refresh();
                 }
             }
@@ -422,10 +637,60 @@ public class OpenAIService
         }
     }
 
-    private static bool IsOnlyTechnicalContent(string chunk)
+    /// <summary>
+    /// Agregador de chunks de uma única tool call durante o streaming.
+    /// API OpenAI envia ToolCallId/FunctionName apenas no PRIMEIRO chunk de cada call
+    /// e FunctionArgumentsUpdate em pedaços. Index é a chave estável entre chunks.
+    /// </summary>
+    private class ToolCallAccumulator
     {
-        string[] technicalMarkers = { "Thought:", "Action:", "Observation:", "Ação:", "<think>", "</think>" };
-        return technicalMarkers.Any(m => chunk.Contains(m, StringComparison.OrdinalIgnoreCase));
+        public string Id = "";
+        public string Name = "";
+        public System.Text.StringBuilder ArgsBuilder = new();
+    }
+
+    /// <summary>
+    /// Executa uma tool call e devolve o par (acumulador, resultado) para preservar
+    /// associação durante <see cref="Task.WhenAll{TResult}"/> paralelo.
+    /// </summary>
+    private async Task<(ToolCallAccumulator Tc, string Result)> ExecuteToolPairedAsync(ToolCallAccumulator tc, int userLevel)
+    {
+        string result = await _toolRegistry.ExecuteToolAsync(tc.Name, tc.ArgsBuilder.ToString(), userLevel);
+        return (tc, result);
+    }
+
+    /// <summary>
+    /// Remove tokens de chat-template que vazam crus de alguns modelos via Ollama
+    /// (especialmente gemma4 e variantes que usam estilo Harmony/channels). Esses
+    /// tokens NUNCA devem aparecer para o usuário final.
+    /// </summary>
+    private static readonly string[] ChatTemplateTokens = new[]
+    {
+        // Gemma4 / Harmony-style channels
+        "<channel|>", "<|channel|>",
+        "<message|>", "<|message|>",
+        "<|return|>",
+        // Qwen / generic ChatML
+        "<|im_start|>", "<|im_end|>",
+        // Llama 3+
+        "<|begin_of_text|>", "<|end_of_text|>",
+        "<|start_header_id|>", "<|end_header_id|>",
+        "<|eot_id|>",
+        // GPT
+        "<|endoftext|>",
+        // Role markers genéricos
+        "<|user|>", "<|assistant|>", "<|system|>",
+        "<user|>", "<assistant|>", "<system|>",
+    };
+
+    private static string StripTemplateTokens(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        foreach (var token in ChatTemplateTokens)
+        {
+            text = text.Replace(token, "", StringComparison.OrdinalIgnoreCase);
+        }
+        return text;
     }
 
     private int CalculateCurrentTokens()

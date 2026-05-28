@@ -810,10 +810,31 @@ public partial class ChatWindow : Window
             }
         }
 
-        if (e.Key == Key.Enter && !_isSending)
+        // Comportamento de quebra de linha vs envio:
+        //   - Enter sozinho            -> envia mensagem
+        //   - Ctrl+Enter ou Shift+Enter -> quebra linha
+        // Shift+Enter o TextBox processa nativamente (AcceptsReturn=True). Já Ctrl+Enter
+        // precisa de injeção manual porque WPF ignora Ctrl como modifier de inserção.
+        if (e.Key == Key.Enter)
         {
-            SendButton_Click(this, new RoutedEventArgs());
-            e.Handled = true;
+            bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+            bool shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+
+            if (ctrl)
+            {
+                int caret = InputBox.CaretIndex;
+                InputBox.Text = InputBox.Text.Insert(caret, Environment.NewLine);
+                InputBox.CaretIndex = caret + Environment.NewLine.Length;
+                e.Handled = true;
+                return;
+            }
+            if (shift) return; // deixa o TextBox inserir \n nativamente
+
+            if (!_isSending)
+            {
+                SendButton_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
         }
         if (e.Key == Key.Escape) this.Hide();
     }

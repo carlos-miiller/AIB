@@ -54,6 +54,7 @@ public partial class SettingsWindow : Window
         SendSystemPromptCheckBox.IsChecked = _currentSettings.SendSystemPrompt;
         EnableIntelligentToolsCheckBox.IsChecked = _currentSettings.EnableIntelligentTools;
         ShadowAssistantEnabledCheckBox.IsChecked = _currentSettings.ShadowAssistantEnabled;
+        VerboseLoggingCheckBox.IsChecked = _currentSettings.VerboseConsoleLogging;
         SearchEngineComboBox.Text = _currentSettings.SearchEngine;
 
         UpdateUiForProvider();
@@ -134,6 +135,7 @@ public partial class SettingsWindow : Window
         _currentSettings.SendSystemPrompt = SendSystemPromptCheckBox.IsChecked ?? true;
         _currentSettings.EnableIntelligentTools = EnableIntelligentToolsCheckBox.IsChecked ?? true;
         _currentSettings.ShadowAssistantEnabled = ShadowAssistantEnabledCheckBox.IsChecked ?? false;
+        _currentSettings.VerboseConsoleLogging = VerboseLoggingCheckBox.IsChecked ?? false;
         _currentSettings.SearchEngine = SearchEngineComboBox.Text;
 
         _settingsService.SaveSettings(_currentSettings);

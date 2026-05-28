@@ -21,6 +21,10 @@ public class UserAppSettings
     // Opt-in: a funcionalidade Shadow Assistant fica desligada por default.
     // Quando ligado, o botão do olho aparece no chat e o usuário decide quando ativar.
     public bool ShadowAssistantEnabled { get; set; } = false;
+    // Quando ativo, o console mostra logs detalhados do streaming ReAct
+    // (STREAM-DBG, contadores de updates, classificação de chunks).
+    // Útil para diagnosticar respostas vazias ou comportamento estranho do modelo.
+    public bool VerboseConsoleLogging { get; set; } = false;
     public string DataDir { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AIB");
 
     // Diretórios

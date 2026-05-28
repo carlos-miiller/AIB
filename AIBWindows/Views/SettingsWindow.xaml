@@ -171,6 +171,13 @@
                             <Run Text=" — sugestões automáticas baseadas na janela em foco"/>
                         </TextBlock>
                     </CheckBox>
+                    <CheckBox x:Name="VerboseLoggingCheckBox" Foreground="White" Margin="0,10,0,0">
+                        <TextBlock TextWrapping="Wrap">
+                            <Run Text="Logs detalhados no console "/>
+                            <Run Text="(debug)" Foreground="#3182CE" FontWeight="Bold"/>
+                            <Run Text=" — útil para diagnosticar problemas. Não afeta a UI."/>
+                        </TextBlock>
+                    </CheckBox>
                     
                     <TextBlock Text="Motor de Busca Web" Margin="0,15,0,5" Opacity="0.8"/>
                     <ComboBox x:Name="SearchEngineComboBox" Height="38">
