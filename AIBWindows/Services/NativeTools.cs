@@ -281,6 +281,12 @@ public class ReadFileTool : ITool
 
 public class RunCommandTool : ITool
 {
+    // Serializa o modal entre múltiplas RunCommandTool.ExecuteAsync paralelas.
+    // OpenAIService dispara tools via Task.WhenAll; sem este lock, dois run_command
+    // simultâneos empilhariam dois ShowDialog na UI thread (re-entrância de Dispatcher
+    // + Owner igual = ordem de cliques indefinida). Resolve CR-01 da review fase 01.
+    private static readonly SemaphoreSlim _modalLock = new(1, 1);
+
     public string Name => "run_command";
     public string Description => "Executa comandos no shell do usuário (cmd.exe /c) e retorna a saída. Para invocar cmdlets PowerShell, prefixe com 'powershell -NoProfile -Command \"...\"'. Para caminhos com espaço, use aspas.";
     public int RequiredLevel => 2;
@@ -349,12 +355,24 @@ public class RunCommandTool : ITool
 
             // [6] Modal hop (D1): salta da thread de tool (background) para a UI
             // thread, mostra o modal, e bloqueia esperando a decisão humana.
-            (bool allowed, bool alwaysAllow) = await System.Windows.Application.Current.Dispatcher.InvokeAsync<(bool, bool)>(() =>
+            // _modalLock garante que apenas um ShowDialog roda por vez mesmo
+            // quando o ReAct loop dispara múltiplos run_command em paralelo.
+            bool allowed;
+            bool alwaysAllow;
+            await _modalLock.WaitAsync().ConfigureAwait(false);
+            try
             {
-                var win = new CommandConfirmationWindow(ctx) { Owner = System.Windows.Application.Current.MainWindow };
-                bool result = win.ShowDialog() == true;
-                return (result && win.IsAllowed, win.AlwaysAllow);
-            }).Task;
+                (allowed, alwaysAllow) = await System.Windows.Application.Current.Dispatcher.InvokeAsync<(bool, bool)>(() =>
+                {
+                    var win = new CommandConfirmationWindow(ctx) { Owner = System.Windows.Application.Current.MainWindow };
+                    bool result = win.ShowDialog() == true;
+                    return (result && win.IsAllowed, win.AlwaysAllow);
+                }).Task;
+            }
+            finally
+            {
+                _modalLock.Release();
+            }
 
             if (!allowed)
             {

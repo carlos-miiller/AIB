@@ -24,22 +24,29 @@ namespace AIB.Services;
 /// </summary>
 public static class AuditLogService
 {
-    private static readonly string FilePath = Path.Combine(DirectoryService.DataDir, "logs", "audit.log");
+    // Property (não field) para honrar mudanças de DataDirectory feitas em runtime
+    // via Settings → DirectoryService.ApplyFromSettings. Um static readonly field
+    // seria avaliado uma única vez no type init e gravaria silenciosamente no
+    // diretório antigo após o usuário mover ~/.AIB. Resolve CR-02 da review fase 01.
+    private static string FilePath => Path.Combine(DirectoryService.DataDir, "logs", "audit.log");
     private static readonly SemaphoreSlim _writeLock = new(1, 1);
 
     public static async Task AppendAsync(object entry)
     {
         try
         {
-            string? parentDir = Path.GetDirectoryName(FilePath);
-            if (!string.IsNullOrEmpty(parentDir))
-                Directory.CreateDirectory(parentDir);
-
             string line = JsonSerializer.Serialize(entry);
 
             await _writeLock.WaitAsync().ConfigureAwait(false);
             try
             {
+                // DirectoryService.EnsureDirectories() já cria logs/ no startup e a cada
+                // save de settings. Mantemos o CreateDirectory dentro do lock como
+                // defesa em profundidade (idempotente) — fora do lock era race-prone.
+                string? parentDir = Path.GetDirectoryName(FilePath);
+                if (!string.IsNullOrEmpty(parentDir))
+                    Directory.CreateDirectory(parentDir);
+
                 await File.AppendAllTextAsync(FilePath, line + "\n", Encoding.UTF8).ConfigureAwait(false);
             }
             finally
