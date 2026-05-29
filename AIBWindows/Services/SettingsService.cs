@@ -33,6 +33,18 @@ public class UserAppSettings
 
     // Avançado
     public int MaxContextTokens { get; set; } = 30000;
+
+    /// <summary>
+    /// Controla apenas o denylist pós-modal de <c>run_command</c>; NÃO controla o modal em si.
+    /// Modal sempre dispara em run_command (independente desta flag).
+    ///
+    /// ON (default): o denylist roda como segunda camada após o modal em níveis &lt; 9.
+    /// OFF: denylist é ignorado; o modal é o único portão.
+    /// L9: denylist sempre ignorado, independente desta flag (D5).
+    ///
+    /// Migração: perfis legados sem este campo desserializam para o C# default <c>true</c>
+    /// automaticamente via <see cref="System.Text.Json.JsonSerializer"/>.
+    /// </summary>
     public bool ConfirmDangerousCommands { get; set; } = true;
     public bool EphemeralSkillContext { get; set; } = true;
     public string SearchEngine { get; set; } = "DuckDuckGo"; // Google, DuckDuckGo, Bing
