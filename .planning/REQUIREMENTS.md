@@ -155,8 +155,8 @@ The modal only fires for `run_command` and skill execution. Other tools (memory,
 
 | Req | CONCERNS.md finding | Phase | Status |
 |---|---|---|---|
-| SEC-01 | CRITICAL — Modal not implemented | P1 | not started |
-| SEC-02 | CRITICAL — Level-9 sandbox bypass | P1 | not started |
+| SEC-01 | CRITICAL — Modal not implemented | P1 | code complete (commit `6c078c2`); UAT pending |
+| SEC-02 | CRITICAL — Level-9 sandbox bypass | P1 | code complete (commit `6c078c2`); UAT pending |
 | SEC-03 | CRITICAL — Live key on disk | P2 | not started |
 | SEC-04 | HIGH — Arg quoting unsafe | P3 | not started |
 | SEC-05 | HIGH — Denylist bypass | P3 | not started |

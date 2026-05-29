@@ -31,12 +31,14 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 - `AIBWindows/Services/SettingsService.cs` (surface the existing field)
 
 **Success criteria:**
-- [ ] `run_command` at Level 1 → modal appears
-- [ ] `run_command` at Level 9 with denied verb → modal appears with verb visible
-- [ ] Cancel button → `CommandService.ExecuteAsync` never invoked (verified via log)
-- [ ] AlwaysAllow within one session → second identical command does not show modal; restart → modal returns
+- [x] `run_command` at Level 1 → modal appears *(code wired in T7 commit `6c078c2`; UAT scenario S1 pending tester sign-off)*
+- [x] `run_command` at Level 9 with denied verb → modal appears with verb visible *(D5 gate at T7; UAT scenario S5 pending tester sign-off)*
+- [x] Cancel button → `CommandService.ExecuteAsync` never invoked *(deny path in T7 returns before line 8 of ExecuteAsync; audit log records outcome=deny; UAT S1/S6 will verify)*
+- [x] AlwaysAllow within one session → second identical command does not show modal; restart → modal returns *(D2 implementation in T2; UAT S3+S4 pending tester sign-off)*
 
-**Estimated size:** S (1 work session)
+**Status:** Code complete — committed `bc4a191` … `66ee9a7` (9 atomic commits). Build verified: 0 errors, 0 new warnings. UAT manual sign-off pending in `.planning/phases/01_modal-and-level9/VERIFICATION.md`.
+
+**Estimated size:** S (1 work session) — **Actual:** ~7 minutes execution.
 
 ---
 
