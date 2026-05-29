@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: security-remediation-v1
 milestone_name: Security Remediation v1
 status: in_progress
-last_updated: "2026-05-29T11:46:41Z"
+last_updated: 2026-05-29T12:43:30.353Z
 progress:
   total_phases: 6
   completed_phases: 1
@@ -18,14 +18,13 @@ progress:
 
 ## Current position
 
-Phase: 1 (01_modal-and-level9) — COMPLETED (pending UAT sign-off)
-Plan: 1 of 1 — DONE
+Phase: 1 — complete (code + verifier; 8-scenario UAT persisted at `01-HUMAN-UAT.md`, surfaces in /gsd-progress)
 Next phase: 2 (key rotation + .env hardening)
 
 - **Project:** AIB (`.planning/PROJECT.md`)
 - **Milestone:** security-remediation-v1 (`.planning/ROADMAP.md`)
-- **Active phase:** Phase 1 — executed end-to-end (9/9 tasks committed). Awaiting manual UAT sign-off in `.planning/phases/01_modal-and-level9/VERIFICATION.md` against build `6c078c2`.
-- **Last action:** `/gsd-execute-phase 1` executed PLAN.md sequentially. Commits: `bc4a191` (T1) → `8b9f62e` (T2) → `f777314` (T3) → `39607d2` (T4) → `2e1568d` (T5) → `f86a753` (T6) → `6c078c2` (T7, central wiring; CRITICAL #1 + #3 closed) → `8168f30` (T8, CONCERNS.md resolved annotations) → `66ee9a7` (T9, VERIFICATION.md UAT template). Build verified: 0 errors, 0 new warnings.
+- **Active phase:** Phase 2 next — `/gsd-discuss-phase 2` recommended.
+- **Last action:** `/gsd-execute-phase 1` executed PLAN.md sequentially → code review found 2 criticals (CR-01 modal re-entrancy, CR-02 AuditLogService FilePath staleness), both fixed in a follow-up commit → verifier returned `human_needed` with 10/10 code-side must-haves verified and 8 UAT scenarios pending. Commits: `bc4a191` (T1) → `8b9f62e` (T2) → `f777314` (T3) → `39607d2` (T4) → `2e1568d` (T5) → `f86a753` (T6) → `6c078c2` (T7, central wiring; CRITICAL #1 + #3 closed) → `8168f30` (T8, CONCERNS.md resolved annotations) → `66ee9a7` (T9, VERIFICATION.md UAT template) → `644fc80` (executor SUMMARY/STATE/ROADMAP/REQUIREMENTS) → `f9c1471` (CR-01 + CR-02 fixes) → `01-REVIEW.md`, `01-VERIFICATION.md`, `01-HUMAN-UAT.md` artifacts.
 - **Prior actions:** `/gsd-plan-phase 1` (`aeba91b`); baseline WIP commit (`6d744c7`); `/gsd-new-project` (`105a59c`); `/gsd-map-codebase` (`93f4d8a`).
 
 ## Quick links
@@ -40,7 +39,7 @@ Next phase: 2 (key rotation + .env hardening)
 
 | # | Phase | Status | Requirements |
 |---|---|---|---|
-| 1 | Modal confirmation + Level-9 alignment | executed 9/9 — pending UAT sign-off | SEC-01, SEC-02 |
+| 1 | Modal confirmation + Level-9 alignment | complete (code + verifier; UAT persists in `01-HUMAN-UAT.md`) | SEC-01, SEC-02 |
 | 2 | Key rotation + `.env` hardening | not started | SEC-03 |
 | 3 | Tool argument hardening | not started | SEC-04, SEC-05, SEC-06 |
 | 4 | Prompt-injection isolation | not started | SEC-07 |
@@ -69,13 +68,7 @@ Clean after Phase 1 execution. 9 atomic commits landed (`bc4a191` … `66ee9a7`)
 ## Next command
 
 ```
-/gsd-verify-work 1
+/gsd-discuss-phase 2
 ```
 
-After the human owner has run `VERIFICATION.md` scenarios S1-S8 against build `6c078c2` and filled in observed/pass-fail, run the verifier to gate on the 8 UAT scenarios + the regression-against-other-tools checks. Once verified, advance to:
-
-```
-/gsd-plan-phase 2
-```
-
-Phase 2 (key rotation + `.env` hardening, SEC-03) per ROADMAP.md.
+Phase 2 (key rotation + `.env` hardening, SEC-03) per ROADMAP.md. Parallel manual UAT for phase 01: run the 8 scenarios in `01-HUMAN-UAT.md` against the WPF build (HEAD ≥ `f9c1471` recommended — includes CR-01 + CR-02 fixes), then `/gsd-verify-work 1` to close the human-needed gate.
