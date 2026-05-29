@@ -10,6 +10,7 @@ using DocumentFormat.OpenXml.Wordprocessing;
 using DocumentFormat.OpenXml.Spreadsheet;
 using System.Text;
 using System.Runtime.InteropServices;
+using AIB.Views;
 
 namespace AIB.Services;
 
@@ -314,48 +315,131 @@ public class RunCommandTool : ITool
 
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
+        // [1] Parse e validação do payload.
         string command = ToolArgParser.Get(argumentsJson, "command");
         if (string.IsNullOrWhiteSpace(command)) return "ERRO: 'command' é obrigatório.";
 
-        if (userLevel < 9)
+        // [2] CWD que cmd.exe vai usar; este é o mesmo valor que aparece no modal (D3).
+        string cwd = DirectoryService.DataDir;
+
+        // [3] Contexto imutável passado ao modal.
+        var ctx = new CommandConfirmationContext
         {
-            string cmdLower = command.ToLowerInvariant();
+            Tool = "run_command",
+            Command = command,
+            Level = userLevel,
+            Cwd = cwd
+        };
 
-            string[] sysDirs = { "appdata", "windows", "program files", "programdata" };
-            if (sysDirs.Any(d => ContainsWord(cmdLower, d)))
-                return "ACESSO NEGADO (SANDBOX): Diretórios de sistema protegidos.";
-
-            if (userLevel <= 4)
+        // [4] AlwaysAllow fast path (D2): pula o modal se o usuário já marcou
+        // "Sempre permitir" neste sessão para esta string exata.
+        if (AlwaysAllowSession.Contains(command))
+        {
+            _ = AuditLogService.AppendAsync(BuildEntry(ctx, "always_allow", true));
+        }
+        else
+        {
+            // [5] No-UI guard (D1): se não há WPF host vivo, recuse — nunca
+            // implicitamente permita quando o humano não pode aprovar.
+            if (System.Windows.Application.Current == null)
             {
-                if (cmdLower.Contains("c:\\") || cmdLower.Contains("d:\\"))
-                {
-                    bool allow = false;
-                    if (ContainsWord(cmdLower, "documents") || ContainsWord(cmdLower, "documentos")) allow = true;
-                    if (userLevel >= 3 && ContainsWord(cmdLower, "downloads")) allow = true;
-                    if (!allow) return $"ACESSO NEGADO (SANDBOX): Nível {userLevel} restrito à Documentos/Downloads.";
-                }
-
-                if (userLevel <= 2 && (ContainsWord(cmdLower, "ls") || ContainsWord(cmdLower, "dir")))
-                    return "ACESSO NEGADO (SANDBOX): Listagem em massa bloqueada no Nível 2.";
+                _ = AuditLogService.AppendAsync(BuildEntry(ctx, "deny_no_ui", false));
+                return "ACESSO NEGADO: interface de confirmação indisponível.";
             }
 
-            if (userLevel < 8)
+            // [6] Modal hop (D1): salta da thread de tool (background) para a UI
+            // thread, mostra o modal, e bloqueia esperando a decisão humana.
+            (bool allowed, bool alwaysAllow) = await System.Windows.Application.Current.Dispatcher.InvokeAsync<(bool, bool)>(() =>
             {
-                string[] destructives = { "rm", "del", "erase", "remove-item", "ri", "out-file", "set-content", "add-content", "new-item", ">", ">>", "mkdir", "md", "rmdir", "rd", "format" };
-                if (destructives.Any(b => ContainsWord(cmdLower, b)))
-                    return "ACESSO NEGADO (SANDBOX): Comandos de gravação/exclusão requerem Nível 8.";
+                var win = new CommandConfirmationWindow(ctx) { Owner = System.Windows.Application.Current.MainWindow };
+                bool result = win.ShowDialog() == true;
+                return (result && win.IsAllowed, win.AlwaysAllow);
+            }).Task;
+
+            if (!allowed)
+            {
+                _ = AuditLogService.AppendAsync(BuildEntry(ctx, "deny", false));
+                return "Comando recusado pelo usuário";
             }
 
-            if (userLevel < 7)
+            if (alwaysAllow)
             {
-                string[] netCmds = { "curl", "wget", "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "ping", "tracert", "nslookup", "ftp", "scp", "ssh" };
-                if (netCmds.Any(b => ContainsWord(cmdLower, b)))
-                    return "ACESSO NEGADO (SANDBOX): Comandos de rede requerem Nível 7.";
+                AlwaysAllowSession.Add(command);
+                _ = AuditLogService.AppendAsync(BuildEntry(ctx, "always_allow", true));
+            }
+            else
+            {
+                _ = AuditLogService.AppendAsync(BuildEntry(ctx, "allow", false));
             }
         }
 
-        return await CommandService.ExecuteAsync(command, DirectoryService.DataDir);
+        // [7] Denylist gate (D5 + D8 fundidos):
+        // - L9 SEMPRE pula o denylist (D5), independente da flag.
+        // - Para níveis < 9, o denylist roda apenas se ConfirmDangerousCommands
+        //   estiver ON (default = mais conservador: modal + denylist como segunda barreira).
+        var settings = new SettingsService().LoadSettings();
+        if (userLevel < 9 && settings.ConfirmDangerousCommands)
+        {
+            string? deny = ApplyDenylist(command.ToLowerInvariant(), userLevel);
+            if (deny != null) return deny;
+        }
+
+        // [8] Execução real do comando — depois do modal e (opcionalmente) do denylist.
+        return await CommandService.ExecuteAsync(command, cwd);
     }
+
+    // Extraído do corpo original de ExecuteAsync para que o call site fique gateado
+    // por (userLevel < 9 && settings.ConfirmDangerousCommands). O conteúdo dos checks
+    // é preservado byte-a-byte do código pré-fase, só perdeu o wrapper "if (userLevel < 9)"
+    // de fora (que agora vive no call site).
+    private static string? ApplyDenylist(string cmdLower, int userLevel)
+    {
+        string[] sysDirs = { "appdata", "windows", "program files", "programdata" };
+        if (sysDirs.Any(d => ContainsWord(cmdLower, d)))
+            return "ACESSO NEGADO (SANDBOX): Diretórios de sistema protegidos.";
+
+        if (userLevel <= 4)
+        {
+            if (cmdLower.Contains("c:\\") || cmdLower.Contains("d:\\"))
+            {
+                bool allow = false;
+                if (ContainsWord(cmdLower, "documents") || ContainsWord(cmdLower, "documentos")) allow = true;
+                if (userLevel >= 3 && ContainsWord(cmdLower, "downloads")) allow = true;
+                if (!allow) return $"ACESSO NEGADO (SANDBOX): Nível {userLevel} restrito à Documentos/Downloads.";
+            }
+
+            if (userLevel <= 2 && (ContainsWord(cmdLower, "ls") || ContainsWord(cmdLower, "dir")))
+                return "ACESSO NEGADO (SANDBOX): Listagem em massa bloqueada no Nível 2.";
+        }
+
+        if (userLevel < 8)
+        {
+            string[] destructives = { "rm", "del", "erase", "remove-item", "ri", "out-file", "set-content", "add-content", "new-item", ">", ">>", "mkdir", "md", "rmdir", "rd", "format" };
+            if (destructives.Any(b => ContainsWord(cmdLower, b)))
+                return "ACESSO NEGADO (SANDBOX): Comandos de gravação/exclusão requerem Nível 8.";
+        }
+
+        if (userLevel < 7)
+        {
+            string[] netCmds = { "curl", "wget", "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "ping", "tracert", "nslookup", "ftp", "scp", "ssh" };
+            if (netCmds.Any(b => ContainsWord(cmdLower, b)))
+                return "ACESSO NEGADO (SANDBOX): Comandos de rede requerem Nível 7.";
+        }
+
+        return null;
+    }
+
+    // Schema do audit log (D6): todas as 5 call sites usam esta mesma forma de entry.
+    private static object BuildEntry(CommandConfirmationContext ctx, string outcome, bool alwaysAllow) => new
+    {
+        ts = DateTime.UtcNow.ToString("o"),
+        tool = ctx.Tool,
+        cmd = ctx.Command,
+        level = ctx.Level,
+        cwd = ctx.Cwd,
+        outcome,
+        always_allow = alwaysAllow
+    };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
