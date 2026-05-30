@@ -9,7 +9,7 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 
 ---
 
-## Phase 1 — Modal confirmation + Level-9 alignment
+## Phase 1: Modal confirmation + Level-9 alignment
 
 **Goal:** The declared "Zero-Trust modal confirmation" becomes real, at every level.
 
@@ -42,7 +42,7 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 
 ---
 
-## Phase 2 — Key rotation + `.env` hardening
+## Phase 2: Key rotation + `.env` hardening
 
 **Goal:** No live secret-account keys on developer disk; runtime keys flow through DPAPI / keyring.
 
@@ -75,7 +75,7 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 
 ---
 
-## Phase 3 — Tool argument hardening (quoting + denylist + skill gating)
+## Phase 3: Tool argument hardening (quoting + denylist + skill gating)
 
 **Goal:** Eliminate command-injection vectors and lock down skill execution.
 
@@ -109,7 +109,7 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 
 ---
 
-## Phase 4 — Prompt-injection isolation of external tool outputs
+## Phase 4: Prompt-injection isolation of external tool outputs
 
 **Goal:** External text (web, PDF, screen, hovered window) cannot drive tool calls.
 
@@ -142,7 +142,7 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 
 ---
 
-## Phase 5 — Filesystem exfiltration controls
+## Phase 5: Filesystem exfiltration controls
 
 **Goal:** Grep / glob cannot leak credentials and secrets from `$UserProfile`.
 
@@ -170,7 +170,7 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 
 ---
 
-## Phase 6 — Reliability: tri-state warmup + network retries
+## Phase 6: Reliability — tri-state warmup + network retries
 
 **Goal:** Transient network failures stop surfacing as `[ERROR]:` to the user; warmup tells the truth.
 
