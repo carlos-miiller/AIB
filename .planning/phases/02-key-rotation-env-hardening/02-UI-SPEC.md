@@ -1,10 +1,11 @@
 ---
 phase: 2
 slug: key-rotation-env-hardening
-status: draft
+status: approved
 shadcn_initialized: false
 preset: not applicable
 created: 2026-05-30
+reviewed_at: 2026-05-30
 stack: .NET 8 WPF + C# 12 (no UI component library)
 language: pt-BR (user-facing) / English (code identifiers)
 ---
