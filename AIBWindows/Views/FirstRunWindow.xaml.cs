@@ -1,0 +1,285 @@
+using System;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Navigation;
+using AIB.Services;
+
+namespace AIB.Views;
+
+public partial class FirstRunWindow : Window
+{
+    private readonly SettingsService _settingsService = new();
+    private string? _fallbackModel = null;
+
+    // Regex per D-05: key must start with sk- followed by at least 20 alphanumeric/dash/underscore chars
+    private static readonly Regex _keyRegex = new(@"^sk-[a-zA-Z0-9_-]{20,}$", RegexOptions.Compiled);
+
+    public FirstRunWindow()
+    {
+        InitializeComponent();
+        SaveButton.IsEnabled = false;
+
+        // Queue Ollama model refresh on UI thread (default branch is Ollama per D-07 / UI-SPEC S0)
+        // Não bloqueia o UI Thread
+        Dispatcher.BeginInvoke(new Action(async () => await RefreshModelsAsync()));
+    }
+
+    private void Window_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.LeftButton == MouseButtonState.Pressed)
+            this.DragMove();
+    }
+
+    // ─── Radio button handlers ───────────────────────────────────────────────
+
+    private void OllamaRadio_Checked(object sender, RoutedEventArgs e)
+    {
+        if (OllamaBranch == null) return;
+        OllamaBranch.Visibility = Visibility.Visible;
+        OpenAiBranch.Visibility = Visibility.Collapsed;
+        // SaveButton enabled only if a model is already selected or fallback was applied
+        SaveButton.IsEnabled = (ModelComboBox.SelectedItem != null || _fallbackModel != null);
+    }
+
+    private void OpenAiRadio_Checked(object sender, RoutedEventArgs e)
+    {
+        if (OpenAiBranch == null) return;
+        OpenAiBranch.Visibility = Visibility.Visible;
+        OllamaBranch.Visibility = Visibility.Collapsed;
+        // Reset error label; disable Salvar until valid key is entered
+        if (ErrorLabel != null) ErrorLabel.Visibility = Visibility.Collapsed;
+        SaveButton.IsEnabled = false;
+    }
+
+    // ─── Ollama model ComboBox ────────────────────────────────────────────────
+
+    private void ModelComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Enable Salvar when the user picks a model
+        if (SaveButton != null)
+            SaveButton.IsEnabled = (ModelComboBox.SelectedItem != null);
+    }
+
+    // ─── Ollama refresh ───────────────────────────────────────────────────────
+
+    private async System.Threading.Tasks.Task RefreshModelsAsync()
+    {
+        if (LoadingProgress == null) return;
+
+        LoadingProgress.Visibility = Visibility.Visible;
+        OllamaErrorBlock.Visibility = Visibility.Collapsed;
+        ModelComboBox.Visibility = Visibility.Visible;
+
+        try
+        {
+            var models = await _settingsService.GetOllamaModelsAsync("http://127.0.0.1:11434/v1");
+            if (models.Any())
+            {
+                ModelComboBox.ItemsSource = models;
+                // UI-SPEC S1: models loaded — Salvar still disabled until user picks one
+                ModelComboBox.Visibility = Visibility.Visible;
+                LoadingProgress.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                // UI-SPEC state S3: Ollama unreachable or no models installed
+                ModelComboBox.Visibility = Visibility.Collapsed;
+                OllamaErrorBlock.Visibility = Visibility.Visible;
+                LoadingProgress.Visibility = Visibility.Collapsed;
+            }
+        }
+        finally
+        {
+            LoadingProgress.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    // ─── Retry button (S4) ───────────────────────────────────────────────────
+
+    private void RetryButton_Click(object sender, RoutedEventArgs e)
+    {
+        // UI-SPEC S4 → S1/S3: hide error, show loading, retry fetch
+        OllamaErrorBlock.Visibility = Visibility.Collapsed;
+        ModelComboBox.Visibility = Visibility.Visible;
+        _ = RefreshModelsAsync();
+    }
+
+    // ─── Fallback link (S5) ──────────────────────────────────────────────────
+
+    private void FallbackLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+    {
+        ApplyFallbackModel();
+        e.Handled = true;
+    }
+
+    private void ApplyFallbackModel()
+    {
+        // UI-SPEC S5: hide error block, show read-only fallback display, enable Salvar
+        _fallbackModel = "qwen2.5:7b";
+        OllamaErrorBlock.Visibility = Visibility.Collapsed;
+        ModelComboBox.Visibility = Visibility.Collapsed;
+        FallbackModelDisplay.Visibility = Visibility.Visible;
+        SaveButton.IsEnabled = true;
+    }
+
+    // ─── OpenAI key validation ────────────────────────────────────────────────
+
+    private void KeyTextBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        ValidateOpenAiKey(emitAuditOnFail: false);
+    }
+
+    private void KeyTextBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            ValidateOpenAiKey(emitAuditOnFail: true);
+        }
+    }
+
+    /// <summary>
+    /// Validates the OpenAI key per D-05 regex.
+    /// Validation timing rule: only on LostFocus, Enter, or Save click — NOT per-keystroke.
+    /// </summary>
+    private bool ValidateOpenAiKey(bool emitAuditOnFail = true)
+    {
+        string key = KeyTextBox.Text.Trim();
+        if (_keyRegex.IsMatch(key))
+        {
+            ErrorLabel.Visibility = Visibility.Collapsed;
+            SaveButton.IsEnabled = true;
+            return true;
+        }
+        else
+        {
+            ErrorLabel.Visibility = Visibility.Visible;
+            SaveButton.IsEnabled = false;
+            if (emitAuditOnFail && !string.IsNullOrEmpty(key))
+            {
+                _ = AuditLogService.AppendAsync(new
+                {
+                    ts = DateTime.UtcNow.ToString("o"),
+                    outcome = "firstrun_invalid_key",
+                    provider = "OpenAI"
+                });
+            }
+            return false;
+        }
+    }
+
+    // ─── Cancel handler ──────────────────────────────────────────────────────
+
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        // D-04 + Pitfall 6: this window ONLY sets DialogResult=false + Close.
+        // The parent App.xaml.cs ShowFirstRunWindow inspects the DialogResult,
+        // emits the firstrun_cancelled audit, and calls Application.Current.Shutdown().
+        // Do NOT emit firstrun_cancelled here — that would double-fire the audit line.
+        // Do NOT call Application.Current.Shutdown() here — parent owns shutdown.
+        DialogResult = false;
+        Close();
+    }
+
+    // ─── Save handler ─────────────────────────────────────────────────────────
+
+    private async void Save_Click(object sender, RoutedEventArgs e)
+    {
+        bool ollamaSelected = OllamaRadio.IsChecked == true;
+
+        if (ollamaSelected)
+        {
+            await SaveOllamaBranch();
+        }
+        else
+        {
+            await SaveOpenAiBranch();
+        }
+    }
+
+    private async System.Threading.Tasks.Task SaveOpenAiBranch()
+    {
+        string key = KeyTextBox.Text.Trim();
+
+        // Re-validate on Save click (UI-SPEC §Save click step 2)
+        if (!_keyRegex.IsMatch(key))
+        {
+            ErrorLabel.Visibility = Visibility.Visible;
+            SaveButton.IsEnabled = false;
+            _ = AuditLogService.AppendAsync(new
+            {
+                ts = DateTime.UtcNow.ToString("o"),
+                outcome = "firstrun_invalid_key",
+                provider = "OpenAI"
+            });
+            return;
+        }
+
+        // D-06: vault write via CredentialService (DPAPI-encrypted)
+        string result = await CredentialService.StoreCredentialAsync("openai", "ApiKey", key);
+        if (result.StartsWith("ERRO"))
+        {
+            ErrorLabel.Text = $"Erro ao salvar: {result}";
+            ErrorLabel.Visibility = Visibility.Visible;
+            return;
+        }
+
+        // D-06 sentinel + RESEARCH Q1 + Q3: settings mutation
+        var settings = _settingsService.LoadSettings();
+        settings.AiProvider = "OpenAI";      // RESEARCH Q1 resolution
+        settings.ApiKey = "use-vault";       // D-06 sentinel — never store the real key in profile.dat
+        settings.ApiUrl = "";                // RESEARCH Q3 — empty → SDK default (https://api.openai.com/v1)
+        _settingsService.SaveSettings(settings);
+
+        // Audit: key_last4 only — NEVER the full key (T-02-07 mitigation)
+        string key_last4 = key.Length >= 4 ? key[^4..] : "----";
+        _ = AuditLogService.AppendAsync(new
+        {
+            ts = DateTime.UtcNow.ToString("o"),
+            outcome = "firstrun_saved",
+            provider = "OpenAI",
+            key_last4
+        });
+
+        DialogResult = true;
+        Close();
+    }
+
+    private async System.Threading.Tasks.Task SaveOllamaBranch()
+    {
+        // Determine selected model: from ComboBox or fallback
+        string? selectedModel = _fallbackModel;
+        if (selectedModel == null && ModelComboBox.SelectedItem != null)
+            selectedModel = ModelComboBox.SelectedItem.ToString();
+
+        if (string.IsNullOrEmpty(selectedModel))
+        {
+            // Should not reach here (SaveButton disabled when no model), but defensive
+            return;
+        }
+
+        // Settings mutation for Ollama branch
+        var settings = _settingsService.LoadSettings();
+        settings.AiProvider = "Ollama";
+        settings.ApiKey = "ollama";
+        settings.ModelName = selectedModel;
+        settings.ShadowModelName = selectedModel;   // D-09 mirror by default
+        _settingsService.SaveSettings(settings);
+
+        _ = AuditLogService.AppendAsync(new
+        {
+            ts = DateTime.UtcNow.ToString("o"),
+            outcome = "firstrun_saved",
+            provider = "Ollama",
+            model = selectedModel
+        });
+
+        DialogResult = true;
+        Close();
+
+        // Satisfy async signature (no actual awaitable work in Ollama branch)
+        await System.Threading.Tasks.Task.CompletedTask;
+    }
+}
