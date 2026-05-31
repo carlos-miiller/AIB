@@ -664,6 +664,17 @@ public class OpenAIService
             // Bypass IPv6 DNS resolution issues that cause 2-minute timeouts
             apiUrl = apiUrl.Replace("localhost", "127.0.0.1");
         }
+        // D-06: use-vault sentinel honors the vault-backed key storage
+        if (apiKey == "use-vault")
+        {
+            apiKey = CredentialService.RetrieveCredential("openai", "ApiKey");
+            if (apiKey.StartsWith("ERRO"))
+            {
+                // Should not reach if D-03 detector ran; treat as deny.
+                // OpenAI SDK will fail with auth error → user sees error → re-runs FirstRunWindow.
+                apiKey = "placeholder";
+            }
+        }
         if (string.IsNullOrEmpty(apiKey)) apiKey = "placeholder";
 
         var options = new OpenAIClientOptions();
@@ -711,6 +722,17 @@ public class OpenAIService
                 
                 // Bypass IPv6 DNS resolution issues that cause 2-minute timeouts
                 apiUrl = apiUrl.Replace("localhost", "127.0.0.1");
+            }
+            // D-06: use-vault sentinel honors the vault-backed key storage
+            if (apiKey == "use-vault")
+            {
+                apiKey = CredentialService.RetrieveCredential("openai", "ApiKey");
+                if (apiKey.StartsWith("ERRO"))
+                {
+                    // Should not reach if D-03 detector ran; treat as deny.
+                    // OpenAI SDK will fail with auth error → user sees error → re-runs FirstRunWindow.
+                    apiKey = "placeholder";
+                }
             }
 
             if (string.IsNullOrEmpty(apiKey)) apiKey = "placeholder";
