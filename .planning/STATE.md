@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: security-remediation-v1
 milestone_name: Security Remediation v1
 status: in_progress
-last_updated: "2026-05-30T21:45:06.639Z"
+last_updated: "2026-05-31T03:50:46.348Z"
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 1
+  total_plans: 6
   completed_plans: 1
   percent: 17
 ---
