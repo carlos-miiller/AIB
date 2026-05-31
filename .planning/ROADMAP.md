@@ -51,7 +51,7 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 
 **Requirements covered:** SEC-03
 **CONCERNS.md findings closed:** 1 CRITICAL
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed
 
 **Why second:** Independent of code changes. Rotation can happen any time; the `.env.example` + DPAPI migration is small and unblocks future contributor onboarding. Lower technical risk than the modal but higher operational urgency.
 
@@ -90,7 +90,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-04a-PLAN.md — SettingsWindow polish: KeyTextBox read-only friendly label + Alterar chave button (wave 3, autonomous=true; split from original plan 04 per checker Issue 4)
+- [x] 02-04a-PLAN.md — SettingsWindow polish: KeyTextBox read-only friendly label + Alterar chave button (wave 3, autonomous=true; split from original plan 04 per checker Issue 4)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
