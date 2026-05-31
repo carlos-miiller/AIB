@@ -101,6 +101,7 @@
                     <TextBlock Text="Provedor de IA"/>
                     <ComboBox x:Name="ProviderComboBox" Height="38" SelectionChanged="ProviderComboBox_SelectionChanged">
                         <ComboBoxItem Content="Ollama"/>
+                        <ComboBoxItem Content="OpenAI"/>
                         <ComboBoxItem Content="Google Gemini"/>
                     </ComboBox>
 

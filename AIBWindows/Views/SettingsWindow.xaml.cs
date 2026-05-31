@@ -82,6 +82,16 @@ public partial class SettingsWindow : Window
                 ModelComboBox.Text = "gemini-1.5-flash";
             }
         }
+        else if (selected == "OpenAI")
+        {
+            // RESEARCH Q1 + Q3 — keep panel visible; clear localhost Ollama default so SDK uses
+            // its built-in default endpoint (https://api.openai.com/v1).
+            AdvancedConnectionPanel.Visibility = Visibility.Visible;
+            if (UrlTextBox.Text == "http://localhost:11434/v1" || UrlTextBox.Text == "http://127.0.0.1:11434/v1")
+            {
+                UrlTextBox.Text = "";
+            }
+        }
         else
         {
             AdvancedConnectionPanel.Visibility = Visibility.Visible;
