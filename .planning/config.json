@@ -8,7 +8,8 @@
     "skip_discuss_phase": false,
     "skip_research": true,
     "require_plan_approval": true,
-    "require_verify_approval": true
+    "require_verify_approval": true,
+    "_auto_chain_active": false
   },
   "languages": {
     "primary": "csharp_dotnet",

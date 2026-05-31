@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: security-remediation-v1
 milestone_name: Security Remediation v1
 status: in_progress
-last_updated: "2026-05-31T03:50:46.348Z"
+last_updated: "2026-05-31T04:06:17.810Z"
 progress:
   total_phases: 6
   completed_phases: 1
@@ -18,7 +18,8 @@ progress:
 
 ## Current position
 
-Phase: 1 — complete (code + verifier; 8-scenario UAT persisted at `01-HUMAN-UAT.md`, surfaces in /gsd-progress)
+Phase: 02 (key-rotation-env-hardening) — EXECUTING
+Plan: 1 of 5
 Phase: 2 — context gathered (`02-CONTEXT.md` + `02-DISCUSSION-LOG.md`); 12 decisions locked, Linux deferred. Ready for `/gsd-plan-phase 2`.
 
 - **Project:** AIB (`.planning/PROJECT.md`)

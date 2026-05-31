@@ -51,7 +51,7 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 
 **Requirements covered:** SEC-03
 **CONCERNS.md findings closed:** 1 CRITICAL
-**Plans:** 4 plans
+**Plans:** 2/5 plans executed
 
 **Why second:** Independent of code changes. Rotation can happen any time; the `.env.example` + DPAPI migration is small and unblocks future contributor onboarding. Lower technical risk than the modal but higher operational urgency.
 
@@ -81,8 +81,8 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Filesystem cleanup: delete 3 .env files containing live key; remove DotNetEnv package; ship .env.example placeholder; scaffold evidence/.gitkeep
-- [ ] 02-02-PLAN.md — Create FirstRunWindow (new XAML + code-behind) with Ollama/OpenAI branches, regex validation, vault write, audit-log outcomes
+- [x] 02-01-PLAN.md — Filesystem cleanup: delete 3 .env files containing live key; remove DotNetEnv package; ship .env.example placeholder; scaffold evidence/.gitkeep
+- [x] 02-02-PLAN.md — Create FirstRunWindow (new XAML + code-behind) with Ollama/OpenAI branches, regex validation, vault write, audit-log outcomes
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
