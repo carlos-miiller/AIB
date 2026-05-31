@@ -37,7 +37,6 @@ public partial class SettingsWindow : Window
     {
         ProviderComboBox.Text = string.IsNullOrEmpty(_currentSettings.AiProvider) ? "Ollama" : _currentSettings.AiProvider;
         UrlTextBox.Text = _currentSettings.ApiUrl;
-        KeyTextBox.Text = _currentSettings.ApiKey;
         ModelComboBox.Text = _currentSettings.ModelName;
         ShadowModelComboBox.Text = _currentSettings.ShadowModelName;
 
@@ -58,6 +57,44 @@ public partial class SettingsWindow : Window
         SearchEngineComboBox.Text = _currentSettings.SearchEngine;
 
         UpdateUiForProvider();
+        RefreshKeyTextBoxLabel();
+    }
+
+    private void RefreshKeyTextBoxLabel()
+    {
+        // UI-SPEC Secondary surface — friendly read-only label per sentinel.
+        // KeyTextBox no longer carries an editable value; FirstRunWindow owns the write path.
+        string key = _currentSettings.ApiKey ?? string.Empty;
+        if (key == "use-vault")
+        {
+            KeyTextBox.Text = "Configurada (cofre DPAPI)";
+        }
+        else if (key == "ollama")
+        {
+            KeyTextBox.Text = "(não necessário para Ollama)";
+        }
+        else if (key.StartsWith("sk-"))
+        {
+            // Defensive case — should not occur after first boot post-Phase-2 D-11 migration.
+            KeyTextBox.Text = "Configurada (legado)";
+        }
+        else
+        {
+            KeyTextBox.Text = "(não configurada)";
+        }
+    }
+
+    private void AlterarChave_Click(object sender, RoutedEventArgs e)
+    {
+        // Settings path — NOT first-launch hotkey path. Do NOT shut down the app
+        // on Cancel (T-02-16 mitigation). User stays in SettingsWindow if they cancel.
+        var win = new FirstRunWindow();
+        bool? ok = win.ShowDialog();
+        if (ok == true)
+        {
+            _currentSettings = _settingsService.LoadSettings();
+            RefreshKeyTextBoxLabel();
+        }
     }
 
     private void ProviderComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -131,7 +168,8 @@ public partial class SettingsWindow : Window
     {
         _currentSettings.AiProvider = (ProviderComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content?.ToString() ?? ProviderComboBox.Text;
         _currentSettings.ApiUrl = UrlTextBox.Text;
-        _currentSettings.ApiKey = KeyTextBox.Text;
+        // T-02-15 mitigation — KeyTextBox is now display-only (friendly label per sentinel).
+        // FirstRunWindow owns settings.ApiKey writes (via AlterarChave_Click → ShowDialog).
         _currentSettings.ModelName = ModelComboBox.Text;
         _currentSettings.ShadowModelName = ShadowModelComboBox.Text;
 

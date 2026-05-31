@@ -110,7 +110,22 @@
                         <TextBox x:Name="UrlTextBox" Text="http://127.0.0.1:11434/v1" LostFocus="UrlTextBox_LostFocus"/>
 
                         <TextBlock Text="API Key"/>
-                        <TextBox x:Name="KeyTextBox" Text="ollama"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="KeyTextBox" Grid.Column="0" IsReadOnly="True" Background="#2A2A30" Foreground="#888888"/>
+                            <Button x:Name="AlterarChaveButton" Grid.Column="1" Content="Alterar chave" Width="110" Height="35" Margin="5,12,0,0" Click="AlterarChave_Click" Cursor="Hand">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{StaticResource InputBg}" BorderBrush="#2A2A30" BorderThickness="1" CornerRadius="4">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </Grid>
 
                         <TextBlock Text="Modelo LLM (Principal)"/>
                         <Grid>
