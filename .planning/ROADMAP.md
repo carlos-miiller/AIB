@@ -51,7 +51,7 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 
 **Requirements covered:** SEC-03
 **CONCERNS.md findings closed:** 1 CRITICAL
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 **Why second:** Independent of code changes. Rotation can happen any time; the `.env.example` + DPAPI migration is small and unblocks future contributor onboarding. Lower technical risk than the modal but higher operational urgency.
 
@@ -86,7 +86,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-03-PLAN.md — Wire runtime: OpenAIService use-vault sentinel (both call sites) + App.OnStartup D-11 migration + OnHotkeyDetected D-01/D-03/D-08 branch + SettingsWindow provider combo extension
+- [x] 02-03-PLAN.md — Wire runtime: OpenAIService use-vault sentinel (both call sites) + App.OnStartup D-11 migration + OnHotkeyDetected D-01/D-03/D-08 branch + SettingsWindow provider combo extension
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
