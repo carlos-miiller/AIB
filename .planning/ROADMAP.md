@@ -51,7 +51,7 @@ Each phase is sized to land as a coherent unit with manual UAT. Phases are order
 
 **Requirements covered:** SEC-03
 **CONCERNS.md findings closed:** 1 CRITICAL
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 
 **Why second:** Independent of code changes. Rotation can happen any time; the `.env.example` + DPAPI migration is small and unblocks future contributor onboarding. Lower technical risk than the modal but higher operational urgency.
 
@@ -94,7 +94,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 02-04b-PLAN.md — Docs + UAT + rotation: SEGURANCA.MD + README.md docs (NFR-03) + 02-VERIFICATION.md scenarios + D-12 manual rotation evidence (wave 4, depends_on 02-04a, autonomous=false)
+- [x] 02-04b-PLAN.md — Docs + UAT + rotation: SEGURANCA.MD + README.md docs (NFR-03) + 02-VERIFICATION.md scenarios + D-12 manual rotation evidence (wave 4, depends_on 02-04a, autonomous=false)
 
 **Estimated size:** S
 
