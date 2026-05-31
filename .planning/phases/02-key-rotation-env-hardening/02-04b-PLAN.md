@@ -1,15 +1,11 @@
 ---
 phase: 02-key-rotation-env-hardening
-plan: 04
+plan: 04b
 type: execute
-wave: 3
+wave: 4
 depends_on:
-  - 02-01
-  - 02-02
-  - 02-03
+  - 02-04a
 files_modified:
-  - AIBWindows/Views/SettingsWindow.xaml
-  - AIBWindows/Views/SettingsWindow.xaml.cs
   - Regras de Identidade/SEGURANCA.MD
   - README.md
   - .planning/phases/02-key-rotation-env-hardening/02-VERIFICATION.md
@@ -19,19 +15,11 @@ requirements:
   - SEC-03
 must_haves:
   truths:
-    - "SettingsWindow KeyTextBox is read-only and displays a friendly label per sentinel value (Configurada cofre DPAPI / nao necessario para Ollama / Configurada legado) (UI-SPEC Secondary surface KeyTextBox polish)"
-    - "Alterar chave button on SettingsWindow opens FirstRunWindow as a dialog; on success settings reload and label refreshes; on Cancel SettingsWindow stays open (DOES NOT call Application.Current.Shutdown)"
     - "Regras de Identidade/SEGURANCA.MD section 2 names the DPAPI vault as the canonical OpenAI key store; describes FirstRunWindow as the entry path; uses present-tense shipped behavior (NFR-03)"
     - "README.md key-setup bullet replaced with FirstRunWindow walkthrough; references the DPAPI vault path"
-    - ".planning/phases/02-key-rotation-env-hardening/02-VERIFICATION.md exists with Phase-1-style numbered scenarios (S1..Sn) translating the VALIDATION.md per-task table into pre/step/expected/observed fields"
+    - ".planning/phases/02-key-rotation-env-hardening/02-VERIFICATION.md exists with Phase-1-style numbered scenarios (S1..Sn) translating the VALIDATION.md per-task table into pre/step/expected/observed fields; all four audit outcome literals (firstrun_saved, firstrun_invalid_key, firstrun_cancelled, migration_clear_apikey) appear in the file"
     - "D-12 manual rotation completed: owner rotated the live OpenAI service-account key in OpenAI console; screenshot saved at .planning/phases/02-key-rotation-env-hardening/evidence/openai-console-rotation-2026-MM-DD.png showing OLD revoked + NEW last4 + date (key value redacted)"
   artifacts:
-    - path: "AIBWindows/Views/SettingsWindow.xaml"
-      provides: "KeyTextBox is read-only with friendly label + new Alterar chave button per UI-SPEC Secondary surface"
-      contains: "Alterar chave"
-    - path: "AIBWindows/Views/SettingsWindow.xaml.cs"
-      provides: "Code-behind reads sentinel from settings.ApiKey and displays friendly label; AlterarChave_Click opens new FirstRunWindow().ShowDialog()"
-      contains: "Configurada"
     - path: "Regras de Identidade/SEGURANCA.MD"
       provides: "Section 2 updated to describe DPAPI vault as canonical OpenAI key store + FirstRunWindow as entry path (NFR-03 present-tense shipped behavior)"
       contains: "DPAPI"
@@ -45,10 +33,6 @@ must_haves:
       provides: "D-12 screenshot evidence — OLD service-account key revoked + NEW key last4 visible + date timestamp (full key value redacted)"
       contains: "(binary PNG)"
   key_links:
-    - from: "AIBWindows/Views/SettingsWindow.xaml.cs (AlterarChave_Click)"
-      to: "AIBWindows/Views/FirstRunWindow.xaml.cs"
-      via: "new FirstRunWindow().ShowDialog() then on success reload settings and refresh KeyTextBox label"
-      pattern: "new FirstRunWindow"
     - from: "Regras de Identidade/SEGURANCA.MD section 2"
       to: "AIBWindows/Services/CredentialService.cs + FirstRunWindow"
       via: "doc prose names the vault path and the FirstRunWindow entry"
@@ -60,13 +44,13 @@ must_haves:
 ---
 
 <objective>
-Close out Phase 2 with documentation, settings-UI polish, manual UAT scenarios, and the D-12 manual rotation evidence. Plans 01-03 shipped the code; this plan ships the wrapping: SettingsWindow shows users that the key is in the vault (UI-SPEC Secondary surface KeyTextBox polish), SEGURANCA.MD is rewritten to describe shipped behavior (NFR-03), README.md directs new contributors to FirstRunWindow, 02-VERIFICATION.md translates VALIDATION.md per-task rows into Phase-1-style numbered scenarios, and the owner performs the D-12 manual rotation in the OpenAI console with screenshot evidence committed.
+Docs + UAT scenarios + D-12 rotation evidence slice of the original plan 04 (split per checker Issue 4 — original plan was over budget at 4 tasks + 6 files + 1 binary). This plan ships the wrapping that closes the phase: SEGURANCA.MD is rewritten to describe shipped behavior (NFR-03), README.md directs new contributors to FirstRunWindow, 02-VERIFICATION.md translates VALIDATION.md per-task rows into Phase-1-style numbered scenarios, and the owner performs the D-12 manual rotation in the OpenAI console with screenshot evidence committed.
 
-Purpose: The code wires are inert without the rotation (the leaked key remains valid upstream) and without the doc updates (users do not discover the new flow). This plan is the gate between code-is-correct and phase-ships. Per CONTEXT.md deferred section, the SettingsWindow polish is optional; we include it because UI-SPEC has full specifications and without it the literal sentinel string use-vault is shown to users in the existing TextBox which is a bad UX bug.
+Purpose: The code wires are inert without the rotation (the leaked key remains valid upstream) and without the doc updates (users do not discover the new flow). This plan is the gate between code-is-correct and phase-ships.
 
-Output: 4 file edits + 1 new doc + 1 new binary file (D-12 screenshot). Wave 3 — depends on plan 01 (evidence dir exists), plan 02 (FirstRunWindow exists for AlterarChave_Click to instantiate), plan 03 (OpenAI combo item exists; sentinel runtime is wired so the read-only label makes sense).
+Output: 2 doc edits + 1 new doc + 1 new binary file (D-12 screenshot). Wave 4 — depends on 02-04a (SettingsWindow polish must ship before doc claims about "Configurada (cofre DPAPI)" friendly label are true; D-12 rotation requires end-to-end FirstRunWindow + Settings flow to work).
 
-This plan is autonomous=false because Task 4 (D-12 rotation) is a checkpoint:human-action — owner must log into the OpenAI console, rotate the key, redact the screenshot, and save it. There is no CLI/API for "revoke service-account key + capture screenshot + save to evidence/" that Claude can autonomously drive.
+This plan is autonomous=false because Task 3 (D-12 rotation) is a checkpoint:human-action — owner must log into the OpenAI console, rotate the key, redact the screenshot, and save it. There is no CLI/API for "revoke service-account key + capture screenshot + save to evidence/" that Claude can autonomously drive.
 </objective>
 
 <execution_context>
@@ -86,9 +70,8 @@ This plan is autonomous=false because Task 4 (D-12 rotation) is a checkpoint:hum
 @.planning/phases/02-key-rotation-env-hardening/02-01-PLAN.md
 @.planning/phases/02-key-rotation-env-hardening/02-02-PLAN.md
 @.planning/phases/02-key-rotation-env-hardening/02-03-PLAN.md
+@.planning/phases/02-key-rotation-env-hardening/02-04a-PLAN.md
 @.planning/phases/01_modal-and-level9/VERIFICATION.md
-@AIBWindows/Views/SettingsWindow.xaml
-@AIBWindows/Views/SettingsWindow.xaml.cs
 @Regras de Identidade/SEGURANCA.MD
 @README.md
 </context>
@@ -96,58 +79,7 @@ This plan is autonomous=false because Task 4 (D-12 rotation) is a checkpoint:hum
 <tasks>
 
 <task type="auto" tdd="false">
-  <name>Task 1: SettingsWindow KeyTextBox polish — read-only label + Alterar chave button opening FirstRunWindow</name>
-  <files>AIBWindows/Views/SettingsWindow.xaml, AIBWindows/Views/SettingsWindow.xaml.cs</files>
-  <read_first>
-    - AIBWindows/Views/SettingsWindow.xaml (lines 100-160 — current KeyTextBox + ProviderComboBox context, BrowseButton style reference at 43-62, MaxHistoryTextBox read-only treatment at line 160)
-    - AIBWindows/Views/SettingsWindow.xaml.cs (current LoadUiValues / Save_Click — confirm where KeyTextBox is read from/written to settings.ApiKey today)
-    - AIBWindows/Views/FirstRunWindow.xaml.cs (instantiation contract for AlterarChave_Click — new FirstRunWindow().ShowDialog() pattern, returns bool? DialogResult)
-    - .planning/phases/02-key-rotation-env-hardening/02-UI-SPEC.md Secondary surface SettingsWindow.KeyTextBox polish (lines 422-443 — concrete property values for IsReadOnly, Text, Foreground, Background, Button positioning)
-  </read_first>
-  <behavior>
-    - KeyTextBox is IsReadOnly=True; user cannot edit the field directly.
-    - When settings.ApiKey equals "use-vault": KeyTextBox.Text is "Configurada (cofre DPAPI)".
-    - When settings.ApiKey equals "ollama": KeyTextBox.Text is "(não necessário para Ollama)".
-    - When settings.ApiKey starts with "sk-" (legacy/pre-migration defensive case — should not occur after first boot post-Phase-2 thanks to D-11): KeyTextBox.Text is "Configurada (legado)".
-    - KeyTextBox.Foreground is text.secondary (e.g. #888888 or #888899), Background is #2A2A30 (matches MaxHistoryTextBox read-only treatment).
-    - A new Button labelled Alterar chave sits to the right of KeyTextBox in a 2-column Grid (column 0 is star, column 1 is Auto; KeyTextBox in column 0, Button in column 1).
-    - Button Width=110, Height=35, Margin=5,12,0,0 styled the same as the existing BrowseButton resource (SettingsWindow.xaml:43-62).
-    - Button click handler AlterarChave_Click: instantiates new FirstRunWindow() and calls ShowDialog(). On DialogResult==true: reloads _currentSettings via _settingsService.LoadSettings() and re-runs the KeyTextBox label-update logic to reflect the new sentinel value. On Cancel: do nothing (user stayed in SettingsWindow; DialogResult=false is a no-op here — DO NOT call Application.Current.Shutdown() from this code path, because the user explicitly invoked Alterar chave from Settings, not from the first-launch hotkey path, and shutting down would surprise them).
-    - SettingsWindow's existing Save_Click does NOT write KeyTextBox.Text back to settings.ApiKey (KeyTextBox is now read-only — its value is just a friendly label, not a settable value). Remove or guard the line in Save_Click that currently does _currentSettings.ApiKey = KeyTextBox.Text; so the sentinel is preserved across SettingsWindow saves.
-  </behavior>
-  <action>
-    Two edits to SettingsWindow.
-
-    Edit A — AIBWindows/Views/SettingsWindow.xaml: Locate the current KeyTextBox element (around lines 111-112). Wrap it in a 2-column Grid. Add the new Button x:Name=AlterarChaveButton Content=Alterar chave Width=110 Height=35 Margin=5,12,0,0 Grid.Column=1 Click=AlterarChave_Click. Style attribute should reference the existing BrowseButton style if present (or copy its template inline if not). Mark KeyTextBox with IsReadOnly=True and Background=#2A2A30 and Foreground=#888888 per UI-SPEC Secondary surface KeyTextBox polish.
-
-    Edit B — AIBWindows/Views/SettingsWindow.xaml.cs:
-    1. Add a new method RefreshKeyTextBoxLabel() (private void) that reads _currentSettings.ApiKey and sets KeyTextBox.Text per the four-case mapping in the behavior block above. Call this method from the end of LoadUiValues() (currently called from the constructor) so the label is correct on every SettingsWindow open.
-    2. Add a new handler AlterarChave_Click(object sender, RoutedEventArgs e) that does: instantiate new FirstRunWindow(), call ShowDialog(), and on DialogResult==true reload _currentSettings via _settingsService.LoadSettings() and call RefreshKeyTextBoxLabel(). Do NOT call Application.Current.Shutdown() in this handler (it is NOT the first-launch path).
-    3. Locate the existing Save_Click handler (around lines 120-141). Remove the line that does _currentSettings.ApiKey = KeyTextBox.Text; (currently around lines 125-128) — KeyTextBox is now display-only, so writing its display text back to settings would corrupt the sentinel (e.g. settings.ApiKey would become the literal string "Configurada (cofre DPAPI)" which is not a valid sentinel value). Simply DELETE that line, since KeyTextBox is no longer the source of truth for ApiKey — FirstRunWindow now owns that write path.
-
-    DO NOT modify ProviderComboBox or any other Settings UI element (plan 03 already added the OpenAI item; KeyTextBox polish is the only Settings change in this plan).
-  </action>
-  <verify>
-    <automated>dotnet build C:\Users\Carlo\CPAPS\AIB\AIBWindows\AIB.csproj</automated>
-  </verify>
-  <acceptance_criteria>
-    - Select-String -Path AIBWindows/Views/SettingsWindow.xaml -Pattern "Alterar chave" returns 1 match (Edit A)
-    - Select-String -Path AIBWindows/Views/SettingsWindow.xaml -Pattern "IsReadOnly" returns at least 1 match (Edit A — KeyTextBox)
-    - Select-String -Path AIBWindows/Views/SettingsWindow.xaml -Pattern "AlterarChave_Click" returns 1 match (Edit A — event binding)
-    - Select-String -Path AIBWindows/Views/SettingsWindow.xaml.cs -Pattern "private void AlterarChave_Click" returns 1 match (Edit B handler)
-    - Select-String -Path AIBWindows/Views/SettingsWindow.xaml.cs -Pattern "new FirstRunWindow" returns 1 match (Edit B — dialog instantiation)
-    - Select-String -Path AIBWindows/Views/SettingsWindow.xaml.cs -Pattern "Configurada" returns at least 1 match (label for use-vault sentinel)
-    - Select-String -Path AIBWindows/Views/SettingsWindow.xaml.cs -Pattern "não necessário para Ollama" returns 1 match (label for ollama sentinel)
-    - Select-String -Path AIBWindows/Views/SettingsWindow.xaml.cs -Pattern "RefreshKeyTextBoxLabel" returns at least 2 matches (method definition + at least 1 call site)
-    - Select-String -Path AIBWindows/Views/SettingsWindow.xaml.cs -Pattern "_currentSettings.ApiKey = KeyTextBox.Text" returns 0 matches (the corrupting line is removed)
-    - Select-String -Path AIBWindows/Views/SettingsWindow.xaml.cs -Pattern "Application.Current.Shutdown" returns 0 matches (this is NOT the first-launch path)
-    - dotnet build AIBWindows/AIB.csproj exits 0 with Build succeeded
-  </acceptance_criteria>
-  <done>SettingsWindow shows friendly read-only label for the key field + Alterar chave button that reopens FirstRunWindow without shutting down on cancel; the sentinel-corruption bug (KeyTextBox.Text writing back to settings.ApiKey) is closed; build is green.</done>
-</task>
-
-<task type="auto" tdd="false">
-  <name>Task 2: Update SEGURANCA.MD section 2 + README.md key-setup section to describe shipped DPAPI vault + FirstRunWindow flow (NFR-03)</name>
+  <name>Task 1: Update SEGURANCA.MD section 2 + README.md key-setup section to describe shipped DPAPI vault + FirstRunWindow flow (NFR-03)</name>
   <files>Regras de Identidade/SEGURANCA.MD, README.md</files>
   <read_first>
     - Regras de Identidade/SEGURANCA.MD (full file, current state — locate section 2 around line 11-14 with the DPAPI prose)
@@ -176,8 +108,8 @@ This plan is autonomous=false because Task 4 (D-12 rotation) is a checkpoint:hum
     <automated>powershell -Command "$ok = $true; $seg = 'C:\Users\Carlo\CPAPS\AIB\Regras de Identidade\SEGURANCA.MD'; $rd = 'C:\Users\Carlo\CPAPS\AIB\README.md'; if (!(Select-String -Path $seg -Pattern 'FirstRunWindow' -Quiet)) { Write-Error 'SEGURANCA missing FirstRunWindow ref'; $ok = $false }; if (!(Select-String -Path $seg -Pattern 'DPAPI' -Quiet)) { Write-Error 'SEGURANCA missing DPAPI ref'; $ok = $false }; if (!(Select-String -Path $rd -Pattern 'FirstRunWindow' -Quiet)) { Write-Error 'README missing FirstRunWindow ref'; $ok = $false }; if (Select-String -Path $rd -Pattern 'Arquivo .env configurado na raiz' -Quiet) { Write-Error 'README still has old .env bullet'; $ok = $false }; if ($ok) { Write-Output 'OK' } else { exit 1 }"</automated>
   </verify>
   <acceptance_criteria>
-    - Select-String -Path Regras de Identidade/SEGURANCA.MD -Pattern "FirstRunWindow" returns at least 1 match
-    - Select-String -Path Regras de Identidade/SEGURANCA.MD -Pattern "DPAPI" returns at least 1 match in or near section 2
+    - Select-String -Path "Regras de Identidade/SEGURANCA.MD" -Pattern "FirstRunWindow" returns at least 1 match
+    - Select-String -Path "Regras de Identidade/SEGURANCA.MD" -Pattern "DPAPI" returns at least 1 match in or near section 2
     - Select-String -Path README.md -Pattern "FirstRunWindow" returns at least 1 match
     - Select-String -Path README.md -Pattern "Arquivo .env configurado na raiz" returns 0 matches (old bullet removed)
     - Select-String -Path README.md -Pattern "DPAPI" returns at least 1 match
@@ -187,7 +119,7 @@ This plan is autonomous=false because Task 4 (D-12 rotation) is a checkpoint:hum
 </task>
 
 <task type="auto" tdd="false">
-  <name>Task 3: Write 02-VERIFICATION.md — Phase-1-style numbered UAT scenarios translated from VALIDATION.md per-task table</name>
+  <name>Task 2: Write 02-VERIFICATION.md — Phase-1-style numbered UAT scenarios translated from VALIDATION.md per-task table</name>
   <files>.planning/phases/02-key-rotation-env-hardening/02-VERIFICATION.md</files>
   <read_first>
     - .planning/phases/01_modal-and-level9/VERIFICATION.md (template — Phase 1 UAT format with numbered S1..S8 scenarios, each with pre/step/expected/observed fields)
@@ -207,7 +139,7 @@ This plan is autonomous=false because Task 4 (D-12 rotation) is a checkpoint:hum
     - S3 (SEC-03.A3): fresh vault → hotkey opens FirstRunWindow (not ChatWindow). Step: delete ~/.AIB/credentials/openai.bin, set settings.AiProvider=OpenAI + settings.ApiKey=use-vault, launch app, press Ctrl+Shift+Space. Expected: FirstRunWindow appears.
     - S4 (SEC-03.A4 + D-05): placeholder key rejected via regex. Step: in FirstRunWindow OpenAI branch paste sk-PLACEHOLDER, click Salvar. Expected: ErrorLabel visible with copy "Chave inválida — deve começar com sk-"; audit log last line contains outcome:firstrun_invalid_key.
     - S5 (D-01 + D-08 + D-03): Ollama-branch user never sees FirstRunWindow. Step: set settings.AiProvider=Ollama, launch app, press hotkey. Expected: ChatWindow opens directly; no FirstRunWindow.
-    - S6 (D-04): four cancel paths each emit audit + clean shutdown. Step: open FirstRunWindow then press Esc; relaunch + press window-X; relaunch + click Cancelar; relaunch + Alt+F4. Expected: each path writes audit line with outcome:firstrun_cancelled; tray icon disappears within ~30s of hover refresh.
+    - S6 (D-04): four cancel paths each emit audit + clean shutdown. Step: open FirstRunWindow then press Esc; relaunch + press window-X; relaunch + click Cancelar; relaunch + Alt+F4. Expected: each path writes audit line with outcome:firstrun_cancelled (emitted by App.ShowFirstRunWindow per Pitfall 6, not by the window itself); tray icon disappears within ~30s of hover refresh.
     - S7 (D-05): regex positive case — accept real-shape key. Step: paste a 20+ char key matching ^sk-[a-zA-Z0-9_-]{20,}$, click Salvar. Expected: sentinel write happens; window closes; ChatWindow opens.
     - S8 (D-06): vault write succeeds and sentinel persists. Step: after S7, inspect filesystem. Expected: Test-Path ~/.AIB/credentials/openai.bin returns True; LoadSettings().ApiKey is "use-vault"; audit log last line contains outcome:firstrun_saved with key_last4 field.
     - S9 (D-06 read): post-save chat request succeeds via vault-resolved key. Step: send a chat message after S8. Expected: OpenAI response returns; no audit entry on this read path (silent).
@@ -223,26 +155,28 @@ This plan is autonomous=false because Task 4 (D-12 rotation) is a checkpoint:hum
     Status field at the top of file: status=draft (pending tester sign-off). Add a footer linking to .planning/phases/02-key-rotation-env-hardening/evidence/openai-console-rotation-2026-MM-DD.png as the D-12 proof artifact (referenced by S2).
 
     Total scenario count: 15 (matches the VALIDATION.md per-task table row count). If the planner merges adjacent rows into a single scenario, document the merge in that scenario's header; final count must be at least 13.
+
+    **CRITICAL — Audit literal coverage (per checker Issue 7):** the file body MUST contain each of the four audit outcome literal strings at least once: `firstrun_saved`, `firstrun_invalid_key`, `firstrun_cancelled`, `migration_clear_apikey`. These map to specific scenarios above (S4/S8 → firstrun_invalid_key/firstrun_saved, S6 → firstrun_cancelled, S13 → migration_clear_apikey). The verify command asserts presence of all four.
   </action>
   <verify>
-    <automated>powershell -Command "$p = 'C:\Users\Carlo\CPAPS\AIB\.planning\phases\02-key-rotation-env-hardening\02-VERIFICATION.md'; if (!(Test-Path $p)) { Write-Error 'missing'; exit 1 }; $c = Get-Content $p -Raw; $n = ([regex]::Matches($c, '(?m)^##\s+S\d+')).Count; if ($n -lt 13) { Write-Error \"only $n scenarios — need >=13\"; exit 1 }; if (!($c -match 'evidence/openai-console-rotation')) { Write-Error 'missing D-12 ref'; exit 1 }; Write-Output \"OK: $n scenarios\""</automated>
+    <automated>powershell -Command "$p = 'C:\Users\Carlo\CPAPS\AIB\.planning\phases\02-key-rotation-env-hardening\02-VERIFICATION.md'; if (!(Test-Path $p)) { Write-Error 'missing'; exit 1 }; $c = Get-Content -Raw $p; $n = ([regex]::Matches($c, '(?m)^##\s+S\d+')).Count; if ($n -lt 13) { Write-Error \"only $n scenarios — need >=13\"; exit 1 }; if (!($c -match 'evidence/openai-console-rotation')) { Write-Error 'missing D-12 ref'; exit 1 }; foreach ($lit in 'firstrun_saved','firstrun_invalid_key','firstrun_cancelled','migration_clear_apikey') { if ($c -notmatch $lit) { Write-Error \"missing audit literal: $lit\"; exit 1 } }; Write-Output \"OK: $n scenarios + 4 audit literals\""</automated>
   </verify>
   <acceptance_criteria>
     - Test-Path .planning/phases/02-key-rotation-env-hardening/02-VERIFICATION.md returns True
     - File contains yaml frontmatter with phase=02-key-rotation-env-hardening, status=draft, requirements list containing SEC-03
     - File contains at least 13 numbered scenario headers matching the regex pattern ^##\s+S\d+ (target 15; allow merges down to 13)
-    - File contains each of these audit outcome literals at least once (verified per scenario): firstrun_saved, firstrun_invalid_key, firstrun_cancelled, migration_clear_apikey
+    - File contains each of these four audit outcome literals at least once (verified by the verify command's literal-loop assertion per checker Issue 7): `firstrun_saved`, `firstrun_invalid_key`, `firstrun_cancelled`, `migration_clear_apikey`
     - File contains each of these D-XX references at least once: D-01, D-03, D-04, D-05, D-06, D-09, D-10, D-11, D-12
     - File contains the literal path string evidence/openai-console-rotation (D-12 evidence reference in S2)
     - Each scenario has four labelled sections (Pre, Step, Expected, Observed) — verified by Select-String counts: Pre at least 13, Step at least 13, Expected at least 13, Observed at least 13
   </acceptance_criteria>
-  <done>02-VERIFICATION.md exists with at least 13 numbered Phase-1-style scenarios covering every VALIDATION.md row; each scenario references the relevant D-XX decision; D-12 evidence path is named in S2.</done>
+  <done>02-VERIFICATION.md exists with at least 13 numbered Phase-1-style scenarios covering every VALIDATION.md row; each scenario references the relevant D-XX decision; D-12 evidence path is named in S2; all four audit outcome literals appear in the body (verified by the loop in the verify command per checker Issue 7).</done>
 </task>
 
 <task type="checkpoint:human-action" gate="blocking">
-  <name>Task 4: D-12 manual rotation — owner rotates the live OpenAI service-account key in console and commits redacted screenshot</name>
+  <name>Task 3: D-12 manual rotation — owner rotates the live OpenAI service-account key in console and commits redacted screenshot</name>
   <what-built>
-    Plans 01-03 deleted the live key from all three on-disk .env files, wired the vault sentinel into OpenAIService, scaffolded FirstRunWindow as the new entry path, and the evidence/.gitkeep directory marker is in place (plan 01 Task 2). The CODE side of "no live key on disk" is complete.
+    Plans 01-03 deleted the live key from all three on-disk .env files, wired the vault sentinel into OpenAIService, scaffolded FirstRunWindow as the new entry path, and the evidence/.gitkeep directory marker is in place (plan 01 Task 2). Plan 04a polished SettingsWindow. The CODE side of "no live key on disk" is complete.
 
     However, the leaked sk-svcacct-... key is still VALID upstream in the OpenAI console until the owner explicitly rotates it. Until rotation, anyone who had filesystem access between the original commit and the plan 01 deletion (including any backup, any cloud-sync, any USB stick, any git-stash that included the .env files) can still use the key. The leak window closes only when the upstream key is revoked.
 
@@ -281,41 +215,35 @@ This plan is autonomous=false because Task 4 (D-12 rotation) is a checkpoint:hum
 | OpenAI console (browser) ↔ owner | Manual rotation crosses the human into the upstream issuer's web UI; no Claude automation. |
 | New key ↔ clipboard ↔ FirstRunWindow KeyTextBox | The freshly-issued key transits clipboard briefly during paste into FirstRunWindow. No persistence outside the vault. |
 | evidence/*.png ↔ git history | The screenshot becomes part of the repo's git history forever; redaction MUST be irreversible (no metadata, no full-key pixels). |
-| SettingsWindow KeyTextBox ↔ settings file | Plan 04 Task 1 removes a corrupting code path where KeyTextBox display text was being written back to settings.ApiKey on Save. |
+| docs ↔ shipped behavior | NFR-03 forbids drift between code and prose; doc edits in Task 1 are the audit trail that makes the new flow discoverable. |
 
 ## STRIDE Threat Register
 
 | Threat ID | Category | Component | Severity | Disposition | Mitigation Plan |
 |-----------|----------|-----------|----------|-------------|-----------------|
-| T-02-13 | Spoofing / Authentication (ASVS V2) | OLD leaked sk-svcacct-... key continuing to work upstream | high | mitigate | Task 4 owner-driven rotation in OpenAI console revokes the OLD key. After Task 4, any holder of the leaked key receives 401. This is the actual SEC-03 close — without it, the code changes only relocate the trust path, not the leaked secret. |
-| T-02-14 | Information Disclosure (ASVS V8) | D-12 screenshot containing the full NEW key | high | mitigate | Task 4 how-to-verify step 5+6+7: screenshot must show last4 only of NEW key (OpenAI console naturally truncates in list view); owner crops/redacts before save; do NOT screenshot the one-time-reveal modal. Acceptance: file size <500KB (sanity), filename matches pattern, no pixel review by Claude (cannot inspect binary). |
-| T-02-15 | Tampering (ASVS V14) | SettingsWindow Save_Click corrupting the sentinel by writing display label back to settings.ApiKey | high | mitigate | Task 1 Edit B step 3: DELETE the line _currentSettings.ApiKey = KeyTextBox.Text; in Save_Click. Acceptance check: Select-String returns 0 matches for that exact line in the post-edit file. |
-| T-02-16 | Spoofing / UX (ASVS V1) | SettingsWindow Alterar chave button accidentally shutting down the app on Cancel (Pitfall 6 misapplication) | medium | mitigate | Task 1 Edit B step 2: AlterarChave_Click does NOT call Application.Current.Shutdown(). Acceptance check: Select-String returns 0 matches for Application.Current.Shutdown in SettingsWindow.xaml.cs. |
-| T-02-17 | Misconfiguration (NFR-03) | Doc drift between shipped behavior and SEGURANCA.MD/README.md prose | medium | mitigate | Task 2 rewrites the OpenAI-key prose in both docs as present-tense statements of fact (no "deve"/"deverá"/"será" for the OpenAI key path). Acceptance check: README old bullet absent; new prose includes FirstRunWindow + DPAPI mentions. |
-| T-02-18 | UAT gap | No reproducible test scenarios for the new flow → manual UAT becomes ad-hoc | medium | mitigate | Task 3 creates 02-VERIFICATION.md with at least 13 numbered scenarios mirroring Phase 1 format; each scenario maps to a D-XX decision; acceptance criteria enforce scenario count + D-XX coverage + Pre/Step/Expected/Observed structure. |
-| T-02-SC | Tampering / Supply Chain | npm/pip/cargo installs in this plan | low | accept | No package installs — only doc + XAML/C# edits + 1 binary file (owner-supplied screenshot). RESEARCH Package Legitimacy Audit confirms N/A for the entire phase. |
+| T-02-13 | Spoofing / Authentication (ASVS V2) | OLD leaked sk-svcacct-... key continuing to work upstream | high | mitigate | Task 3 owner-driven rotation in OpenAI console revokes the OLD key. After Task 3, any holder of the leaked key receives 401. This is the actual SEC-03 close — without it, the code changes only relocate the trust path, not the leaked secret. |
+| T-02-14 | Information Disclosure (ASVS V8) | D-12 screenshot containing the full NEW key | high | mitigate | Task 3 how-to-verify step 5+6+7: screenshot must show last4 only of NEW key (OpenAI console naturally truncates in list view); owner crops/redacts before save; do NOT screenshot the one-time-reveal modal. Acceptance: file size <500KB (sanity), filename matches pattern, no pixel review by Claude (cannot inspect binary). |
+| T-02-17 | Misconfiguration (NFR-03) | Doc drift between shipped behavior and SEGURANCA.MD/README.md prose | medium | mitigate | Task 1 rewrites the OpenAI-key prose in both docs as present-tense statements of fact (no "deve"/"deverá"/"será" for the OpenAI key path). Acceptance check: README old bullet absent; new prose includes FirstRunWindow + DPAPI mentions. |
+| T-02-18 | UAT gap | No reproducible test scenarios for the new flow → manual UAT becomes ad-hoc | medium | mitigate | Task 2 creates 02-VERIFICATION.md with at least 13 numbered scenarios mirroring Phase 1 format; each scenario maps to a D-XX decision; verify command enforces scenario count + D-12 ref + all four audit outcome literals (firstrun_saved/firstrun_invalid_key/firstrun_cancelled/migration_clear_apikey) per checker Issue 7. |
+| T-02-SC | Tampering / Supply Chain | npm/pip/cargo installs in this plan | low | accept | No package installs — only doc edits + 1 markdown file + 1 binary file (owner-supplied screenshot). RESEARCH Package Legitimacy Audit confirms N/A for the entire phase. |
 </threat_model>
 
 <verification>
-- dotnet build AIBWindows/AIB.csproj exits 0 with Build succeeded after Task 1.
-- Select-String -Path AIBWindows/Views/SettingsWindow.xaml.cs -Pattern "_currentSettings.ApiKey = KeyTextBox.Text" returns 0 matches (corrupting line removed).
-- Select-String -Path AIBWindows/Views/SettingsWindow.xaml.cs -Pattern "Application.Current.Shutdown" returns 0 matches (Pitfall 6 mitigated in Settings path).
 - SEGURANCA.MD section 2 contains FirstRunWindow + DPAPI mentions.
 - README.md old .env-bullet absent; new FirstRunWindow + DPAPI bullet present.
-- 02-VERIFICATION.md exists with at least 13 numbered scenarios; D-12 evidence path referenced.
-- evidence/openai-console-rotation-YYYY-MM-DD.png exists after Task 4 owner sign-off (file size 0 < x < 5MB; PNG header magic bytes).
-- Test chat message after FirstRunWindow Save with NEW key returns a normal LLM response (manual verification step 8 of Task 4).
+- 02-VERIFICATION.md exists with at least 13 numbered scenarios; D-12 evidence path referenced; all four audit outcome literals present (firstrun_saved, firstrun_invalid_key, firstrun_cancelled, migration_clear_apikey).
+- evidence/openai-console-rotation-YYYY-MM-DD.png exists after Task 3 owner sign-off (file size 0 < x < 5MB; PNG header magic bytes).
+- Test chat message after FirstRunWindow Save with NEW key returns a normal LLM response (manual verification step 8 of Task 3).
 </verification>
 
 <success_criteria>
-- SettingsWindow displays the vault sentinel as a friendly label; Alterar chave button safely reopens FirstRunWindow.
 - SEGURANCA.MD section 2 + README.md key-setup describe the shipped DPAPI vault + FirstRunWindow flow in present tense (NFR-03).
-- 02-VERIFICATION.md provides at least 13 Phase-1-style numbered scenarios covering every VALIDATION.md per-task row.
-- The OLD leaked OpenAI service-account key is REVOKED in the upstream console (Task 4 owner action).
+- 02-VERIFICATION.md provides at least 13 Phase-1-style numbered scenarios covering every VALIDATION.md per-task row, and contains all four audit outcome literal strings (per checker Issue 7).
+- The OLD leaked OpenAI service-account key is REVOKED in the upstream console (Task 3 owner action).
 - The NEW key lives ONLY in the DPAPI vault; FirstRunWindow + OpenAIService end-to-end smoke test (chat message) passes.
 - Redacted screenshot evidence committed to evidence/openai-console-rotation-YYYY-MM-DD.png.
 </success_criteria>
 
 <output>
-Create .planning/phases/02-key-rotation-env-hardening/02-04-SUMMARY.md when done, listing: SettingsWindow edits (line deltas), SEGURANCA.MD + README.md doc-edit deltas, 02-VERIFICATION.md scenario count, evidence/*.png filename + size + date, end-to-end chat test result from Task 4 step 8, any deviations from the plan that the owner observed during rotation.
+Create .planning/phases/02-key-rotation-env-hardening/02-04b-SUMMARY.md when done, listing: SEGURANCA.MD + README.md doc-edit deltas, 02-VERIFICATION.md scenario count + audit-literal coverage report, evidence/*.png filename + size + date, end-to-end chat test result from Task 3 step 8, any deviations from the plan that the owner observed during rotation.
 </output>

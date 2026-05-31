@@ -76,7 +76,8 @@ Plans:
 - [ ] 02-01-PLAN.md — Filesystem cleanup: delete 3 .env files containing live key; remove DotNetEnv package; ship .env.example placeholder; scaffold evidence/.gitkeep
 - [ ] 02-02-PLAN.md — Create FirstRunWindow (new XAML + code-behind) with Ollama/OpenAI branches, regex validation, vault write, audit-log outcomes
 - [ ] 02-03-PLAN.md — Wire runtime: OpenAIService use-vault sentinel (both call sites) + App.OnStartup D-11 migration + OnHotkeyDetected D-01/D-03/D-08 branch + SettingsWindow provider combo extension
-- [ ] 02-04-PLAN.md — Wrapping: SettingsWindow KeyTextBox polish + SEGURANCA.MD + README.md docs (NFR-03) + 02-VERIFICATION.md scenarios + D-12 manual rotation evidence (autonomous=false)
+- [ ] 02-04a-PLAN.md — SettingsWindow polish: KeyTextBox read-only friendly label + Alterar chave button (wave 3, autonomous=true; split from original plan 04 per checker Issue 4)
+- [ ] 02-04b-PLAN.md — Docs + UAT + rotation: SEGURANCA.MD + README.md docs (NFR-03) + 02-VERIFICATION.md scenarios + D-12 manual rotation evidence (wave 4, depends_on 02-04a, autonomous=false)
 
 **Estimated size:** S
 

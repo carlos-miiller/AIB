@@ -588,23 +588,23 @@ Recommended Phase 2 schema (anonymous objects, JSONL one-per-line):
 | A6 | The `Cancel = Shutdown` semantic (D-04) is intentional even though the user might just want to dismiss and try later. | Locked decision | Per CONTEXT.md D-04 rationale ("without a key the app simply does not provide a UI"). Locked, not researched. |
 | A7 | The detector check is fast enough to run on EVERY hotkey press (D-03: "the check runs on every hotkey invocation until the vault contains a key OR the provider is `Ollama`"). | Pattern 2 | `CredentialService.RetrieveCredential` does a File.Exists + DPAPI decrypt — sub-10ms on warm SSD. Acceptable for hotkey latency. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **What value does `settings.AiProvider` take when the user picks "OpenAI" in FirstRunWindow?**
+1. **What value does `settings.AiProvider` take when the user picks "OpenAI" in FirstRunWindow?** — RESOLVED: `settings.AiProvider = "OpenAI"` literal (option (a) adopted — SettingsWindow ProviderComboBox extended with `<ComboBoxItem Content="OpenAI"/>` in plan 03 task 3 so the value round-trips through the existing Settings UI).
    - **What we know:** `SettingsWindow.xaml:102-105` only enumerates `Ollama` and `Google Gemini` in its provider ComboBox. CONTEXT.md D-07 says FirstRunWindow's radio group is "Ollama / OpenAI". Setting `AiProvider = "OpenAI"` introduces a value the SettingsWindow combo cannot display.
    - **What's unclear:** Should we (a) keep `AiProvider = "Ollama"` for the Ollama branch and `AiProvider = "OpenAI"` for the OpenAI branch, extending the SettingsWindow combo in this phase too — or (b) set `AiProvider` to anything-non-Ollama and treat any non-Ollama value as "uses the vault"?
    - **Recommendation:** Option (a) — extend `SettingsWindow.xaml` combo to include "OpenAI" alongside the existing "Ollama" and "Google Gemini". One line of XAML, zero risk. Plan task: "Update SettingsWindow.xaml provider combo to include `<ComboBoxItem Content=\"OpenAI\"/>`". Defer to discuss-phase if planner disagrees; flag this as an open question rather than locking.
 
-2. **Does the D-11 migration's `previous_key_present` audit field carry any user-identifying info?**
+2. **Does the D-11 migration's `previous_key_present` audit field carry any user-identifying info?** — RESOLVED: schema is `previous_key_present:bool` (true/false only — no prefix, no last4, no system id). Adopted verbatim by plan 03 task 2 Edit A.
    - **What we know:** The field is `bool` (true/false). No key prefix, no last4, no system identifier. Safe by construction.
    - **What's unclear:** Nothing — included for completeness; the planner can adopt verbatim.
 
-3. **Should the Save path also write `settings.ApiUrl` for the OpenAI branch?**
+3. **Should the Save path also write `settings.ApiUrl` for the OpenAI branch?** — RESOLVED: `settings.ApiUrl = ""` on OpenAI save (empty → OpenAI SDK uses default `https://api.openai.com/v1` endpoint per existing `EnsureClient` null-guard). Adopted by plan 02 task 2 Save_Click OpenAI branch.
    - **What we know:** D-06 specifies vault write + sentinel. Doesn't mention `ApiUrl`. The existing `EnsureClient` at `OpenAIService.cs:704-720` uses `settings.ApiUrl` if non-empty AND only falls back to the Ollama URL pattern when `AiProvider == "Ollama"`.
    - **What's unclear:** For an OpenAI-branch user, what should `ApiUrl` be? Empty (let the OpenAI SDK use its default `https://api.openai.com/v1`)? Or explicitly `"https://api.openai.com/v1"`?
    - **Recommendation:** Set `settings.ApiUrl = ""` (empty) on OpenAI-branch save. The `EnsureClient` block at `:719` already does `if (!string.IsNullOrEmpty(apiUrl)) options.Endpoint = new Uri(apiUrl);` — so empty means the SDK uses its default endpoint. This is the path of least surprise.
 
-4. **Where does the `evidence/` subdirectory get created — by the planner, by the user, or automatically?**
+4. **Where does the `evidence/` subdirectory get created — by the planner, by the user, or automatically?** — RESOLVED: `.planning/phases/02-key-rotation-env-hardening/evidence/.gitkeep` is created and tracked by plan 01 task 2 (zero-byte file). Directory exists from wave 1 onward so the D-12 screenshot has a tracked home.
    - **What we know:** D-12 says rotation evidence lives at `.planning/phases/02-key-rotation-env-hardening/evidence/openai-console-rotation-2026-MM-DD.png`. The directory does NOT exist today.
    - **Recommendation:** Add a plan task: "Create `evidence/` subdir; commit a `.gitkeep` so the directory tracks even before D-12 screenshot exists. VERIFICATION.md references the eventual file path." This is a 1-minute task; gives the user a clear receptacle.
 
