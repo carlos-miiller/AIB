@@ -14,19 +14,19 @@ progress:
 
 # STATE: AIB
 
-**Last updated:** 2026-05-30
+**Last updated:** 2026-05-31
 
 ## Current position
 
-Phase: 02 (key-rotation-env-hardening) — EXECUTING
-Plan: 1 of 5
-Phase: 2 — context gathered (`02-CONTEXT.md` + `02-DISCUSSION-LOG.md`); 12 decisions locked, Linux deferred. Ready for `/gsd-plan-phase 2`.
+Phase: 03 (tool-argument-hardening-quoting-denylist-skill-gating) — CONTEXT GATHERED
+Plan: 0 of N
+Phase: 3 — context gathered (`03-CONTEXT.md` + `03-DISCUSSION-LOG.md`); 12 decisions locked (D-01..D-12), "Factory reset" deferred. Ready for `/gsd-plan-phase 3`.
 
 - **Project:** AIB (`.planning/PROJECT.md`)
 - **Milestone:** security-remediation-v1 (`.planning/ROADMAP.md`)
-- **Active phase:** Phase 2 — context complete; planning next.
-- **Last action:** `/gsd-discuss-phase 2` (`a7f943a`) — 12 decisions captured (D-01..D-12); fixed ROADMAP.md `## Phase N — ...` → `## Phase N: ...` so parser recognizes phases; AIBLinux key path deferred to feature-parity milestone.
-- **Prior actions:** `/gsd-execute-phase 1` → code review (2 criticals fixed) → verifier `human_needed`. Commits: `bc4a191` (T1) → `8b9f62e` (T2) → `f777314` (T3) → `39607d2` (T4) → `2e1568d` (T5) → `f86a753` (T6) → `6c078c2` (T7) → `8168f30` (T8) → `66ee9a7` (T9) → `644fc80` (exec docs) → `f9c1471` (CR-01 + CR-02) → Phase 1 artifacts. Earlier: `/gsd-plan-phase 1` (`aeba91b`); baseline (`6d744c7`); `/gsd-new-project` (`105a59c`); `/gsd-map-codebase` (`93f4d8a`).
+- **Active phase:** Phase 3 — context complete; planning next.
+- **Last action:** `/gsd-discuss-phase 3` (`49ecbdc`) — 12 decisions captured: hybrid floor list (D-01..D-04, closes Phase 1 D3 deferred slot), CommandService.ExecuteWithArgListAsync dual-path (D-05..D-07), CommandConfirmationWindow extended with script body + content-hash cache (D-08..D-10), InstallFromOnlineAsync hardened + DynamicSkillTool deleted (D-11, D-12).
+- **Prior actions:** Phase 2 complete (`ddd82ed` marks roadmap, 02-04b executed earlier); `/gsd-discuss-phase 2` (`a7f943a`); Phase 1 execution + UAT outstanding. Commits: `bc4a191` … `66ee9a7` (Phase 1 T1-T9) → Phase 2 waves 1-4 → `ddd82ed`.
 
 ## Quick links
 
@@ -41,8 +41,8 @@ Phase: 2 — context gathered (`02-CONTEXT.md` + `02-DISCUSSION-LOG.md`); 12 dec
 | # | Phase | Status | Requirements |
 |---|---|---|---|
 | 1 | Modal confirmation + Level-9 alignment | complete (code + verifier; UAT persists in `01-HUMAN-UAT.md`) | SEC-01, SEC-02 |
-| 2 | Key rotation + `.env` hardening | context gathered (`02-CONTEXT.md`) | SEC-03 |
-| 3 | Tool argument hardening | not started | SEC-04, SEC-05, SEC-06 |
+| 2 | Key rotation + `.env` hardening | complete (`ddd82ed`) | SEC-03 |
+| 3 | Tool argument hardening | context gathered (`03-CONTEXT.md`) | SEC-04, SEC-05, SEC-06 |
 | 4 | Prompt-injection isolation | not started | SEC-07 |
 | 5 | Filesystem exfiltration controls | not started | SEC-08 |
 | 6 | Reliability: warmup + retries | not started | REL-01, REL-02 |
@@ -69,6 +69,18 @@ Phase: 2 — context gathered (`02-CONTEXT.md` + `02-DISCUSSION-LOG.md`); 12 dec
 - Phase 02 D-10: Delete `.env` from disk + remove `DotNetEnv` from `AIB.csproj:17` (zero call sites); ship `.env.example` with placeholders.
 - Phase 02 D-11: Migration = force re-entry; on first launch post-deploy, overwrite `settings.ApiKey = "use-vault"` unconditionally; do NOT copy old key into vault (rotation must happen first).
 - Phase 02 D-12: Rotation evidence = screenshot in `.planning/phases/02-key-rotation-env-hardening/evidence/` showing old key revoked + new key last4 + date.
+- Phase 03 D-01: Hybrid denylist = tiny floor list refused at L<7, modal-only at L≥7. Preserves Phase 1 D5/D8 invariants.
+- Phase 03 D-02: Floor list = recursive deletion + format/partition + shutdown/logoff + registry destructive ops. Lives in new `CommandFloorList.cs`.
+- Phase 03 D-03: Matching = normalize-then-regex (lowercase, strip quote-concat, alias map mv→Move-Item etc., reject `-EncodedCommand` at L<7, regex word boundaries).
+- Phase 03 D-04: Modal fires first; floor refuses post-Allow at L<7. CommandConfirmationContext gains `DenylistHit` + `DenylistReason`. New audit outcome `allow_then_floor_deny`. Closes Phase 1 D3 deferred slot.
+- Phase 03 D-05: `CommandService` grows `ExecuteWithArgListAsync(fileName, IEnumerable<string> args, cwd, timeoutMs)`; shared `RunProcessAsync(Process)` helper with existing `ExecuteAsync(string)`. run_command path unchanged.
+- Phase 03 D-06: LLM `arguments` string is a SINGLE ArgumentList element (`[scriptPath, argumentsString]`). Scripts parse their own argv[1].
+- Phase 03 D-07: Static `InterpreterMap` Dictionary in `SkillService` is the single source of truth for fileName + switches; consumed by RunSkillAsync + InstallFromOnlineAsync.
+- Phase 03 D-08: `CommandConfirmationWindow` extends in place; `CommandConfirmationContext` gains `ScriptBody`, `Interpreter`, `ContentHash`. New ScrollViewer row, Visibility-bound to ScriptBody != null. Shared `ShowAsync(ctx)` helper.
+- Phase 03 D-09: `execute_skill` reads scriptPath off disk (≤50KB), computes SHA256, populates ScriptBody. Markdown-only skills skip modal.
+- Phase 03 D-10: `AlwaysAllowSession` re-keyed by `(Tool, Cmd, ContentHash?)`. Session-only, lock-guarded, cleared on App.Exit. AuditLog gains optional `content_hash` field.
+- Phase 03 D-11: `InstallFromOnlineAsync` keeps method body, adds SEC-06 regex `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(@[A-Za-z0-9_.\-]+)?$` at :154, rewrites npx invocation to `ExecuteWithArgListAsync("npx", ["-y", "skills", "add", installArg, "--yes"], workPath, 900000)`. Dead today but future-ready.
+- Phase 03 D-12: Delete `AIBWindows/Services/DynamicSkillTool.cs` entirely. Zero call sites; ToolRegistry comment already states lazy-loading uses execute_skill instead.
 
 ## Open accepted-risks
 
@@ -81,7 +93,7 @@ Clean after Phase 1 execution. 9 atomic commits landed (`bc4a191` … `66ee9a7`)
 ## Next command
 
 ```
-/gsd-plan-phase 2
+/gsd-plan-phase 3
 ```
 
-Phase 2 context locked at `02-CONTEXT.md` (commit `a7f943a`). 12 decisions ready for researcher + planner. Parallel manual UAT for phase 01 still pending: run the 8 scenarios in `01-HUMAN-UAT.md` against the WPF build (HEAD ≥ `f9c1471` recommended), then `/gsd-verify-work 1` to close the human-needed gate.
+Phase 3 context locked at `03-CONTEXT.md` (commit `49ecbdc`). 12 decisions ready for researcher + planner. Parallel manual UAT for phase 01 still pending: run the 8 scenarios in `01-HUMAN-UAT.md` against the WPF build (HEAD ≥ `f9c1471` recommended), then `/gsd-verify-work 1` to close the human-needed gate.
