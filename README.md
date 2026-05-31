@@ -27,7 +27,7 @@ Versão original baseada em **Python**, ideal para experimentação e ambientes 
 - Modelo recomendado: **`gemma4:e2b`** (Extremamente otimizado, veloz e com suporte multimodal) ou superior.
 - O sistema possui **Warmup e Trava de Memória (Heartbeat)** no boot para mascarar a compilação de gramática.
 - As skills customizadas (em Python) ficam salvas em `~/.AIB/skills` e são chamadas sob demanda (Lazy Loading).
-- Arquivo `.env` configurado na raiz com as chaves de API necessárias (caso não use Ollama).
+- **Chave da OpenAI (caso use OpenAI):** é solicitada via `FirstRunWindow` no primeiro atalho global (`Ctrl+Shift+Space`) após a instalação. A chave é armazenada com criptografia DPAPI no cofre local (`~/.AIB/credentials/openai.bin`); o `profile.dat` carrega apenas o sentinela `"use-vault"`. Não existe arquivo `.env` no fluxo Windows — o reset de chave acontece via botão "Alterar chave" em Configurações, que reabre `FirstRunWindow`.
 
 ## 📄 Licença
 
