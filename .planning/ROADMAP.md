@@ -106,13 +106,14 @@ Plans:
 
 **Requirements covered:** SEC-04, SEC-05, SEC-06
 **CONCERNS.md findings closed:** 3 HIGH
+**Plans:** 4 plans
 
 **Why third:** Builds on the Phase 1 modal (skills now route through it). Pure code change; no operational coordination. Largest single phase in lines-of-code touched.
 
 **Scope:**
 
 - Migrate all internal `ProcessStartInfo` uses to `ArgumentList` (SkillService, DynamicSkillTool, CommandService).
-- Choose denylist replacement: **allowlist of subcommands per level** (preferred) OR delete denylist entirely (modal-only). Decision is gated by `/gsd-discuss-phase` outcome.
+- Replace porous denylist with a hybrid: tiny floor list refused at L<7, modal-only authority at L≥7 (per `/gsd-discuss-phase 3` outcome — see `03-CONTEXT.md` D-01).
 - `ExecuteSkillTool.RequiredLevel = 6`, `MaterializeSkillTool.RequiredLevel = 8`.
 - Both skill tools route through `CommandConfirmationWindow` (materialize shows script body).
 - `SkillService.InstallFromOnlineAsync` validates `installArg` against `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(@[A-Za-z0-9_.\-]+)?$`.
@@ -121,9 +122,13 @@ Plans:
 
 - `AIBWindows/Services/CommandService.cs`
 - `AIBWindows/Services/SkillService.cs`
-- `AIBWindows/Services/DynamicSkillTool.cs`
+- `AIBWindows/Services/DynamicSkillTool.cs` (DELETE per D-12)
 - `AIBWindows/Services/NativeTools.cs` (ExecuteSkillTool, MaterializeSkillTool, RunCommandTool denylist removal/replacement)
-- `AIBWindows/Views/CommandConfirmationWindow.xaml(.cs)` (script-body preview)
+- `AIBWindows/Services/CommandFloorList.cs` (NEW per D-02)
+- `AIBWindows/Services/CommandConfirmationContext.cs` (extended with 5 new init-only properties)
+- `AIBWindows/Services/AlwaysAllowSession.cs` (re-keyed to tuple per D-10)
+- `AIBWindows/Views/CommandConfirmationWindow.xaml(.cs)` (script-body preview + amber AVISO banner + shared ShowAsync helper)
+- `Regras de Identidade/SEGURANCA.MD` (NFR-03 present-tense rewrite)
 
 **Success criteria:**
 
@@ -131,7 +136,24 @@ Plans:
 - [ ] `execute_skill` at Level 1 returns "permissão negada"
 - [ ] `materialize_skill` modal shows script body before write
 - [ ] `npx skills add ..badrepo` rejected; `owner/repo@1.0.0` accepted
-- [ ] Decision (allowlist vs modal-only) recorded in `SEGURANCA.MD`
+- [ ] Decision (hybrid floor + modal-only at L≥7) recorded in `SEGURANCA.MD`
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — Mechanical ArgumentList migration: extract CommandService.RunProcessAsync helper + add ExecuteWithArgListAsync + InterpreterMap in SkillService + RunSkillAsync rewrite + delete DynamicSkillTool.cs (D-05, D-06, D-07, D-12; autonomous=true)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — Hybrid floor policy: new CommandFloorList.cs (normalize-then-regex with quote-concat strip + alias expand + -EncodedCommand outright refuse) + RunCommandTool floor-after-modal wiring + amber AVISO banner + allow_then_floor_deny audit outcome + ContainsWord/ApplyDenylist deletion + BuildEntry content_hash slot (D-01, D-02, D-03, D-04; autonomous=true)
+
+**Wave 3** *(blocked on Wave 2 completion — same-file conflicts on CommandConfirmationContext / CommandConfirmationWindow / NativeTools)*
+
+- [ ] 03-03-PLAN.md — Skill gating + modal helper lift: CommandConfirmationContext D-08 fields + ScrollViewer + Consolas read-only TextBox + shared ShowAsync static helper carrying _modalLock + ExecuteSkillTool.RequiredLevel=6 + MaterializeSkillTool.RequiredLevel=8 + both tools route through ShowAsync with SHA256-keyed AlwaysAllow + AlwaysAllowSession tuple re-key + InstallFromOnlineAsync D-11 regex + npx.cmd→npx fallback (D-08, D-09, D-10, D-11; autonomous=true)
+
+**Wave 4** *(blocked on Wave 3 — UAT requires shipped code)*
+
+- [ ] 03-04-PLAN.md — Docs + UAT closure: author 03-VERIFICATION.md scaffold with 13 RESEARCH-derived scenarios + provision _test_echo_args skill + rewrite SEGURANCA.MD denylist/skill/quoting paragraphs (NFR-03) + execute manual UAT + sign-off (autonomous=false; has checkpoint:human-verify)
 
 **Estimated size:** M
 
