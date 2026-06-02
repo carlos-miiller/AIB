@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Tasks;
 using OpenAI.Chat;
@@ -281,11 +282,10 @@ public class ReadFileTool : ITool
 
 public class RunCommandTool : ITool
 {
-    // Serializa o modal entre múltiplas RunCommandTool.ExecuteAsync paralelas.
-    // OpenAIService dispara tools via Task.WhenAll; sem este lock, dois run_command
-    // simultâneos empilhariam dois ShowDialog na UI thread (re-entrância de Dispatcher
-    // + Owner igual = ordem de cliques indefinida). Resolve CR-01 da review fase 01.
-    private static readonly SemaphoreSlim _modalLock = new(1, 1);
+    // D-08 (Phase 3): o semáforo de modal foi promovido para
+    // <see cref="CommandConfirmationWindow"/> como _modalLock estático, compartilhado
+    // por RunCommandTool + ExecuteSkillTool + MaterializeSkillTool via ShowAsync.
+    // Mantemos a tool magrinha — sem campo local.
 
     public string Name => "run_command";
     public string Description => "Executa comandos no shell do usuário (cmd.exe /c) e retorna a saída. Para invocar cmdlets PowerShell, prefixe com 'powershell -NoProfile -Command \"...\"'. Para caminhos com espaço, use aspas.";
@@ -331,42 +331,30 @@ public class RunCommandTool : ITool
             DenylistReason = floorReason,
         };
 
-        // [4] AlwaysAllow fast path (D2): pula o modal se o usuário já marcou
-        // "Sempre permitir" neste sessão para esta string exata.
-        if (AlwaysAllowSession.Contains(command))
+        // [4] AlwaysAllow fast path (D2 + D-10): a chave agora é a tupla
+        // (Tool, Cmd, ContentHash?) — para run_command o ContentHash é null.
+        // O cast (string?)null é obrigatório para o compilador escolher a
+        // sobrecarga ValueTuple correta (null literal sozinho é ambíguo).
+        var allowKey = (ctx.Tool, ctx.Command, (string?)null);
+        if (AlwaysAllowSession.Contains(allowKey))
         {
             _ = AuditLogService.AppendAsync(BuildEntry(ctx, "always_allow", true));
         }
         else
         {
             // [5] No-UI guard (D1): se não há WPF host vivo, recuse — nunca
-            // implicitamente permita quando o humano não pode aprovar.
+            // implicitamente permita quando o humano não pode aprovar. O guard
+            // permanece local à tool (em vez de delegar ao ShowAsync) para
+            // emitir o outcome "deny_no_ui" com o ctx completo no audit log.
             if (System.Windows.Application.Current == null)
             {
                 _ = AuditLogService.AppendAsync(BuildEntry(ctx, "deny_no_ui", false));
                 return "ACESSO NEGADO: interface de confirmação indisponível.";
             }
 
-            // [6] Modal hop (D1): salta da thread de tool (background) para a UI
-            // thread, mostra o modal, e bloqueia esperando a decisão humana.
-            // _modalLock garante que apenas um ShowDialog roda por vez mesmo
-            // quando o ReAct loop dispara múltiplos run_command em paralelo.
-            bool allowed;
-            bool alwaysAllow;
-            await _modalLock.WaitAsync().ConfigureAwait(false);
-            try
-            {
-                (allowed, alwaysAllow) = await System.Windows.Application.Current.Dispatcher.InvokeAsync<(bool, bool)>(() =>
-                {
-                    var win = new CommandConfirmationWindow(ctx) { Owner = System.Windows.Application.Current.MainWindow };
-                    bool result = win.ShowDialog() == true;
-                    return (result && win.IsAllowed, win.AlwaysAllow);
-                }).Task;
-            }
-            finally
-            {
-                _modalLock.Release();
-            }
+            // [6] Modal hop (D-08): ShowAsync carrega o _modalLock estático e
+            // o Dispatcher.InvokeAsync compartilhados com as skill tools.
+            var (allowed, alwaysAllow) = await CommandConfirmationWindow.ShowAsync(ctx);
 
             if (!allowed)
             {
@@ -376,7 +364,7 @@ public class RunCommandTool : ITool
 
             if (alwaysAllow)
             {
-                AlwaysAllowSession.Add(command);
+                AlwaysAllowSession.Add(allowKey);
                 _ = AuditLogService.AppendAsync(BuildEntry(ctx, "always_allow", true));
             }
             else
@@ -402,10 +390,26 @@ public class RunCommandTool : ITool
         return await CommandService.ExecuteAsync(command, cwd);
     }
 
-    // Schema do audit log (D6 + D-10 prep): todas as call sites usam esta mesma forma de entry.
-    // content_hash é opcional — null para run_command nesta fase; Plan 03 popula com SHA256
-    // para skill tools quando CommandConfirmationContext ganhar a propriedade ContentHash.
-    private static object BuildEntry(CommandConfirmationContext ctx, string outcome, bool alwaysAllow) => new
+    // D-10 (Phase 3): BuildEntry agora delega para o helper compartilhado em
+    // ModalAuditEntry para que RunCommandTool, ExecuteSkillTool e
+    // MaterializeSkillTool emitam linhas JSONL idênticas no audit.
+    private static object BuildEntry(CommandConfirmationContext ctx, string outcome, bool alwaysAllow)
+        => ModalAuditEntry.Build(ctx, outcome, alwaysAllow);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER COMPARTILHADO: schema do audit log (D-10)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// Constrói a entrada anônima que <see cref="AuditLogService"/> serializa como
+/// linha JSONL. Compartilhado pelos três modal-bearing tools (run_command,
+/// execute_skill, materialize_skill) — content_hash é null para run_command
+/// e o hex SHA256 do corpo do script para as skill tools (D-10).
+/// </summary>
+internal static class ModalAuditEntry
+{
+    public static object Build(CommandConfirmationContext ctx, string outcome, bool alwaysAllow) => new
     {
         ts = DateTime.UtcNow.ToString("o"),
         tool = ctx.Tool,
@@ -414,8 +418,7 @@ public class RunCommandTool : ITool
         cwd = ctx.Cwd,
         outcome,
         always_allow = alwaysAllow,
-        // TODO(Plan 03 / D-10): replace null with ctx.ContentHash once CommandConfirmationContext gains the property.
-        content_hash = (string?)null,
+        content_hash = ctx.ContentHash,
     };
 }
 
@@ -509,7 +512,11 @@ public class ExecuteSkillTool : ITool
 {
     public string Name => "execute_skill";
     public string Description => "Executa uma habilidade dinâmica local (script python/powershell).";
-    public int RequiredLevel => 1;
+    // D-09 (Phase 3): elevated from 1 to 6. Skill execution agora exige aprovação humana
+    // explícita via modal com preview do corpo do script (defesa anti-prompt-injection +
+    // anti-silent-edit). Markdown-only skills (instruções, não código executável) ainda
+    // passam pelo gate de nível, mas ignoram o modal abaixo.
+    public int RequiredLevel => 6;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         Name, Description,
@@ -529,8 +536,90 @@ public class ExecuteSkillTool : ITool
         string skillName = ToolArgParser.Get(argumentsJson, "skill_name");
         string args = ToolArgParser.Get(argumentsJson, "arguments");
         if (string.IsNullOrWhiteSpace(skillName)) return "ERRO: 'skill_name' é obrigatório.";
-        
+
+        // [1] Skill lookup (precisa rodar antes do modal — sem skill, sem ctx).
+        var skill = SkillService.ListLocalSkills().FirstOrDefault(s => s.Name.Equals(skillName, StringComparison.OrdinalIgnoreCase));
+        if (skill == null) return $"Erro: Skill '{skillName}' não encontrada.";
+
+        // [2] D-09 markdown bypass: SKILL.md são instruções (texto humano), nunca
+        // executam — pulam o modal e voltam direto. O gate de nível já filtrou
+        // chamadas L<6 pelo ToolRegistry.
+        if (skill.Interpreter == "markdown")
+            return await SkillService.RunSkillAsync(skillName, args);
+
+        // [3] D-09: lê o corpo do script + SHA256 das *bytes inteiras* (não da preview).
+        // Edits silenciosos passados do cap de 50KB ainda invalidam a tupla AlwaysAllow.
+        var (body, hash) = ReadAndHashSkillFile(skill.ScriptFile);
+
+        // [4] Build context — DenylistHit/DenylistReason ficam default (false/null):
+        // skills NÃO consultam o floor list porque o corpo do script é visível ao usuário
+        // via preview, e a execução vai por ExecuteWithArgListAsync (sem cmd.exe na cadeia).
+        var ctx = new CommandConfirmationContext
+        {
+            Tool = "execute_skill",
+            Command = $"{skill.Interpreter} {skill.Name} {args}".TrimEnd(),
+            Level = userLevel,
+            Cwd = Path.GetDirectoryName(skill.ScriptFile) ?? "",
+            ScriptBody = body,
+            Interpreter = skill.Interpreter,
+            ContentHash = hash,
+        };
+
+        // [5] D-10 tuple AlwaysAllow key — ContentHash é o hex SHA256.
+        var allowKey = (ctx.Tool, ctx.Command, ctx.ContentHash);
+
+        if (AlwaysAllowSession.Contains(allowKey))
+        {
+            _ = AuditLogService.AppendAsync(ModalAuditEntry.Build(ctx, "always_allow", true));
+        }
+        else
+        {
+            // [6] No-UI guard espelha RunCommandTool — emite audit com ctx completo.
+            if (System.Windows.Application.Current == null)
+            {
+                _ = AuditLogService.AppendAsync(ModalAuditEntry.Build(ctx, "deny_no_ui", false));
+                return "ACESSO NEGADO: interface de confirmação indisponível.";
+            }
+
+            // [7] D-08 modal hop (semáforo compartilhado dentro do ShowAsync).
+            var (allowed, alwaysAllow) = await CommandConfirmationWindow.ShowAsync(ctx);
+
+            if (!allowed)
+            {
+                _ = AuditLogService.AppendAsync(ModalAuditEntry.Build(ctx, "deny", false));
+                return "Comando recusado pelo usuário";
+            }
+
+            if (alwaysAllow)
+            {
+                AlwaysAllowSession.Add(allowKey);
+                _ = AuditLogService.AppendAsync(ModalAuditEntry.Build(ctx, "always_allow", true));
+            }
+            else
+            {
+                _ = AuditLogService.AppendAsync(ModalAuditEntry.Build(ctx, "allow", false));
+            }
+        }
+
+        // [8] Execução real — Plan 01 já roteia via ExecuteWithArgListAsync.
         return await SkillService.RunSkillAsync(skillName, args);
+    }
+
+    /// <summary>
+    /// D-09: lê o script do disco, hasheia as *bytes inteiras* com SHA256, e devolve
+    /// um corpo cap-50KB com marcador de truncamento. O hash é sobre o arquivo todo
+    /// para que edits silenciosos passados do cap ainda invalidem o AlwaysAllow.
+    /// Retorna (null, null) se o arquivo sumiu entre o lookup e a leitura.
+    /// </summary>
+    private static (string? Body, string? Hash) ReadAndHashSkillFile(string scriptPath)
+    {
+        if (!File.Exists(scriptPath)) return (null, null);
+        var bytes = File.ReadAllBytes(scriptPath);
+        var hash = Convert.ToHexString(SHA256.HashData(bytes));
+        var body = Encoding.UTF8.GetString(bytes);
+        const int Cap = 50_000;
+        if (body.Length > Cap) body = body.Substring(0, Cap) + "\n\n[... SCRIPT TRUNCATED]";
+        return (body, hash);
     }
 }
 
@@ -542,7 +631,10 @@ public class MaterializeSkillTool : ITool
 {
     public string Name => "materialize_skill";
     public string Description => "Cria ou atualiza uma skill local (script).";
-    public int RequiredLevel => 5;
+    // D-09 (Phase 3): elevated from 5 to 8. Escrever script no disco a partir de
+    // conteúdo fornecido pelo LLM é um vetor de tampering — exige aprovação humana
+    // explícita via modal com preview do corpo (D-08).
+    public int RequiredLevel => 8;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         Name, Description,
@@ -566,6 +658,64 @@ public class MaterializeSkillTool : ITool
         if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(content))
             return "ERRO: 'skill_name' e 'script_content' são obrigatórios.";
         if (string.IsNullOrWhiteSpace(interp)) interp = "powershell";
+
+        // [1] Compute destination path (surface no modal via ctx.Command — RESEARCH Open Q#1).
+        string ext = interp == "python" ? "py" : "ps1";
+        string destPath = Path.Combine(DirectoryService.DataDir, "skills", name, $"{name}.{ext}");
+
+        // [2] D-09: SHA256 sobre as bytes UTF-8 do conteúdo fornecido pelo LLM
+        // (não há arquivo em disco ainda — vamos escrevê-lo). Cap preview em 50KB.
+        var contentBytes = Encoding.UTF8.GetBytes(content);
+        string contentHash = Convert.ToHexString(SHA256.HashData(contentBytes));
+        string body = content;
+        const int Cap = 50_000;
+        if (body.Length > Cap) body = body.Substring(0, Cap) + "\n\n[... SCRIPT TRUNCATED]";
+
+        // [3] Build context — Command surfaces destino para fechar Open Q#1.
+        var ctx = new CommandConfirmationContext
+        {
+            Tool = "materialize_skill",
+            Command = $"{interp} -> {destPath}",
+            Level = userLevel,
+            Cwd = Path.GetDirectoryName(destPath) ?? "",
+            ScriptBody = body,
+            Interpreter = interp,
+            ContentHash = contentHash,
+        };
+
+        var allowKey = (ctx.Tool, ctx.Command, ctx.ContentHash);
+
+        if (AlwaysAllowSession.Contains(allowKey))
+        {
+            _ = AuditLogService.AppendAsync(ModalAuditEntry.Build(ctx, "always_allow", true));
+        }
+        else
+        {
+            if (System.Windows.Application.Current == null)
+            {
+                _ = AuditLogService.AppendAsync(ModalAuditEntry.Build(ctx, "deny_no_ui", false));
+                return "ACESSO NEGADO: interface de confirmação indisponível.";
+            }
+
+            var (allowed, alwaysAllow) = await CommandConfirmationWindow.ShowAsync(ctx);
+
+            if (!allowed)
+            {
+                _ = AuditLogService.AppendAsync(ModalAuditEntry.Build(ctx, "deny", false));
+                return "Comando recusado pelo usuário";
+            }
+
+            if (alwaysAllow)
+            {
+                AlwaysAllowSession.Add(allowKey);
+                _ = AuditLogService.AppendAsync(ModalAuditEntry.Build(ctx, "always_allow", true));
+            }
+            else
+            {
+                _ = AuditLogService.AppendAsync(ModalAuditEntry.Build(ctx, "allow", false));
+            }
+        }
+
         return await SkillService.MaterializeSkillAsync(name, content, interp);
     }
 }
