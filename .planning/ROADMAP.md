@@ -106,7 +106,7 @@ Plans:
 
 **Requirements covered:** SEC-04, SEC-05, SEC-06
 **CONCERNS.md findings closed:** 3 HIGH
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 **Why third:** Builds on the Phase 1 modal (skills now route through it). Pure code change; no operational coordination. Largest single phase in lines-of-code touched.
 
@@ -145,7 +145,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-02-PLAN.md — Hybrid floor policy: new CommandFloorList.cs (normalize-then-regex with quote-concat strip + alias expand + -EncodedCommand outright refuse) + RunCommandTool floor-after-modal wiring + amber AVISO banner + allow_then_floor_deny audit outcome + ContainsWord/ApplyDenylist deletion + BuildEntry content_hash slot (D-01, D-02, D-03, D-04; autonomous=true)
+- [x] 03-02-PLAN.md — Hybrid floor policy: new CommandFloorList.cs (normalize-then-regex with quote-concat strip + alias expand + -EncodedCommand outright refuse) + RunCommandTool floor-after-modal wiring + amber AVISO banner + allow_then_floor_deny audit outcome + ContainsWord/ApplyDenylist deletion + BuildEntry content_hash slot (D-01, D-02, D-03, D-04; autonomous=true)
 
 **Wave 3** *(blocked on Wave 2 completion — same-file conflicts on CommandConfirmationContext / CommandConfirmationWindow / NativeTools)*
 
