@@ -49,6 +49,7 @@ public class OpenAIService
         - Antes de dizer "não sei", chame manage_memory(action=recall).
         - As ferramentas DEVEM ser chamadas OBRIGATORIAMENTE usando a funcionalidade de Function Calling (JSON) nativa da API. NUNCA escreva blocos como '<execute_tool>' ou código de ferramenta como texto livre na sua resposta.
         - NUNCA tente gerar todo o projeto (HTML/CSS/JS) de uma vez. Use a ferramenta nativa para criar UM único arquivo por vez, espere o resultado, e só então crie o próximo arquivo.
+        - NUNCA abrevie código com '...' ou use placeholders (ex: "coloque o conteúdo aqui"). Escreva 100% do código funcional, do começo ao fim.
         - Se uma ferramenta falhar (ex: falta de parâmetro), leia o erro, corrija o JSON da ferramenta e tente mais UMA vez.
         - Aja sem pedir permissão. Responda em Português (Brasil), conciso.
         """;
