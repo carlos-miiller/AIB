@@ -306,19 +306,6 @@ public class RunCommandTool : ITool
         }
         """));
 
-    // Helper: matcher por palavra ("rm ", "del", "ping") usando \b para evitar falsos positivos
-    // como "firm" engatilhando "rm" ou "appending" engatilhando "ping".
-    private static bool ContainsWord(string cmdLower, string token)
-    {
-        string trimmed = token.Trim();
-        if (trimmed.Length == 0) return false;
-        // Para tokens compostos por símbolo (ex: ">", ">>") usamos contains direto.
-        if (!char.IsLetterOrDigit(trimmed[0]) && !char.IsLetterOrDigit(trimmed[^1]))
-            return cmdLower.Contains(trimmed);
-        string pattern = $@"(?<![A-Za-z0-9_-]){System.Text.RegularExpressions.Regex.Escape(trimmed)}(?![A-Za-z0-9_-])";
-        return System.Text.RegularExpressions.Regex.IsMatch(cmdLower, pattern);
-    }
-
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
         // [1] Parse e validação do payload.
@@ -328,13 +315,20 @@ public class RunCommandTool : ITool
         // [2] CWD que cmd.exe vai usar; este é o mesmo valor que aparece no modal (D3).
         string cwd = DirectoryService.DataDir;
 
+        // D-04 (Phase 3): pré-computa o veredito do floor list para que o modal
+        // renderize o banner AVISO antes do clique. Em userLevel >= 7 o helper
+        // retorna (false, null) por design (D-01: floor inativo).
+        var (floorHit, floorReason) = CommandFloorList.Match(command, userLevel);
+
         // [3] Contexto imutável passado ao modal.
         var ctx = new CommandConfirmationContext
         {
             Tool = "run_command",
             Command = command,
             Level = userLevel,
-            Cwd = cwd
+            Cwd = cwd,
+            DenylistHit = floorHit,
+            DenylistReason = floorReason,
         };
 
         // [4] AlwaysAllow fast path (D2): pula o modal se o usuário já marcou
@@ -391,63 +385,26 @@ public class RunCommandTool : ITool
             }
         }
 
-        // [7] Denylist gate (D5 + D8 fundidos):
-        // - L9 SEMPRE pula o denylist (D5), independente da flag.
-        // - Para níveis < 9, o denylist roda apenas se ConfirmDangerousCommands
-        //   estiver ON (default = mais conservador: modal + denylist como segunda barreira).
+        // [7] Floor gate (D-04, herda Phase 1 D5 + D8):
+        // CommandFloorList.Match já retornou (false, null) em userLevel >= 7 (D-01),
+        // então floorHit só é true em userLevel < 7. ConfirmDangerousCommands continua
+        // gateando se o floor roda (Phase 1 D8 carve-out preservado). Quando o usuário
+        // já clicou Permitir mas o floor refuta, registramos o novo outcome
+        // "allow_then_floor_deny" para distinguir do "deny" pré-modal.
         var settings = new SettingsService().LoadSettings();
-        if (userLevel < 9 && settings.ConfirmDangerousCommands)
+        if (floorHit && settings.ConfirmDangerousCommands)
         {
-            string? deny = ApplyDenylist(command.ToLowerInvariant(), userLevel);
-            if (deny != null) return deny;
+            _ = AuditLogService.AppendAsync(BuildEntry(ctx, "allow_then_floor_deny", false));
+            return floorReason!;
         }
 
-        // [8] Execução real do comando — depois do modal e (opcionalmente) do denylist.
+        // [8] Execução real do comando — depois do modal e (opcionalmente) do floor.
         return await CommandService.ExecuteAsync(command, cwd);
     }
 
-    // Extraído do corpo original de ExecuteAsync para que o call site fique gateado
-    // por (userLevel < 9 && settings.ConfirmDangerousCommands). O conteúdo dos checks
-    // é preservado byte-a-byte do código pré-fase, só perdeu o wrapper "if (userLevel < 9)"
-    // de fora (que agora vive no call site).
-    private static string? ApplyDenylist(string cmdLower, int userLevel)
-    {
-        string[] sysDirs = { "appdata", "windows", "program files", "programdata" };
-        if (sysDirs.Any(d => ContainsWord(cmdLower, d)))
-            return "ACESSO NEGADO (SANDBOX): Diretórios de sistema protegidos.";
-
-        if (userLevel <= 4)
-        {
-            if (cmdLower.Contains("c:\\") || cmdLower.Contains("d:\\"))
-            {
-                bool allow = false;
-                if (ContainsWord(cmdLower, "documents") || ContainsWord(cmdLower, "documentos")) allow = true;
-                if (userLevel >= 3 && ContainsWord(cmdLower, "downloads")) allow = true;
-                if (!allow) return $"ACESSO NEGADO (SANDBOX): Nível {userLevel} restrito à Documentos/Downloads.";
-            }
-
-            if (userLevel <= 2 && (ContainsWord(cmdLower, "ls") || ContainsWord(cmdLower, "dir")))
-                return "ACESSO NEGADO (SANDBOX): Listagem em massa bloqueada no Nível 2.";
-        }
-
-        if (userLevel < 8)
-        {
-            string[] destructives = { "rm", "del", "erase", "remove-item", "ri", "out-file", "set-content", "add-content", "new-item", ">", ">>", "mkdir", "md", "rmdir", "rd", "format" };
-            if (destructives.Any(b => ContainsWord(cmdLower, b)))
-                return "ACESSO NEGADO (SANDBOX): Comandos de gravação/exclusão requerem Nível 8.";
-        }
-
-        if (userLevel < 7)
-        {
-            string[] netCmds = { "curl", "wget", "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "ping", "tracert", "nslookup", "ftp", "scp", "ssh" };
-            if (netCmds.Any(b => ContainsWord(cmdLower, b)))
-                return "ACESSO NEGADO (SANDBOX): Comandos de rede requerem Nível 7.";
-        }
-
-        return null;
-    }
-
-    // Schema do audit log (D6): todas as 5 call sites usam esta mesma forma de entry.
+    // Schema do audit log (D6 + D-10 prep): todas as call sites usam esta mesma forma de entry.
+    // content_hash é opcional — null para run_command nesta fase; Plan 03 popula com SHA256
+    // para skill tools quando CommandConfirmationContext ganhar a propriedade ContentHash.
     private static object BuildEntry(CommandConfirmationContext ctx, string outcome, bool alwaysAllow) => new
     {
         ts = DateTime.UtcNow.ToString("o"),
@@ -456,7 +413,9 @@ public class RunCommandTool : ITool
         level = ctx.Level,
         cwd = ctx.Cwd,
         outcome,
-        always_allow = alwaysAllow
+        always_allow = alwaysAllow,
+        // TODO(Plan 03 / D-10): replace null with ctx.ContentHash once CommandConfirmationContext gains the property.
+        content_hash = (string?)null,
     };
 }
 
