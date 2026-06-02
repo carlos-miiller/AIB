@@ -29,4 +29,17 @@ public class CommandConfirmationContext
     /// Vem de <c>CommandFloorList.Match(...)</c>.
     /// </summary>
     public string? DenylistReason { get; init; }
+
+    /// <summary>D-08: full or 50KB-capped script body to display in the modal preview row.
+    /// Null for run_command (command-line-only mode).</summary>
+    public string? ScriptBody { get; init; }
+
+    /// <summary>D-08: interpreter label (python / powershell / cmd) shown in the header
+    /// when ScriptBody is non-null. Null for run_command.</summary>
+    public string? Interpreter { get; init; }
+
+    /// <summary>D-08 + D-10: SHA256 hex digest of the script content; null for run_command.
+    /// Also forms the third element of the AlwaysAllowSession tuple key so silent disk edits
+    /// invalidate the cache.</summary>
+    public string? ContentHash { get; init; }
 }
