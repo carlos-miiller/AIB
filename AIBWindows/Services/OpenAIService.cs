@@ -48,9 +48,9 @@ public class OpenAIService
         Regras:
         - Antes de dizer "não sei", chame manage_memory(action=recall) e, para credenciais, manage_vault(action=retrieve).
         - SEMPRE use chamada nativa de ferramenta (não escreva no texto).
-        - NUNCA crie múltiplos arquivos de uma vez. Chame write_file para UM arquivo, espere o sucesso, e só então crie o próximo.
-        - Na ferramenta write_file, escreva o 'path' PRIMEIRO. No 'content', escreva APENAS o código puro. NÃO use blocos de markdown (```) dentro do JSON.
-        - Se uma ferramenta falhar, corrija os parâmetros e tente de novo IMEDIATAMENTE.
+        - NUNCA crie múltiplos arquivos grandes de uma vez. Chame write_file para UM arquivo, espere o sucesso, e só então crie o próximo.
+        - Para ferramentas de pesquisa/leitura rápidas, você pode chamá-las em PARALELO.
+        - Se uma ferramenta falhar (ex: erro de parâmetro), corrija e tente mais UMA vez. Falhou de novo? Pare.
         - Aja sem pedir permissão. Responda em Português (Brasil), conciso.
         """;
 

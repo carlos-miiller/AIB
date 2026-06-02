@@ -1171,19 +1171,19 @@ public class WriteFileTool : ITool
         {
           "type": "object",
           "properties": {
-            "path": { "type": "string", "description": "MUITO IMPORTANTE: O caminho absoluto do arquivo. Este parâmetro deve OBRIGATORIAMENTE ser enviado ANTES do parâmetro 'content' no JSON." },
+            "absolute_path": { "type": "string", "description": "OBRIGATÓRIO: O caminho absoluto do arquivo." },
             "content": { "type": "string", "description": "O conteúdo completo de texto a ser escrito no arquivo." }
           },
-          "required": ["path", "content"]
+          "required": ["absolute_path", "content"]
         }
         """));
 
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
-        string path = ToolArgParser.Get(argumentsJson, "path");
+        string path = ToolArgParser.Get(argumentsJson, "absolute_path");
         string content = ToolArgParser.Get(argumentsJson, "content");
         
-        if (string.IsNullOrWhiteSpace(path)) return "ERRO: 'path' é obrigatório. Lembre-se: escreva a propriedade 'path' no JSON PRIMEIRO, antes da propriedade 'content'.";
+        if (string.IsNullOrWhiteSpace(path)) return "ERRO: 'absolute_path' é obrigatório. Você provavelmente tentou enviar um arquivo grande e se esqueceu desta propriedade.";
         
         path = path.Trim('\"', '\'');
         
