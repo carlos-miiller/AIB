@@ -106,7 +106,7 @@ Plans:
 
 **Requirements covered:** SEC-04, SEC-05, SEC-06
 **CONCERNS.md findings closed:** 3 HIGH
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 **Why third:** Builds on the Phase 1 modal (skills now route through it). Pure code change; no operational coordination. Largest single phase in lines-of-code touched.
 
@@ -149,7 +149,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion — same-file conflicts on CommandConfirmationContext / CommandConfirmationWindow / NativeTools)*
 
-- [ ] 03-03-PLAN.md — Skill gating + modal helper lift: CommandConfirmationContext D-08 fields + ScrollViewer + Consolas read-only TextBox + shared ShowAsync static helper carrying _modalLock + ExecuteSkillTool.RequiredLevel=6 + MaterializeSkillTool.RequiredLevel=8 + both tools route through ShowAsync with SHA256-keyed AlwaysAllow + AlwaysAllowSession tuple re-key + InstallFromOnlineAsync D-11 regex + npx.cmd→npx fallback (D-08, D-09, D-10, D-11; autonomous=true)
+- [x] 03-03-PLAN.md — Skill gating + modal helper lift: CommandConfirmationContext D-08 fields + ScrollViewer + Consolas read-only TextBox + shared ShowAsync static helper carrying _modalLock + ExecuteSkillTool.RequiredLevel=6 + MaterializeSkillTool.RequiredLevel=8 + both tools route through ShowAsync with SHA256-keyed AlwaysAllow + AlwaysAllowSession tuple re-key + InstallFromOnlineAsync D-11 regex + npx.cmd→npx fallback (D-08, D-09, D-10, D-11; autonomous=true)
 
 **Wave 4** *(blocked on Wave 3 — UAT requires shipped code)*
 
