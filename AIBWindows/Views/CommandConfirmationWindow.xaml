@@ -46,6 +46,12 @@
                     <TextBlock x:Name="CommandText" Text="git status" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas" FontSize="13"/>
                 </Border>
 
+                <!-- D-04 (Phase 3): banner AVISO amber renderizado quando ctx.DenylistHit é true.
+                     Reusa o gradiente WarningAccent existente (sem nova entrada de paleta — VISUAL.MD). -->
+                <Border x:Name="DenylistBanner" Background="{StaticResource WarningAccent}" Padding="8" CornerRadius="6" Margin="0,10,0,0" Visibility="Collapsed">
+                    <TextBlock x:Name="DenylistText" Foreground="#1A1A1A" FontWeight="Bold" FontSize="12" TextWrapping="Wrap"/>
+                </Border>
+
                 <TextBlock Text="CWD:" Foreground="#AAA" Margin="0,10,0,4" FontSize="12"/>
                 <Border Background="#1AFFFFFF" Padding="6" CornerRadius="4" BorderBrush="#2A2A30" BorderThickness="1">
                     <TextBlock x:Name="CwdText" Text="" Foreground="White" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"/>

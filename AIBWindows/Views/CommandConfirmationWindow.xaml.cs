@@ -16,6 +16,15 @@ public partial class CommandConfirmationWindow : Window
         ToolText.Text = $"Tool: {ctx.Tool}";
         LevelText.Text = $"Nível: {ctx.Level}/9";
         CwdText.Text = ctx.Cwd;
+
+        // D-04 (Phase 3): renderiza o banner AVISO amber quando o floor list pré-modal
+        // identifica que o comando será refutado após a aprovação. O texto e a visibilidade
+        // são controlados pelo ctx; o gradiente WarningAccent é reusado do XAML.
+        if (ctx.DenylistHit && !string.IsNullOrEmpty(ctx.DenylistReason))
+        {
+            DenylistText.Text = $"AVISO: este comando será recusado pelo floor list após aprovação (nível atual = {ctx.Level}). Razão: {ctx.DenylistReason}";
+            DenylistBanner.Visibility = Visibility.Visible;
+        }
     }
 
     private void Allow_Click(object sender, RoutedEventArgs e)
