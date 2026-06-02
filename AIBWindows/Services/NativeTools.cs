@@ -1172,7 +1172,7 @@ public class WriteFileTool : ITool
           "type": "object",
           "properties": {
             "absolute_path": { "type": "string", "description": "OBRIGATÓRIO: O caminho absoluto do arquivo." },
-            "content": { "type": "string", "description": "O conteúdo completo de texto a ser escrito no arquivo." }
+            "content": { "type": "string", "description": "O código bruto 100% completo. NUNCA abrevie código com reticências. NUNCA use tags HTML (<style>, <script>) ou crases (```) em arquivos CSS/JS. O conteúdo deve estar pronto para o compilador/interpretador." }
           },
           "required": ["absolute_path", "content"]
         }
