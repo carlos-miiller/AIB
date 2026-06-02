@@ -106,7 +106,7 @@ Plans:
 
 **Requirements covered:** SEC-04, SEC-05, SEC-06
 **CONCERNS.md findings closed:** 3 HIGH
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 **Why third:** Builds on the Phase 1 modal (skills now route through it). Pure code change; no operational coordination. Largest single phase in lines-of-code touched.
 
@@ -141,7 +141,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Mechanical ArgumentList migration: extract CommandService.RunProcessAsync helper + add ExecuteWithArgListAsync + InterpreterMap in SkillService + RunSkillAsync rewrite + delete DynamicSkillTool.cs (D-05, D-06, D-07, D-12; autonomous=true)
+- [x] 03-01-PLAN.md — Mechanical ArgumentList migration: extract CommandService.RunProcessAsync helper + add ExecuteWithArgListAsync + InterpreterMap in SkillService + RunSkillAsync rewrite + delete DynamicSkillTool.cs (D-05, D-06, D-07, D-12; autonomous=true)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
