@@ -66,6 +66,14 @@ public static class CommandService
             using var process = new Process { StartInfo = psi };
             return await RunProcessAsync(process, timeoutMs);
         }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 2)
+        {
+            // D-11 (Phase 3): ERROR_FILE_NOT_FOUND — rethrow para o caller poder
+            // tentar fallback (ex: npx.cmd -> npx em SkillService.InstallFromOnlineAsync).
+            // Sem este rethrow, o catch genérico abaixo converteria a exceção em string
+            // e o fallback nunca dispararia. Locked path; sem Option B (inspeção de string).
+            throw;
+        }
         catch (Exception ex)
         {
             return $"ERRO ao executar comando: {ex.Message}";

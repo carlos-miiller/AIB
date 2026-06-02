@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace AIB.Services;
@@ -157,6 +158,17 @@ public static class SkillService
         catch (Exception ex) { return $"Erro: {ex.Message}"; }
     }
 
+    /// <summary>
+    /// Instala uma skill a partir de owner/repo[@version] via npx.
+    ///
+    /// IMPORTANTE: este método NÃO tem callers no Phase 3 — é dead code defensivo.
+    /// Callers futuros DEVEM gatear esta chamada atrás de:
+    ///   1. RequiredLevel >= 7 no ITool exposto;
+    ///   2. Hop pelo CommandConfirmationWindow.ShowAsync(ctx) (D-08).
+    /// O regex abaixo é a defesa load-bearing contra path-traversal / shell-injection
+    /// no installArg até o npx.cmd shim (cmd.exe re-parsa metacaracteres apesar do
+    /// ArgumentList — BatBadBut CVE-2024-1874 family).
+    /// </summary>
     public static async Task<string> InstallFromOnlineAsync(string url)
     {
         string workPath = Path.Combine(Path.GetTempPath(), "AIB_Skills_Work");
@@ -171,7 +183,31 @@ public static class SkillService
                 if (urlParts.Length >= 3) installArg = $"{urlParts[0]}/{urlParts[1]}@{urlParts[2]}";
             }
 
-            string result = await CommandService.ExecuteAsync($"cmd /c call npx -y skills add {installArg} --yes", workPath, 900000);
+            // D-11: regex BEFORE any shell-out — load-bearing defense vs the npx.cmd shim
+            // re-parsing cmd metacharacters (ArgumentList does NOT escape & | ^ < > %).
+            if (!Regex.IsMatch(installArg, @"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(@[A-Za-z0-9_.\-]+)?$"))
+                return "Erro: formato de skill inválido (esperado: owner/repo[@version]).";
+
+            // D-11: ArgumentList path (no cmd /c call interpolation). npx no Windows é
+            // um shim .cmd — CreateProcess não honra PATHEXT, então Process.Start("npx", ...)
+            // retorna ERROR_FILE_NOT_FOUND. Tenta "npx.cmd" primeiro; se faltar, cai
+            // para "npx" (npm < 7 e variantes que registram o nome curto no PATH).
+            // Pitfall 2 (RESEARCH.md) — CommandService.ExecuteWithArgListAsync rethrows
+            // Win32Exception com NativeErrorCode == 2 (locked Option A patch em
+            // CommandService.cs) para permitir esta lógica de fallback.
+            var npxArgs = new[] { "-y", "skills", "add", installArg, "--yes" };
+            string result;
+            try
+            {
+                result = await CommandService.ExecuteWithArgListAsync(
+                    "npx.cmd", npxArgs, workPath, 900_000);
+            }
+            catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 2)
+            {
+                result = await CommandService.ExecuteWithArgListAsync(
+                    "npx", npxArgs, workPath, 900_000);
+            }
+
             string agentsSkillsPath = Path.Combine(workPath, ".agents", "skills");
             if (Directory.Exists(agentsSkillsPath))
             {
