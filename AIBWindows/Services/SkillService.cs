@@ -21,6 +21,19 @@ public static class SkillService
     private static string SkillsDir => Path.Combine(DirectoryService.DataDir, "skills");
     private static string DefaultSkillsDir => Path.Combine(DirectoryService.DataDir, ".default_skills");
 
+    /// <summary>
+    /// D-07: single source of truth for the interpreter dispatch table. Maps each
+    /// supported interpreter alias to its executable + the leading switches that must
+    /// precede the script path. Consumed by <see cref="RunSkillAsync"/>. Case-insensitive
+    /// keys so the LLM may emit "Python", "PYTHON", "powershell", etc.
+    /// </summary>
+    private static readonly Dictionary<string, (string FileName, string[] Switches)> InterpreterMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["python"]     = ("py.exe", Array.Empty<string>()),
+        ["powershell"] = ("powershell.exe", new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File" }),
+        ["cmd"]        = ("cmd.exe", new[] { "/c" })
+    };
+
     public static void EnsureDir()
     {
         if (!Directory.Exists(SkillsDir))
@@ -191,17 +204,18 @@ public static class SkillService
         if (skill.Interpreter == "markdown")
             return $"INSTRUÇÕES DA SKILL '{name}':\n\n{File.ReadAllText(skill.ScriptFile)}\n\nSugestão: Use 'materialize_skill' para criar um script para esta skill.";
 
-        string scriptPath = skill.ScriptFile;
-        string safeArgs = arguments.Replace("\n", " ").Replace("\r", "");
-        string command = skill.Interpreter.ToLower() switch
-        {
-            "python" => $"py \"{scriptPath}\" {safeArgs}",
-            "powershell" => $"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\" {safeArgs}",
-            "cmd" => $"cmd.exe /c \"{scriptPath}\" {safeArgs}",
-            _ => throw new Exception("Interpretador não suportado.")
-        };
+        if (!InterpreterMap.TryGetValue(skill.Interpreter, out var pair))
+            return $"Erro: interpretador '{skill.Interpreter}' não suportado.";
 
-        return await CommandService.ExecuteAsync(command, Path.GetDirectoryName(scriptPath));
+        // D-06: argumentsString reaches the script as a SINGLE argv element.
+        // ArgumentList preserves literal bytes — no shell interpretation.
+        // The \n/\r/\0 strip is defense-in-depth against weird argv display
+        // in logs, NOT a security control.
+        string safeArgs = (arguments ?? "").Replace("\n", " ").Replace("\r", "").Replace("\0", "");
+
+        var args = new List<string>(pair.Switches) { skill.ScriptFile, safeArgs };
+        return await CommandService.ExecuteWithArgListAsync(
+            pair.FileName, args, Path.GetDirectoryName(skill.ScriptFile));
     }
 
     public static async Task<string> MaterializeSkillAsync(string skillName, string scriptContent, string interpreter)
