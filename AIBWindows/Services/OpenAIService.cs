@@ -48,8 +48,9 @@ public class OpenAIService
         Regras:
         - Antes de dizer "não sei", chame manage_memory(action=recall) e, para credenciais, manage_vault(action=retrieve).
         - SEMPRE use chamada nativa de ferramenta (não escreva no texto).
-        - Para múltiplas informações independentes, chame ferramentas em PARALELO na mesma resposta.
-        - Se uma ferramenta falhar, tente UMA alternativa. Falhou de novo? Informe e pare.
+        - NUNCA crie múltiplos arquivos grandes de uma vez. Chame write_file para UM arquivo, espere o sucesso, e só então crie o próximo.
+        - Para ferramentas de pesquisa/leitura rápidas, você pode chamá-las em PARALELO.
+        - Se uma ferramenta falhar (ex: erro de parâmetro), corrija e tente mais UMA vez. Falhou de novo? Pare.
         - Aja sem pedir permissão. Responda em Português (Brasil), conciso.
         """;
 
@@ -194,6 +195,7 @@ public class OpenAIService
         if (_history.Count == 0) ResetHistory();
         _history.Add(ChatMessage.CreateUserMessage(userMessage));
         int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
+        NotifyTokenCount(userLevel); // Atualiza contador na UI assim que usuário envia mensagem
         var tools = _toolRegistry.GetActiveTools(userLevel);
         
         bool requiresAction = true;
@@ -263,6 +265,9 @@ public class OpenAIService
             int rawTextChars = 0;
             string? finishReason = null;
             bool firstUpdateLogged = false;
+
+            int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
+            int baselineTokens = CalculateCurrentTokens();
 
             await foreach (var update in updates.WithCancellation(ct))
             {
@@ -425,6 +430,17 @@ public class OpenAIService
                         entry.Name = tcUpdate.FunctionName;
                     if (tcUpdate.FunctionArgumentsUpdate != null)
                         entry.ArgsBuilder.Append(tcUpdate.FunctionArgumentsUpdate.ToString());
+                }
+                
+                // Atualização em tempo real do contador de tokens durante o stream
+                if (updateCount % 10 == 0 || update.FinishReason.HasValue)
+                {
+                    int streamedTokens = _tokenizer.CountTokens(fullResponse);
+                    foreach (var tc in toolCallsByIndex.Values)
+                    {
+                        streamedTokens += _tokenizer.CountTokens(tc.ArgsBuilder.ToString());
+                    }
+                    OnTokenCountChanged?.Invoke(baselineTokens + streamedTokens, maxTokens);
                 }
             }
 
@@ -678,6 +694,7 @@ public class OpenAIService
         if (string.IsNullOrEmpty(apiKey)) apiKey = "placeholder";
 
         var options = new OpenAIClientOptions();
+        options.NetworkTimeout = System.Threading.Timeout.InfiniteTimeSpan;
         if (!string.IsNullOrEmpty(apiUrl)) options.Endpoint = new Uri(apiUrl);
         var localClient = new ChatClient(modelName, new ApiKeyCredential(apiKey), options);
 
@@ -738,6 +755,7 @@ public class OpenAIService
             if (string.IsNullOrEmpty(apiKey)) apiKey = "placeholder";
 
             var options = new OpenAIClientOptions();
+            options.NetworkTimeout = System.Threading.Timeout.InfiniteTimeSpan;
             if (!string.IsNullOrEmpty(apiUrl)) options.Endpoint = new Uri(apiUrl);
             _client = new ChatClient(modelName, new ApiKeyCredential(apiKey), options);
             _lastModel = modelName;

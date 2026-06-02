@@ -1154,3 +1154,53 @@ public class ListDirTool : ITool
         return $"{bytes / (1024.0 * 1024 * 1024):F2}GB";
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FERRAMENTA: write_file — Escreve em arquivos
+// ─────────────────────────────────────────────────────────────────────────────
+
+public class WriteFileTool : ITool
+{
+    public string Name => "write_file";
+    public string Description => "Cria um novo arquivo ou sobrescreve um existente com o conteúdo fornecido. O caminho absoluto e o diretório pai serão criados se não existirem.";
+    public int RequiredLevel => 2;
+
+    public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
+        Name, Description,
+        BinaryData.FromString("""
+        {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string", "description": "MUITO IMPORTANTE: O caminho absoluto do arquivo. Este parâmetro deve OBRIGATORIAMENTE ser enviado ANTES do parâmetro 'content' no JSON." },
+            "content": { "type": "string", "description": "O conteúdo completo de texto a ser escrito no arquivo." }
+          },
+          "required": ["path", "content"]
+        }
+        """));
+
+    public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
+    {
+        string path = ToolArgParser.Get(argumentsJson, "path");
+        string content = ToolArgParser.Get(argumentsJson, "content");
+        
+        if (string.IsNullOrWhiteSpace(path)) return "ERRO: 'path' é obrigatório. Lembre-se: escreva a propriedade 'path' no JSON PRIMEIRO, antes da propriedade 'content'.";
+        
+        path = path.Trim('\"', '\'');
+        
+        try
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+            
+            await File.WriteAllTextAsync(path, content, System.Text.Encoding.UTF8);
+            return $"SUCESSO: Arquivo salvo com sucesso em {path} ({content.Length} caracteres).";
+        }
+        catch (Exception ex)
+        {
+            return $"ERRO ao escrever arquivo: {ex.Message}";
+        }
+    }
+}

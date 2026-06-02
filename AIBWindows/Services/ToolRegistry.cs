@@ -77,7 +77,8 @@ public class ToolRegistry
             // Filesystem exploration tools (commit 2):
             new GlobTool(),
             new GrepTool(),
-            new ListDirTool()
+            new ListDirTool(),
+            new WriteFileTool()
         };
 
         foreach (var tool in nativeTools)
