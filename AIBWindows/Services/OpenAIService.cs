@@ -866,6 +866,16 @@ public class OpenAIService
                     }
                 }
             }
+            
+            if (msg is AssistantChatMessage acm && acm.ToolCalls != null && acm.ToolCalls.Count > 0)
+            {
+                try
+                {
+                    string toolCallsJson = System.Text.Json.JsonSerializer.Serialize(acm.ToolCalls);
+                    tokens += _tokenizer.CountTokens(toolCallsJson);
+                }
+                catch { }
+            }
         }
         return tokens;
     }
