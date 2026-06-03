@@ -260,6 +260,53 @@
                     </StackPanel>
                 </Grid>
 
+                <!-- Passo 5: Níveis de Usuário -->
+                <Grid x:Name="Step5_UserLevels" Visibility="Collapsed">
+                    <StackPanel VerticalAlignment="Center" MaxWidth="550">
+                        <TextBlock Text="Seu Crescimento" FontSize="28" FontWeight="Bold" Margin="0,0,0,10" Foreground="White" HorizontalAlignment="Center"/>
+                        <TextBlock Text="O sistema possui uma progressão de níveis. À medida que você utiliza a inteligência artificial, você ganha experiência e evolui do Nível 1 ao Nível 9." 
+                                   FontSize="15" Opacity="0.7" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,30"/>
+                        
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <!-- Iniciante -->
+                            <Border Grid.Column="0" Background="#1A1A20" BorderBrush="#2A2A30" BorderThickness="1" CornerRadius="8" Padding="15" Margin="5">
+                                <StackPanel>
+                                    <TextBlock Text="🥉 Níveis 1 a 3" FontWeight="Bold" FontSize="14" Foreground="White" Margin="0,0,0,8" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Iniciante" FontWeight="SemiBold" FontSize="13" Foreground="#E28743" Margin="0,0,0,4" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Foco em aprendizado e tarefas guiadas passo a passo." Opacity="0.6" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Intermediário -->
+                            <Border Grid.Column="1" Background="#1A1A20" BorderBrush="#2A2A30" BorderThickness="1" CornerRadius="8" Padding="15" Margin="5">
+                                <StackPanel>
+                                    <TextBlock Text="🥈 Níveis 4 a 6" FontWeight="Bold" FontSize="14" Foreground="White" Margin="0,0,0,8" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Intermediário" FontWeight="SemiBold" FontSize="13" Foreground="#A0AEC0" Margin="0,0,0,4" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Maior autonomia, criação de scripts e fluxos complexos." Opacity="0.6" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Avançado -->
+                            <Border Grid.Column="2" Background="#1A1A20" BorderBrush="#2A2A30" BorderThickness="1" CornerRadius="8" Padding="15" Margin="5">
+                                <StackPanel>
+                                    <TextBlock Text="🥇 Níveis 7 a 9" FontWeight="Bold" FontSize="14" Foreground="White" Margin="0,0,0,8" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Avançado" FontWeight="SemiBold" FontSize="13" Foreground="#ECC94B" Margin="0,0,0,4" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Domínio total. O agente funciona quase sem supervisão." Opacity="0.6" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                        
+                        <TextBlock Text="Ao subir de nível, você destrava customizações visuais, permissões avançadas e mais flexibilidade no sistema de autonomia." 
+                                   FontSize="13" Opacity="0.8" Foreground="#E28743" TextWrapping="Wrap" TextAlignment="Center" Margin="0,30,0,0"/>
+                    </StackPanel>
+                </Grid>
+
                 <!-- Footer buttons -->
                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
                     <Button x:Name="CancelButton" Content="Sair" Click="Cancel_Click" IsCancel="True"
