@@ -119,4 +119,20 @@ public static class CredentialService
             ? "Sistemas com credenciais seguras: " + string.Join(", ", systems)
             : "Nenhuma credencial segura armazenada.";
     }
+
+    public static void WipeAllCredentials()
+    {
+        try
+        {
+            if (Directory.Exists(CredentialsDir))
+            {
+                Directory.Delete(CredentialsDir, true);
+                EnsureDir();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEBUG-COFRE] ERRO ao limpar cofre: {ex.Message}");
+        }
+    }
 }

@@ -107,5 +107,17 @@ namespace AIB.Services
                 SaveHistory(history);
             }
         }
+
+        public static void ClearHistory()
+        {
+            try
+            {
+                if (File.Exists(HistoryFilePath))
+                {
+                    File.Delete(HistoryFilePath);
+                }
+            }
+            catch { }
+        }
     }
 }

@@ -14,7 +14,7 @@ public class UserAppSettings
     public string ApiUrl { get; set; } = "http://127.0.0.1:11434/v1";
     public string ApiKey { get; set; } = "ollama";
     public string ModelName { get; set; } = "qwen2.5:7b";
-    public string AiProvider { get; set; } = "Ollama"; // "Ollama" ou "Google Gemini"
+    public string AiProvider { get; set; } = ""; // Vazio por default força a tela de Onboarding
     public string ShadowModelName { get; set; } = "qwen2.5:7b";
     public bool SendSystemPrompt { get; set; } = true;
     public bool EnableIntelligentTools { get; set; } = true;

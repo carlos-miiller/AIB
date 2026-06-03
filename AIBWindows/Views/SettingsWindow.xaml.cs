@@ -225,6 +225,38 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private void WipeData_Click(object sender, RoutedEventArgs e)
+    {
+        var result = System.Windows.MessageBox.Show(
+            "Tem certeza que deseja restaurar o AIB para as configurações de fábrica?\n\nIsso apagará irreversivelmente o histórico de chat, a chave da API do cofre e todas as preferências do usuário.",
+            "Atenção - Reset de Fábrica",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            // 1. Apaga Cofre de Credenciais
+            CredentialService.WipeAllCredentials();
+
+            // 2. Apaga Histórico de Chat
+            ChatHistoryService.ClearHistory();
+
+            // 3. Reseta configurações (salva um objeto limpo)
+            var cleanSettings = new UserAppSettings();
+            _settingsService.SaveSettings(cleanSettings);
+
+            // 4. Loga e fecha
+            _ = AuditLogService.AppendAsync(new
+            {
+                ts = DateTime.UtcNow.ToString("o"),
+                outcome = "factory_reset"
+            });
+
+            System.Windows.MessageBox.Show("O AIB foi resetado com sucesso e será encerrado. Por favor, inicie-o novamente.", "Reset Concluído", MessageBoxButton.OK, MessageBoxImage.Information);
+            System.Windows.Application.Current.Shutdown();
+        }
+    }
+
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
         Close();

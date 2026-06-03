@@ -207,18 +207,30 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
-                <Button Content="Cancelar" Click="Cancel_Click" Width="80" Height="35" Background="Transparent" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0"/>
-                <Button Content="Salvar" Click="Save_Click" Width="100" Height="35" Cursor="Hand">
+            <Grid Grid.Row="2" Margin="0,20,0,0">
+                <Button Content="Reset de Fábrica" Click="WipeData_Click" Width="120" Height="35" Background="Transparent" Foreground="#FF4444" BorderBrush="#FF4444" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Left">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
-                            <Border Background="{StaticResource AiAccent}" CornerRadius="6">
+                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                         </ControlTemplate>
                     </Button.Template>
                 </Button>
-            </StackPanel>
+                
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="Cancelar" Click="Cancel_Click" Width="80" Height="35" Background="Transparent" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0"/>
+                    <Button Content="Salvar" Click="Save_Click" Width="100" Height="35" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{StaticResource AiAccent}" CornerRadius="6">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </StackPanel>
+            </Grid>
         </Grid>
         </Border>
     </Border>
