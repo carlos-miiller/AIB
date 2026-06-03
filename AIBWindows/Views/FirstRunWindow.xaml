@@ -82,11 +82,15 @@
                                    FontSize="14" Opacity="0.8" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,30" MaxWidth="500"/>
                                    
                         <Border Background="#2A1B15" BorderBrush="#D27519" BorderThickness="1" CornerRadius="8" Padding="15" MaxWidth="450" HorizontalAlignment="Center">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="⚠️" FontSize="20" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Esta ferramenta está em fase Beta. Ela tem autonomia para executar ações na sua máquina, portanto revise cuidadosamente os planos antes de aprovar comandos sensíveis." 
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="⚠️" FontSize="20" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="Esta ferramenta está em fase Beta. Ela tem autonomia para executar ações na sua máquina, portanto revise cuidadosamente os planos antes de aprovar comandos sensíveis." 
                                            FontSize="13" Foreground="#E28743" TextWrapping="Wrap" VerticalAlignment="Center"/>
-                            </StackPanel>
+                            </Grid>
                         </Border>
                     </StackPanel>
                 </Grid>
