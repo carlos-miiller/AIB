@@ -33,27 +33,31 @@ public partial class FirstRunWindow : Window
         if (Step1_Welcome != null) Step1_Welcome.Visibility = _currentStep == 1 ? Visibility.Visible : Visibility.Collapsed;
         if (Step2_Profile != null) Step2_Profile.Visibility = _currentStep == 2 ? Visibility.Visible : Visibility.Collapsed;
         if (Step3_Provider != null) Step3_Provider.Visibility = _currentStep == 3 ? Visibility.Visible : Visibility.Collapsed;
+        if (Step4_Levels != null) Step4_Levels.Visibility = _currentStep == 4 ? Visibility.Visible : Visibility.Collapsed;
 
         if (BackButton != null) BackButton.Visibility = _currentStep > 1 ? Visibility.Visible : Visibility.Collapsed;
         
         if (NextButton != null)
         {
-            if (_currentStep == 3)
+            if (_currentStep == 4)
             {
                 NextButton.Content = "Concluir";
-                ValidateStep3SaveButton();
+                NextButton.IsEnabled = true;
             }
             else
             {
                 NextButton.Content = "Próximo";
-                NextButton.IsEnabled = true;
+                if (_currentStep == 3)
+                    ValidateStep3SaveButton();
+                else
+                    NextButton.IsEnabled = true;
             }
         }
     }
 
     private void Next_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentStep < 3)
+        if (_currentStep < 4)
         {
             _currentStep++;
             UpdateStepsUI();
