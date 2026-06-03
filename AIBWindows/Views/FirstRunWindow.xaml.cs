@@ -13,6 +13,7 @@ public partial class FirstRunWindow : Window
 {
     private readonly SettingsService _settingsService = new();
     private string? _fallbackModel = null;
+    private int _currentStep = 1;
 
     // Regex per D-05: key must start with sk- followed by at least 20 alphanumeric/dash/underscore chars
     private static readonly Regex _keyRegex = new(@"^sk-[a-zA-Z0-9_-]{20,}$", RegexOptions.Compiled);
@@ -20,11 +21,71 @@ public partial class FirstRunWindow : Window
     public FirstRunWindow()
     {
         InitializeComponent();
-        SaveButton.IsEnabled = false;
+        UpdateStepsUI();
 
         // Queue Ollama model refresh on UI thread (default branch is Ollama per D-07 / UI-SPEC S0)
         // Não bloqueia o UI Thread
         Dispatcher.BeginInvoke(new Action(async () => await RefreshModelsAsync()));
+    }
+
+    private void UpdateStepsUI()
+    {
+        if (Step1_Welcome != null) Step1_Welcome.Visibility = _currentStep == 1 ? Visibility.Visible : Visibility.Collapsed;
+        if (Step2_Profile != null) Step2_Profile.Visibility = _currentStep == 2 ? Visibility.Visible : Visibility.Collapsed;
+        if (Step3_Provider != null) Step3_Provider.Visibility = _currentStep == 3 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (BackButton != null) BackButton.Visibility = _currentStep > 1 ? Visibility.Visible : Visibility.Collapsed;
+        
+        if (NextButton != null)
+        {
+            if (_currentStep == 3)
+            {
+                NextButton.Content = "Concluir";
+                ValidateStep3SaveButton();
+            }
+            else
+            {
+                NextButton.Content = "Próximo";
+                NextButton.IsEnabled = true;
+            }
+        }
+    }
+
+    private void Next_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentStep < 3)
+        {
+            _currentStep++;
+            UpdateStepsUI();
+        }
+        else
+        {
+            Save_Click(sender, e);
+        }
+    }
+
+    private void Back_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentStep > 1)
+        {
+            _currentStep--;
+            UpdateStepsUI();
+        }
+    }
+
+    private void ValidateStep3SaveButton()
+    {
+        if (NextButton == null) return;
+        bool ollamaSelected = OllamaRadio.IsChecked == true;
+        if (ollamaSelected)
+        {
+            NextButton.IsEnabled = (ModelComboBox.SelectedItem != null || _fallbackModel != null);
+        }
+        else
+        {
+            string key = KeyTextBox.Text.Trim();
+            NextButton.IsEnabled = _keyRegex.IsMatch(key);
+        }
     }
 
     private void Window_MouseDown(object sender, MouseButtonEventArgs e)
@@ -40,8 +101,7 @@ public partial class FirstRunWindow : Window
         if (OllamaBranch == null) return;
         OllamaBranch.Visibility = Visibility.Visible;
         OpenAiBranch.Visibility = Visibility.Collapsed;
-        // SaveButton enabled only if a model is already selected or fallback was applied
-        SaveButton.IsEnabled = (ModelComboBox.SelectedItem != null || _fallbackModel != null);
+        ValidateStep3SaveButton();
     }
 
     private void OpenAiRadio_Checked(object sender, RoutedEventArgs e)
@@ -51,16 +111,14 @@ public partial class FirstRunWindow : Window
         OllamaBranch.Visibility = Visibility.Collapsed;
         // Reset error label; disable Salvar until valid key is entered
         if (ErrorLabel != null) ErrorLabel.Visibility = Visibility.Collapsed;
-        SaveButton.IsEnabled = false;
+        ValidateStep3SaveButton();
     }
 
     // ─── Ollama model ComboBox ────────────────────────────────────────────────
 
     private void ModelComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // Enable Salvar when the user picks a model
-        if (SaveButton != null)
-            SaveButton.IsEnabled = (ModelComboBox.SelectedItem != null);
+        ValidateStep3SaveButton();
     }
 
     // ─── Ollama refresh ───────────────────────────────────────────────────────
@@ -122,7 +180,7 @@ public partial class FirstRunWindow : Window
         OllamaErrorBlock.Visibility = Visibility.Collapsed;
         ModelComboBox.Visibility = Visibility.Collapsed;
         FallbackModelDisplay.Visibility = Visibility.Visible;
-        SaveButton.IsEnabled = true;
+        if (NextButton != null) NextButton.IsEnabled = true;
     }
 
     // ─── OpenAI key validation ────────────────────────────────────────────────
@@ -149,14 +207,14 @@ public partial class FirstRunWindow : Window
         string key = KeyTextBox.Text.Trim();
         if (_keyRegex.IsMatch(key))
         {
-            ErrorLabel.Visibility = Visibility.Collapsed;
-            SaveButton.IsEnabled = true;
+            if (ErrorLabel != null) ErrorLabel.Visibility = Visibility.Collapsed;
+            if (NextButton != null) NextButton.IsEnabled = true;
             return true;
         }
         else
         {
-            ErrorLabel.Visibility = Visibility.Visible;
-            SaveButton.IsEnabled = false;
+            if (ErrorLabel != null) ErrorLabel.Visibility = Visibility.Visible;
+            if (NextButton != null) NextButton.IsEnabled = false;
             if (emitAuditOnFail && !string.IsNullOrEmpty(key))
             {
                 _ = AuditLogService.AppendAsync(new
@@ -206,8 +264,8 @@ public partial class FirstRunWindow : Window
         // Re-validate on Save click (UI-SPEC §Save click step 2)
         if (!_keyRegex.IsMatch(key))
         {
-            ErrorLabel.Visibility = Visibility.Visible;
-            SaveButton.IsEnabled = false;
+            if (ErrorLabel != null) ErrorLabel.Visibility = Visibility.Visible;
+            if (NextButton != null) NextButton.IsEnabled = false;
             _ = AuditLogService.AppendAsync(new
             {
                 ts = DateTime.UtcNow.ToString("o"),
