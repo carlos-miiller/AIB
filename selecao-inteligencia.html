@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Seleção de Inteligência — Handoff para C#/WPF</title>
+<style>
+  /*
+    ============================================================
+    HANDOFF NOTES FOR C# / WPF CONVERSION
+    ============================================================
+    This file is a static, non-interactive reproduction of an
+    "AI agent selection" screen. It intentionally uses plain CSS
+    (no frameworks) so every visual rule maps 1:1 to WPF concepts.
+
+    WINDOW / CONTAINER
+    -------------------
+    - The whole screen is a full-bleed background (radial gradient,
+      near-black) with a single centered floating panel — like a
+      borderless WPF Window with AllowsTransparency + a custom
+      chrome, floating over the desktop.
+    - The panel MUST have a drop shadow (DropShadowEffect) on its
+      outer edge to read as "floating" above the desktop — this is
+      a hard requirement per the design spec, not optional polish.
+      Suggested WPF: <Border.Effect><DropShadowEffect BlurRadius="60"
+      ShadowDepth="15" Opacity="0.55" Color="Black"/></Border.Effect>
+
+    "GLASS" BACKGROUND RULE (IMPORTANT — do not use native Blur)
+    -------------------
+    - Do NOT use a real Gaussian/Acrylic blur behind the panel.
+      Native blur effects are unstable on Windows (rendering glitches,
+      perf issues). Instead, the "smoked glass" look is faked with a
+      SOLID, nearly-opaque dark fill:
+        Fill color: WColor.FromArgb(230, 18, 18, 22)  // ~90% opacity
+        (equivalent CSS: rgba(18,18,22,0.90))
+      This one solid color IS the entire background of the inner
+      panel — no blur, no transparency effect chain.
+
+    NEON GRADIENT BORDER RULE
+    -------------------
+    - The ONLY vivid/saturated color in the whole UI is a thin
+      gradient stroke around the outer edge of the panel (about
+      1.5–2px). It is a 4-stop linear gradient, diagonal (top-left
+      to bottom-right), stops in this exact order:
+        1) Purple  #9B51E0  (0%)
+        2) Cyan-Blue #3182CE (35%)
+        3) Magenta #D53F8C  (65%)
+        4) Orange  #E28743  (100%)
+      In WPF: a Border with Background = this LinearGradientBrush,
+      containing a second inner Border (the solid glass fill above)
+      inset by the stroke width, so the gradient only shows as an
+      outline. (CSS fakes this the same way: outer div = gradient
+      background + padding = stroke width; inner div = solid fill.)
+    - This same 2-stop version (purple→blue) is reused for the
+      primary CTA button and small accent chips.
+
+    TEXT COLORS
+    -------------------
+    - Heading (title): #F5F4F7 (near white)
+    - Subtitle / helper text: #8B8794 (muted grey-purple)
+    - Card body text — UNSELECTED card: #8B8794
+    - Card body text — SELECTED card: #CBC8D1 (lighter — selection
+      brightens body copy, this is intentional and the only text
+      color state change)
+    - Personality tag pill: text #C79EF0 on background
+      rgba(155,81,224,0.14) with 1px border rgba(155,81,224,0.30)
+    - Stat labels follow the same selected/unselected rule as body text
+
+    STAR RATING (Assertividade / Utilidade / Humanidade, scale 1–5)
+    -------------------
+    - Rendered as 5 star glyphs per stat, filled left-to-right.
+    - Filled star color: #E8B84B (gold) — constant regardless of
+      selection state.
+    - Empty star color: #3A3640 unselected card / #463D55 selected
+      card (slightly lighter so stars stay legible on the tinted
+      selected background).
+    - In WPF, prefer a small custom Path/Geometry star icon repeated
+      5x per row rather than a font glyph, for crisp rendering at
+      small sizes; keep the same fill/empty color split.
+
+    CARD (one per agent) — layout + states
+    -------------------
+    - Fixed size: 240px wide, ~382px min height, 18px corner radius.
+    - Cards sit in a single horizontal row with 16px gap, the row
+      centers itself in the panel and scrolls sideways
+      (mouse wheel vertical delta is redirected to horizontal scroll)
+      when there are more cards than fit — like a horizontal
+      ListBox/ItemsControl with a ScrollViewer, wheel-to-horizontal
+      behavior attached.
+    - Card content, top to bottom, ALL CENTER-ALIGNED at the top:
+        1. Agent name (16px, semibold, #F5F4F7)
+        2. Personality tag — short phrase in a pill/chip
+        3. Description paragraph (13px, left-aligned block below,
+           color per selection state above)
+        4. Sample line of dialogue, in italics, quoted, same color
+           rule as description
+        5. Divider line (1px, rgba(255,255,255,0.06))
+        6. Three stat rows (label left, 5-star rating right),
+           18px star glyphs
+    - UNSELECTED state:
+        background: rgba(229,18,18,0.06)  // near-transparent dark red tint, very subtle
+        border: 1px solid rgba(255,255,255,0.08)
+        shadow: 0 2px 8px rgba(0,0,0,0.20)
+    - SELECTED state (exactly one card selected at a time — radio
+      behavior, click a card to select it):
+        background: linear-gradient(135deg, rgba(155,81,224,0.16), rgba(49,130,206,0.09))
+        border: 1px solid rgba(155,81,224,0.55)
+        shadow: 0 6px 20px rgba(155,81,224,0.20)
+        (also brightens description/sample-line/stat-label text, see above)
+    - Only one card can be selected; selecting a card is the only
+      interactive behavior on this screen besides the footer buttons.
+
+    FOOTER BUTTONS
+    -------------------
+    - Row, right-aligned, "Sair" (Exit) pinned to the far left via
+      margin-right:auto, then "Voltar" (Back), then "Próximo" (Next).
+    - Sair: text-only button, color #A8A4B0, no border/background.
+    - Voltar: outlined button, 1px solid rgba(255,255,255,0.18),
+      text #E8E6EC, transparent background, 10px corner radius.
+    - Próximo: filled primary button, 2-stop gradient background
+      (#9B51E0 → #3182CE), white bold text, 10px corner radius,
+      soft purple glow shadow (0 4px 16px rgba(155,81,224,0.35)).
+
+    TYPOGRAPHY
+    -------------------
+    System UI font stack (Segoe UI equivalent is already the native
+    WPF default — no custom font needed).
+
+    SAMPLE DATA MODEL (per agent card)
+    -------------------
+    {
+      Name: string,
+      Description: string,
+      Personality: string,          // short phrase shown as pill
+      SampleSpeech: string,         // example line of dialogue, shown in italics
+      Stats: {
+        Assertiveness: 1-5,
+        Usefulness: 1-5,
+        Humanity: 1-5
+      }
+    }
+    ============================================================
+  */
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    width: 100%;
+    background: radial-gradient(120% 100% at 30% 0%, #241b3a 0%, #0d0b14 55%, #0a0910 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  }
+
+  /* Outer panel = the neon gradient border, expressed as background + padding */
+  .panel-border {
+    position: relative;
+    width: 100%;
+    max-width: 706px;
+    border-radius: 24px;
+    padding: 1.5px; /* = stroke width of the neon border */
+    background: linear-gradient(135deg, #9B51E0, #3182CE 35%, #D53F8C 65%, #E28743 100%);
+    box-shadow: 0 25px 60px rgba(0,0,0,0.55); /* required floating shadow */
+  }
+
+  /* Inner panel = the solid "glass" fill (NOT a blur) */
+  .panel {
+    border-radius: 22.5px;
+    background: rgba(18,18,22,0.90); /* WColor.FromArgb(230,18,18,22) */
+    padding: 40px 40px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .header { text-align: center; display: flex; flex-direction: column; gap: 6px; }
+  .header h1 { font-size: 26px; font-weight: 700; color: #f5f4f7; letter-spacing: -0.01em; }
+  .header p { font-size: 13px; color: #8b8794; }
+
+  /* Horizontal scroll row of agent cards */
+  .cards-row {
+    display: flex;
+    flex-direction: row;
+    justify-content: safe center;
+    gap: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 6px 12px 6px;
+    scrollbar-width: thin;
+  }
+  .cards-row::-webkit-scrollbar { height: 6px; }
+  .cards-row::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+  .card {
+    cursor: pointer;
+    flex: 0 0 240px;
+    width: 240px;
+    min-height: 382px;
+    border-radius: 18px;
+    padding: 24px 22px;
+    background: rgba(229,18,18,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.20);
+    transition: border 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  }
+  .card.selected {
+    background: linear-gradient(135deg, rgba(155,81,224,0.16), rgba(49,130,206,0.09));
+    border: 1px solid rgba(155,81,224,0.55);
+    box-shadow: 0 6px 20px rgba(155,81,224,0.20);
+  }
+
+  .card-head { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+  .card-name { font-size: 16px; font-weight: 600; color: #f5f4f7; }
+  .card-tag {
+    font-size: 11px; font-weight: 600; color: #c79ef0;
+    background: rgba(155,81,224,0.14); border: 1px solid rgba(155,81,224,0.3);
+    border-radius: 20px; padding: 3px 10px;
+  }
+
+  .card-desc { display: block; margin-top: 12px; font-size: 13px; line-height: 1.5; color: #8b8794; }
+  .card.selected .card-desc { color: #cbc8d1; }
+
+  .card-speech { display: block; margin-top: 10px; font-size: 13px; font-style: italic; line-height: 1.5; color: #8b8794; }
+  .card.selected .card-speech { color: #cbc8d1; }
+
+  .stats { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .stat-row { display: flex; align-items: center; justify-content: space-between; }
+  .stat-label { font-size: 12px; color: #8b8794; }
+  .card.selected .stat-label { color: #cbc8d1; }
+  .stat-stars { font-size: 18px; letter-spacing: 2px; }
+  .star-filled { color: #e8b84b; } /* constant gold, both states */
+  .star-empty { color: #3a3640; }
+  .card.selected .star-empty { color: #463d55; }
+
+  .footer {
+    display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+    padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .btn-exit { background: none; border: none; color: #a8a4b0; font-size: 14px; font-weight: 500; cursor: pointer; padding: 10px 6px; margin-right: auto; }
+  .btn-back { background: transparent; border: 1px solid rgba(255,255,255,0.18); color: #e8e6ec; font-size: 14px; font-weight: 600; padding: 10px 22px; border-radius: 10px; cursor: pointer; }
+  .btn-next {
+    background: linear-gradient(135deg, #9B51E0, #3182CE); border: none; color: #fff;
+    font-size: 14px; font-weight: 700; padding: 10px 26px; border-radius: 10px; cursor: pointer;
+    box-shadow: 0 4px 16px rgba(155,81,224,0.35);
+  }
+</style>
+</head>
+<body>
+
+  <div class="panel-border">
+    <div class="panel">
+
+      <div class="header">
+        <h1>Escolha sua Inteligência</h1>
+        <p>Selecione o agente que vai te acompanhar</p>
+      </div>
+
+      <!--
+        Agent cards: exactly one carries class="selected" at a time
+        (radio-group / single-select behavior). The .card click handler
+        below is the ONLY interactive logic on this screen — in WPF this
+        maps to a SelectedIndex/SelectedItem on an ItemsControl, or a
+        simple "IsSelected" bool per view-model item toggled on click,
+        with all other items cleared.
+      -->
+      <div class="cards-row" id="cardsRow">
+
+        <!-- CARD 1 — real data supplied by user -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-name">Ayano Kikuchi</span>
+            <span class="card-tag">Disciplina tática e frieza lógica</span>
+          </div>
+          <span class="card-desc">Ayano é uma jovem que vive de forma independente, carregando a postura, o rigor e a disciplina de uma profissional de elite, operando a todo momento sob um foco tático inabalável.</span>
+          <span class="card-speech">"Você é o núcleo deste sistema, e proteger a sua eficiência é a minha prioridade absoluta."</span>
+          <div class="stats">
+            <div class="stat-row"><span class="stat-label">Assertividade</span><span class="stat-stars"><span class="star-filled">★★★★</span><span class="star-empty">☆</span></span></div>
+            <div class="stat-row"><span class="stat-label">Utilidade</span><span class="stat-stars"><span class="star-filled">★★★★★</span><span class="star-empty"></span></span></div>
+            <div class="stat-row"><span class="stat-label">Humanidade</span><span class="stat-stars"><span class="star-filled">★★★</span><span class="star-empty">☆☆</span></span></div>
+          </div>
+        </div>
+
+        <!-- CARD 2 — sample data, SELECTED (default selection for this mock) -->
+        <div class="card selected">
+          <div class="card-head">
+            <span class="card-name">Sora Tanaka</span>
+            <span class="card-tag">Curiosidade calorosa e empatia</span>
+          </div>
+          <span class="card-desc">Sora é acolhedora e atenta, sempre disposta a ouvir antes de responder, trazendo leveza e paciência para qualquer conversa.</span>
+          <span class="card-speech">"Estou aqui com você, sem pressa nenhuma. Vamos entender isso juntos, no seu tempo."</span>
+          <div class="stats">
+            <div class="stat-row"><span class="stat-label">Assertividade</span><span class="stat-stars"><span class="star-filled">★★★</span><span class="star-empty">☆☆</span></span></div>
+            <div class="stat-row"><span class="stat-label">Utilidade</span><span class="stat-stars"><span class="star-filled">★★★★</span><span class="star-empty">☆</span></span></div>
+            <div class="stat-row"><span class="stat-label">Humanidade</span><span class="stat-stars"><span class="star-filled">★★★★★</span><span class="star-empty"></span></span></div>
+          </div>
+        </div>
+
+        <!-- CARD 3 — sample data -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-name">Ren Okabe</span>
+            <span class="card-tag">Ironia afiada e independência</span>
+          </div>
+          <span class="card-desc">Ren fala pouco e direto, prefere respostas curtas e provocativas, mas entrega soluções eficientes quando importa.</span>
+          <span class="card-speech">"Já resolvi. Da próxima vez, tenta pensar antes de perguntar."</span>
+          <div class="stats">
+            <div class="stat-row"><span class="stat-label">Assertividade</span><span class="stat-stars"><span class="star-filled">★★★★★</span><span class="star-empty"></span></span></div>
+            <div class="stat-row"><span class="stat-label">Utilidade</span><span class="stat-stars"><span class="star-filled">★★★★</span><span class="star-empty">☆</span></span></div>
+            <div class="stat-row"><span class="stat-label">Humanidade</span><span class="stat-stars"><span class="star-filled">★★</span><span class="star-empty">☆☆☆</span></span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="footer">
+        <button class="btn-exit">Sair</button>
+        <button class="btn-back">Voltar</button>
+        <button class="btn-next">Próximo</button>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // INTERACTIVE LOGIC (single-select cards + wheel-to-horizontal scroll)
+    // C# NOTE: mirrors a click command that sets IsSelected=true on the
+    // clicked item's view-model and false on all siblings (radio-button
+    // group semantics), plus a PreviewMouseWheel handler on the
+    // ScrollViewer that redirects vertical wheel delta to horizontal
+    // offset when |deltaY| > |deltaX|.
+    // ============================================================
+    (function () {
+      var row = document.getElementById('cardsRow');
+      var cards = Array.prototype.slice.call(row.querySelectorAll('.card'));
+
+      cards.forEach(function (card) {
+        card.addEventListener('click', function () {
+          cards.forEach(function (c) { c.classList.remove('selected'); });
+          card.classList.add('selected');
+        });
+      });
+
+      row.addEventListener('wheel', function (e) {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+          row.scrollLeft += e.deltaY;
+          e.preventDefault();
+        }
+      }, { passive: false });
+    })();
+  </script>
+
+</body>
+</html>

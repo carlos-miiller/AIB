@@ -20,7 +20,7 @@ public class OpenAIService
     private CancellationTokenSource? _generationCts;
     private readonly Tokenizer _tokenizer;
 
-    public event Action<int, int>? OnTokenCountChanged;
+    public event Action<int, int, int?>? OnTokenCountChanged;
 
     public void CancelGeneration()
     {
@@ -59,6 +59,9 @@ public class OpenAIService
         _toolRegistry = new ToolRegistry();
         _tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
         
+        // Popula o histórico inicial (System Prompt / SOUL) para já termos a métrica de tokens
+        ResetHistory();
+
         // Inicia o aquecimento e trava de memória em background
         Task.Run(() => WarmupAndKeepAliveAsync());
     }
@@ -117,8 +120,28 @@ public class OpenAIService
             try
             {
                 // Faz a requisição completa usando o _history para garantir Prefix Match perfeito
-                var completion = await _client!.CompleteChatAsync(_history, chatOptions, CancellationToken.None);
-                string responseText = completion.Value.Content[0].Text;
+                string responseText = "";
+                if (settings.AiProvider == "Ollama")
+                {
+                    var ollamaClient = new OllamaNativeClient(string.IsNullOrEmpty(apiUrl) ? "http://127.0.0.1:11434" : apiUrl);
+                    var completionDto = await ollamaClient.CompleteChatAsync(settings.ModelName, _history, settings.EnableIntelligentTools ? tools : null, 0.1f, settings.VerboseConsoleLogging, CancellationToken.None);
+                    responseText = completionDto.Text ?? "";
+                    
+                    if (completionDto.PromptEvalCount.HasValue)
+                    {
+                        int promptEval = completionDto.PromptEvalCount.Value;
+                        int totalTokens = CalculateCurrentTokens();
+                        int cachedTokens = Math.Max(0, totalTokens - promptEval);
+                        int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
+                        OnTokenCountChanged?.Invoke(totalTokens, maxTokens, cachedTokens);
+                    }
+                }
+                else
+                {
+                    var completion = await _client!.CompleteChatAsync(_history, chatOptions, CancellationToken.None);
+                    responseText = completion.Value.Content[0].Text;
+                }
+                
                 Console.WriteLine($"[WARMUP] Gramática em cache! Resposta final: {responseText}");
             }
             finally
@@ -211,12 +234,17 @@ public class OpenAIService
             // Setting "EnableIntelligentTools": permite desligar todas as tool defs
             // quando o usuário quer chat puro/rápido (útil para Ollama em hardware modesto,
             // já que cada tool inflada a gramática JSON e adiciona latência de prefill).
-            if (_settingsService.LoadSettings().EnableIntelligentTools)
+            var settingsAi = _settingsService.LoadSettings();
+            IAsyncEnumerable<ChatUpdateDto> updates;
+            if (settingsAi.AiProvider == "Ollama")
             {
-                foreach (var tool in tools) chatOptions.Tools.Add(tool);
+                var ollamaClient = new OllamaNativeClient(string.IsNullOrEmpty(settingsAi.ApiUrl) ? "http://127.0.0.1:11434" : settingsAi.ApiUrl);
+                updates = ollamaClient.StreamChatAsync(settingsAi.ModelName, _history, settingsAi.EnableIntelligentTools ? tools : null, chatOptions.Temperature ?? 0.1f, settingsAi.VerboseConsoleLogging, ct);
             }
-
-            var updates = _client!.CompleteChatStreamingAsync(_history, chatOptions, ct);
+            else
+            {
+                updates = GetOpenAiUpdatesAsync(_client!, _history, chatOptions, ct);
+            }
 
             string fullResponse = "";
             // Agregado por Index (a chave estável entre chunks parciais de uma mesma tool call).
@@ -268,22 +296,21 @@ public class OpenAIService
             int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
             int baselineTokens = CalculateCurrentTokens();
 
-            await foreach (var update in updates.WithCancellation(ct))
+            await foreach (var update in updates.WithCancellation(ct).ConfigureAwait(false))
             {
                 updateCount++;
-                if (update.FinishReason.HasValue) finishReason = update.FinishReason.Value.ToString();
+                if (!string.IsNullOrEmpty(update.FinishReason)) finishReason = update.FinishReason;
 
                 if (verboseLogging)
                 {
-                    int contentParts = update.ContentUpdate?.Count ?? 0;
+                    int contentParts = string.IsNullOrEmpty(update.Text) ? 0 : 1;
                     int toolUpdates = update.ToolCallUpdates?.Count ?? 0;
                     if (contentParts > 0) updatesWithContent++;
                     if (toolUpdates > 0) updatesWithTools++;
                     if (contentParts == 0 && toolUpdates == 0) updatesEmpty++;
                     if (contentParts > 0)
                     {
-                        foreach (var part in update.ContentUpdate)
-                            if (!string.IsNullOrEmpty(part.Text)) rawTextChars += part.Text.Length;
+                        if (!string.IsNullOrEmpty(update.Text)) rawTextChars += update.Text.Length;
                     }
 
                     if (!firstUpdateLogged && (contentParts > 0 || toolUpdates > 0))
@@ -292,23 +319,19 @@ public class OpenAIService
                         dbg.Append($"[STREAM-DBG] update#{updateCount}: contentParts={contentParts} toolUpdates={toolUpdates}");
                         if (contentParts > 0)
                         {
-                            for (int i = 0; i < update.ContentUpdate.Count; i++)
-                            {
-                                var p = update.ContentUpdate[i];
-                                string preview = p.Text?.Length > 0
-                                    ? p.Text.Substring(0, Math.Min(40, p.Text.Length)).Replace("\n", "\\n")
-                                    : "(no text)";
-                                dbg.Append($" | part{i} Kind={p.Kind} TextLen={p.Text?.Length ?? 0} \"{preview}\"");
-                            }
+                            string preview = update.Text?.Length > 0
+                                ? update.Text.Substring(0, Math.Min(40, update.Text.Length)).Replace("\n", "\\n")
+                                : "(no text)";
+                            dbg.Append($" | part0 Kind=text TextLen={update.Text?.Length ?? 0} \"{preview}\"");
                         }
                         Console.WriteLine(dbg.ToString());
                         firstUpdateLogged = true;
                     }
                 }
                 // ── Processamento de chunks de texto ──────────────────────────
-                if (update.ContentUpdate.Count > 0)
+                if (!string.IsNullOrEmpty(update.Text))
                 {
-                    var chunk = update.ContentUpdate[0].Text;
+                    var chunk = update.Text;
                     if (!string.IsNullOrEmpty(chunk))
                     {
                         fullResponse += chunk;
@@ -345,7 +368,7 @@ public class OpenAIService
                                     onTechnicalContent?.Invoke(remaining.Substring(0, closeIdx + closeLen));
                                     thinkBuffer.Clear(); // think fechou normalmente, descarta fallback
                                     remaining = remaining.Substring(closeIdx + closeLen);
-                                    mode = 2; // entra em WaitingFinal
+                                    mode = 0; // sai de InsideThink e volta direto para Streaming normal
                                 }
                             }
                             else if (mode == 2) // WaitingFinal — bufferiza até ver marker de canal final
@@ -432,14 +455,24 @@ public class OpenAIService
                 }
                 
                 // Atualização em tempo real do contador de tokens durante o stream
-                if (updateCount % 10 == 0 || update.FinishReason.HasValue)
+                if (updateCount % 10 == 0 || !string.IsNullOrEmpty(update.FinishReason))
                 {
                     int streamedTokens = _tokenizer.CountTokens(fullResponse);
                     foreach (var tc in toolCallsByIndex.Values)
                     {
                         streamedTokens += _tokenizer.CountTokens(tc.ArgsBuilder.ToString());
                     }
-                    OnTokenCountChanged?.Invoke(baselineTokens + streamedTokens, maxTokens);
+                    int? cachedTokens = null;
+                    if (update.PromptEvalCount.HasValue && settingsAi.AiProvider == "Ollama")
+                    {
+                        // Use (total_tokens - prompt_eval_count) para disparar o evento OnTokenCountChanged enviando cachedTokens.
+                        cachedTokens = (baselineTokens + streamedTokens) - update.PromptEvalCount.Value;
+                    }
+                    if (update.EvalCount.HasValue && settingsAi.AiProvider != "Ollama")
+                    {
+                        cachedTokens = update.EvalCount.Value; // OpenAI uses EvalCount for CachedTokens in this mapping
+                    }
+                    OnTokenCountChanged?.Invoke(baselineTokens + streamedTokens, maxTokens, cachedTokens);
                 }
             }
 
@@ -673,20 +706,19 @@ public class OpenAIService
 
         if (settings.AiProvider == "Ollama")
         {
-            if (string.IsNullOrEmpty(apiUrl)) apiUrl = "http://127.0.0.1:11434/v1";
-            if (string.IsNullOrEmpty(apiKey)) apiKey = "ollama";
-            
-            // Bypass IPv6 DNS resolution issues that cause 2-minute timeouts
-            apiUrl = apiUrl.Replace("localhost", "127.0.0.1");
+            var ollamaClient = new OllamaNativeClient(string.IsNullOrEmpty(apiUrl) ? "http://127.0.0.1:11434" : apiUrl);
+            var ollamaMsgs = new List<ChatMessage>();
+            if (settings.SendSystemPrompt) ollamaMsgs.Add(ChatMessage.CreateSystemMessage(systemPrompt));
+            ollamaMsgs.Add(ChatMessage.CreateUserMessage(userPrompt));
+            var dto = await ollamaClient.CompleteChatAsync(modelName, ollamaMsgs, null, 0.1f, settings.VerboseConsoleLogging, CancellationToken.None);
+            return dto.Text ?? "";
         }
-        // D-06: use-vault sentinel honors the vault-backed key storage
+
         if (apiKey == "use-vault")
         {
             apiKey = CredentialService.RetrieveCredential("openai", "ApiKey");
             if (apiKey.StartsWith("ERRO"))
             {
-                // Should not reach if D-03 detector ran; treat as deny.
-                // OpenAI SDK will fail with auth error → user sees error → re-runs FirstRunWindow.
                 apiKey = "placeholder";
             }
         }
@@ -851,8 +883,11 @@ public class OpenAIService
         return maxOverlap;
     }
 
+    public int CurrentTokenCount => CalculateCurrentTokens();
+
     private int CalculateCurrentTokens()
     {
+        if (_history == null || _history.Count == 0) return 0;
         int tokens = 0;
         foreach (var msg in _history)
         {
@@ -884,7 +919,7 @@ public class OpenAIService
     {
         int tokens = CalculateCurrentTokens();
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
-        OnTokenCountChanged?.Invoke(tokens, maxTokens);
+        OnTokenCountChanged?.Invoke(tokens, maxTokens, null);
     }
 
     private async System.Threading.Tasks.Task TrimHistoryAsync(int userLevel)
@@ -920,5 +955,38 @@ public class OpenAIService
 
         // Sempre notifica a interface
         NotifyTokenCount(userLevel);
+    }
+
+    private async IAsyncEnumerable<ChatUpdateDto> GetOpenAiUpdatesAsync(ChatClient client, List<ChatMessage> history, ChatCompletionOptions chatOptions, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        var updates = client.CompleteChatStreamingAsync(history, chatOptions, ct);
+        await foreach (var update in updates.WithCancellation(ct).ConfigureAwait(false))
+        {
+            var dto = new ChatUpdateDto();
+            if (update.FinishReason.HasValue) dto.FinishReason = update.FinishReason.Value.ToString();
+            
+            if (update.ContentUpdate.Count > 0 && !string.IsNullOrEmpty(update.ContentUpdate[0].Text))
+            {
+                dto.Text = update.ContentUpdate[0].Text;
+            }
+
+            foreach (var tc in update.ToolCallUpdates)
+            {
+                var tcDto = new ToolCallUpdateDto
+                {
+                    Index = tc.Index,
+                    ToolCallId = tc.ToolCallId,
+                    FunctionName = tc.FunctionName,
+                    FunctionArgumentsUpdate = tc.FunctionArgumentsUpdate?.ToString()
+                };
+                dto.ToolCallUpdates.Add(tcDto);
+            }
+            
+            if (update.Usage != null && update.Usage.InputTokenDetails != null)
+            {
+                dto.EvalCount = update.Usage.InputTokenDetails.CachedTokenCount;
+            }
+            yield return dto;
+        }
     }
 }

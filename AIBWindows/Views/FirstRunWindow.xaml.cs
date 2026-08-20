@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -7,7 +8,28 @@ using System.Windows.Input;
 using System.Windows.Navigation;
 using AIB.Services;
 
+using System.Windows.Media;
+using System.Globalization;
+using System.Windows.Data;
+using AIB.Services;
+
 namespace AIB.Views;
+
+public class ValueToStarForegroundConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is int statValue && parameter is string starIndexStr && int.TryParse(starIndexStr, out int starIndex))
+        {
+            // If stat >= starIndex, filled gold, else empty color (depends on selected state if we wanted, but let's just use gold vs gray)
+            return statValue >= starIndex ? new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#e8b84b")) 
+                                          : new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3a3640"));
+        }
+        return new SolidColorBrush(Colors.Transparent);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+}
 
 public partial class FirstRunWindow : Window
 {
@@ -21,11 +43,53 @@ public partial class FirstRunWindow : Window
     public FirstRunWindow()
     {
         InitializeComponent();
+        
+        // 40% width, 80% height relative to the primary screen
+        this.Width = System.Windows.SystemParameters.PrimaryScreenWidth * 0.40;
+        this.Height = System.Windows.SystemParameters.PrimaryScreenHeight * 0.80;
+
         UpdateStepsUI();
+        LoadAgents();
 
         // Queue Ollama model refresh on UI thread (default branch is Ollama per D-07 / UI-SPEC S0)
         // Não bloqueia o UI Thread
         Dispatcher.BeginInvoke(new Action(async () => await RefreshModelsAsync()));
+    }
+
+    private void LoadAgents()
+    {
+        var charsDir = DirectoryService.CharactersDir;
+
+        if (!System.IO.Directory.Exists(charsDir)) return;
+
+        var agents = new ObservableCollection<AgentProfile>();
+        foreach (var dir in System.IO.Directory.GetDirectories(charsDir))
+        {
+            var infoPath = System.IO.Path.Combine(dir, "info.json");
+            if (System.IO.File.Exists(infoPath))
+            {
+                try
+                {
+                    string json = System.IO.File.ReadAllText(infoPath);
+                    var profile = System.Text.Json.JsonSerializer.Deserialize<AgentProfile>(json);
+                    if (profile != null)
+                    {
+                        profile.DirectoryName = new System.IO.DirectoryInfo(dir).Name;
+                        agents.Add(profile);
+                    }
+                }
+                catch { /* skip invalid */ }
+            }
+        }
+        
+        if (AgentsListBox != null)
+        {
+            AgentsListBox.ItemsSource = agents;
+            if (agents.Any())
+            {
+                AgentsListBox.SelectedIndex = 0;
+            }
+        }
     }
 
     private void UpdateStepsUI()
@@ -97,6 +161,16 @@ public partial class FirstRunWindow : Window
     {
         if (e.LeftButton == MouseButtonState.Pressed)
             this.DragMove();
+    }
+
+    private void AgentsListBox_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is System.Windows.Controls.ListBox listBox && System.Windows.Media.VisualTreeHelper.GetChild(listBox, 0) is Border border && border.Child is ScrollViewer scrollViewer)
+        {
+            // Translates vertical wheel delta directly to horizontal pixel scrolling for a smooth fluid effect
+            scrollViewer.ScrollToHorizontalOffset(scrollViewer.HorizontalOffset - e.Delta);
+            e.Handled = true;
+        }
     }
 
     // ─── Radio button handlers ───────────────────────────────────────────────
@@ -306,6 +380,14 @@ public partial class FirstRunWindow : Window
             key_last4
         });
 
+        // Save selected agent
+        if (AgentsListBox.SelectedItem is AgentProfile selectedAgent)
+        {
+            var currentSettings = _settingsService.LoadSettings();
+            currentSettings.ActiveCharacter = selectedAgent.DirectoryName;
+            _settingsService.SaveSettings(currentSettings);
+        }
+
         DialogResult = true;
         Close();
     }
@@ -338,6 +420,14 @@ public partial class FirstRunWindow : Window
             provider = "Ollama",
             model = selectedModel
         });
+
+        // Save selected agent
+        if (AgentsListBox.SelectedItem is AgentProfile selectedAgent)
+        {
+            var currentSettings = _settingsService.LoadSettings();
+            currentSettings.ActiveCharacter = selectedAgent.DirectoryName;
+            _settingsService.SaveSettings(currentSettings);
+        }
 
         DialogResult = true;
         Close();

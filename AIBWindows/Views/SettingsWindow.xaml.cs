@@ -3,6 +3,8 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.IO;
+using System.Collections.Generic;
 using AIB.Services;
 
 namespace AIB.Views;
@@ -33,28 +35,55 @@ public partial class SettingsWindow : Window
             this.DragMove();
     }
 
+    private void LoadCharacters()
+    {
+        try
+        {
+            var charDir = DirectoryService.CharactersDir;
+
+            if (System.IO.Directory.Exists(charDir))
+            {
+                var dirs = System.IO.Directory.GetDirectories(charDir);
+                var characters = dirs.Select(d => System.IO.Path.GetFileName(d)).ToList();
+                if (!characters.Contains("Ayano")) characters.Insert(0, "Ayano");
+                
+                CharacterComboBox.ItemsSource = characters;
+                CharacterComboBox.SelectedItem = _currentSettings.ActiveCharacter ?? "Ayano";
+            }
+            else
+            {
+                CharacterComboBox.ItemsSource = new System.Collections.Generic.List<string> { "Ayano" };
+                CharacterComboBox.SelectedItem = "Ayano";
+            }
+        }
+        catch
+        {
+            CharacterComboBox.ItemsSource = new System.Collections.Generic.List<string> { "Ayano" };
+            CharacterComboBox.SelectedItem = "Ayano";
+        }
+    }
+
     private void LoadUiValues()
     {
+        LoadCharacters();
         ProviderComboBox.Text = string.IsNullOrEmpty(_currentSettings.AiProvider) ? "Ollama" : _currentSettings.AiProvider;
         UrlTextBox.Text = _currentSettings.ApiUrl;
         ModelComboBox.Text = _currentSettings.ModelName;
-        ShadowModelComboBox.Text = _currentSettings.ShadowModelName;
-
-        DataDirTextBox.Text = string.IsNullOrEmpty(_currentSettings.DataDirectory) 
-            ? DirectoryService.DataDir : _currentSettings.DataDirectory;
-        TempDirTextBox.Text = string.IsNullOrEmpty(_currentSettings.TempDirectory) 
-            ? DirectoryService.TempDir : _currentSettings.TempDirectory;
-
         int userLevel = LevelService.GetLevel(_currentSettings.MessageCount);
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
         MaxHistoryTextBox.Text = maxTokens.ToString();
-        ConfirmCmdCheckBox.IsChecked = _currentSettings.ConfirmDangerousCommands;
-        EphemeralSkillCheckBox.IsChecked = _currentSettings.EphemeralSkillContext;
         SendSystemPromptCheckBox.IsChecked = _currentSettings.SendSystemPrompt;
-        EnableIntelligentToolsCheckBox.IsChecked = _currentSettings.EnableIntelligentTools;
-        ShadowAssistantEnabledCheckBox.IsChecked = _currentSettings.ShadowAssistantEnabled;
         VerboseLoggingCheckBox.IsChecked = _currentSettings.VerboseConsoleLogging;
-        SearchEngineComboBox.Text = _currentSettings.SearchEngine;
+
+        foreach (System.Windows.Controls.ComboBoxItem item in KeepAliveComboBox.Items)
+        {
+            if (item.Tag?.ToString() == _currentSettings.KeepAlive)
+            {
+                KeepAliveComboBox.SelectedItem = item;
+                break;
+            }
+        }
+        if (KeepAliveComboBox.SelectedItem == null) KeepAliveComboBox.SelectedIndex = 3; // Default 5m
 
         UpdateUiForProvider();
         RefreshKeyTextBoxLabel();
@@ -144,13 +173,9 @@ public partial class SettingsWindow : Window
             if (models.Any())
             {
                 var currentModel = ModelComboBox.Text;
-                var currentShadowModel = ShadowModelComboBox.Text;
-                
                 ModelComboBox.ItemsSource = models;
-                ShadowModelComboBox.ItemsSource = models;
                 
                 ModelComboBox.Text = currentModel;
-                ShadowModelComboBox.Text = currentShadowModel;
             }
         }
         finally
@@ -166,63 +191,33 @@ public partial class SettingsWindow : Window
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        _currentSettings.ActiveCharacter = CharacterComboBox.SelectedItem?.ToString() ?? "Ayano";
         _currentSettings.AiProvider = (ProviderComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content?.ToString() ?? ProviderComboBox.Text;
         _currentSettings.ApiUrl = UrlTextBox.Text;
         // T-02-15 mitigation — KeyTextBox is now display-only (friendly label per sentinel).
         // FirstRunWindow owns settings.ApiKey writes (via AlterarChave_Click → ShowDialog).
         _currentSettings.ModelName = ModelComboBox.Text;
-        _currentSettings.ShadowModelName = ShadowModelComboBox.Text;
 
-        _currentSettings.DataDirectory = DataDirTextBox.Text;
-        _currentSettings.TempDirectory = TempDirTextBox.Text;
+        if (KeepAliveComboBox.SelectedItem is System.Windows.Controls.ComboBoxItem selectedKeepAlive && selectedKeepAlive.Tag != null)
+        {
+            _currentSettings.KeepAlive = selectedKeepAlive.Tag.ToString();
+        }
 
         // Limite de tokens agora é dinâmico por nível, não salvamos mais.
 
-        _currentSettings.ConfirmDangerousCommands = ConfirmCmdCheckBox.IsChecked ?? true;
-        _currentSettings.EphemeralSkillContext = EphemeralSkillCheckBox.IsChecked ?? true;
         _currentSettings.SendSystemPrompt = SendSystemPromptCheckBox.IsChecked ?? true;
-        _currentSettings.EnableIntelligentTools = EnableIntelligentToolsCheckBox.IsChecked ?? true;
-        _currentSettings.ShadowAssistantEnabled = ShadowAssistantEnabledCheckBox.IsChecked ?? false;
         _currentSettings.VerboseConsoleLogging = VerboseLoggingCheckBox.IsChecked ?? false;
-        _currentSettings.SearchEngine = SearchEngineComboBox.Text;
 
         _settingsService.SaveSettings(_currentSettings);
         
-        // Aplica os diretórios imediatamente
-        DirectoryService.ApplyFromSettings(_currentSettings);
+        // Atualiza a ChatWindow se estiver aberta
+        var chatWindow = System.Windows.Application.Current.Windows.OfType<ChatWindow>().FirstOrDefault();
+        if (chatWindow != null)
+        {
+            chatWindow.ApplyCharacterUI();
+        }
+
         Close();
-    }
-
-    private void BrowseDataDir_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new Microsoft.Win32.SaveFileDialog {
-            Title = "Selecione o Diretório de Dados",
-            Filter = "Diretórios|*.none",
-            FileName = "Selecione esta pasta"
-        };
-        // Hack simples para selecionar pasta no WPF sem System.Windows.Forms
-        var folderDialog = new System.Windows.Forms.FolderBrowserDialog {
-            Description = "Selecione o Diretório de Dados do AIB",
-            SelectedPath = DataDirTextBox.Text
-        };
-
-        if (folderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-        {
-            DataDirTextBox.Text = folderDialog.SelectedPath;
-        }
-    }
-
-    private void BrowseTempDir_Click(object sender, RoutedEventArgs e)
-    {
-        var folderDialog = new System.Windows.Forms.FolderBrowserDialog {
-            Description = "Selecione o Diretório Temporário do AIB",
-            SelectedPath = TempDirTextBox.Text
-        };
-
-        if (folderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-        {
-            TempDirTextBox.Text = folderDialog.SelectedPath;
-        }
     }
 
     private void WipeData_Click(object sender, RoutedEventArgs e)

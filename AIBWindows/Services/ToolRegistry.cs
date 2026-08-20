@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using OpenAI.Chat;
+using AIB.Services.Tools;
 
 namespace AIB.Services;
 
@@ -64,20 +65,8 @@ public class ToolRegistry
     {
         var nativeTools = new List<ITool>
         {
-            new ManageMemoryTool(),
-            new ManageVaultTool(),
-            new ReadFileTool(),
             new RunCommandTool(),
-            new SearchWebTool(),
-            new ReadScreenTool(),
-            new MaterializeSkillTool(),
-            new ManageClipboardTool(),
-            new SetReminderTool(),
-            new ExecuteSkillTool(),
-            // Filesystem exploration tools (commit 2):
-            new GlobTool(),
-            new GrepTool(),
-            new ListDirTool(),
+            new ReadFileTool(),
             new WriteFileTool()
         };
 

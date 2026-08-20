@@ -15,6 +15,7 @@ public static class DirectoryService
     public static string SkillsDir => Path.Combine(DataDir, "skills");
     public static string MemoryDir => Path.Combine(DataDir, "memory");
     public static string LogsDir => Path.Combine(DataDir, "logs");
+    public static string CharactersDir => Path.Combine(DataDir, "character");
 
     // Subdiretórios Temporários
     public static string ScreenshotCacheDir => Path.Combine(TempDir, "screenshots");
@@ -40,6 +41,20 @@ public static class DirectoryService
             Directory.CreateDirectory(SkillsDir);
             Directory.CreateDirectory(MemoryDir);
             Directory.CreateDirectory(LogsDir);
+
+            // Migração da pasta original de personagens para .AIB
+            if (!Directory.Exists(CharactersDir))
+            {
+                Directory.CreateDirectory(CharactersDir);
+                string sourceCharDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "character");
+                if (!Directory.Exists(sourceCharDir)) sourceCharDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "character");
+                if (!Directory.Exists(sourceCharDir)) sourceCharDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "character");
+                
+                if (Directory.Exists(sourceCharDir))
+                {
+                    CopyDirectory(sourceCharDir, CharactersDir);
+                }
+            }
 
             Directory.CreateDirectory(TempDir);
             Directory.CreateDirectory(ScreenshotCacheDir);

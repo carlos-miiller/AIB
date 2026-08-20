@@ -43,13 +43,13 @@ Este documento detalha todas as funcionalidades nativas e comportamentos esperad
 - **Auto-Documentação:** Toda skill materializada deve vir acompanhada de metadados que permitam ao agente "lembrar" como usá-la em conversas futuras através da memória persistente.
 
 ### 2.3 Orquestração Multi-Ferramenta (Parallel & Sequential Execution)
-- **Chamadas em Cadeia:** Capacidade de resolver problemas complexos que exigem dados de múltiplas fontes (ex: buscar um lead no Bitrix, pesquisar o site da empresa no Google, e salvar um resumo na memória).
+- **Chamadas em Cadeia:** Capacidade de resolver problemas complexos que exigem dados de múltiplas fontes (ex: pesquisar no Google e salvar um resumo na memória).
 - **Refinamento de Contexto:** Uso de técnicas de "Prompt Compression" ou "Summary Buffer" para garantir que o histórico longo de execuções técnicas não degrade a qualidade do raciocínio (evitando o esquecimento do objetivo inicial).
 
 ### 2.3 Gerenciamento de Memória e Credenciais
 - **Memory (RAG Local):** Sistema de "Remember" e "Recall" usando arquivos de texto locais para persistência de fatos sobre o usuário ou empresa.
-- **Cofre de Credenciais (DPAPI):** Armazenamento criptografado de chaves (Bitrix, Telegram, OpenAI) em `%AppData%\AIB\credentials\`.
-- **Busca Global Resiliente:** Se o agente solicitar uma chave de um sistema (ex: `bitrix`) mas ela estiver em outro (ex: `telegram`), o `CredentialService` deve fazer uma varredura em todos os arquivos `.bin` para encontrar a chave.
+- **Cofre de Credenciais (DPAPI):** Armazenamento criptografado de chaves (ex: OpenAI) em `%AppData%\AIB\credentials\`.
+- **Busca Global Resiliente:** Se o agente solicitar uma chave de um sistema, o `CredentialService` deve fazer uma varredura para localizar as credenciais correspondentes.
 
 ---
 
@@ -70,17 +70,9 @@ Este documento detalha todas as funcionalidades nativas e comportamentos esperad
 
 ## 4. Integrações de Sistema
 
-### 3.1 Bot do Telegram (Modo Híbrido)
-- **Descrição:** O AIB deve responder tanto pela janela local quanto via Telegram.
-- **Polling Ativo:** Uso de `StartReceiving` (v22+) para escutar mensagens em tempo real sem bloquear a interface WPF.
-- **Streaming Remoto:** Envio de mensagens para o Telegram com o mesmo motor de IA da interface local.
-
-### 3.2 Atalhos e Notificações (System Tray)
+### 3.1 Atalhos e Notificações (System Tray)
 - **Hotkey Global:** `Ctrl + Shift + Space` para alternar a visibilidade da janela em qualquer lugar do Windows.
 - **Taskbar Icon:** Ícone na bandeja do sistema com menu de contexto (Abrir, Sair) e notificações de balão para status de execução.
-
-### 3.3 Bitrix24 Agentic Skill
-- **Call Command:** Comando genérico no script `bitrix.ps1` que permite à IA chamar qualquer endpoint da REST API do Bitrix enviando parâmetros JSON.
 
 ---
 

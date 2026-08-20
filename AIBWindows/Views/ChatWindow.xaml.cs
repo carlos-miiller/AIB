@@ -68,8 +68,8 @@ public partial class ChatWindow : Window
         RefreshLevelUI(false);
         int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
-        UpdateTokenCounterUI(0, maxTokens);
-        AddWelcomeBubble();
+        UpdateTokenCounterUI(_openAIService.CurrentTokenCount, maxTokens);
+        ApplyCharacterUI();
         InputBox.Focus();
 
         ContextSidebarControl.OnRecoverChat += (session) =>
@@ -106,6 +106,22 @@ public partial class ChatWindow : Window
     // ─────────────────────────────────────────────────────────────────────────
     // Controle de Visibilidade
     // ─────────────────────────────────────────────────────────────────────────
+
+    public void ApplyCharacterUI()
+    {
+        var settings = _settingsService.LoadSettings();
+        if (AgentNameText != null)
+        {
+            AgentNameText.Text = string.IsNullOrEmpty(settings.ActiveCharacter) ? "AIB" : settings.ActiveCharacter.ToUpper();
+        }
+        
+        // Limpa a tela
+        if (MessagesPanel != null) MessagesPanel.Children.Clear();
+        // Limpa o contexto do OpenAI Service (injeta o SOUL.MD atual)
+        _openAIService.ResetHistory();
+        
+        AddWelcomeBubble();
+    }
 
     private void HandleWarmupState(bool isWarmingUp)
     {
@@ -537,6 +553,7 @@ public partial class ChatWindow : Window
             await foreach (var chunk in stream)
             {
                 fullText += chunk;
+                GibberishVoiceService.SpeakChunk(chunk);
 
                 // Mostra os 3 pontos apenas quando a IA estiver enviando pedaços de texto (escrevendo)
                 if (typingBubble == null)
@@ -549,6 +566,8 @@ public partial class ChatWindow : Window
                 // Reseta o timer de inatividade de 3 segundos
                 idleTimer.Stop();
                 idleTimer.Start();
+
+                await Task.Yield(); // Força a liberação da thread de UI para renderizar os updates
             }
 
             Console.WriteLine($"\n[AIB]  [{DateTime.Now:HH:mm:ss}]: {fullText}");
@@ -908,23 +927,38 @@ public partial class ChatWindow : Window
         return WColor.FromRgb(213, 63, 140); // Rosa Alerta
     }
 
-    private void UpdateTokenCounterUI(int current, int max)
+    private int? _lastCachedTokens = null;
+
+    private void UpdateTokenCounterUI(int current, int max, int? cached = null)
     {
         Dispatcher.Invoke(() =>
         {
+            string baseText = "";
             if (max < 5120)
             {
-                TokenCounterText.Text = $"{current}/{max} tokens";
+                baseText = $"{current}/{max} tokens";
             }
             else
             {
                 double kCurrent = current / 1000.0;
                 double kMax = max / 1000.0;
-                TokenCounterText.Text = $"{kCurrent:0.#}k/{kMax:0.#}k tokens";
+                baseText = $"{kCurrent:0.#}k/{kMax:0.#}k tokens";
             }
+
+            if (cached.HasValue) _lastCachedTokens = cached.Value;
             
-            double percentage = max > 0 ? (double)current / max : 0;
-            TokenCounterText.Foreground = new SolidCB(GetTokenColor(percentage));
+            if (_lastCachedTokens.HasValue && current > 0)
+            {
+                int percentage = (int)Math.Round((double)_lastCachedTokens.Value / current * 100);
+                if (percentage > 100) percentage = 100;
+                if (percentage < 0) percentage = 0;
+                baseText += $" (-{percentage}%)";
+            }
+
+            TokenCounterText.Text = baseText;
+            
+            double ratio = max > 0 ? (double)current / max : 0;
+            TokenCounterText.Foreground = new SolidCB(GetTokenColor(ratio));
         });
     }
 

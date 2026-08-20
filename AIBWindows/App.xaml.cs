@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using Hardcodet.Wpf.TaskbarNotification;
@@ -30,7 +32,16 @@ public partial class App : System.Windows.Application
 
         try
         {
+            GibberishVoiceService.Initialize();
             DirectoryService.EnsureDirectories();
+
+            if (e.Args.Length > 0)
+            {
+                System.Threading.SynchronizationContext.SetSynchronizationContext(null);
+                RunCliCommandAsync(e.Args).GetAwaiter().GetResult();
+                return;
+            }
+
             var settings = _settingsService.LoadSettings();
             DirectoryService.ApplyFromSettings(settings);
 
@@ -141,6 +152,33 @@ public partial class App : System.Windows.Application
             });
             Current.Shutdown();
         }
+    }
+
+    private async Task RunCliCommandAsync(string[] args)
+    {
+        bool success = false;
+        if (args.Contains("--test-rag"))
+        {
+            success = await Services.TestRunner.RunRagTestAsync();
+        }
+        else if (args.Contains("--test-tool"))
+        {
+            success = await Services.TestRunner.RunToolTestAsync();
+        }
+        else if (args.Contains("--test-all"))
+        {
+            bool ragSuccess = await Services.TestRunner.RunRagTestAsync();
+            bool toolSuccess = await Services.TestRunner.RunToolTestAsync();
+            success = ragSuccess && toolSuccess;
+        }
+        else
+        {
+            Console.WriteLine($"Unknown argument(s): {string.Join(" ", args)}");
+            Console.WriteLine("Available test arguments: --test-rag, --test-tool, --test-all");
+            Environment.Exit(1);
+        }
+
+        Environment.Exit(success ? 0 : 1);
     }
 
     protected override void OnExit(ExitEventArgs e)

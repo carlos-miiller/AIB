@@ -143,7 +143,7 @@
                     <!-- Logo + Título -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="✦" FontSize="13" Foreground="#9B51E0" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBlock Text="AIB" FontSize="15" FontWeight="Bold" Foreground="#E0E0E0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="AgentNameText" Text="AIB" FontSize="15" FontWeight="Bold" Foreground="#E0E0E0" VerticalAlignment="Center"/>
                         
                         <!-- Level Indicator -->
                         <TextBlock x:Name="LevelText" Text="Nível 1" FontSize="12" FontWeight="SemiBold" Foreground="#CD7F32" VerticalAlignment="Center" Margin="16,0,0,0">
