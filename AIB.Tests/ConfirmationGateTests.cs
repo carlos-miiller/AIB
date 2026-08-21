@@ -1,0 +1,189 @@
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using AIB.Services;
+using FluentAssertions;
+using Xunit;
+
+namespace AIB.Tests
+{
+    /// <summary>
+    /// O portão humano das ferramentas destrutivas.
+    /// <para>
+    /// Estes testes existem porque a ausência deles foi a causa raiz: a
+    /// CommandConfirmationWindow estava completa e correta, e ficou com ZERO chamadores em toda
+    /// a árvore sem que nada acusasse. O registry chamava WPF direto, então não havia como
+    /// exercitar o portão — e um gate que não é testado é um gate que some em silêncio.
+    /// </para>
+    /// </summary>
+    public class ConfirmationGateTests
+    {
+        private sealed class PromptFalso : IConfirmationPrompt
+        {
+            private readonly bool _permitir;
+            private readonly bool _sempre;
+
+            public PromptFalso(bool permitir, bool sempre = false)
+            {
+                _permitir = permitir;
+                _sempre = sempre;
+            }
+
+            public List<CommandConfirmationContext> Perguntas { get; } = new();
+
+            public Task<(bool Allowed, bool AlwaysAllow)> AskAsync(CommandConfirmationContext context)
+            {
+                Perguntas.Add(context);
+                return Task.FromResult((_permitir, _sempre));
+            }
+        }
+
+        private static string ComandoInofensivo(string cmd) => "{\"command\":\"" + cmd + "\"}";
+
+        public ConfirmationGateTests() => AlwaysAllowSession.Clear();
+
+        [Fact]
+        public async Task SemPromptDisponivel_FerramentaDestrutivaEhRecusada()
+        {
+            // Sem UI para autorizar, o padrão seguro é não executar. Era exatamente este caminho
+            // que rodava PowerShell arbitrário sem perguntar nada.
+            var registry = new ToolRegistry(confirmationPrompt: null);
+
+            string r = await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo oi"), userLevel: 9);
+
+            r.Should().StartWith("ACESSO NEGADO");
+            r.Should().Contain("não há interface disponível");
+        }
+
+        [Fact]
+        public async Task UsuarioRecusa_ComandoNaoRoda_EOModeloRecebeTextoTratavel()
+        {
+            var prompt = new PromptFalso(permitir: false);
+            var registry = new ToolRegistry(prompt);
+
+            string r = await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo oi"), userLevel: 9);
+
+            prompt.Perguntas.Should().HaveCount(1, "o modal tem de ser consultado");
+            r.Should().Be("Ação Rejeitada pelo Usuário.",
+                "o retorno alimenta o loop ReAct: o modelo se desculpa ou propõe alternativa em vez de quebrar");
+        }
+
+        [Fact]
+        public async Task OModalRecebeOComandoExato_QueVaiExecutar()
+        {
+            var prompt = new PromptFalso(permitir: false);
+            var registry = new ToolRegistry(prompt);
+
+            await registry.ExecuteToolAsync("run_command", ComandoInofensivo("Get-Process"), userLevel: 9);
+
+            prompt.Perguntas[0].Command.Should().Be("Get-Process");
+            prompt.Perguntas[0].Tool.Should().Be("run_command");
+            prompt.Perguntas[0].Level.Should().Be(9);
+        }
+
+        [Fact]
+        public async Task WriteFile_MostraOCaminhoAbsolutoResolvido()
+        {
+            // Autorizar "config.json" e autorizar a gravação real em Startup\config.json são
+            // decisões diferentes. O modal precisa mostrar a segunda.
+            var prompt = new PromptFalso(permitir: false);
+            var registry = new ToolRegistry(prompt);
+
+            await registry.ExecuteToolAsync(
+                "write_file", "{\"path\":\"arquivo.txt\",\"content\":\"oi\"}", userLevel: 9);
+
+            prompt.Perguntas.Should().HaveCount(1);
+            prompt.Perguntas[0].Command.Should().MatchRegex(@"^(CRIAR|SOBRESCREVER) [A-Za-z]:\\",
+                "o caminho tem de estar resolvido em absoluto, não como o modelo escreveu");
+        }
+
+        [Fact]
+        public async Task SemprePermitir_NaoPerguntaDeNovoParaOMesmoComando()
+        {
+            var prompt = new PromptFalso(permitir: true, sempre: true);
+            var registry = new ToolRegistry(prompt);
+
+            await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo um"), userLevel: 9);
+            await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo um"), userLevel: 9);
+
+            prompt.Perguntas.Should().HaveCount(1, "o segundo uso do MESMO comando vem da allowlist de sessão");
+        }
+
+        [Fact]
+        public async Task SemprePermitir_NaoVazaParaOutroComando()
+        {
+            var prompt = new PromptFalso(permitir: true, sempre: true);
+            var registry = new ToolRegistry(prompt);
+
+            await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo um"), userLevel: 9);
+            await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo dois"), userLevel: 9);
+
+            prompt.Perguntas.Should().HaveCount(2, "a allowlist casa byte a byte, não por prefixo nem por ferramenta");
+        }
+
+        [Fact]
+        public async Task LeituraDeArquivo_NaoPassaPeloPortao()
+        {
+            // read_file não altera a máquina: exigir confirmação a cada leitura treinaria o
+            // usuário a clicar "permitir" sem ler, esvaziando o portão onde ele importa.
+            var prompt = new PromptFalso(permitir: false);
+            var registry = new ToolRegistry(prompt);
+
+            await registry.ExecuteToolAsync(
+                "read_file", "{\"path\":\"C:\\\\naoexiste\\\\arquivo.txt\"}", userLevel: 9);
+
+            prompt.Perguntas.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task ArgumentosIlegiveis_NaoViramAutorizacao()
+        {
+            var prompt = new PromptFalso(permitir: true);
+            var registry = new ToolRegistry(prompt);
+
+            string r = await registry.ExecuteToolAsync("run_command", "{isso nao e json", userLevel: 9);
+
+            prompt.Perguntas.Should().BeEmpty("não dá para autorizar o que não se consegue descrever");
+            r.Should().StartWith("ACESSO NEGADO");
+        }
+
+        [Fact]
+        public async Task NivelInsuficiente_BarraAntesDeAbrirOModal()
+        {
+            var prompt = new PromptFalso(permitir: true);
+            var registry = new ToolRegistry(prompt);
+
+            string r = await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo oi"), userLevel: 1);
+
+            r.Should().StartWith("ACESSO NEGADO");
+            prompt.Perguntas.Should().BeEmpty("a trava de nível vem antes de incomodar o usuário");
+        }
+
+        [Fact]
+        public async Task FloorList_RefutaDestrutivoMesmoComOUsuarioAutorizando()
+        {
+            // O floor roda DEPOIS do modal de propósito: um clique distraído em "permitir" não
+            // pode liberar deleção recursiva abaixo do Nível 7.
+            var prompt = new PromptFalso(permitir: true);
+            var registry = new ToolRegistry(prompt);
+
+            string r = await registry.ExecuteToolAsync(
+                "run_command", ComandoInofensivo("Remove-Item -Recurse C:\\\\dados"), userLevel: 6);
+
+            prompt.Perguntas.Should().HaveCount(1, "o modal ainda é consultado primeiro");
+            r.Should().StartWith("ACESSO NEGADO (FLOOR)");
+        }
+
+        [Fact]
+        public async Task FloorList_InativoNoNivel7()
+        {
+            var prompt = new PromptFalso(permitir: false);
+            var registry = new ToolRegistry(prompt);
+
+            string r = await registry.ExecuteToolAsync(
+                "run_command", ComandoInofensivo("Remove-Item -Recurse C:\\\\dados"), userLevel: 7);
+
+            // Recusado pelo usuário, não pelo floor: em L>=7 o modal é a autoridade única.
+            r.Should().Be("Ação Rejeitada pelo Usuário.");
+        }
+    }
+}
