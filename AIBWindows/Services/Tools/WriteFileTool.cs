@@ -10,7 +10,50 @@ public class WriteFileTool : ITool
 {
     public string Name => "write_file";
     public string Description => "Cria ou sobrescreve um arquivo com o texto fornecido. Sempre use caminhos absolutos.";
-    public int RequiredLevel => 1;
+    public int RequiredLevel => 2;
+
+    public bool RequiresConfirmation => true;
+
+    /// <summary>
+    /// O modal mostra o caminho ABSOLUTO já resolvido, e não o que o modelo escreveu: é a
+    /// diferença entre autorizar "config.json" e autorizar a gravação real em
+    /// %APPDATA%\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\config.json.
+    /// Sem confinamento de raiz, o caminho resolvido é a única defesa que o usuário tem.
+    /// </summary>
+    public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel)
+    {
+        try
+        {
+            var args = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
+            if (!args.TryGetProperty("path", out var pathEl)) return null;
+
+            string caminho = PathArgumentRepair.Normalize(pathEl.GetString());
+            if (string.IsNullOrWhiteSpace(caminho)) return null;
+
+            string resolvido;
+            try { resolvido = Path.GetFullPath(caminho); }
+            catch { return null; }
+
+            bool existe = File.Exists(resolvido);
+            string conteudo = args.TryGetProperty("content", out var c) ? (c.GetString() ?? "") : "";
+            string previa = conteudo.Length > 400 ? conteudo[..400] + "\n...[prévia truncada]" : conteudo;
+
+            return new CommandConfirmationContext
+            {
+                Tool = Name,
+                Command = (existe ? "SOBRESCREVER " : "CRIAR ") + resolvido,
+                Level = userLevel,
+                Cwd = Environment.CurrentDirectory,
+                DenylistHit = false,
+                DenylistReason = "",
+                ScriptBody = previa
+            };
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         functionName: Name,
@@ -41,7 +84,9 @@ public class WriteFileTool : ITool
             if (!args.TryGetProperty("path", out var pathElement) || !args.TryGetProperty("content", out var contentElement))
                 return "ERRO: Os parâmetros 'path' e 'content' são obrigatórios.";
 
-            string path = pathElement.GetString() ?? string.Empty;
+            // Só o caminho passa pelo reparo. O conteúdo NUNCA: ali uma tabulação ou quebra
+            // de linha de verdade é legítima, e reescrevê-la corromperia o arquivo.
+            string path = PathArgumentRepair.Normalize(pathElement.GetString(), out bool pathRepaired);
             string content = contentElement.GetString() ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(path))
@@ -57,7 +102,14 @@ public class WriteFileTool : ITool
             }
 
             await File.WriteAllTextAsync(path, content);
-            return $"SUCESSO: Arquivo salvo corretamente em '{path}'.";
+
+            // Avisa o modelo do reparo para que ele corrija o escape na próxima chamada, em
+            // vez de repetir o erro a cada arquivo.
+            string aviso = pathRepaired
+                ? " AVISO: o caminho recebido continha escapes JSON inválidos e foi corrigido. Em JSON, escreva a barra invertida duplicada (C:\\temp\\x.txt)."
+                : "";
+
+            return $"SUCESSO: Arquivo salvo corretamente em '{path}'.{aviso}";
         }
         catch (Exception ex)
         {

@@ -69,6 +69,11 @@ public partial class CommandConfirmationWindow : Window
         {
             return await System.Windows.Application.Current.Dispatcher.InvokeAsync<(bool, bool)>(() =>
             {
+                // Sem isto a ChatWindow perde o foco para este modal, o handler .Deactivated
+                // dispara e ela se esconde — o usuário fica com o diálogo órfão na tela e
+                // precisa do atalho global para reaver o chat.
+                using var _ = AIB.Services.ModalGuard.Enter();
+
                 var win = new CommandConfirmationWindow(ctx) { Owner = System.Windows.Application.Current.MainWindow };
                 bool result = win.ShowDialog() == true;
                 return (result && win.IsAllowed, win.AlwaysAllow);

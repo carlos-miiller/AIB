@@ -37,7 +37,9 @@ public class ReadFileTool : ITool
             if (!args.TryGetProperty("path", out var pathElement))
                 return "ERRO: O parâmetro 'path' é obrigatório.";
 
-            string path = pathElement.GetString() ?? string.Empty;
+            // Mesmo reparo do write_file: caractere de controle é ilegal em caminho do Windows,
+            // então sua presença só pode vir de um escape JSON mal emitido pelo modelo.
+            string path = PathArgumentRepair.Normalize(pathElement.GetString());
             if (string.IsNullOrWhiteSpace(path))
                 return "ERRO: O caminho do arquivo não pode estar vazio.";
 
