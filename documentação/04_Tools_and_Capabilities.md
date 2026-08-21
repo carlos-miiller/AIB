@@ -1,44 +1,144 @@
 # 04. Ferramentas e Capacidades (Skills do AIB)
 
-Este módulo documenta o arsenal de Skills implementadas nativamente no AIB. Todas residem fundamentalmente em `NativeTools.cs` (obedecendo e implementando a interface técnica de `ITool`) ou em serviços paralelos que lidam em baixo-nível com o Hardware e o Sistema Operacional Windows.
+> **Fonte de verdade:** o conjunto efetivo de ferramentas vive em
+> `ToolRegistry.RegisterNativeTools()`. Esta documentação reflete esse registro. Se divergir, o
+> código vence.
+>
+> **Aviso desta versão:** este documento descrevia um arsenal (memória, cofre, OCR, clipboard, web,
+> lembretes, skills dinâmicas) declarado em `NativeTools.cs`. **Esse arquivo foi deletado.** O texto
+> abaixo descreve o que existe hoje, incluindo a postura de segurança real — que é bem mais frágil
+> do que a versão anterior deste documento dava a entender.
 
-> **Fonte de verdade:** o conjunto efetivo de ferramentas registradas vive em `ToolRegistry.RegisterNativeTools()`. Esta documentação reflete esse registro — se divergir, o código vence.
+## 1. O registro efetivo
 
-## 1. Ferramentas Locais (`NativeTools.cs`)
+`RegisterNativeTools()` registra exatamente **três** ferramentas, todas em `Services/Tools/`, todas
+com **`RequiredLevel = 1`**:
 
-O arquivo concentra a declaração técnica unificada de ferramentas para o Payload JSON da OpenAI.
+| Ferramenta | Classe | RequiredLevel | O que faz |
+|---|---|---|---|
+| `run_command` | `RunCommandTool` | **1** | Executa PowerShell arbitrário na sessão do usuário |
+| `read_file` | `ReadFileTool` | **1** | Lê um arquivo de texto por caminho absoluto |
+| `write_file` | `WriteFileTool` | **1** | Cria ou sobrescreve um arquivo por caminho absoluto |
 
-### 1.1 Sistema de Memória e Vault de Credenciais
-- **`manage_memory`** (RequiredLevel: 1): Lida com o banco vetorial local. `action="remember"` salva, `action="recall"` busca por similaridade semântica via embeddings BGE (detalhado em `05_Database_and_RAG`).
-- **`manage_vault`** (RequiredLevel: 7): Salva (`action="store"`) ou extrai (`action="retrieve"`) credenciais críticas (senhas, chaves de API, MFA). Não usa o LiteDB — chama `CredentialService.cs`, que invoca o **Data Protection API (DPAPI)** do Windows via `System.Security.Cryptography.ProtectedData`. Criptografia at-rest amarrada à sessão do usuário logado: apenas o hardware autenticado consegue descriptografar o `.bin`.
+Não existe mais nenhuma outra. `manage_memory`, `manage_vault`, `read_screen`, `manage_clipboard`,
+`search_web`, `set_reminder`, `materialize_skill` e `execute_skill` **não estão registradas** e não
+são apresentadas ao modelo.
 
-### 1.2 Leitura e Manipulação Dinâmica de I/O
-- **`read_file`** (RequiredLevel: 1, `ReadFileTool`): Habilidade nativa para devorar arquivos pesados esquivando-se do Console e sintaxes de aspas:
-  - `.txt`, `.json`, `.cs`: Parsing direto (`File.ReadAllText`).
-  - `.pdf`: Integração in-memory usando `UglyToad.PdfPig`.
-  - `.docx` e `.xlsx`: Parseia parágrafos/planilhas via `DocumentFormat.OpenXml` — sem requerer Office instalado.
-- **`run_command`** (RequiredLevel: 2, `RunCommandTool`): Encaminha o parâmetro `command` para `cmd.exe /c` em background invisível (timeout 20s). Para cmdlets PowerShell, prefixe com `powershell -NoProfile -Command "..."`. A tool aplica uma sandbox por nível:
-  - Bloqueia diretórios de sistema (`appdata`, `windows`, `program files`, `programdata`) abaixo de Nível 9.
-  - Nível ≤4: restrito a `Documents`/`Documentos` (e `Downloads` a partir de Nível 3).
-  - Nível <8: bloqueia comandos de escrita/exclusão (`rm`, `del`, `remove-item`, `set-content`, `>`, `>>`, etc.).
-  - Nível <7: bloqueia comandos de rede (`curl`, `wget`, `invoke-webrequest`, `ping`, etc.).
-  - Matching é feito por palavra (regex `\b`), não substring, para evitar falsos positivos.
+## 2. Postura de segurança — leia esta seção inteira
 
-### 1.3 Visão Computacional e Monitoramento do SO
-- **`read_screen`** (RequiredLevel: 3, `ReadScreenTool`): Combina título da janela ativa (via `user32!GetForegroundWindow` + `GetWindowText`) com OCR completo de todas as telas (`OcrService` + Tesseract local em `\tessdata`). Retorna texto pronto sem upload de imagem para a nuvem.
-- **`manage_clipboard`** (RequiredLevel: 1 para read; 6 para write): Lê (`action="read"`) ou grava (`action="write"`) na área de transferência via `System.Windows.Clipboard` no Dispatcher.
+O mecanismo de `RequiredLevel` do `ToolRegistry` funciona (doc 03 §6.1), mas as três ferramentas
+registradas pedem **nível 1**. Como todo usuário começa no nível 1, **não há gating efetivo nenhum**:
+um usuário recém-instalado tem, desde a primeira mensagem, execução de PowerShell, leitura de
+arquivo e escrita de arquivo disponíveis para o modelo.
 
-### 1.4 Web e Lembretes
-- **`search_web`** (RequiredLevel: 3, `SearchWebTool`): Pesquisa em tempo real via DuckDuckGo (`WebSearchService.SearchAsync`).
-- **`set_reminder`** (RequiredLevel: 1, `SetReminderTool`): Agenda um lembrete por `delay_minutes` ou `target_time` (HH:mm). Backend em `ReminderService`.
+### 2.1 O modal de confirmação está MORTO
 
-### 1.5 Auto-Programação (Dynamic Skills e Lazy Loading)
-- **`materialize_skill`** (RequiredLevel: 5): A IA emite via payload JSON o `script_content` (Python ou PowerShell) e o `skill_name`. O módulo salva em `~/.AIB/skills/<nome>/<nome>.{py|ps1}` via `SkillService.MaterializeSkillAsync`. O AIB ensina a si mesmo novos poderes (scrappers, automações).
-- **`execute_skill`** (RequiredLevel: 1): Para evitar inflar a gramática do LLM com dezenas de tools, scripts customizados **não** são expostos individualmente no payload da API. Os nomes e descrições são injetados como texto no System Prompt (em `OpenAIService.ResetHistory`). Quando a IA precisa rodar uma delas, usa `execute_skill` passando `skill_name` (+ `arguments` opcionais) — a tool resolve o interpretador e dispara via `SkillService.RunSkillAsync`.
-- **Skills Padrão (Seed)**: Na primeira inicialização, `SkillService.EnsureDir()` popula `.default_skills/` com seeds embutidas em `DefaultSkills.cs` (ex: `consultar_cep.py`, `system_info.ps1`).
+`CommandConfirmationWindow.ShowAsync` existe, está implementado (com semáforo de reentrância, hop de
+Dispatcher, banner de denylist e preview de script) e tem **zero chamadores**. Uma busca por
+`ShowAsync` no projeto inteiro só encontra a própria definição.
 
-## 2. Componentes UI de Hardware (Media e Voz)
+Consequências, ditas sem eufemismo:
 
-Certas ações ocorrem sem invocação via Payload JSON "Role: Tool". Elas dependem da UI front-end:
-- **`VoiceService.cs`**: Captura áudio via **`NAudio`** (`WaveInEvent` 16 kHz, 16-bit, mono PCM) e transcreve **localmente** com **Whisper.net** (modelo `ggml-base.bin` baixado uma vez em `%LOCALAPPDATA%\AIB\Models`). Wake-word configurada como `"AIB"`, com silence-cutoff em 1200 ms. Sem chamadas para a nuvem da OpenAI no caminho de voz.
-- **`OcrService.cs` (botão de UI)**: O ícone de lupa lateral do InputBox não chama a IA — extrai o frame estático e usa **Tesseract** local (modelos `por`/`eng` em `\tessdata`) para devolver Markdown editável em ~500 ms sem internet.
+- **Nenhum comando passa por confirmação do usuário.** Não existe funil, não existe sandboxing
+  visual, não existe pipeline bloqueada. O `run_command` executa direto.
+- **Não existe o retorno `"Ação Rejeitada pelo Usuário."`**, porque não existe rejeição.
+- **A setting `ConfirmDangerousCommands` não controla coisa alguma.** O comentário XML dela ainda
+  descreve um denylist pós-modal que não existe mais: `CommandFloorList`, `CommandService` e
+  `AlwaysAllowSession` foram deletados.
+- `CommandConfirmationContext` sobreviveu como DTO sem produtor.
+
+### 2.2 As sandboxes por nível não existem
+
+A versão anterior deste documento descrevia, para o `run_command`, bloqueio de diretórios de sistema
+abaixo do nível 9, confinamento em `Documents`/`Downloads` até o nível 4, bloqueio de comandos de
+escrita abaixo do nível 8 e de rede abaixo do nível 7, com matching por palavra. **Nada disso está no
+código.** `RunCommandTool.ExecuteAsync` valida apenas que o parâmetro `command` existe e não é vazio;
+o parâmetro `userLevel` é recebido e **ignorado**.
+
+Do mesmo modo, **`ReadFileTool` não é confinada a raiz alguma**: ela lê qualquer caminho para o qual
+`File.Exists` devolva `true`. E `WriteFileTool` escreve em qualquer caminho, criando os diretórios
+que faltarem.
+
+Em resumo: hoje o único portão real entre o modelo e o sistema de arquivos/shell do usuário é o
+próprio modelo. Reconstruir o portão de confirmação é pré-requisito para qualquer aumento do arsenal.
+
+## 3. As três ferramentas, em detalhe
+
+### 3.1 `run_command` (`RunCommandTool`)
+- **Schema:** `{ command: string }`, obrigatório.
+- **Execução:** `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "<comando>"`, com
+  `CreateNoWindow = true`, `UseShellExecute = false`, saída e erro redirecionados, e
+  `WorkingDirectory = Environment.CurrentDirectory`.
+- **Timeout:** 30 segundos (`Task.WhenAny` contra `Task.Delay(30000)`); no estouro o processo é
+  morto e a tool devolve o erro de timeout.
+- **Saída:** `stdout + "\n" + stderr`, truncada em 8.000 caracteres. Vazio vira
+  `"Comando executado com sucesso (sem saída)."`.
+- **Escape frágil:** o comando é interpolado no argumento com um simples
+  `command.Replace("\"", "\\\"")`. Isso não é um escape robusto de linha de comando do Windows;
+  comandos com aspas aninhadas ou caracteres de citação incomuns podem ser reinterpretados.
+- A descrição enviada ao modelo diz "PowerShell" e o processo é `powershell.exe` — o Windows
+  PowerShell 5.1, não `pwsh`.
+
+### 3.2 `read_file` (`ReadFileTool`)
+- **Schema:** `{ path: string }`, obrigatório, descrito como caminho completo e absoluto.
+- **Leitura:** `StreamReader.ReadToEndAsync()` — **texto puro apenas**. Truncada em 12.000
+  caracteres, com aviso no fim.
+- **Não há parsing de PDF, `.docx` ou `.xlsx`.** Os pacotes `PdfPig` e `DocumentFormat.OpenXml`
+  continuam no `AIB.csproj`, mas nenhum código vivo os usa. Apontar a ferramenta para um binário
+  devolve o conteúdo do arquivo interpretado como texto.
+- Erros são amigáveis para o modelo: `ERRO: Arquivo não encontrado em '<path>'.` etc.
+
+### 3.3 `write_file` (`WriteFileTool`)
+- **Schema:** `{ path: string, content: string }`, ambos obrigatórios.
+- Cria os diretórios ausentes (`Directory.CreateDirectory`) e grava com `File.WriteAllTextAsync`.
+- **Sobrescreve sem aviso e sem backup.** Não há confirmação, não há confinamento de caminho.
+- Devolve `SUCESSO: Arquivo salvo corretamente em '<path>'.`
+
+## 4. Pontas soltas que o refactor expôs
+
+Não são defeitos introduzidos agora — são inconsistências que ficaram visíveis quando o arsenal
+encolheu. Estão aqui porque um leitor precisa saber que existem:
+
+- **O system prompt promete uma ferramenta que não existe.** O `SYSTEM_PROMPT` da
+  `ConversationService` manda o modelo chamar `manage_memory(action=recall)` antes de dizer "não
+  sei". O registry responde `ERRO: Ferramenta 'manage_memory' não encontrada`.
+- **O `AgentLoop` ainda trata `materialize_skill` como caso especial** (chama
+  `_toolRegistry.Refresh()` depois dela). A ferramenta não existe, e `Refresh()` é um no-op.
+- **O rastreio de arquivos recentes nunca dispara.** `AgentLoop.TrackRecentFile` reage aos nomes
+  `read_file`, `view_file`, `write_to_file`, `replace_file_content` e `multi_replace_file_content`, e
+  procura as chaves `AbsolutePath` / `TargetFile` / `path`. Só `read_file` existe e só a chave `path`
+  bate; e o destino, `ContextService.AddRecentFile`, é um stub de corpo vazio.
+- **A listagem de skills dinâmicas nunca aparece.** `SkillService.ListLocalSkills()` devolve lista
+  vazia, então o bloco "Habilidades dinâmicas disponíveis" jamais é anexado ao system prompt. Não
+  existe `execute_skill` nem `materialize_skill` para chamá-las de qualquer forma.
+- **A sidebar de skills da `ChatWindow`** consome `Registry.GetCategorizedTools()`, que devolve as
+  três nativas e uma lista de dinâmicas sempre vazia.
+
+## 5. Componentes de hardware (voz e OCR) — hoje são stubs
+
+Estas capacidades não passam pelo payload de ferramentas; elas dependiam da UI chamando serviços
+diretamente. Os serviços foram esvaziados:
+
+- **`VoiceService`** (15 linhas): `InitializeAsync()` devolve `Task.CompletedTask`,
+  `StartListening()` e `StopListening()` têm corpo vazio, `Dispose()` não faz nada, e o evento
+  `OnTranscriptionUpdated` **nunca é disparado**. O botão de microfone da `ChatWindow` continua
+  ligado a esses métodos e ao ciclo de UI, mas nenhuma transcrição chega. Não há `NAudio`, não há
+  `Whisper.net`, não há wake-word — apesar de os três pacotes seguirem no `AIB.csproj`.
+- **`OcrService`** (6 linhas): `ExtractTextFromActiveScreenAsync()` devolve string vazia. O botão de
+  lupa do `InputBox` instancia o serviço e recebe nada. Não há Tesseract nem pasta `tessdata`.
+- **`ScreenshotService`** foi deletado.
+
+## 6. Se for reconstruir o arsenal
+
+A ordem que o código sugere, sem inventar requisito novo:
+
+1. **Primeiro o portão.** Dar chamadores a `CommandConfirmationWindow.ShowAsync` e reconstruir o
+   denylist por nível que `ConfirmDangerousCommands` promete controlar. Enquanto isso não existir,
+   subir o `RequiredLevel` de `run_command` e `write_file` é a única barreira disponível — e o
+   mecanismo do `ToolRegistry` já está pronto para aplicá-la, nos dois pontos (doc 03 §6.1).
+2. **Depois as ferramentas.** Toda ferramenta nova implementa `ITool` (`Name`, `Description`,
+   `ChatToolDefinition`, `RequiredLevel`, `ExecuteAsync`) e entra na lista de
+   `RegisterNativeTools()`. O schema declarado em `ChatToolDefinition` não é decorativo: o healer de
+   tool call por texto (doc 03 §3.3) lê `properties` e `required` dele para ligar argumentos de
+   chamadas escritas como prosa.
+3. **Por último o system prompt.** Ele deve prometer apenas o que está registrado.
