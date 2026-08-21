@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -108,7 +108,12 @@ namespace AIB.Tests
             var counter = new TokenCounter();
             var factory = new FixedProviderFactory(provider);
             var loop = new AgentLoop(registry, factory, settings, counter);
-            return new ConversationService(settings, registry, loop, counter, factory);
+            // Raiz de memória redirecionada: sem isto cada turno destes testes gravaria um
+            // raw.jsonl em ~/.AIB/memory do usuário — a mesma poluição que o log de auditoria
+            // já causou uma vez.
+            return new ConversationService(
+                settings, registry, loop, counter, factory,
+                memoryRootOverride: Path.Combine(_dir, "memory"));
         }
 
         private static string TextOf(ChatMessage message)
@@ -457,6 +462,81 @@ namespace AIB.Tests
             conversation.AppendAssistantText(Filler(500));
 
             conversation.CurrentTokenCount.Should().BeGreaterThan(before);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Registro cru da sessão (memory/sessions/<id>/raw.jsonl)
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task TurnoFechado_EhGravadoEmRawJsonl()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = new FakeProvider(new StreamChunk[]
+            {
+                new StreamChunk.TextDelta("olá", TextChannel.Final),
+                new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+            });
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+
+            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
+
+            linhas.Should().ContainSingle();
+            linhas[0].Should().Contain("oi").And.Contain("olá");
+        }
+
+        [Fact]
+        public async Task DoisTurnos_ViramDuasLinhasComIndicesCrescentes()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = new FakeProvider(new StreamChunk[]
+            {
+                new StreamChunk.TextDelta("ok", TextChannel.Final),
+                new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+            });
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("primeira")) { }
+            await foreach (var _ in conversation.StreamResponseAsync("segunda")) { }
+
+            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
+
+            linhas.Should().HaveCount(2);
+            linhas[0].Should().Contain("\"Index\":0");
+            // Índice é contador próprio: o Trim reindexaria os turnos a cada poda.
+            linhas[1].Should().Contain("\"Index\":1");
+        }
+
+        [Fact]
+        public async Task TurnoVazio_NaoGravaLinhaAlguma()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            // Stream sem texto e sem ferramenta: o turno termina sem fala do assistente.
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+
+            // Turno aberto em disco deixaria um user sem resposta; fica para a próxima gravação.
+            File.Exists(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl")).Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task RegistroNuncaEscreveNaMemoriaRealDoUsuario()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = new FakeProvider(new StreamChunk[]
+            {
+                new StreamChunk.TextDelta("ok", TextChannel.Final),
+                new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+            });
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+
+            conversation.SessionMemoryDir.Should().StartWith(_dir);
+            conversation.SessionMemoryDir.Should().NotContain(DirectoryService.MemoryDir);
         }
 
     }

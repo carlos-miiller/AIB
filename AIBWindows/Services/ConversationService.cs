@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AIB.Services.Agent;
 using AIB.Services.Ai;
+using AIB.Services.Memory;
 using OpenAI.Chat;
 
 namespace AIB.Services;
@@ -64,6 +65,24 @@ public sealed class ConversationService : IMessageStore
     private readonly SynchronizationContext? _uiContext;
 
     /// <summary>
+    /// Raiz alternativa da memória em disco. Nula em produção (usa ~/.AIB/memory); o teste
+    /// aponta para uma pasta temporária e nunca escreve na memória real do usuário.
+    /// </summary>
+    private readonly string? _memoryRootOverride;
+
+    /// <summary>
+    /// Registro cru da sessão. Trocado a cada ResetHistory: sessão nova, pasta nova.
+    /// </summary>
+    private SessionMemory _sessionMemory;
+
+    /// <summary>
+    /// Turnos já gravados nesta sessão. Contador PRÓPRIO, e não o índice devolvido pelo
+    /// TurnSplitter: o Trim encolhe o histórico vivo e reindexaria os turnos a cada poda,
+    /// fazendo o mesmo índice apontar para turnos diferentes ao longo da sessão.
+    /// </summary>
+    private int _turnsRecorded;
+
+    /// <summary>
     /// CTS do turno em voo. Protegido por <see cref="_ctsGate"/>: o Stop vem da thread de
     /// UI enquanto o turno corre numa thread do pool, e cancelar/descartar sem lock deixava
     /// o Cancel cair num CTS já descartado.
@@ -77,7 +96,8 @@ public sealed class ConversationService : IMessageStore
         ToolRegistry toolRegistry,
         AgentLoop agentLoop,
         TokenCounter tokenCounter,
-        IChatProviderFactory providerFactory)
+        IChatProviderFactory providerFactory,
+        string? memoryRootOverride = null)
     {
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _toolRegistry = toolRegistry ?? throw new ArgumentNullException(nameof(toolRegistry));
@@ -86,6 +106,8 @@ public sealed class ConversationService : IMessageStore
         _providerFactory = providerFactory ?? throw new ArgumentNullException(nameof(providerFactory));
 
         _uiContext = SynchronizationContext.Current;
+        _memoryRootOverride = memoryRootOverride;
+        _sessionMemory = NewSessionMemory();
 
         _warmupService = new WarmupService(_settingsService, _toolRegistry, _providerFactory, _tokenCounter);
         _warmupService.OnWarmupStateChanged += state => RaiseWarmupState(state);
@@ -132,6 +154,15 @@ public sealed class ConversationService : IMessageStore
         // IO de disco fora do lock: nada bloqueante segura o histórico.
         if (toSave != null) ChatHistoryService.SaveCurrentSession(toSave);
 
+        // Histórico zerado é sessão nova: pasta nova em memory/sessions e contagem de turnos
+        // reiniciada. Continuar gravando na pasta anterior misturaria duas conversas num
+        // raw.jsonl só, e o resumo de capítulo sairia costurando assuntos sem relação.
+        if (toSave != null)
+        {
+            _sessionMemory = NewSessionMemory();
+            _turnsRecorded = 0;
+        }
+
         string? prompt = BuildSystemPrompt();
         if (prompt == null) return;
 
@@ -156,6 +187,48 @@ public sealed class ConversationService : IMessageStore
 
     /// <summary>Aquecimento em background. Chamado pelo App, nunca por um construtor.</summary>
     public Task StartWarmupAsync() => _warmupService.RunAsync(SnapshotHistory(), CancellationToken.None);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Memória de sessão (registro cru)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private SessionMemory NewSessionMemory() =>
+        new(SessionMemory.SessionIdFrom(DateTime.Now), _memoryRootOverride);
+
+    /// <summary>Pasta desta sessão em disco. Diagnóstico e teste.</summary>
+    public string SessionMemoryDir => _sessionMemory.SessionDir;
+
+    /// <summary>
+    /// Grava em disco o último turno, se ele estiver fechado. Chamado ao fim de cada turno,
+    /// ainda sob o portão — o turno seguinte não começa antes de este estar registrado.
+    /// <para>
+    /// Grava o ÚLTIMO turno e não todos: os anteriores já foram gravados, e o Trim pode ter
+    /// comido o começo do histórico vivo. O que saiu do contexto continua em raw.jsonl.
+    /// </para>
+    /// </summary>
+    private void RecordLastTurn()
+    {
+        try
+        {
+            var turnos = TurnSplitter.Split(Snapshot());
+            if (turnos.Count == 0) return;
+
+            var ultimo = turnos[^1];
+
+            // Turno aberto (cancelado no meio, ou teto de iterações com ferramenta pendente):
+            // gravá-lo deixaria em disco um tool_calls sem resultado. Fica para a próxima —
+            // as mensagens continuam no histórico vivo.
+            if (!TurnSplitter.IsClosed(ultimo)) return;
+
+            if (_sessionMemory.AppendTurn(ultimo with { Index = _turnsRecorded }))
+                _turnsRecorded++;
+        }
+        catch (Exception ex)
+        {
+            // Registro é acréscimo. Nenhuma falha aqui pode escapar para o turno do usuário.
+            Console.WriteLine($"[MEMORIA] Falha ao registrar o turno: {ex.Message}");
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Turno do usuário
@@ -246,6 +319,10 @@ public sealed class ConversationService : IMessageStore
                     cts.Dispose();
                 }
             }
+
+            // Antes de liberar o portão: o turno seguinte não pode começar a mexer no
+            // histórico enquanto este ainda não foi registrado.
+            RecordLastTurn();
 
             _turnGate.Release();
         }
