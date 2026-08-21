@@ -9,7 +9,7 @@ using System.Text;
 
 namespace AIB.Services;
 
-public class UserAppSettings
+public sealed class UserAppSettings
 {
     public string ApiUrl { get; set; } = "http://127.0.0.1:11434/v1";
     public string ApiKey { get; set; } = "ollama";
@@ -53,16 +53,72 @@ public class UserAppSettings
 
     // Gamificação / Sistema de Níveis
     public int MessageCount { get; set; } = 0;
+
+    /// <summary>Cópia rasa. Todos os campos são string ou tipo de valor, então é cópia real.</summary>
+    public UserAppSettings Clone() => (UserAppSettings)MemberwiseClone();
 }
 
-public class SettingsService
+public sealed class SettingsService
 {
-    private static readonly string SettingsPath = DirectoryService.SettingsPath;
-    private readonly HttpClient _httpClient = new HttpClient();
+    // Um HttpClient por processo: a classe era instanciada várias vezes e alocava um em cada.
+    private static readonly HttpClient _httpClient = new HttpClient();
 
+    private readonly string? _explicitPath;
+    private readonly object _gate = new();
+    private UserAppSettings? _cache;
+    private string? _cachedPath;
+
+    /// <summary>Usa o caminho corrente do <see cref="DirectoryService"/>, resolvido a cada operação.</summary>
+    public SettingsService() : this(null) { }
+
+    /// <summary>Caminho fixo — usado por testes e por perfis alternativos.</summary>
+    public SettingsService(string? settingsPath)
+    {
+        _explicitPath = string.IsNullOrWhiteSpace(settingsPath) ? null : settingsPath;
+    }
+
+    // Resolvido a cada operação de IO. O antigo 'static readonly' congelava o caminho no
+    // carregamento do tipo, e por isso DirectoryService.ApplyFromSettings nunca conseguia
+    // de fato realocar o arquivo de settings.
+    private string ResolvePath() => _explicitPath ?? DirectoryService.SettingsPath;
+
+    /// <summary>Caminho efetivo neste momento.</summary>
+    public string SettingsPath => ResolvePath();
+
+    /// <summary>Settings do disco, servidas do cache em memória. Devolve sempre uma cópia.</summary>
     public UserAppSettings LoadSettings()
     {
-        if (!File.Exists(SettingsPath))
+        string path = ResolvePath();
+
+        lock (_gate)
+        {
+            if (_cache != null && _cachedPath == path)
+                return _cache.Clone();
+        }
+
+        var loaded = ReadFromDisk(path);
+
+        lock (_gate)
+        {
+            _cache = loaded;
+            _cachedPath = path;
+            return _cache.Clone();
+        }
+    }
+
+    /// <summary>Descarta o cache. O próximo <see cref="LoadSettings"/> volta ao disco.</summary>
+    public void InvalidateCache()
+    {
+        lock (_gate)
+        {
+            _cache = null;
+            _cachedPath = null;
+        }
+    }
+
+    private UserAppSettings ReadFromDisk(string path)
+    {
+        if (!File.Exists(path))
         {
             var defaults = new UserAppSettings();
             SaveSettings(defaults);
@@ -71,7 +127,7 @@ public class SettingsService
 
         try
         {
-            byte[] encryptedBytes = File.ReadAllBytes(SettingsPath);
+            byte[] encryptedBytes = File.ReadAllBytes(path);
             byte[] decryptedBytes = ProtectedData.Unprotect(encryptedBytes, null, DataProtectionScope.CurrentUser);
             string json = Encoding.UTF8.GetString(decryptedBytes);
             return JsonSerializer.Deserialize<UserAppSettings>(json) ?? new UserAppSettings();
@@ -81,7 +137,7 @@ public class SettingsService
             // Fallback para arquivo em texto claro (Migração de legado)
             try
             {
-                string json = File.ReadAllText(SettingsPath);
+                string json = File.ReadAllText(path);
                 var settings = JsonSerializer.Deserialize<UserAppSettings>(json) ?? new UserAppSettings();
                 SaveSettings(settings); // Re-salva criptografado
                 return settings;
@@ -95,10 +151,17 @@ public class SettingsService
 
     public void SaveSettings(UserAppSettings settings)
     {
+        string path = ResolvePath();
         string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
         byte[] plainBytes = Encoding.UTF8.GetBytes(json);
         byte[] encryptedBytes = ProtectedData.Protect(plainBytes, null, DataProtectionScope.CurrentUser);
-        File.WriteAllBytes(SettingsPath, encryptedBytes);
+        File.WriteAllBytes(path, encryptedBytes);
+
+        lock (_gate)
+        {
+            _cache = settings.Clone();
+            _cachedPath = path;
+        }
     }
 
     public async Task<List<string>> GetOllamaModelsAsync(string baseUrl)
