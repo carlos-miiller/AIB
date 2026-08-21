@@ -32,4 +32,18 @@ public interface ITool
     /// <param name="argumentsJson">JSON com os argumentos, conforme o schema definido em ChatToolDefinition.</param>
     /// <param name="userLevel">Nível atual do usuário para restrições avançadas de sandbox.</param>
     Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1);
+
+    /// <summary>
+    /// Se a execução precisa de autorização humana explícita antes de rodar.
+    /// Default falso: só ferramentas que alteram a máquina do usuário sobrescrevem.
+    /// </summary>
+    bool RequiresConfirmation => false;
+
+    /// <summary>
+    /// Monta o que o modal mostra ao usuário. Fica na ferramenta porque só ela sabe interpretar
+    /// o próprio JSON de argumentos — o registry não pode adivinhar qual campo é "o comando".
+    /// Devolver null recusa a execução: se a ferramenta pede confirmação e não consegue
+    /// descrever o que vai fazer, o usuário não tem como autorizar com conhecimento de causa.
+    /// </summary>
+    CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel) => null;
 }

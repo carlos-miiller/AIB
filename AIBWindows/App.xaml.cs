@@ -8,6 +8,8 @@ using NHotkey;
 using NHotkey.Wpf;
 using AIB.Views;
 using AIB.Services;
+using AIB.Services.Agent;
+using AIB.Services.Ai;
 
 namespace AIB;
 
@@ -15,7 +17,18 @@ public partial class App : System.Windows.Application
 {
     private TaskbarIcon? _notifyIcon;
     private ChatWindow? _chatWindow;
-    private readonly SettingsService _settingsService = new();
+
+    // Composition root: os serviços são construídos aqui, uma única vez, e injetados.
+    // O SettingsService precisa nascer DEPOIS de EnsureDirectories para enxergar o caminho certo.
+    private readonly System.Net.Http.HttpClient _httpClient = new() { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
+
+    private SettingsService _settingsService = null!;
+    private ToolRegistry _toolRegistry = null!;
+    private TokenCounter _tokenCounter = null!;
+    private IToolCallHealer _healer = null!;
+    private IChatProviderFactory _providerFactory = null!;
+    private AgentLoop _agentLoop = null!;
+    private ConversationService _conversation = null!;
 
     public void ShowNotification(string title, string message)
     {
@@ -34,6 +47,7 @@ public partial class App : System.Windows.Application
         {
             GibberishVoiceService.Initialize();
             DirectoryService.EnsureDirectories();
+            _settingsService = new SettingsService();
 
             if (e.Args.Length > 0)
             {
@@ -44,6 +58,8 @@ public partial class App : System.Windows.Application
 
             var settings = _settingsService.LoadSettings();
             DirectoryService.ApplyFromSettings(settings);
+            // ApplyFromSettings pode ter movido o diretório de dados: o cache aponta para o caminho antigo.
+            _settingsService.InvalidateCache();
 
             // D-11 one-shot migration: force re-entry by overwriting any non-sentinel ApiKey.
             // Idempotent — guard skips already-migrated installs ("use-vault") and pure Ollama installs ("ollama").
@@ -62,7 +78,22 @@ public partial class App : System.Windows.Application
                 Console.WriteLine("[MIGRATION] settings.ApiKey replaced with 'use-vault' sentinel (D-11).");
             }
 
-            _chatWindow = new ChatWindow();
+            // Portão humano ligado aqui: é o único lugar do app onde existe UI para pedir
+            // autorização. Sem este argumento o registry recusa toda ferramenta destrutiva.
+            _toolRegistry = new ToolRegistry(new WpfConfirmationPrompt(), _settingsService);
+            _tokenCounter = new TokenCounter();
+            _healer = new RegexToolCallHealer();
+            _providerFactory = new ChatProviderFactory(_httpClient, _healer);
+            _agentLoop = new AgentLoop(_toolRegistry, _providerFactory, _settingsService, _tokenCounter);
+            _conversation = new ConversationService(_settingsService, _toolRegistry, _agentLoop,
+                                                    _tokenCounter, _providerFactory);
+
+            _chatWindow = new ChatWindow(_conversation, _settingsService);
+
+            // MainWindow explícito: o modal de confirmação usa Application.Current.MainWindow
+            // como Owner. Sem atribuir, o WPF elege a primeira janela criada — que pode ser a
+            // FirstRunWindow já fechada, e definir Owner como janela fechada lança.
+            MainWindow = _chatWindow;
 
             _notifyIcon = new TaskbarIcon
             {
@@ -97,6 +128,9 @@ public partial class App : System.Windows.Application
             {
                 Console.WriteLine($"[HOTKEY] Não foi possível registrar o atalho global: {ex.Message}");
             }
+
+            // Aquecimento só depois que a UI existe — nunca de dentro de um construtor.
+            _ = _conversation.StartWarmupAsync();
         }
         catch (Exception ex)
         {
@@ -135,7 +169,7 @@ public partial class App : System.Windows.Application
 
     private void ShowFirstRunWindow()
     {
-        var win = new FirstRunWindow();
+        var win = new FirstRunWindow(_settingsService);
         bool? ok = win.ShowDialog();
         if (ok == true)
         {
@@ -184,6 +218,7 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _notifyIcon?.Dispose();
+        _httpClient.Dispose();
         base.OnExit(e);
     }
 }
