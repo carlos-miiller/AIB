@@ -1,6 +1,6 @@
 # Proposta: memória hierárquica por compactação
 
-**Status:** proposta, não implementada.
+**Status:** fases 1 e 2 implementadas (2026-08-21). Fase 3 pendente.
 **Origem:** padrão observado em jogos de RP com IA — a cada N mensagens vira capítulo, a cada N capítulos vira ato.
 **Substitui:** o `Trim` atual, que apaga mensagens antigas em vez de destilá-las.
 
@@ -211,16 +211,28 @@ sem rede, como já fazemos no `AgentLoopTests`.
 
 Três fases, cada uma entregando valor sozinha:
 
-**Fase 1 — substrato (risco zero).**
+**Fase 1 — substrato (risco zero). FEITA.**
 `ArtifactExtractor` + `SessionMemory` gravando `raw.jsonl`. Nenhuma mudança no prompt, nenhum
 resumo. Só passa a existir registro. Testável inteiro, sem LLM.
 
-**Fase 2 — capítulos.**
-`MemoryBudget` + `Compactor` + `MemoryLayer`. Substitui o `Trim` por compactação. Aqui aparece
-o ganho real: cadeia longa deixa de perder o começo.
+**Fase 2 — capítulos. FEITA.**
+`MemoryBudget` + `Compactor` + `MemoryLayer`. A compactação roda ao FIM do turno, sob o
+`_turnGate`, e o `Trim` continua atrás como poda de emergência — não foi removido. O bloco de
+memória entra como SEGUNDA mensagem de sistema, o que deixa a primeira (alma + prompt base)
+byte a byte idêntica para o cache de prefixo.
 
-**Fase 3 — atos e fatos.**
-Promoção de capítulos para atos, e destilação para `facts.md`. É a evolução de longo prazo.
+Desvios do que estava escrito acima:
+
+- O `Compactor` resume a partir dos turnos VIVOS que estão saindo do contexto, e não a partir
+  do `raw.jsonl`. Parear turno vivo com registro em disco exigiria casar índices que o `Trim`
+  reindexa. O `raw.jsonl` fica no papel que o documento já lhe dava: rede de segurança.
+- O bloco de memória é mensagem separada em vez de texto concatenado ao prompt base.
+  Reconstruir o prompt base a cada capítulo obrigaria a reler `SOUL.MD` e as skills do disco,
+  sob o portão, e uma falha de leitura passageira derrubaria a persona no meio da conversa.
+
+**Fase 3 — atos e fatos. PENDENTE.**
+Promoção de capítulos para atos, e destilação para `facts.md`. As cotas `Facts` e `Acts` já
+existem no `MemoryBudget` e hoje ficam ociosas — o `MemoryLayer` só renderiza capítulos.
 
 Fazer a fase 1 primeiro também valida encanamento (caminhos, serialização, orçamento) antes de
 investir na fase 2, que é a maior.

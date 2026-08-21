@@ -59,6 +59,8 @@ public sealed class SessionMemory
 
     public string RawPath => Path.Combine(SessionDir, "raw.jsonl");
 
+    public string ChaptersPath => Path.Combine(SessionDir, "chapters.jsonl");
+
     /// <summary>
     /// Id de sessão a partir de um instante: <c>20260821-143005-812</c>. Os milissegundos
     /// entram porque duas sessões abertas no mesmo segundo (reset logo após abrir o app)
@@ -108,33 +110,64 @@ public sealed class SessionMemory
     /// append-only e uma queda de energia no meio de uma escrita deixa exatamente uma linha
     /// truncada — perder o arquivo inteiro por causa dela seria o pior desfecho possível.
     /// </summary>
-    public IReadOnlyList<TurnRecord> ReadTurns()
+    public IReadOnlyList<TurnRecord> ReadTurns() => ReadLines<TurnRecord>(RawPath);
+
+    /// <summary>
+    /// Grava um capítulo fechado. Mesma política do turno: append-only e nunca lança.
+    /// </summary>
+    public bool AppendChapter(Chapter chapter)
     {
-        var turnos = new List<TurnRecord>();
-        if (!File.Exists(RawPath)) return turnos;
+        if (chapter == null) return false;
 
         try
         {
-            foreach (var linha in File.ReadLines(RawPath, SemBom))
+            string linha = JsonSerializer.Serialize(chapter, Json);
+
+            lock (_gate)
+            {
+                Directory.CreateDirectory(SessionDir);
+                File.AppendAllText(ChaptersPath, linha + Environment.NewLine, SemBom);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Falha ao gravar capítulo {chapter.Index}: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Capítulos gravados, na ordem. Linha ilegível é pulada.</summary>
+    public IReadOnlyList<Chapter> ReadChapters() => ReadLines<Chapter>(ChaptersPath);
+
+    private List<T> ReadLines<T>(string caminho) where T : class
+    {
+        var itens = new List<T>();
+        if (!File.Exists(caminho)) return itens;
+
+        try
+        {
+            foreach (var linha in File.ReadLines(caminho, SemBom))
             {
                 if (string.IsNullOrWhiteSpace(linha)) continue;
                 try
                 {
-                    var registro = JsonSerializer.Deserialize<TurnRecord>(linha, Json);
-                    if (registro != null) turnos.Add(registro);
+                    var item = JsonSerializer.Deserialize<T>(linha, Json);
+                    if (item != null) itens.Add(item);
                 }
                 catch (JsonException ex)
                 {
-                    Console.WriteLine($"[MEMORIA] Linha ilegível em raw.jsonl, pulada: {ex.Message}");
+                    Console.WriteLine($"[MEMORIA] Linha ilegível em {Path.GetFileName(caminho)}, pulada: {ex.Message}");
                 }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[MEMORIA] Falha ao ler raw.jsonl: {ex.Message}");
+            Console.WriteLine($"[MEMORIA] Falha ao ler {Path.GetFileName(caminho)}: {ex.Message}");
         }
 
-        return turnos;
+        return itens;
     }
 
     private static MessageRecord ToRecord(ChatMessage message)

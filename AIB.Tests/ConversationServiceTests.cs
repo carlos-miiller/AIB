@@ -46,6 +46,10 @@ namespace AIB.Tests
             public List<ChatMessage> LastCompleteMessages { get; } = new();
             public int WarmupCalls { get; private set; }
 
+            /// <summary>O resumidor de capitulos passa por CompleteAsync, nao por StreamAsync.</summary>
+            public string CompleteReply { get; set; } = "SISTEMA ONLINE";
+            public int CompleteCalls { get; private set; }
+
             public async IAsyncEnumerable<StreamChunk> StreamAsync(
                 IReadOnlyList<ChatMessage> messages,
                 IReadOnlyList<ChatTool> tools,
@@ -64,7 +68,8 @@ namespace AIB.Tests
             {
                 LastCompleteMessages.Clear();
                 LastCompleteMessages.AddRange(messages);
-                return Task.FromResult(new ChatCompletionResult("SISTEMA ONLINE", null, null));
+                CompleteCalls++;
+                return Task.FromResult(new ChatCompletionResult(CompleteReply, null, null));
             }
 
             public Task WarmupAsync(CancellationToken ct)
@@ -537,6 +542,168 @@ namespace AIB.Tests
 
             conversation.SessionMemoryDir.Should().StartWith(_dir);
             conversation.SessionMemoryDir.Should().NotContain(DirectoryService.MemoryDir);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Compactação em capítulos
+        // ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Conversa até o primeiro capítulo nascer, ou até o teto de turnos.
+        /// <para>
+        /// Conversar até o gatilho disparar, em vez de calcular quantos turnos seriam precisos,
+        /// mantém o teste honesto quando a escala de tokens por nível mudar — foi exatamente
+        /// assim que os testes de poda pararam de podar em silêncio.
+        /// </para>
+        /// </summary>
+        private static async Task<int> ConversarAteCompactar(
+            ConversationService conversation, int tetoDeTurnos = 40)
+        {
+            string pergunta = string.Concat(Enumerable.Repeat("uma frase qualquer para gastar tokens. ", 40));
+
+            for (int i = 0; i < tetoDeTurnos; i++)
+            {
+                await foreach (var _ in conversation.StreamResponseAsync($"{pergunta} pergunta {i}")) { }
+                if (conversation.Chapters.Count > 0) return i + 1;
+            }
+
+            return -1;
+        }
+
+        private FakeProvider ProviderQueResponde(string resposta) =>
+            new(new StreamChunk[]
+            {
+                new StreamChunk.TextDelta(resposta, TextChannel.Final),
+                new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+            });
+
+        [Fact]
+        public async Task ConversaLonga_FechaCapituloEEncolheOHistorico()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "O usuário fez várias perguntas e o agente respondeu.";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            int turnos = await ConversarAteCompactar(conversation);
+
+            turnos.Should().BePositive("o gatilho tem de disparar antes do teto de turnos");
+            conversation.Chapters.Should().ContainSingle();
+            conversation.Chapters[0].Summary.Should().Be("O usuário fez várias perguntas e o agente respondeu.");
+
+            // O que saiu do contexto vivo continua em disco.
+            var turnosVivos = conversation.SnapshotHistory().Count(m => m is UserChatMessage);
+            turnosVivos.Should().BeLessThan(turnos, "os turnos antigos viraram capítulo");
+            File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
+                .Should().HaveCount(turnos, "raw.jsonl nunca perde turno");
+        }
+
+        [Fact]
+        public async Task Compactacao_GuardaOsTurnosMaisRecentes()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await ConversarAteCompactar(conversation);
+
+            // O contexto imediato nunca é resumido: a última pergunta e a anterior continuam
+            // cruas, ou o modelo perderia o assunto em curso.
+            conversation.SnapshotHistory().Count(m => m is UserChatMessage)
+                .Should().BeGreaterThanOrEqualTo(2);
+        }
+
+        [Fact]
+        public async Task BlocoDeMemoria_EntraComoSegundaMensagemDeSistema()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            string promptOriginal = TextOf(conversation.SnapshotHistory()[0]);
+
+            await ConversarAteCompactar(conversation);
+
+            var historico = conversation.SnapshotHistory();
+
+            // A primeira mensagem fica byte a byte idêntica: é ela que o cache de prefixo
+            // reaproveita, e reconstruí-la exigiria reler SOUL.MD do disco a cada capítulo.
+            TextOf(historico[0]).Should().Be(promptOriginal);
+
+            historico[1].Should().BeOfType<SystemChatMessage>();
+            TextOf(historico[1]).Should().Contain("Memória da conversa");
+        }
+
+        [Fact]
+        public async Task SegundoCapitulo_SubstituiOBlocoEmVezDeEmpilharOutraMensagem()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await ConversarAteCompactar(conversation);
+            await ConversarAteCompactar(conversation, tetoDeTurnos: 60);
+
+            var historico = conversation.SnapshotHistory();
+
+            historico.Count(m => m is SystemChatMessage)
+                .Should().Be(2, "prompt base + UM bloco de memória, sempre");
+        }
+
+        [Fact]
+        public async Task Poda_NaoComeOBlocoDeMemoria()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await ConversarAteCompactar(conversation);
+
+            // A poda de emergência entra atrás da compactação. Se ela comesse o índice 1,
+            // apagaria o resumo que acabou de custar uma chamada ao modelo — e junto os turnos
+            // que ele substituiu, que já saíram do histórico vivo.
+            for (int i = 0; i < 5; i++) conversation.Trim(userLevel: 1);
+
+            TextOf(conversation.SnapshotHistory()[1]).Should().Contain("Memória da conversa");
+        }
+
+        [Fact]
+        public async Task CapituloEhGravadoEmChaptersJsonl()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await ConversarAteCompactar(conversation);
+
+            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"));
+
+            linhas.Should().ContainSingle();
+            linhas[0].Should().Contain("\"Index\":0");
+        }
+
+        [Fact]
+        public async Task ConversaCurta_NaoCompacta()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("ok");
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+            await foreach (var _ in conversation.StreamResponseAsync("tudo bem?")) { }
+
+            conversation.Chapters.Should().BeEmpty();
+            // Cada compactação custa um prefill frio: disparar cedo seria pior que o corte seco.
+            provider.CompleteCalls.Should().Be(0, "nenhuma chamada ao resumidor sem necessidade");
+        }
+
+        [Fact]
+        public async Task ResetHistory_ComecaSessaoNovaSemOsCapitulosDaAnterior()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await ConversarAteCompactar(conversation);
+            conversation.Chapters.Should().NotBeEmpty();
+
+            conversation.ResetHistory();
+
+            conversation.Chapters.Should().BeEmpty("memória de outra conversa costuraria assuntos sem relação");
         }
 
     }

@@ -82,6 +82,9 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private int _turnsRecorded;
 
+    /// <summary>Capitulos desta sessao. So a thread que segura o <see cref="_turnGate"/> mexe.</summary>
+    private readonly MemoryLayer _memory = new();
+
     /// <summary>
     /// CTS do turno em voo. Protegido por <see cref="_ctsGate"/>: o Stop vem da thread de
     /// UI enquanto o turno corre numa thread do pool, e cancelar/descartar sem lock deixava
@@ -161,6 +164,7 @@ public sealed class ConversationService : IMessageStore
         {
             _sessionMemory = NewSessionMemory();
             _turnsRecorded = 0;
+            _memory.Clear();
         }
 
         string? prompt = BuildSystemPrompt();
@@ -227,6 +231,180 @@ public sealed class ConversationService : IMessageStore
         {
             // Registro é acréscimo. Nenhuma falha aqui pode escapar para o turno do usuário.
             Console.WriteLine($"[MEMORIA] Falha ao registrar o turno: {ex.Message}");
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Compactação (capítulos)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Turnos recentes que a compactação nunca toca: são o contexto imediato.</summary>
+    private const int KeepRecentTurns = 2;
+
+    /// <summary>
+    /// Depois de compactar, a conversa viva deve cair para esta fração da cota. Compactar até
+    /// só encostar no gatilho faria a compactação seguinte disparar quase junto — e cada
+    /// compactação custa um prefill frio, porque reescreve o começo do prompt.
+    /// </summary>
+    private const double TargetAfterCompaction = 0.5;
+
+    /// <summary>Teto da chamada de resumo. Independente do turno: o usuário já foi respondido.</summary>
+    private static readonly TimeSpan SummaryTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>Capítulos fechados nesta sessão. Diagnóstico e teste.</summary>
+    public IReadOnlyList<Chapter> Chapters => _memory.Chapters;
+
+    /// <summary>
+    /// Compacta os turnos mais antigos num capítulo, se a conversa viva passou do gatilho.
+    /// <para>
+    /// Roda ao FIM do turno, ainda sob o portão: nunca no meio de uma cadeia de ferramentas.
+    /// Nunca lança — compactação é melhoria, e a poda de emergência continua atrás como rede.
+    /// </para>
+    /// </summary>
+    public async Task CompactIfNeededAsync(int userLevel, CancellationToken ct = default)
+    {
+        try
+        {
+            var quota = CurrentQuota(userLevel);
+            if (quota.IsOff) return;
+
+            int vivo = LiveTokens();
+            int gatilho = MemoryBudget.CompactionThreshold(quota);
+            if (vivo <= gatilho) return;
+
+            var candidatos = SelectTurnsToCompact(quota, vivo);
+            if (candidatos.Count == 0) return;
+
+            Console.WriteLine($"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > gatilho={gatilho}.");
+
+            var settings = _settingsService.LoadSettings();
+            var compactor = new Compactor(_providerFactory.GetProvider(settings));
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(SummaryTimeout);
+
+            var capitulo = await compactor
+                .SummarizeAsync(_memory.NextChapterIndex, candidatos, timeout.Token)
+                .ConfigureAwait(false);
+
+            // Só remove DEPOIS que o capítulo existe. Remover antes e falhar o resumo perderia
+            // os turnos das duas pontas: fora do contexto e sem substituto.
+            RemoveOldestMessages(candidatos.Sum(t => t.Messages.Count));
+
+            _memory.Add(capitulo);
+            _sessionMemory.AppendChapter(capitulo);
+            RefreshMemoryMessage(quota);
+
+            Console.WriteLine($"[MEMORIA] Capítulo {capitulo.Index} fechado ({capitulo.Artifacts.Count} artefato(s)). Vivo agora: {LiveTokens()} tokens.");
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("[MEMORIA] Compactação cancelada. Os turnos seguem no contexto vivo.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Compactação falhou: {ex.Message}");
+        }
+    }
+
+    /// <summary>Cota atual, descontado o prefixo fixo (SOUL + prompt base).</summary>
+    private MemoryQuota CurrentQuota(int userLevel)
+    {
+        int prefixo;
+        lock (_gate)
+        {
+            // Só a PRIMEIRA mensagem de sistema conta como prefixo fixo. A segunda é o próprio
+            // bloco de memória, que já é pago pela cota de memória — contá-la aqui encolheria a
+            // cota a cada capítulo, num aperto que se realimenta.
+            prefixo = _history.Count > 0 && _history[0] is SystemChatMessage
+                ? _tokenCounter.CountMessages(new[] { _history[0] })
+                : 0;
+        }
+
+        return MemoryBudget.Compute(LevelService.GetMaxTokensForLevel(userLevel), prefixo);
+    }
+
+    /// <summary>Tokens da conversa viva: tudo menos as mensagens de sistema do começo.</summary>
+    private int LiveTokens()
+    {
+        lock (_gate)
+        {
+            int inicio = FirstRemovableIndex();
+            return _tokenCounter.CountMessages(_history.Skip(inicio));
+        }
+    }
+
+    /// <summary>
+    /// Turnos mais antigos a compactar: os suficientes para a conversa viva cair à metade da
+    /// cota. Nunca os <see cref="KeepRecentTurns"/> últimos, e nunca um turno aberto — um
+    /// tool_calls sem resultado quebra a requisição seguinte.
+    /// </summary>
+    private List<Turn> SelectTurnsToCompact(MemoryQuota quota, int vivo)
+    {
+        List<ChatMessage> vivos;
+        lock (_gate) { vivos = _history.Skip(FirstRemovableIndex()).ToList(); }
+
+        var turnos = TurnSplitter.Split(vivos);
+        int disponiveis = turnos.Count - KeepRecentTurns;
+        if (disponiveis <= 0) return new List<Turn>();
+
+        int alvo = (int)(quota.Live * TargetAfterCompaction);
+        var escolhidos = new List<Turn>();
+        int restante = vivo;
+
+        for (int i = 0; i < disponiveis && restante > alvo; i++)
+        {
+            if (!TurnSplitter.IsClosed(turnos[i])) break;
+
+            escolhidos.Add(turnos[i]);
+            restante -= _tokenCounter.CountMessages(turnos[i].Messages);
+        }
+
+        return escolhidos;
+    }
+
+    /// <summary>Remove as <paramref name="count"/> mensagens mais antigas depois do prefixo de sistema.</summary>
+    private void RemoveOldestMessages(int count)
+    {
+        lock (_gate)
+        {
+            int inicio = FirstRemovableIndex();
+            int remover = Math.Min(count, _history.Count - inicio);
+            if (remover > 0) _history.RemoveRange(inicio, remover);
+        }
+    }
+
+    /// <summary>
+    /// Reescreve o bloco de memória, mantido como uma SEGUNDA mensagem de sistema logo após a
+    /// primeira.
+    /// <para>
+    /// Mensagem separada, e não texto acrescentado à primeira, por dois motivos. Reconstruir a
+    /// primeira exigiria reler SOUL.MD e as skills do disco a cada capítulo, sob o portão — e
+    /// uma falha de leitura passageira derrubaria a persona no meio da conversa. Além disso a
+    /// primeira mensagem fica byte a byte idêntica, então o cache de prefixo a reaproveita
+    /// inteira; só o que vem depois do bloco de memória é reavaliado.
+    /// </para>
+    /// </summary>
+    private void RefreshMemoryMessage(MemoryQuota quota)
+    {
+        string bloco = _memory.Render(quota, _tokenCounter);
+
+        lock (_gate)
+        {
+            bool temBase = _history.Count > 0 && _history[0] is SystemChatMessage;
+            if (!temBase) return; // sem prompt de sistema não há onde ancorar o bloco
+
+            bool temMemoria = _history.Count > 1 && _history[1] is SystemChatMessage;
+
+            if (string.IsNullOrEmpty(bloco))
+            {
+                if (temMemoria) _history.RemoveAt(1);
+                return;
+            }
+
+            var mensagem = ChatMessage.CreateSystemMessage(bloco);
+            if (temMemoria) _history[1] = mensagem;
+            else _history.Insert(1, mensagem);
         }
     }
 
@@ -309,6 +487,9 @@ public sealed class ConversationService : IMessageStore
         }
         finally
         {
+            // Lido ANTES do descarte: depois dele o token não pode mais ser consultado.
+            bool cancelado = ct.IsCancellationRequested;
+
             lock (_ctsGate)
             {
                 // Só descarta se ainda for o CTS deste turno; um Cancel concorrente já não
@@ -323,6 +504,13 @@ public sealed class ConversationService : IMessageStore
             // Antes de liberar o portão: o turno seguinte não pode começar a mexer no
             // histórico enquanto este ainda não foi registrado.
             RecordLastTurn();
+
+            // Compactação só depois de um turno que terminou inteiro. Cancelado no meio, o
+            // histórico pode ter um tool_calls pendente, e resumir metade de uma cadeia
+            // produziria um capítulo que afirma o que ainda não aconteceu.
+            // Token próprio: o do turno já foi descartado, e o usuário já tem sua resposta.
+            if (!cancelado)
+                await CompactIfNeededAsync(userLevel, CancellationToken.None).ConfigureAwait(false);
 
             _turnGate.Release();
         }
@@ -394,13 +582,30 @@ public sealed class ConversationService : IMessageStore
     /// imortal. Cuidado especial para não deixar um Assistant com tool_calls sem as
     /// ToolMessages correspondentes: a API rejeita o par órfão.
     /// </summary>
+    /// <summary>
+    /// Primeiro índice podável: logo depois do bloco de mensagens de sistema do começo.
+    /// Com "SendSystemPrompt" desligado não existe system prompt e o resultado é 0 — travar
+    /// o índice 0 nesse caso tornaria a primeira mensagem do usuário imortal.
+    /// Chamar sempre sob <see cref="_gate"/>.
+    /// </summary>
+    private int FirstRemovableIndex()
+    {
+        int i = 0;
+        while (i < _history.Count && _history[i] is SystemChatMessage) i++;
+        return i;
+    }
+
     public void Trim(int userLevel)
     {
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
 
         lock (_gate)
         {
-            int firstRemovable = (_history.Count > 0 && _history[0] is SystemChatMessage) ? 1 : 0;
+            // Pula TODAS as mensagens de sistema do início, não só a do índice 0: o bloco de
+            // memória compactada é a segunda, e podá-lo apagaria justamente o resumo que
+            // acabou de custar uma chamada ao modelo — e junto com ele os turnos que ele
+            // substituiu, que já saíram do histórico vivo.
+            int firstRemovable = FirstRemovableIndex();
             int currentTokens = _tokenCounter.CountMessages(_history);
 
             int safetyCounter = 0;
