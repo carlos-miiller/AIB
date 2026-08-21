@@ -11,12 +11,13 @@ namespace AIB.Views;
 
 public partial class SettingsWindow : Window
 {
-    private readonly SettingsService _settingsService = new();
+    private readonly SettingsService _settingsService;
     private UserAppSettings _currentSettings;
 
-    public SettingsWindow()
+    public SettingsWindow(SettingsService settingsService)
     {
         InitializeComponent();
+        _settingsService = settingsService;
         _currentSettings = _settingsService.LoadSettings();
         LoadUiValues();
         // Não bloqueia o UI Thread
@@ -117,7 +118,7 @@ public partial class SettingsWindow : Window
     {
         // Settings path — NOT first-launch hotkey path. Do NOT shut down the app
         // on Cancel (T-02-16 mitigation). User stays in SettingsWindow if they cancel.
-        var win = new FirstRunWindow();
+        var win = new FirstRunWindow(_settingsService);
         bool? ok = win.ShowDialog();
         if (ok == true)
         {

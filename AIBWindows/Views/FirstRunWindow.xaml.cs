@@ -33,16 +33,17 @@ public class ValueToStarForegroundConverter : IValueConverter
 
 public partial class FirstRunWindow : Window
 {
-    private readonly SettingsService _settingsService = new();
+    private readonly SettingsService _settingsService;
     private string? _fallbackModel = null;
     private int _currentStep = 1;
 
     // Regex per D-05: key must start with sk- followed by at least 20 alphanumeric/dash/underscore chars
     private static readonly Regex _keyRegex = new(@"^sk-[a-zA-Z0-9_-]{20,}$", RegexOptions.Compiled);
 
-    public FirstRunWindow()
+    public FirstRunWindow(SettingsService settingsService)
     {
         InitializeComponent();
+        _settingsService = settingsService;
         
         // 40% width, 80% height relative to the primary screen
         this.Width = System.Windows.SystemParameters.PrimaryScreenWidth * 0.40;
@@ -248,8 +249,11 @@ public partial class FirstRunWindow : Window
 
     private void FallbackLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
     {
-        ApplyFallbackModel();
+        // Handled ANTES de agir: o Hyperlink carrega um NavigateUri sentinela ("aib:fallback-model")
+        // que só existe porque o RequestNavigate não dispara sem ele. Marcando primeiro, uma
+        // exceção em ApplyFallbackModel nunca deixa o WPF tentar navegar até o esquema falso.
         e.Handled = true;
+        ApplyFallbackModel();
     }
 
     private void ApplyFallbackModel()

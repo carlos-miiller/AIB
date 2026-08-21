@@ -22,7 +22,7 @@ namespace AIB.Views;
 
 public partial class ChatWindow : Window
 {
-    private readonly OpenAIService _openAIService;
+    private readonly ConversationService _conversation;
     private readonly ShadowAssistantService _shadowService;
     // Um widget por monitor: o da tela do cursor fica com opacidade 0.7 (ativo),
     // os outros com 0.3. O balão de sugestão aparece só no widget ativo.
@@ -36,15 +36,15 @@ public partial class ChatWindow : Window
     private bool _voiceListening = false;
     private bool _isSending = false;
 
-    public ChatWindow()
+    public ChatWindow(ConversationService conversation, SettingsService settingsService)
     {
         InitializeComponent();
-        _settingsService = new SettingsService();
-        _openAIService = new OpenAIService(_settingsService);
-        _openAIService.OnTokenCountChanged += UpdateTokenCounterUI;
-        _openAIService.OnWarmupStateChanged += HandleWarmupState;
+        _settingsService = settingsService;
+        _conversation = conversation;
+        _conversation.OnTokenCountChanged += UpdateTokenCounterUI;
+        _conversation.OnWarmupStateChanged += HandleWarmupState;
 
-        _shadowService = new ShadowAssistantService(_openAIService, _settingsService);
+        _shadowService = new ShadowAssistantService(_conversation, _settingsService);
         _shadowService.OnSuggestionReceived += OnShadowSuggestion;
         _shadowService.OnActiveScreenChanged += OnActiveScreenChanged;
 
@@ -68,7 +68,7 @@ public partial class ChatWindow : Window
         RefreshLevelUI(false);
         int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
-        UpdateTokenCounterUI(_openAIService.CurrentTokenCount, maxTokens);
+        UpdateTokenCounterUI(_conversation.CurrentTokenCount, maxTokens);
         ApplyCharacterUI();
         InputBox.Focus();
 
@@ -76,8 +76,7 @@ public partial class ChatWindow : Window
         {
             if (string.IsNullOrWhiteSpace(session.Content)) return;
             
-            _openAIService.History.Add(OpenAI.Chat.ChatMessage.CreateUserMessage($"[CONTEXTO RECUPERADO DO CHAT: {session.Title}]\n\n{session.Content}"));
-            _openAIService.History.Add(OpenAI.Chat.ChatMessage.CreateAssistantMessage($"Contexto compreendido. Em que posso ajudar com isso?"));
+            _conversation.AppendRecoveredContext(session.Title, session.Content);
             
             AddUserBubble($"Recuperando contexto: {session.Title}");
             AddAgentBubble("Contexto antigo carregado com sucesso. Como deseja continuar?");
@@ -118,7 +117,7 @@ public partial class ChatWindow : Window
         // Limpa a tela
         if (MessagesPanel != null) MessagesPanel.Children.Clear();
         // Limpa o contexto do OpenAI Service (injeta o SOUL.MD atual)
-        _openAIService.ResetHistory();
+        _conversation.ResetHistory();
         
         AddWelcomeBubble();
     }
@@ -148,6 +147,9 @@ public partial class ChatWindow : Window
 
     private void Window_Deactivated(object? sender, EventArgs e)
     {
+        // Perder o foco para um modal do próprio AIB não é o usuário indo fazer outra coisa.
+        if (ModalGuard.IsAnyModalOpen) return;
+
         if (this.Visibility == Visibility.Visible) this.Hide();
     }
 
@@ -396,7 +398,7 @@ public partial class ChatWindow : Window
     {
         try
         {
-            var (natives, dynamics) = _openAIService.Registry.GetCategorizedTools();
+            var (natives, dynamics) = _conversation.Registry.GetCategorizedTools();
             var sb = new System.Text.StringBuilder();
             
             sb.AppendLine("## ⚙️ Skills Nativas (Embutidas)\n");
@@ -451,7 +453,7 @@ public partial class ChatWindow : Window
     {
         if (_isSending)
         {
-            _openAIService.CancelGeneration();
+            _conversation.CancelGeneration();
             return;
         }
         
@@ -501,6 +503,10 @@ public partial class ChatWindow : Window
         Console.WriteLine($"\n[USER] [{DateTime.Now:HH:mm:ss}]: {text}");
 
         string fullText = "";
+
+        // Texto das falas já fechadas em balão. fullText guarda só a fala corrente; este
+        // acumula o turno inteiro, que é o que vai para o log e para a notificação.
+        string allText = "";
         string? errorText = null;
         
         Border? typingBubble = null;
@@ -520,7 +526,7 @@ public partial class ChatWindow : Window
 
         try
         {
-            var stream = _openAIService.StreamResponseAsync(text, tech =>
+            var stream = _conversation.StreamResponseAsync(text, tech =>
             {
                 // Log técnico interno
                 Console.Write(tech);
@@ -549,9 +555,40 @@ public partial class ChatWindow : Window
                 }
             });
 
-            // Acumula a resposta completa silenciosamente
-            await foreach (var chunk in stream)
+            // Acumula a resposta completa silenciosamente.
+            // SEM ConfigureAwait(false) de propósito: este laço é de interface, não de rede.
+            // A leitura do socket já roda fora do Dispatcher porque toda a camada de serviço
+            // usa ConfigureAwait(false); capturar o contexto aqui garante que o corpo do laço,
+            // o catch e o finally continuem na thread de UI, como sempre foi.
+            await foreach (var item in stream)
             {
+                // Fronteira de fala: o agente terminou de dizer o que ia dizer e vai usar uma
+                // ferramenta. Fecha o balão com o que foi acumulado e recomeça o acúmulo — o
+                // balão continua sendo renderizado só quando completo, como sempre foi.
+                if (item is ChatStreamItem.SegmentBreak)
+                {
+                    if (!string.IsNullOrWhiteSpace(fullText))
+                    {
+                        if (typingBubble != null)
+                        {
+                            typingTimer?.Stop();
+                            MessagesPanel.Children.Remove(typingBubble);
+                            typingBubble = null;
+                            typingTimer = null;
+                        }
+
+                        AddAgentBubble(fullText);
+                        ChatScrollViewer.ScrollToEnd();
+
+                        allText += fullText;
+                        fullText = "";
+                    }
+                    continue;
+                }
+
+                if (item is not ChatStreamItem.Text textItem) continue;
+                string chunk = textItem.Value;
+
                 fullText += chunk;
                 GibberishVoiceService.SpeakChunk(chunk);
 
@@ -587,18 +624,21 @@ public partial class ChatWindow : Window
                 MessagesPanel.Children.Remove(typingBubble);
             }
 
-            // Exibe a resposta completa de uma só vez
+            // Exibe a fala final de uma só vez. Quando o turno teve várias falas, as anteriores
+            // já viraram balão na fronteira de cada ferramenta; aqui fecha só a última.
             if (errorText != null)
             {
                 AddAgentBubble(errorText);
             }
-            else if (string.IsNullOrWhiteSpace(fullText))
-            {
-                AddAgentBubble("*Ação executada com sucesso.*");
-            }
-            else
+            else if (!string.IsNullOrWhiteSpace(fullText))
             {
                 AddAgentBubble(fullText);
+            }
+            else if (string.IsNullOrWhiteSpace(allText))
+            {
+                // Nada foi dito no turno inteiro. Só aqui o aviso faz sentido: se já houve
+                // falas anteriores, um "Ação executada" solto no fim seria ruído.
+                AddAgentBubble("*Ação executada com sucesso.*");
             }
 
             ChatScrollViewer.ScrollToEnd();
@@ -618,7 +658,8 @@ public partial class ChatWindow : Window
             // Se a janela estiver invisível ou sem foco (usuário fazendo outra coisa), emite notificação
             if (!this.IsActive || this.Visibility != Visibility.Visible)
             {
-                string notifyText = errorText ?? (string.IsNullOrWhiteSpace(fullText) ? "*Ação executada com sucesso.*" : fullText.Trim());
+                string turnText = (allText + fullText).Trim();
+                string notifyText = errorText ?? (string.IsNullOrWhiteSpace(turnText) ? "*Ação executada com sucesso.*" : turnText);
                 if (notifyText.Length > 200) notifyText = notifyText.Substring(0, 197) + "...";
                 
                 ((App)System.Windows.Application.Current).ShowNotification("AIB", notifyText);
@@ -882,7 +923,7 @@ public partial class ChatWindow : Window
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         this.Deactivated -= Window_Deactivated; // Previne esconder o chat
-        var settingsWin = new SettingsWindow();
+        var settingsWin = new SettingsWindow(_settingsService);
         settingsWin.Owner = this;
         settingsWin.ShowDialog();
         this.Deactivated += Window_Deactivated; // Retorna o comportamento
@@ -912,7 +953,7 @@ public partial class ChatWindow : Window
     private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
         MessagesPanel.Children.Clear();
-        _openAIService.ResetHistory();
+        _conversation.ResetHistory();
         int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
         UpdateTokenCounterUI(0, maxTokens);
@@ -933,17 +974,7 @@ public partial class ChatWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            string baseText = "";
-            if (max < 5120)
-            {
-                baseText = $"{current}/{max} tokens";
-            }
-            else
-            {
-                double kCurrent = current / 1000.0;
-                double kMax = max / 1000.0;
-                baseText = $"{kCurrent:0.#}k/{kMax:0.#}k tokens";
-            }
+            string baseText = $"{current}/{max} tokens";
 
             if (cached.HasValue) _lastCachedTokens = cached.Value;
             
@@ -995,7 +1026,7 @@ public partial class ChatWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
-        _openAIService?.ResetHistory();
+        _conversation?.ResetHistory();
         _voiceService?.Dispose();
         _shadowService?.Stop();
         CloseAllShadowWidgets();
@@ -1006,12 +1037,16 @@ public partial class ChatWindow : Window
     {
         if (!_isShadowModeEnabled)
         {
-            var result = System.Windows.MessageBox.Show(
-                "O Shadow Assistant roda em segundo plano capturando o texto da sua tela e tentando prever o que você precisa.\n\n" +
-                "Como é uma função Alpha, a AIB às vezes pode alucinar ou interpretar a tela erroneamente.\n\n" +
-                "Tem certeza que deseja ativar o monitoramento em segundo plano?",
-                "Shadow Assistant (Alpha)", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                
+            MessageBoxResult result;
+            using (ModalGuard.Enter())
+            {
+                result = System.Windows.MessageBox.Show(
+                    "O Shadow Assistant roda em segundo plano capturando o texto da sua tela e tentando prever o que você precisa.\n\n" +
+                    "Como é uma função Alpha, a AIB às vezes pode alucinar ou interpretar a tela erroneamente.\n\n" +
+                    "Tem certeza que deseja ativar o monitoramento em segundo plano?",
+                    "Shadow Assistant (Alpha)", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            }
+
             if (result == MessageBoxResult.Yes)
             {
                 _isShadowModeEnabled = true;

@@ -311,7 +311,7 @@
                                             <TextBlock Text="Certifique-se de que o Ollama está rodando no seu computador." Foreground="#8B8794" FontSize="13" Margin="0,0,0,10"/>
                                             <Button x:Name="RetryButton" Content="Tentar novamente" Click="RetryButton_Click" Width="140" Height="36" HorizontalAlignment="Left" Background="#06FFFFFF" Foreground="#F5F4F7" BorderThickness="1" BorderBrush="#1AFFFFFF" Cursor="Hand" Margin="0,0,0,10"/>
                                             <TextBlock Margin="0,0,0,4" FontSize="13">
-                                                <Hyperlink x:Name="FallbackLink" Foreground="#3182CE" RequestNavigate="FallbackLink_RequestNavigate">Pular e usar configuração padrão</Hyperlink>
+                                                <Hyperlink x:Name="FallbackLink" Foreground="#3182CE" NavigateUri="aib:fallback-model" RequestNavigate="FallbackLink_RequestNavigate">Pular e usar configuração padrão</Hyperlink>
                                             </TextBlock>
                                         </StackPanel>
 
