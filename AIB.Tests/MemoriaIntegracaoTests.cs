@@ -145,6 +145,71 @@ namespace AIB.Tests
             _saida.WriteLine(Texto(historico[1]));
         }
 
+        /// <summary>
+        /// O ensaio LENTO: conversa até quatro capítulos fecharem um ato. Contra um modelo local
+        /// na CPU isso passa de dez minutos — é o preço de exercitar a hierarquia inteira com o
+        /// resumidor de verdade, e não com um dublê que devolve a mesma frase.
+        /// </summary>
+        [Fact]
+        public async Task ConversaMuitoLonga_PromoveCapitulosAAtoEDestilaFatos()
+        {
+            if (Desligado()) return;
+
+            var (conversa, _) = Montar();
+            int orcamento = LevelService.GetMaxTokensForLevel(1);
+            var relogioTotal = System.Diagnostics.Stopwatch.StartNew();
+
+            // Assuntos variados de propósito: perguntas repetidas fariam o modelo repetir a
+            // resposta, e resumos idênticos esconderiam um resumidor que não está lendo nada.
+            string[] temas =
+            {
+                "memória virtual", "arquivo de paginação", "RAM e VRAM", "agendador de tarefas",
+                "DLL", "registro do Windows", "serviços do Windows", "UAC", "PowerShell",
+                "NTFS", "variáveis de ambiente", "processos e threads", "firewall",
+                "área de transferência", "prompt de comando", "atalhos do Explorer",
+                "gerenciador de tarefas", "pontos de restauração", "permissões NTFS", "symlinks"
+            };
+
+            for (int i = 0; i < 40 && conversa.Acts.Count == 0; i++)
+            {
+                string tema = temas[i % temas.Length];
+                var relogio = System.Diagnostics.Stopwatch.StartNew();
+                await foreach (var _ in conversa.StreamResponseAsync(
+                    $"Explique {tema} no Windows em um parágrafo curto.")) { }
+                relogio.Stop();
+
+                _saida.WriteLine(
+                    $"turno {i + 1,2}: {conversa.CurrentTokenCount,6}/{orcamento} " +
+                    $"| {relogio.Elapsed.TotalSeconds,6:F1}s " +
+                    $"| capítulos: {conversa.Chapters.Count} | atos: {conversa.Acts.Count}");
+            }
+
+            _saida.WriteLine($"total: {relogioTotal.Elapsed.TotalMinutes:F1} min");
+
+            conversa.Acts.Should().NotBeEmpty(
+                "quatro capítulos deveriam ter fechado um ato dentro de 40 turnos");
+
+            var ato = conversa.Acts[0];
+            _saida.WriteLine("");
+            _saida.WriteLine($"── ato {ato.Index} (capítulos {ato.FirstChapter}–{ato.LastChapter}) ──");
+            _saida.WriteLine(ato.Summary);
+            foreach (var artefato in ato.Artifacts) _saida.WriteLine(artefato.Render());
+
+            ato.Summary.Should().NotContain("indisponível", "o modelo respondeu, o resumo tem de ser real");
+
+            // O ato substitui no PROMPT os capítulos que resumiu, e não em disco.
+            string bloco = Texto(conversa.SnapshotHistory()[1]);
+            _saida.WriteLine("");
+            _saida.WriteLine("── bloco de memória no prompt ──");
+            _saida.WriteLine(bloco);
+
+            bloco.Should().Contain("### Ato 1");
+            bloco.Should().NotContain("### Capítulo 1");
+
+            File.ReadAllLines(Path.Combine(conversa.SessionMemoryDir, "chapters.jsonl"))
+                .Length.Should().BeGreaterThanOrEqualTo(4, "capítulo resumido continua em disco");
+        }
+
         [Fact]
         public async Task CadeiaComFerramenta_PreservaOCaminhoLiteralNoCapitulo()
         {

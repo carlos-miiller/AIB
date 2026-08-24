@@ -61,6 +61,8 @@ public sealed class SessionMemory
 
     public string ChaptersPath => Path.Combine(SessionDir, "chapters.jsonl");
 
+    public string ActsPath => Path.Combine(SessionDir, "acts.jsonl");
+
     /// <summary>
     /// Id de sessão a partir de um instante: <c>20260821-143005-812</c>. Os milissegundos
     /// entram porque duas sessões abertas no mesmo segundo (reset logo após abrir o app)
@@ -140,6 +142,36 @@ public sealed class SessionMemory
 
     /// <summary>Capítulos gravados, na ordem. Linha ilegível é pulada.</summary>
     public IReadOnlyList<Chapter> ReadChapters() => ReadLines<Chapter>(ChaptersPath);
+
+    /// <summary>
+    /// Grava um ato fechado. Os capítulos que ele resume CONTINUAM em chapters.jsonl: o ato
+    /// substitui os capítulos no prompt, não em disco. Em disco nada é substituído.
+    /// </summary>
+    public bool AppendAct(Act act)
+    {
+        if (act == null) return false;
+
+        try
+        {
+            string linha = JsonSerializer.Serialize(act, Json);
+
+            lock (_gate)
+            {
+                Directory.CreateDirectory(SessionDir);
+                File.AppendAllText(ActsPath, linha + Environment.NewLine, SemBom);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Falha ao gravar ato {act.Index}: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Atos gravados, na ordem. Linha ilegível é pulada.</summary>
+    public IReadOnlyList<Act> ReadActs() => ReadLines<Act>(ActsPath);
 
     private List<T> ReadLines<T>(string caminho) where T : class
     {

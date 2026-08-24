@@ -123,4 +123,43 @@ foreach ($c in $capitulos) {
     }
 }
 
+# ── Atos ───────────────────────────────────────────────────────────────────────
+$atos = @(Read-Jsonl (Join-Path $pasta 'acts.jsonl'))
+
+Write-Host ""
+Write-Host "── acts.jsonl : $($atos.Count) ato(s) ──" -ForegroundColor Green
+
+if ($atos.Count -eq 0) {
+    Write-Host "  Nenhum ainda. Um ato nasce a cada 4 capítulos soltos." -ForegroundColor DarkGray
+}
+
+foreach ($t in $atos) {
+    Write-Host ""
+    Write-Host "  Ato $($t.Index) — capítulos $($t.FirstChapter) a $($t.LastChapter)" -ForegroundColor Magenta
+    Write-Host "  $($t.Summary)"
+    if ($t.Artifacts.Count -gt 0) {
+        Write-Host "  Artefatos condensados:" -ForegroundColor DarkGray
+        foreach ($a in $t.Artifacts) {
+            $cor = if ($a.Failed) { 'Red' } else { 'DarkCyan' }
+            Write-Host "    $($a.Kind): $($a.Value)" -ForegroundColor $cor
+        }
+    }
+}
+
+# ── Fatos duráveis ─────────────────────────────────────────────────────────────
+# Ficam na RAIZ da memória, e não na sessão: é a única faixa que atravessa conversas.
+$fatosPath = Join-Path $Raiz 'facts.md'
+
+Write-Host ""
+Write-Host "── facts.md (todas as sessões) ──" -ForegroundColor Green
+
+if (-not (Test-Path $fatosPath)) {
+    Write-Host "  Ainda não existe. Nasce na primeira promoção de ato." -ForegroundColor DarkGray
+} else {
+    $linhas = @(Get-Content $fatosPath -Encoding utf8 | Where-Object { $_ -like '- *' })
+    Write-Host "  $($linhas.Count) fato(s) — $fatosPath" -ForegroundColor DarkGray
+    Write-Host "  (é seu: pode editar, reordenar e apagar; o que apagar não volta)" -ForegroundColor DarkGray
+    foreach ($l in $linhas) { Write-Host "  $l" -ForegroundColor DarkCyan }
+}
+
 Write-Host ""

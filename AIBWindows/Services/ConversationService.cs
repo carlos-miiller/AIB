@@ -86,6 +86,12 @@ public sealed class ConversationService : IMessageStore
     private readonly MemoryLayer _memory = new();
 
     /// <summary>
+    /// Fatos duráveis, na raiz da memória. Não é trocado no ResetHistory: capítulo e ato morrem
+    /// com a sessão, fato é justamente o que sobra depois dela.
+    /// </summary>
+    private readonly FactStore _facts;
+
+    /// <summary>
     /// CTS do turno em voo. Protegido por <see cref="_ctsGate"/>: o Stop vem da thread de
     /// UI enquanto o turno corre numa thread do pool, e cancelar/descartar sem lock deixava
     /// o Cancel cair num CTS já descartado.
@@ -111,6 +117,7 @@ public sealed class ConversationService : IMessageStore
         _uiContext = SynchronizationContext.Current;
         _memoryRootOverride = memoryRootOverride;
         _sessionMemory = NewSessionMemory();
+        _facts = new FactStore(memoryRootOverride);
 
         _warmupService = new WarmupService(_settingsService, _toolRegistry, _providerFactory, _tokenCounter);
         _warmupService.OnWarmupStateChanged += state => RaiseWarmupState(state);
@@ -174,6 +181,11 @@ public sealed class ConversationService : IMessageStore
         {
             if (_history.Count == 0) _history.Add(ChatMessage.CreateSystemMessage(prompt));
         }
+
+        // Os fatos duráveis atravessam sessões: eles têm de estar no prompt desde o PRIMEIRO
+        // turno, e não só depois da primeira compactação. Capítulos e atos ainda não existem
+        // aqui, então o bloco sai só com fatos — ou vazio, e nem chega a ser inserido.
+        RefreshMemoryMessage(CurrentQuota(LevelService.GetLevel(_settingsService.LoadSettings().MessageCount)));
     }
 
     /// <summary>
@@ -293,6 +305,11 @@ public sealed class ConversationService : IMessageStore
 
             _memory.Add(capitulo);
             _sessionMemory.AppendChapter(capitulo);
+
+            // Promoção antes de reescrever o bloco: se um ato nascer agora, ele já entra no
+            // mesmo prompt, e o prefixo é invalidado UMA vez em vez de duas.
+            await PromoteIfNeededAsync(compactor, ct).ConfigureAwait(false);
+
             RefreshMemoryMessage(quota);
 
             Console.WriteLine($"[MEMORIA] Capítulo {capitulo.Index} fechado ({capitulo.Artifacts.Count} artefato(s)). Vivo agora: {LiveTokens()} tokens.");
@@ -304,6 +321,68 @@ public sealed class ConversationService : IMessageStore
         catch (Exception ex)
         {
             Console.WriteLine($"[MEMORIA] Compactação falhou: {ex.Message}");
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Promoção (atos e fatos)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Capítulos soltos que fecham um ato. Quatro, e não dois: promover cedo demais custa um
+    /// resumo de resumo por quase nada, e resumo de resumo é onde a informação some.
+    /// </summary>
+    private const int ChaptersPerAct = 4;
+
+    /// <summary>Atos fechados nesta sessão. Diagnóstico e teste.</summary>
+    public IReadOnlyList<Act> Acts => _memory.Acts;
+
+    /// <summary>Fatos duráveis em disco. Diagnóstico e teste.</summary>
+    public string FactsPath => _facts.FactsPath;
+
+    /// <summary>
+    /// Fecha um ato quando há capítulos soltos suficientes, e promove a fatos duráveis o que
+    /// atravessou capítulos o bastante.
+    /// <para>
+    /// Nunca lança: o capítulo já está fechado e gravado, e uma falha aqui não pode desfazê-lo.
+    /// </para>
+    /// </summary>
+    private async Task PromoteIfNeededAsync(Compactor compactor, CancellationToken ct)
+    {
+        try
+        {
+            var soltos = _memory.UncoveredChapters;
+            if (soltos.Count < ChaptersPerAct) return;
+
+            Console.WriteLine($"[MEMORIA] Promovendo {soltos.Count} capítulo(s) a ato.");
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(SummaryTimeout);
+
+            var ato = await compactor
+                .PromoteAsync(_memory.NextActIndex, soltos, timeout.Token)
+                .ConfigureAwait(false);
+
+            _memory.Add(ato);
+            _sessionMemory.AppendAct(ato);
+
+            // Fatos saem de TODOS os capítulos da sessão, e não só dos deste ato: o que se
+            // conta é quantos capítulos distintos um literal atravessou, e esse número não
+            // reinicia quando um ato fecha.
+            var candidatos = ArtifactDigest.Distill(_memory.Chapters);
+            int promovidos = _facts.Promote(candidatos);
+
+            Console.WriteLine(
+                $"[MEMORIA] Ato {ato.Index} fechado (capítulos {ato.FirstChapter}–{ato.LastChapter}, " +
+                $"{ato.Artifacts.Count} artefato(s)). Fatos novos: {promovidos}.");
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("[MEMORIA] Promoção cancelada. Os capítulos seguem soltos.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Promoção falhou: {ex.Message}");
         }
     }
 
@@ -387,6 +466,11 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private void RefreshMemoryMessage(MemoryQuota quota)
     {
+        // Relido do disco a cada montagem: facts.md é do usuário, e ele pode tê-lo editado com
+        // o app aberto. Custa uma leitura de arquivo pequeno, e só acontece quando um capítulo
+        // ou ato nasce.
+        _memory.SetFacts(_facts.ReadFacts());
+
         string bloco = _memory.Render(quota, _tokenCounter);
 
         lock (_gate)

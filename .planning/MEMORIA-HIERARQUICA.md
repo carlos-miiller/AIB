@@ -1,6 +1,6 @@
 # Proposta: memória hierárquica por compactação
 
-**Status:** fases 1 e 2 implementadas (2026-08-21). Fase 3 pendente.
+**Status:** fases 1, 2 e 3 implementadas (2026-08-24). Falta validar contra o Ollama real.
 **Origem:** padrão observado em jogos de RP com IA — a cada N mensagens vira capítulo, a cada N capítulos vira ato.
 **Substitui:** o `Trim` atual, que apaga mensagens antigas em vez de destilá-las.
 
@@ -147,6 +147,7 @@ Em `~/.AIB/memory/`, seguindo a política de que `.AIB` é a fonte de verdade:
 ```
 memory/
   facts.md                       nível 2 destilado, editável à mão pelo usuário
+  facts.index.jsonl              registro do que já foi promovido (não é para ler)
   sessions/
     <sessionId>/
       raw.jsonl                  turnos crus, NUNCA apagados
@@ -230,9 +231,30 @@ Desvios do que estava escrito acima:
   Reconstruir o prompt base a cada capítulo obrigaria a reler `SOUL.MD` e as skills do disco,
   sob o portão, e uma falha de leitura passageira derrubaria a persona no meio da conversa.
 
-**Fase 3 — atos e fatos. PENDENTE.**
-Promoção de capítulos para atos, e destilação para `facts.md`. As cotas `Facts` e `Acts` já
-existem no `MemoryBudget` e hoje ficam ociosas — o `MemoryLayer` só renderiza capítulos.
+**Fase 3 — atos e fatos. FEITA.**
+`Act` + `ArtifactDigest` + `FactStore` + `Compactor.PromoteAsync`. Quatro capítulos soltos
+fecham um ato; a cada ato os artefatos que atravessaram 3 capítulos distintos viram fato
+durável. As cotas `Facts` e `Acts` do `MemoryBudget` saíram da ociosidade.
+
+Desvios do que estava escrito acima:
+
+- **`facts.md` ganhou um irmão de máquina, o `facts.index.jsonl`.** O documento previa só o
+  markdown. Sem o registro à parte, um fato errado que o usuário apagasse voltaria sozinho na
+  promoção seguinte — a memória discutindo com o dono dela. Com ele, a regra fica: a AIB só
+  ACRESCENTA linhas ao fim do `facts.md`, nunca reescreve nem remove, e o que o usuário apagar
+  não volta nunca mais.
+- **A promoção a fato conta capítulos DISTINTOS, não ocorrências.** Gravar o mesmo arquivo
+  cinco vezes dentro de um capítulo é um trabalho só, e não um padrão que valha memória
+  permanente. A recusa no portão é a exceção e promove na primeira: negar é uma decisão, e
+  decisão não precisa se repetir para valer.
+- **Ato e capítulo têm cotas independentes; sobra de uma não vira espaço da outra.** Deixar
+  transbordar faria o tamanho do bloco de capítulos mudar toda vez que um ato nascesse, e mexer
+  no meio do prefixo custa o mesmo que mexer no começo.
+- **O bloco de fatos entra desde o primeiro turno**, montado no `ResetHistory` e não só na
+  primeira compactação. Fato é a única faixa que atravessa sessões; exibi-la apenas depois de
+  um capítulo a tornaria inútil justamente na conversa nova.
+- **Capítulo absorvido por um ato sai do prompt, não do disco.** `chapters.jsonl` e `raw.jsonl`
+  continuam completos — a mesma rede de segurança de sempre.
 
 Fazer a fase 1 primeiro também valida encanamento (caminhos, serialização, orçamento) antes de
 investir na fase 2, que é a maior.

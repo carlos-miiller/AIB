@@ -45,6 +45,23 @@ public sealed class Compactor
         - No máximo 120 palavras.
         """;
 
+    private const string ActPrompt =
+        """
+        Você recebe vários resumos consecutivos de uma mesma conversa longa entre um usuário e
+        um agente de IA no Windows, em ordem cronológica.
+
+        Escreva UM parágrafo único, em Português (Brasil), na terceira pessoa e no passado, que
+        conte o arco inteiro: o que foi perseguido ao longo do trecho, o que foi conseguido e o
+        que ficou em aberto.
+
+        Regras:
+        - O que ficou pendente ou falhou importa tanto quanto o que foi concluído.
+        - Não invente nada que não esteja nos trechos.
+        - Não copie caminhos de arquivo nem linhas de comando: eles são preservados à parte.
+        - Sem listas, sem títulos, sem preâmbulo. Só o parágrafo.
+        - No máximo 150 palavras.
+        """;
+
     private readonly IChatProvider _provider;
 
     public Compactor(IChatProvider provider) =>
@@ -108,6 +125,79 @@ public sealed class Compactor
             turns[^1].Index,
             resumo,
             artefatos);
+    }
+
+    /// <summary>
+    /// Fecha um ato a partir de capítulos já resumidos — o nível 2 da hierarquia.
+    /// <para>
+    /// Resume só a narrativa dos capítulos. Os artefatos NÃO são reenviados ao modelo: eles
+    /// vêm do <see cref="ArtifactDigest.Condense"/>, por fora. Resumir um resumo já perde
+    /// detalhe; deixar o literal passar por essa segunda perda é como o caminho de arquivo
+    /// vira "um arquivo do provider".
+    /// </para>
+    /// </summary>
+    public async Task<Act> PromoteAsync(
+        int actIndex,
+        IReadOnlyList<Chapter> chapters,
+        CancellationToken ct)
+    {
+        if (chapters == null || chapters.Count == 0)
+            throw new ArgumentException("Ato precisa de pelo menos um capítulo.", nameof(chapters));
+
+        var artefatos = ArtifactDigest.Condense(chapters.SelectMany(c => c.Artifacts));
+        string agora = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+
+        string resumo;
+        try
+        {
+            var mensagens = new List<ChatMessage>
+            {
+                ChatMessage.CreateSystemMessage(ActPrompt),
+                ChatMessage.CreateUserMessage(RenderChaptersForSummary(chapters))
+            };
+
+            var resultado = await _provider
+                .CompleteAsync(mensagens, Array.Empty<ChatTool>(), Options, ct)
+                .ConfigureAwait(false);
+
+            resumo = ThinkBlockStripper.Strip(resultado.Text);
+
+            if (string.IsNullOrWhiteSpace(resumo))
+                resumo = "[resumo indisponível: o modelo devolveu texto vazio]";
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Resumo do ato {actIndex} falhou: {ex.Message}");
+            resumo = "[resumo indisponível: falha ao contatar o modelo]";
+        }
+
+        return new Act(
+            actIndex,
+            agora,
+            chapters[0].Index,
+            chapters[^1].Index,
+            chapters[0].FirstTurn,
+            chapters[^1].LastTurn,
+            resumo,
+            artefatos);
+    }
+
+    /// <summary>Capítulos em texto plano, pelo mesmo motivo do <see cref="RenderForSummary"/>.</summary>
+    public static string RenderChaptersForSummary(IReadOnlyList<Chapter> chapters)
+    {
+        var texto = new StringBuilder();
+
+        foreach (var capitulo in chapters)
+        {
+            texto.Append("TRECHO ").Append(capitulo.Index + 1).Append(": ");
+            texto.Append(capitulo.Summary.Trim()).Append('\n');
+        }
+
+        return texto.ToString();
     }
 
     /// <summary>

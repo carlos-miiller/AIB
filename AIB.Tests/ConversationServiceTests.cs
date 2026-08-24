@@ -706,5 +706,188 @@ namespace AIB.Tests
             conversation.Chapters.Should().BeEmpty("memória de outra conversa costuraria assuntos sem relação");
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // Promoção: atos e fatos duráveis
+        // ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Conversa até o primeiro ato nascer. Mesmo princípio do ConversarAteCompactar: espera
+        /// o gatilho em vez de calcular quantos turnos ele exigiria, porque a escala de tokens
+        /// por nível já mudou uma vez e deixou testes passando sem nunca acionar o que cobriam.
+        /// </summary>
+        private static async Task<int> ConversarAteFecharAto(
+            ConversationService conversation, int tetoDeTurnos = 240)
+        {
+            string pergunta = string.Concat(Enumerable.Repeat("uma frase qualquer para gastar tokens. ", 40));
+
+            for (int i = 0; i < tetoDeTurnos; i++)
+            {
+                await foreach (var _ in conversation.StreamResponseAsync($"{pergunta} pergunta {i}")) { }
+                if (conversation.Acts.Count > 0) return i + 1;
+            }
+
+            return -1;
+        }
+
+        [Fact]
+        public async Task QuatroCapitulos_FechamUmAto()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "O agente respondeu a uma sequência de perguntas.";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            int turnos = await ConversarAteFecharAto(conversation);
+
+            turnos.Should().BePositive("o ato tem de nascer antes do teto de turnos");
+            conversation.Acts.Should().ContainSingle();
+            conversation.Acts[0].FirstChapter.Should().Be(0);
+            conversation.Acts[0].LastChapter.Should().Be(3);
+            conversation.Chapters.Should().HaveCountGreaterThanOrEqualTo(4, "o ato não apaga capítulo");
+        }
+
+        [Fact]
+        public async Task AtoEhGravadoEmActsJsonl()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await ConversarAteFecharAto(conversation);
+
+            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "acts.jsonl"));
+
+            linhas.Should().ContainSingle();
+            linhas[0].Should().Contain("\"Index\":0");
+        }
+
+        [Fact]
+        public async Task CapitulosEmDiscoSobrevivemAoAto()
+        {
+            // O ato substitui os capítulos no PROMPT, não em disco. raw.jsonl e chapters.jsonl
+            // continuam sendo a rede de segurança de quando o resumo se mostrar ruim.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await ConversarAteFecharAto(conversation);
+
+            File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"))
+                .Length.Should().BeGreaterThanOrEqualTo(4);
+        }
+
+        [Fact]
+        public async Task DepoisDoAto_OBlocoDeMemoriaMostraOAtoENaoOsCapitulosCobertos()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "RESUMO-DO-TRECHO";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await ConversarAteFecharAto(conversation);
+
+            string bloco = TextOf(conversation.SnapshotHistory()[1]);
+
+            bloco.Should().Contain("### Ato 1");
+            bloco.Should().NotContain("### Capítulo 1", "esse já foi absorvido pelo ato");
+            bloco.Should().NotContain("### Capítulo 4", "o último capítulo coberto também sai");
+        }
+
+        [Fact]
+        public async Task DepoisDoAto_ContinuaHavendoUmaUnicaMensagemDeMemoria()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await ConversarAteFecharAto(conversation);
+
+            conversation.SnapshotHistory().Count(m => m is SystemChatMessage)
+                .Should().Be(2, "prompt base + UM bloco de memória, sempre");
+        }
+
+        [Fact]
+        public void FatosDuraveis_EntramNoPromptDesdeOPrimeiroTurno()
+        {
+            // Fato só é durável se estiver lá antes da primeira compactação: é a única faixa da
+            // memória que atravessa sessões, e esperar um capítulo para exibi-la a inutilizaria.
+            string raiz = Path.Combine(_dir, "memory");
+            Directory.CreateDirectory(raiz);
+            File.WriteAllText(Path.Combine(raiz, "facts.md"),
+                "# Fatos duráveis\n\n- Carlo escreve em Português (Brasil).\n");
+
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            var historico = conversation.SnapshotHistory();
+
+            historico[1].Should().BeOfType<SystemChatMessage>();
+            TextOf(historico[1]).Should().Contain("Carlo escreve em Português (Brasil).");
+        }
+
+        [Fact]
+        public void SemFatosNemCapitulos_NaoNasceMensagemDeMemoriaVazia()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            conversation.SnapshotHistory().Count(m => m is SystemChatMessage).Should().Be(1);
+        }
+
+        [Fact]
+        public async Task FatosSobrevivemAoResetDeSessao()
+        {
+            string raiz = Path.Combine(_dir, "memory");
+            Directory.CreateDirectory(raiz);
+            File.WriteAllText(Path.Combine(raiz, "facts.md"), "- fato que atravessa sessões\n");
+
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+            conversation.ResetHistory();
+
+            TextOf(conversation.SnapshotHistory()[1]).Should().Contain("fato que atravessa sessões");
+        }
+
+        [Fact]
+        public async Task ResetHistory_EsqueceOsAtosDaSessaoAnterior()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await ConversarAteFecharAto(conversation);
+            conversation.Acts.Should().NotBeEmpty();
+
+            conversation.ResetHistory();
+
+            conversation.Acts.Should().BeEmpty("ato de outra conversa costuraria assuntos sem relação");
+        }
+
+        [Fact]
+        public void FatoEditadoComOAppAberto_EhLidoNaProximaMontagem()
+        {
+            // facts.md é do usuário: ele pode abrir o arquivo no meio da conversa.
+            string raiz = Path.Combine(_dir, "memory");
+            Directory.CreateDirectory(raiz);
+            File.WriteAllText(Path.Combine(raiz, "facts.md"), "- versão antiga\n");
+
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            File.WriteAllText(Path.Combine(raiz, "facts.md"), "- versão corrigida à mão\n");
+            conversation.ResetHistory();
+
+            TextOf(conversation.SnapshotHistory()[1]).Should().Contain("versão corrigida à mão");
+        }
+
+        [Fact]
+        public void PromocaoNuncaEscreveNoFactsMdRealDoUsuario()
+        {
+            // Mesmo guard do raw.jsonl: sem raiz redirecionada, um teste gravaria fatos
+            // inventados na memória permanente do usuário — e "durável" quer dizer que ele
+            // teria de apagá-los à mão.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            conversation.FactsPath.Should().StartWith(_dir);
+        }
     }
 }

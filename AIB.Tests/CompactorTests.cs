@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -272,6 +272,152 @@ namespace AIB.Tests
             texto.Should().Contain(@"C:\temp\a.txt");
             texto.Should().Contain("[FALHOU]");
             texto.Should().Contain("ERRO: negado");
+        }
+        // ─────────────────────────────────────────────────────────────────────
+        // Promoção a ato (nível 2)
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static Chapter Capitulo(int indice, string resumo, params Artifact[] artefatos) =>
+            new(indice, "2026-08-24T00:00:00Z", indice * 2, indice * 2 + 1, resumo, artefatos);
+
+        private static string Texto(ChatMessage mensagem) =>
+            mensagem.Content == null
+                ? ""
+                : string.Concat(mensagem.Content.Where(p => p?.Text != null).Select(p => p.Text));
+
+        [Fact]
+        public async Task PromoteAsync_ResumeOsCapitulosNumAtoSo()
+        {
+            var provider = new DubleProvider("O trecho todo girou em torno de consertar o cache.");
+            var compactor = new Compactor(provider);
+
+            var ato = await compactor.PromoteAsync(0, new[]
+            {
+                Capitulo(0, "primeiro"), Capitulo(1, "segundo"),
+                Capitulo(2, "terceiro"), Capitulo(3, "quarto")
+            }, CancellationToken.None);
+
+            ato.Index.Should().Be(0);
+            ato.FirstChapter.Should().Be(0);
+            ato.LastChapter.Should().Be(3);
+            ato.Summary.Should().Be("O trecho todo girou em torno de consertar o cache.");
+        }
+
+        [Fact]
+        public async Task PromoteAsync_HerdaAFaixaDeTurnosDosCapitulos()
+        {
+            var compactor = new Compactor(new DubleProvider());
+
+            var ato = await compactor.PromoteAsync(0, new[]
+            {
+                Capitulo(0, "primeiro"), Capitulo(1, "segundo")
+            }, CancellationToken.None);
+
+            ato.FirstTurn.Should().Be(0);
+            ato.LastTurn.Should().Be(3);
+        }
+
+        [Fact]
+        public async Task PromoteAsync_NaoMandaFerramentaNenhuma()
+        {
+            // Mesma razão do resumo de capítulo: um resumidor com ferramenta na mão acaba
+            // decidindo "verificar" o que está resumindo, e executa comando no meio da promoção.
+            var provider = new DubleProvider();
+
+            await new Compactor(provider).PromoteAsync(0, new[] { Capitulo(0, "x") }, CancellationToken.None);
+
+            provider.UltimasFerramentas.Should().BeEmpty();
+            provider.UltimaTemperatura.Should().Be(0f);
+        }
+
+        [Fact]
+        public async Task PromoteAsync_NaoReenviaArtefatoAoModelo()
+        {
+            // O literal já sobreviveu ao resumo do capítulo. Passá-lo por um SEGUNDO resumo é
+            // como o caminho absoluto vira "um arquivo do provider".
+            var provider = new DubleProvider();
+
+            await new Compactor(provider).PromoteAsync(0, new[]
+            {
+                Capitulo(0, "resumo", new Artifact(ArtifactKind.FileRead, "read_file", @"C:\segredo.cs", false))
+            }, CancellationToken.None);
+
+            string enviado = string.Concat(provider.UltimasMensagens.Select(Texto));
+            enviado.Should().NotContain(@"C:\segredo.cs");
+        }
+
+        [Fact]
+        public async Task PromoteAsync_CarregaOsArtefatosCondensadosDosCapitulos()
+        {
+            var compactor = new Compactor(new DubleProvider());
+
+            var ato = await compactor.PromoteAsync(0, new[]
+            {
+                Capitulo(0, "a", new Artifact(ArtifactKind.FileRead, "read_file", @"C:.cs", false)),
+                Capitulo(1, "b", new Artifact(ArtifactKind.FileWritten, "write_file", @"C:.cs", false))
+            }, CancellationToken.None);
+
+            ato.Artifacts.Should().ContainSingle("ler e gravar o mesmo caminho é um artefato só");
+            ato.Artifacts[0].Value.Should().Be(@"C:.cs");
+        }
+
+        [Fact]
+        public async Task PromoteAsync_ModeloForaDoAr_DevolveAtoComNotaEArtefatos()
+        {
+            // Perder a narrativa é aceitável; devolver nada não é — os capítulos vão sair do
+            // prompt de qualquer jeito, e um ato vazio deixaria um buraco silencioso.
+            var provider = new DubleProvider(falha: new System.Net.Http.HttpRequestException("conexão recusada"));
+
+            var ato = await new Compactor(provider).PromoteAsync(0, new[]
+            {
+                Capitulo(0, "a", new Artifact(ArtifactKind.CommandRun, "run_command", "git status", false))
+            }, CancellationToken.None);
+
+            ato.Summary.Should().Contain("indisponível");
+            ato.Artifacts.Should().ContainSingle();
+        }
+
+        [Fact]
+        public async Task PromoteAsync_RespostaVazia_NaoVirouAtoMudo()
+        {
+            var ato = await new Compactor(new DubleProvider("   ")).PromoteAsync(
+                0, new[] { Capitulo(0, "a") }, CancellationToken.None);
+
+            ato.Summary.Should().Contain("indisponível");
+        }
+
+        [Fact]
+        public async Task PromoteAsync_TiraOBlocoDePensamentoDoResumo()
+        {
+            var provider = new DubleProvider("<think>deixa eu ver...</think>O arco foi sobre o cache.");
+
+            var ato = await new Compactor(provider).PromoteAsync(
+                0, new[] { Capitulo(0, "a") }, CancellationToken.None);
+
+            ato.Summary.Should().Be("O arco foi sobre o cache.");
+        }
+
+        [Fact]
+        public async Task PromoteAsync_SemCapitulo_Recusa()
+        {
+            var compactor = new Compactor(new DubleProvider());
+
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                compactor.PromoteAsync(0, Array.Empty<Chapter>(), CancellationToken.None));
+        }
+
+        [Fact]
+        public void RenderChaptersForSummary_MandaSoAsNarrativas()
+        {
+            string texto = Compactor.RenderChaptersForSummary(new[]
+            {
+                Capitulo(0, "o usuário pediu A"),
+                Capitulo(1, "o usuário pediu B")
+            });
+
+            texto.Should().Contain("o usuário pediu A");
+            texto.Should().Contain("o usuário pediu B");
+            texto.Should().Contain("TRECHO 1");
         }
     }
 }
