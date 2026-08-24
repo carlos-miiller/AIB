@@ -57,12 +57,16 @@ namespace AIB.Tests
         private const int TetoDeTurnos = 30;
 
         /// <summary>
-        /// Perguntas variadas de propósito. Repetir a mesma faria o modelo repetir a resposta, e
-        /// resumos idênticos esconderiam um resumidor que não está lendo nada.
+        /// Uma pergunta com material colado junto, como o usuário de verdade faz.
         /// <para>
-        /// Pede resposta LONGA porque o gatilho é por token: com parágrafo curto seriam mais de
-        /// vinte turnos até a primeira compactação, e cada turno num modelo local na CPU custa
-        /// mais de meio minuto.
+        /// O gatilho é por TOKEN, e token de pergunta custa muito menos que token de resposta:
+        /// medido aqui, prefill roda a ~34 tok/s e geração a ~7,7 tok/s. Encher a conversa pelo
+        /// lado do usuário cruza o gatilho em poucos turnos sem transformar o ensaio numa espera
+        /// de vinte minutos — e ainda exercita o caso mais realista, o do log colado no chat.
+        /// </para>
+        /// <para>
+        /// Os temas variam de propósito: repetir a mesma pergunta faria o modelo repetir a
+        /// resposta, e resumos idênticos esconderiam um resumidor que não está lendo nada.
         /// </para>
         /// </summary>
         private static string Pergunta(int i)
@@ -78,7 +82,16 @@ namespace AIB.Tests
                 "o gerenciador de tarefas", "o modo de segurança", "o Windows Update"
             };
 
-            return $"Explique {temas[i % temas.Length]} no Windows em três parágrafos detalhados.";
+            var material = new System.Text.StringBuilder();
+            for (int linha = 0; linha < 40; linha++)
+            {
+                material.Append($"2026-08-24 10:{linha:D2}:00 INFO  servico-{i}-{linha} ")
+                        .Append("processou o lote de trabalho e registrou o resultado no diario ")
+                        .Append($"do sistema, com duracao de {linha * 7 + 13} ms e nenhum aviso.\n");
+            }
+
+            return $"Segue um trecho de log da minha máquina:\n\n{material}\n" +
+                   $"Com base nisso, explique {temas[i % temas.Length]} no Windows em um parágrafo.";
         }
 
         public MemoriaIntegracaoTests(ITestOutputHelper saida)

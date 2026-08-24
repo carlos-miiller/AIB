@@ -413,6 +413,25 @@ namespace AIB.Tests
         // ─────────────────────────────────────────────────────────────────────
 
         [Fact]
+        public void MaterialDoResumo_TruncaOTextoDoUsuarioTambem()
+        {
+            // Log colado no chat, ou arquivo inteiro no corpo da mensagem: sem truncar, isso
+            // entrava por completo no prompt do resumidor e estourava o prefill — a mesma
+            // espiral de tempo do raciocínio ligado, chegando pelo outro lado.
+            var colado = new string('x', 20_000);
+            var turno = new Turn(0, new List<ChatMessage>
+            {
+                new UserChatMessage(colado),
+                new AssistantChatMessage("entendi")
+            });
+
+            string material = Compactor.RenderForSummary(new[] { turno });
+
+            material.Length.Should().BeLessThan(2_000);
+            material.Should().Contain("truncado");
+        }
+
+        [Fact]
         public async Task ResumoDeCapitulo_DesligaORaciocinioELimitaASaida()
         {
             // Medido no qwen3.5:4b em CPU: resumir cinco turnos custava 286,6s, dos quais

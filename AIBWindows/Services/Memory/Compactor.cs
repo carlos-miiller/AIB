@@ -229,7 +229,12 @@ public sealed class Compactor
 
         foreach (var turno in turns)
         {
-            string pedido = turno.UserText.Trim();
+            // Truncado como o resto. O pedido do usuário é a parte mais informativa do turno,
+            // por isso tem folga maior que o resultado de ferramenta — mas não pode ser
+            // ilimitado: uma mensagem com log colado, ou um arquivo inteiro no corpo, entrava
+            // aqui por completo e estourava o prefill do resumidor. É a mesma espiral de tempo
+            // que o think desligado veio resolver, chegando pelo outro lado.
+            string pedido = Truncate(turno.UserText.Trim(), 800);
             if (pedido.Length > 0)
                 texto.Append("USUÁRIO: ").Append(pedido).Append('\n');
 
