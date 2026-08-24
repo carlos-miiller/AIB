@@ -47,6 +47,40 @@ namespace AIB.Tests
         private static string Url =>
             Environment.GetEnvironmentVariable("AIB_URL") ?? "http://localhost:11434";
 
+        /// <summary>
+        /// Teto de turnos dos ensaios longos. Existe só para o ensaio não rodar para sempre se
+        /// o gatilho parar de disparar — não é uma previsão de quantos turnos serão precisos.
+        /// A primeira versão deste arquivo chutava dez perguntas fixas e falhou com 2.350 tokens
+        /// de 5.088: prever o gatilho em vez de esperá-lo é o mesmo erro que já deixou os testes
+        /// de poda passando sem nunca podar nada.
+        /// </summary>
+        private const int TetoDeTurnos = 30;
+
+        /// <summary>
+        /// Perguntas variadas de propósito. Repetir a mesma faria o modelo repetir a resposta, e
+        /// resumos idênticos esconderiam um resumidor que não está lendo nada.
+        /// <para>
+        /// Pede resposta LONGA porque o gatilho é por token: com parágrafo curto seriam mais de
+        /// vinte turnos até a primeira compactação, e cada turno num modelo local na CPU custa
+        /// mais de meio minuto.
+        /// </para>
+        /// </summary>
+        private static string Pergunta(int i)
+        {
+            string[] temas =
+            {
+                "memória virtual", "o arquivo de paginação", "a diferença entre RAM e VRAM",
+                "o agendador de tarefas", "as DLLs", "o registro do Windows",
+                "os serviços do Windows", "o UAC", "a diferença entre PowerShell e CMD",
+                "o sistema de arquivos NTFS", "as variáveis de ambiente",
+                "processos e threads", "o firewall", "a área de transferência",
+                "as permissões NTFS", "os links simbólicos", "os pontos de restauração",
+                "o gerenciador de tarefas", "o modo de segurança", "o Windows Update"
+            };
+
+            return $"Explique {temas[i % temas.Length]} no Windows em três parágrafos detalhados.";
+        }
+
         public MemoriaIntegracaoTests(ITestOutputHelper saida)
         {
             _saida = saida;
@@ -95,33 +129,19 @@ namespace AIB.Tests
             var (conversa, _) = Montar();
             int orcamento = LevelService.GetMaxTokensForLevel(1);
 
-            string[] perguntas =
-            {
-                "Explique em um parágrafo o que é memória virtual no Windows.",
-                "E o que é um arquivo de paginação? Um parágrafo.",
-                "Qual a diferença entre RAM e VRAM? Um parágrafo.",
-                "Explique o que faz o agendador de tarefas do Windows. Um parágrafo.",
-                "O que é uma DLL? Um parágrafo.",
-                "Explique o registro do Windows em um parágrafo.",
-                "O que é um serviço do Windows? Um parágrafo.",
-                "Explique o que é o UAC em um parágrafo.",
-                "O que faz o PowerShell diferente do CMD? Um parágrafo.",
-                "Explique o que é NTFS em um parágrafo."
-            };
-
-            for (int i = 0; i < perguntas.Length && conversa.Chapters.Count == 0; i++)
+            for (int i = 0; i < TetoDeTurnos && conversa.Chapters.Count == 0; i++)
             {
                 var relogio = System.Diagnostics.Stopwatch.StartNew();
-                await foreach (var _ in conversa.StreamResponseAsync(perguntas[i])) { }
+                await foreach (var _ in conversa.StreamResponseAsync(Pergunta(i))) { }
                 relogio.Stop();
 
-                _saida.WriteLine(
+                Progresso(
                     $"turno {i + 1,2}: {conversa.CurrentTokenCount,6} tokens de {orcamento} " +
                     $"| {relogio.Elapsed.TotalSeconds,6:F1}s | capítulos: {conversa.Chapters.Count}");
             }
 
             conversa.Chapters.Should().NotBeEmpty(
-                "o gatilho deveria disparar dentro das perguntas previstas — se não disparou, " +
+                $"o gatilho deveria disparar dentro de {TetoDeTurnos} turnos — se não disparou, " +
                 "o orçamento do nível ou o tamanho das respostas mudou");
 
             var capitulo = conversa.Chapters[0];
@@ -159,35 +179,24 @@ namespace AIB.Tests
             int orcamento = LevelService.GetMaxTokensForLevel(1);
             var relogioTotal = System.Diagnostics.Stopwatch.StartNew();
 
-            // Assuntos variados de propósito: perguntas repetidas fariam o modelo repetir a
-            // resposta, e resumos idênticos esconderiam um resumidor que não está lendo nada.
-            string[] temas =
+            // Quatro capítulos, e cada capítulo custa uma conversa inteira: o teto é o do ensaio
+            // de capítulo multiplicado por quatro, com folga.
+            for (int i = 0; i < TetoDeTurnos * 4 && conversa.Acts.Count == 0; i++)
             {
-                "memória virtual", "arquivo de paginação", "RAM e VRAM", "agendador de tarefas",
-                "DLL", "registro do Windows", "serviços do Windows", "UAC", "PowerShell",
-                "NTFS", "variáveis de ambiente", "processos e threads", "firewall",
-                "área de transferência", "prompt de comando", "atalhos do Explorer",
-                "gerenciador de tarefas", "pontos de restauração", "permissões NTFS", "symlinks"
-            };
-
-            for (int i = 0; i < 40 && conversa.Acts.Count == 0; i++)
-            {
-                string tema = temas[i % temas.Length];
                 var relogio = System.Diagnostics.Stopwatch.StartNew();
-                await foreach (var _ in conversa.StreamResponseAsync(
-                    $"Explique {tema} no Windows em um parágrafo curto.")) { }
+                await foreach (var _ in conversa.StreamResponseAsync(Pergunta(i))) { }
                 relogio.Stop();
 
-                _saida.WriteLine(
+                Progresso(
                     $"turno {i + 1,2}: {conversa.CurrentTokenCount,6}/{orcamento} " +
                     $"| {relogio.Elapsed.TotalSeconds,6:F1}s " +
                     $"| capítulos: {conversa.Chapters.Count} | atos: {conversa.Acts.Count}");
             }
 
-            _saida.WriteLine($"total: {relogioTotal.Elapsed.TotalMinutes:F1} min");
+            Progresso($"total: {relogioTotal.Elapsed.TotalMinutes:F1} min");
 
             conversa.Acts.Should().NotBeEmpty(
-                "quatro capítulos deveriam ter fechado um ato dentro de 40 turnos");
+                $"quatro capítulos deveriam ter fechado um ato dentro de {TetoDeTurnos * 4} turnos");
 
             var ato = conversa.Acts[0];
             _saida.WriteLine("");
@@ -268,6 +277,20 @@ namespace AIB.Tests
             if (Ligado) return false;
             _saida.WriteLine("PULADO: defina AIB_INTEGRACAO=1 para rodar contra o Ollama real.");
             return true;
+        }
+
+        /// <summary>
+        /// Linha de progresso nos dois canais.
+        /// <para>
+        /// O <see cref="ITestOutputHelper"/> só é descarregado quando o teste TERMINA — num
+        /// ensaio de vinte minutos isso significa vinte minutos de tela parada, sem como saber
+        /// se está andando ou travado. O Console sai na hora.
+        /// </para>
+        /// </summary>
+        private void Progresso(string linha)
+        {
+            _saida.WriteLine(linha);
+            Console.WriteLine($"[ENSAIO] {linha}");
         }
 
         private static string Texto(ChatMessage mensagem) =>
