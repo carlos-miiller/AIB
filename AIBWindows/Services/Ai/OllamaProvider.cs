@@ -86,7 +86,9 @@ public sealed class OllamaProvider : IChatProvider
             _verboseLogging,
             ct,
             options.NumCtx,
-            options.KeepAliveSeconds ?? KeepAliveLockSeconds);
+            options.KeepAliveSeconds ?? KeepAliveLockSeconds,
+            options.Think,
+            options.NumPredict);
 
         await foreach (var update in stream.WithCancellation(ct).ConfigureAwait(false))
         {
@@ -209,7 +211,9 @@ public sealed class OllamaProvider : IChatProvider
             _verboseLogging,
             ct,
             options.NumCtx,
-            options.KeepAliveSeconds ?? KeepAliveLockSeconds).ConfigureAwait(false);
+            options.KeepAliveSeconds ?? KeepAliveLockSeconds,
+            options.Think,
+            options.NumPredict).ConfigureAwait(false);
 
         return new ChatCompletionResult(dto.Text ?? "", dto.PromptEvalCount, dto.EvalCount);
     }

@@ -63,7 +63,9 @@ public class OllamaNativeClient
         bool debug,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default,
         int numCtx = 16384,
-        int? keepAliveSeconds = null)
+        int? keepAliveSeconds = null,
+        bool? think = null,
+        int? numPredict = null)
     {
         var requestObj = new
         {
@@ -74,7 +76,10 @@ public class OllamaNativeClient
             // recebido e, quando o campo é omitido, volta ao default de 5 minutos — desfazendo
             // em silêncio a trava de VRAM feita pelo aquecimento (keep_alive=-1).
             keep_alive = keepAliveSeconds,
-            options = new { temperature = temperature, num_ctx = numCtx },
+            // Nulos somem do JSON (WhenWritingNull): omitir o campo deixa o modelo no padrão
+            // dele, que é o comportamento certo para a conversa normal.
+            think = think,
+            options = new { temperature = temperature, num_ctx = numCtx, num_predict = numPredict },
             tools = FormatTools(tools)
         };
 
@@ -185,7 +190,9 @@ public class OllamaNativeClient
         bool debug,
         CancellationToken ct,
         int numCtx = 16384,
-        int? keepAliveSeconds = null)
+        int? keepAliveSeconds = null,
+        bool? think = null,
+        int? numPredict = null)
     {
         var requestObj = new
         {
@@ -193,7 +200,8 @@ public class OllamaNativeClient
             messages = FormatMessages(history),
             stream = false,
             keep_alive = keepAliveSeconds,
-            options = new { temperature = temperature, num_ctx = numCtx },
+            think = think,
+            options = new { temperature = temperature, num_ctx = numCtx, num_predict = numPredict },
             tools = FormatTools(tools)
         };
 

@@ -35,6 +35,7 @@ namespace AIB.Tests
             public List<ChatMessage> UltimasMensagens { get; } = new();
             public List<ChatTool> UltimasFerramentas { get; } = new();
             public float UltimaTemperatura { get; private set; } = -1;
+            public ChatRequestOptions? UltimasOpcoes { get; private set; }
 
             public IAsyncEnumerable<StreamChunk> StreamAsync(
                 IReadOnlyList<ChatMessage> messages,
@@ -59,6 +60,7 @@ namespace AIB.Tests
                 UltimasFerramentas.Clear();
                 UltimasFerramentas.AddRange(tools);
                 UltimaTemperatura = options.Temperature;
+                UltimasOpcoes = options;
 
                 if (_falha != null) throw _falha;
                 return Task.FromResult(new ChatCompletionResult(_resposta, null, null));
@@ -404,6 +406,37 @@ namespace AIB.Tests
 
             await Assert.ThrowsAsync<ArgumentException>(() =>
                 compactor.PromoteAsync(0, Array.Empty<Chapter>(), CancellationToken.None));
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Custo do resumo
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task ResumoDeCapitulo_DesligaORaciocinioELimitaASaida()
+        {
+            // Medido no qwen3.5:4b em CPU: resumir cinco turnos custava 286,6s, dos quais
+            // 226,7s eram 1.738 tokens de raciocínio para 117 tokens de resumo — raciocínio que
+            // o ThinkBlockStripper descartava logo depois. Com think desligado: 14,7s.
+            var provider = new DubleProvider();
+
+            await new Compactor(provider).SummarizeAsync(
+                0, TurnosDeExemplo(), CancellationToken.None);
+
+            provider.UltimasOpcoes!.Think.Should().BeFalse();
+            provider.UltimasOpcoes!.NumPredict.Should().Be(Compactor.MaxSummaryTokens);
+        }
+
+        [Fact]
+        public async Task PromocaoDeAto_DesligaORaciocinioTambem()
+        {
+            var provider = new DubleProvider();
+
+            await new Compactor(provider).PromoteAsync(
+                0, new[] { Capitulo(0, "resumo") }, CancellationToken.None);
+
+            provider.UltimasOpcoes!.Think.Should().BeFalse();
+            provider.UltimasOpcoes!.NumPredict.Should().Be(Compactor.MaxSummaryTokens);
         }
 
         [Fact]

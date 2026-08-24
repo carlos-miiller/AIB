@@ -50,6 +50,9 @@ namespace AIB.Tests
             public string CompleteReply { get; set; } = "SISTEMA ONLINE";
             public int CompleteCalls { get; private set; }
 
+            /// <summary>Falha do resumidor, para exercitar o descanso apos compactacao perdida.</summary>
+            public Exception? CompleteThrows { get; set; }
+
             public async IAsyncEnumerable<StreamChunk> StreamAsync(
                 IReadOnlyList<ChatMessage> messages,
                 IReadOnlyList<ChatTool> tools,
@@ -69,6 +72,7 @@ namespace AIB.Tests
                 LastCompleteMessages.Clear();
                 LastCompleteMessages.AddRange(messages);
                 CompleteCalls++;
+                if (CompleteThrows != null) throw CompleteThrows;
                 return Task.FromResult(new ChatCompletionResult(CompleteReply, null, null));
             }
 
@@ -888,6 +892,75 @@ namespace AIB.Tests
             var conversation = BuildConversation(settings, new FakeProvider(), out _);
 
             conversation.FactsPath.Should().StartWith(_dir);
+        }
+        // ─────────────────────────────────────────────────────────────────────
+        // Compactação que falha: descanso e teto
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task ResumoQueEstouraOTempo_NaoEhTentadoDeNovoTodoTurno()
+        {
+            // Contra o Ollama real, um resumidor lento estourava o tempo e voltava a tentar no
+            // turno seguinte, e no seguinte — oito tentativas, todas perdidas, cada uma cobrada
+            // do usuário porque a compactação segura o portão. Sem descanso, uma máquina lenta
+            // transforma toda mensagem daí em diante numa espera do timeout inteiro.
+            //
+            // É o CANCELAMENTO que precisa de descanso, e não um erro qualquer do provider: um
+            // erro fecha capítulo degradado e os turnos saem do contexto, então não se repete.
+            // O cancelamento deixa tudo vivo, e o gatilho volta a disparar no turno seguinte.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteThrows = new OperationCanceledException("estourou o tempo");
+            var conversation = BuildConversation(settings, provider, out _);
+
+            string pergunta = string.Concat(Enumerable.Repeat("uma frase qualquer para gastar tokens. ", 40));
+
+            int primeiraTentativa = -1;
+            for (int i = 0; i < 40; i++)
+            {
+                await foreach (var _ in conversation.StreamResponseAsync($"{pergunta} pergunta {i}")) { }
+                if (primeiraTentativa < 0 && provider.CompleteCalls > 0) primeiraTentativa = i;
+            }
+
+            primeiraTentativa.Should().BeGreaterThanOrEqualTo(0, "o gatilho tem de ter disparado");
+            conversation.Chapters.Should().BeEmpty("resumo cancelado não fecha capítulo");
+
+            int turnosDepois = 40 - primeiraTentativa;
+            provider.CompleteCalls.Should().BeLessThan(turnosDepois,
+                "com descanso de 3 turnos, a tentativa não pode acontecer em todos eles");
+        }
+
+        [Fact]
+        public async Task ResumidorForaDoAr_FechaCapituloDegradadoESeguraVida()
+        {
+            // O outro lado da moeda do teste acima. Erro do provider NÃO deixa os turnos vivos:
+            // o capítulo nasce com a nota no lugar do resumo e os artefatos intactos, e o
+            // contexto encolhe do mesmo jeito. Por isso este caso não precisa de descanso.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteThrows = new InvalidOperationException("conexão recusada");
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await ConversarAteCompactar(conversation);
+
+            conversation.Chapters.Should().ContainSingle();
+            conversation.Chapters[0].Summary.Should().Contain("indisponível");
+        }
+
+        [Fact]
+        public async Task CapituloNaoPassaDoTetoDeTurnos()
+        {
+            // Sem teto, a tentativa seguinte de uma compactação que falhou vem com MAIS turnos
+            // que a anterior: 5, 6, 7, ..., cada uma mais cara, e nenhuma converge.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await ConversarAteCompactar(conversation);
+
+            var capitulo = conversation.Chapters[0];
+            int turnosCobertos = capitulo.LastTurn - capitulo.FirstTurn + 1;
+
+            turnosCobertos.Should().BeLessThanOrEqualTo(8);
         }
     }
 }

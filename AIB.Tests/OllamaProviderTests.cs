@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -461,5 +461,55 @@ namespace AIB.Tests
             await act.Should().NotThrowAsync("o aquecimento é oportunista: falha vira log, nunca crash");
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // think e num_predict no corpo da requisição
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task StreamAsync_SemPedirNada_NaoMandaThinkNemNumPredict()
+        {
+            // Omitir os campos deixa o modelo no padrão dele. É o certo para a conversa: o
+            // raciocínio é o produto, e alimenta o canal de pensamento da interface.
+            string? corpo = null;
+            var http = FakeOllama("{\"done\":true,\"done_reason\":\"stop\"}\n", b => corpo = b);
+
+            await DrainAsync(BuildProvider(http), Array.Empty<ChatTool>());
+
+            corpo.Should().NotBeNull();
+            corpo.Should().NotContain("\"think\"");
+            corpo.Should().NotContain("num_predict");
+        }
+
+        [Fact]
+        public async Task StreamAsync_ComThinkDesligado_MandaOCampoNoCorpo()
+        {
+            string? corpo = null;
+            var http = FakeOllama("{\"done\":true,\"done_reason\":\"stop\"}\n", b => corpo = b);
+            var opcoes = new ChatRequestOptions(Think: false, NumPredict: 400);
+
+            var mensagens = new List<ChatMessage> { new UserChatMessage("Oi") };
+            await foreach (var _ in BuildProvider(http).StreamAsync(
+                mensagens, Array.Empty<ChatTool>(), opcoes, CancellationToken.None)) { }
+
+            corpo.Should().Contain("\"think\":false");
+            corpo.Should().Contain("\"num_predict\":400");
+        }
+
+        [Fact]
+        public async Task CompleteAsync_ComThinkDesligado_MandaOCampoNoCorpo()
+        {
+            // O resumidor de capítulos passa por aqui, e é ele quem precisa do think desligado:
+            // medido no qwen3.5:4b, 286,6s com raciocínio contra 14,7s sem.
+            string? corpo = null;
+            var http = FakeOllama("{\"message\":{\"content\":\"resumo\"},\"done\":true}", b => corpo = b);
+            var opcoes = new ChatRequestOptions(Temperature: 0f, Think: false, NumPredict: 400);
+
+            await BuildProvider(http).CompleteAsync(
+                new List<ChatMessage> { new UserChatMessage("Oi") },
+                Array.Empty<ChatTool>(), opcoes, CancellationToken.None);
+
+            corpo.Should().Contain("\"think\":false");
+            corpo.Should().Contain("\"num_predict\":400");
+        }
     }
 }

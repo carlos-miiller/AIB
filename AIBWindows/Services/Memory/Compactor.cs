@@ -27,8 +27,26 @@ public sealed class Compactor
     /// <summary>
     /// Temperatura zero: resumo é trabalho de fidelidade, não de criatividade. A persona do
     /// personagem não participa daqui — quem resume é o sistema, não a Ayano.
+    /// <para>
+    /// <c>Think: false</c> saiu de uma medição, não de gosto. Resumir cinco turnos no
+    /// qwen3.5:4b custava 286,6s, dos quais 226,7s eram 1.738 tokens de raciocínio para
+    /// produzir 117 tokens de resumo — e o <see cref="ThinkBlockStripper"/> jogava esse
+    /// raciocínio fora logo em seguida. Com ele desligado: 14,7s, e o resumo saiu melhor.
+    /// Pensar não ajuda a resumir; o material já está todo na frente do modelo.
+    /// </para>
+    /// <para>
+    /// <c>NumPredict</c> é a rede embaixo: um modelo que ignore o "máximo 120 palavras" não
+    /// pode gastar a janela inteira e levar a compactação ao estouro do tempo.
+    /// </para>
     /// </summary>
-    private static readonly ChatRequestOptions Options = new(Temperature: 0.0f);
+    private static readonly ChatRequestOptions Options =
+        new(Temperature: 0.0f, Think: false, NumPredict: MaxSummaryTokens);
+
+    /// <summary>
+    /// Teto de tokens do resumo. 400 dá folga larga sobre as 120 palavras pedidas (~180
+    /// tokens) sem deixar espaço para um resumo desgovernado.
+    /// </summary>
+    public const int MaxSummaryTokens = 400;
 
     private const string SummarizerPrompt =
         """

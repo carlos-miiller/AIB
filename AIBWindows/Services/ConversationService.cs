@@ -260,8 +260,41 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private const double TargetAfterCompaction = 0.5;
 
-    /// <summary>Teto da chamada de resumo. Independente do turno: o usuário já foi respondido.</summary>
-    private static readonly TimeSpan SummaryTimeout = TimeSpan.FromMinutes(2);
+    /// <summary>
+    /// Teto da chamada de resumo. Independente do turno: o usuário já foi respondido.
+    /// <para>
+    /// Quatro minutos, e não dois. Medido no qwen3.5:4b em CPU, com o raciocínio desligado: o
+    /// prefill de um capítulo grande chega a ~2 minutos e a geração é limitada a
+    /// <see cref="Compactor.MaxSummaryTokens"/>. Os dois minutos anteriores eram chute e
+    /// estouravam em toda tentativa.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan SummaryTimeout = TimeSpan.FromMinutes(4);
+
+    /// <summary>
+    /// Teto de turnos por capítulo.
+    /// <para>
+    /// Sem ele, uma compactação que falha volta na tentativa seguinte com MAIS turnos — foi o
+    /// que se viu contra o Ollama real: 5, 6, 7, 8, 9, 10, 11 turnos, cada tentativa mais cara
+    /// que a anterior e todas estourando o tempo. Um teto fixo faz o custo do resumo parar de
+    /// crescer, e o que sobrar vira o capítulo seguinte.
+    /// </para>
+    /// </summary>
+    private const int MaxTurnsPerChapter = 8;
+
+    /// <summary>
+    /// Turnos de descanso depois de uma compactação que falhou.
+    /// <para>
+    /// A falha custa o <see cref="SummaryTimeout"/> inteiro, e ele é cobrado do usuário: a
+    /// compactação segura o portão, então o turno SEGUINTE espera por ela. Sem descanso, um
+    /// resumidor lento transforma toda mensagem daí em diante numa espera de quatro minutos.
+    /// Melhor deixar a poda de emergência cuidar do contexto por alguns turnos.
+    /// </para>
+    /// </summary>
+    private const int CompactionCooldownTurns = 3;
+
+    /// <summary>Turnos que faltam para tentar compactar de novo. Só a thread do portão mexe.</summary>
+    private int _compactionCooldown;
 
     /// <summary>Capítulos fechados nesta sessão. Diagnóstico e teste.</summary>
     public IReadOnlyList<Chapter> Chapters => _memory.Chapters;
@@ -277,6 +310,12 @@ public sealed class ConversationService : IMessageStore
     {
         try
         {
+            if (_compactionCooldown > 0)
+            {
+                _compactionCooldown--;
+                return;
+            }
+
             var quota = CurrentQuota(userLevel);
             if (quota.IsOff) return;
 
@@ -316,11 +355,17 @@ public sealed class ConversationService : IMessageStore
         }
         catch (OperationCanceledException)
         {
-            Console.WriteLine("[MEMORIA] Compactação cancelada. Os turnos seguem no contexto vivo.");
+            _compactionCooldown = CompactionCooldownTurns;
+            Console.WriteLine(
+                $"[MEMORIA] Compactação cancelada (teto de {SummaryTimeout.TotalMinutes:F0} min). " +
+                $"Os turnos seguem no contexto vivo; nova tentativa em {CompactionCooldownTurns} turno(s).");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[MEMORIA] Compactação falhou: {ex.Message}");
+            _compactionCooldown = CompactionCooldownTurns;
+            Console.WriteLine(
+                $"[MEMORIA] Compactação falhou: {ex.Message}. " +
+                $"Nova tentativa em {CompactionCooldownTurns} turno(s).");
         }
     }
 
@@ -431,7 +476,9 @@ public sealed class ConversationService : IMessageStore
         var escolhidos = new List<Turn>();
         int restante = vivo;
 
-        for (int i = 0; i < disponiveis && restante > alvo; i++)
+        int teto = Math.Min(disponiveis, MaxTurnsPerChapter);
+
+        for (int i = 0; i < teto && restante > alvo; i++)
         {
             if (!TurnSplitter.IsClosed(turnos[i])) break;
 
