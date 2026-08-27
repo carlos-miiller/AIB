@@ -45,4 +45,11 @@ public sealed record Chapter(
 
         return texto.ToString();
     }
+
+    /// <summary>
+    /// Bloco aparado para caber em <paramref name="maxTokens"/>. Só o resumo encolhe; os
+    /// artefatos ficam inteiros. Devolve vazio quando nem eles cabem sozinhos.
+    /// </summary>
+    public string Render(int maxTokens, TokenCounter counter) =>
+        MemoryRender.Fit(Render(), Summary, maxTokens, counter);
 }

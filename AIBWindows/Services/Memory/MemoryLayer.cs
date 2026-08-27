@@ -98,12 +98,12 @@ public sealed class MemoryLayer
     {
         if (quota.Acts <= 0 || _acts.Count == 0) return "";
 
-        var escolhidos = Fit(_acts, a => a.Render(), quota.Acts, counter);
-        if (escolhidos.Count == 0) return "";
-
-        var texto = new StringBuilder();
-        foreach (var ato in escolhidos) texto.Append(ato.Render()).Append('\n');
-        return texto.ToString();
+        return Juntar(Fit(
+            _acts,
+            a => a.Render(),
+            (a, cota) => a.Render(cota, counter),
+            quota.Acts,
+            counter));
     }
 
     /// <summary>
@@ -117,11 +117,20 @@ public sealed class MemoryLayer
         var soltos = _chapters.Where(c => c.Index > LastCoveredChapter).ToList();
         if (soltos.Count == 0) return "";
 
-        var escolhidos = Fit(soltos, c => c.Render(), quota.Chapters, counter);
-        if (escolhidos.Count == 0) return "";
+        return Juntar(Fit(
+            soltos,
+            c => c.Render(),
+            (c, cota) => c.Render(cota, counter),
+            quota.Chapters,
+            counter));
+    }
+
+    private static string Juntar(List<string> pedacos)
+    {
+        if (pedacos.Count == 0) return "";
 
         var texto = new StringBuilder();
-        foreach (var capitulo in escolhidos) texto.Append(capitulo.Render()).Append('\n');
+        foreach (var pedaco in pedacos) texto.Append(pedaco).Append('\n');
         return texto.ToString();
     }
 
@@ -134,22 +143,46 @@ public sealed class MemoryLayer
     /// sozinho não cabe é pulado em vez de encerrar a seleção — ele não deve bloquear os
     /// anteriores, que talvez caibam.
     /// </para>
+    /// <para>
+    /// Quando NADA cabe, o mais recente entra aparado em vez de a faixa sair vazia. Isto não é
+    /// zelo: um ato maior que a própria cota era pulado aqui, e os capítulos que ele resumiu já
+    /// não são renderizados — <see cref="RenderChapters"/> filtra por
+    /// <see cref="LastCoveredChapter"/>. O resultado era o ato engolir quatro capítulos e não
+    /// aparecer, um buraco silencioso. Medido: um ato real de 330 tokens contra a cota de 321
+    /// da alma da Ayano no nível 1. Meio resumo vale mais que nenhum.
+    /// </para>
     /// </summary>
-    private static List<T> Fit<T>(IReadOnlyList<T> itens, Func<T, string> render, int cota, TokenCounter counter)
+    /// <param name="renderAparado">Render do item limitado a N tokens. Encolhe só a narrativa.</param>
+    private static List<string> Fit<T>(
+        IReadOnlyList<T> itens,
+        Func<T, string> render,
+        Func<T, int, string> renderAparado,
+        int cota,
+        TokenCounter counter)
     {
-        var escolhidos = new List<T>();
+        var escolhidos = new List<string>();
         int gasto = 0;
 
         for (int i = itens.Count - 1; i >= 0; i--)
         {
-            int custo = counter.CountText(render(itens[i]));
+            string texto = render(itens[i]);
+            int custo = counter.CountText(texto);
             if (gasto + custo > cota) continue;
 
             gasto += custo;
-            escolhidos.Add(itens[i]);
+            escolhidos.Add(texto);
         }
 
-        escolhidos.Reverse();
+        if (escolhidos.Count > 0)
+        {
+            escolhidos.Reverse();
+            return escolhidos;
+        }
+
+        if (itens.Count == 0) return escolhidos;
+
+        string aparado = renderAparado(itens[^1], cota);
+        if (aparado.Length > 0) escolhidos.Add(aparado);
         return escolhidos;
     }
 
