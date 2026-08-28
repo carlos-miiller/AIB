@@ -500,6 +500,7 @@
         <Setter Property="Height" Value="22"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="HorizontalAlignment" Value="Right"/>
+        <Setter Property="ToolTip" Value="Desativado"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
@@ -541,6 +542,13 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <!-- Style.Triggers vem DEPOIS de todos os Setters: elemento de
+             propriedade no meio do conteúdo é erro de compilação (MC3088). -->
+        <Style.Triggers>
+            <Trigger Property="IsChecked" Value="True">
+                <Setter Property="ToolTip" Value="Ativado"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════

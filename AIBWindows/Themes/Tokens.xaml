@@ -216,6 +216,10 @@
     <sys:Double x:Key="InputHeight">49</sys:Double>
     <sys:Double x:Key="ControlHeight">36</sys:Double>
     <sys:Double x:Key="ControlColumnWidth">210</sys:Double>
+    <!-- A mesma medida como GridLength. ColumnDefinition.Width não aceita Double:
+         ligar o token de cima ali estoura como XamlParseException na abertura da
+         tela, não na compilação. -->
+    <GridLength x:Key="ControlColumnGrid">210</GridLength>
     <sys:Double x:Key="ChipMinHeight">41</sys:Double>
     <!-- 5 ícones de 22px + 4 vãos de 8px. A barra de 4px é o único aviso de
          que há mais ações fora de vista: o contador "+N" foi implementado e

@@ -1,183 +1,271 @@
 using System;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Interop;
-using System.IO;
 using System.Collections.Generic;
+using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using AIB.Services;
 
 namespace AIB.Views;
 
+/// <summary>
+/// Tela de Configurações — implementação de refactor-interface/tela-configuracoes.html.
+/// <para>
+/// A lista de campos é normativa (§5, contrato O1): nada é acrescentado, removido, renomeado
+/// ou reordenado, e os rótulos são copiados verbatim. O que muda de tela para tela é só o
+/// visual; o caminho de persistência continua sendo o <see cref="SettingsService"/>.
+/// </para>
+/// </summary>
 public partial class SettingsWindow : Window
 {
+    /// <summary>
+    /// Provedores de §5 campo 2. O <c>ChatProviderFactory</c> só distingue Ollama do resto —
+    /// os demais vão pelo cliente compatível com a API da OpenAI, mudando a Base URL. Por isso
+    /// trocar esta lista é seguro no código.
+    /// </summary>
+    private static readonly string[] Provedores = { "Ollama", "OpenAI", "Anthropic", "LmStudio" };
+
+    /// <summary>Base URL sugerida ao trocar de provedor (§5 campo 2, "efeito").</summary>
+    private static readonly Dictionary<string, string> UrlPadrao = new(StringComparer.Ordinal)
+    {
+        ["Ollama"] = "http://127.0.0.1:11434/v1",
+        ["OpenAI"] = "https://api.openai.com/v1",
+        ["Anthropic"] = "https://api.anthropic.com/v1",
+        ["LmStudio"] = "http://127.0.0.1:1234/v1"
+    };
+
     private readonly SettingsService _settingsService;
     private UserAppSettings _currentSettings;
+
+    /// <summary>
+    /// Enquanto os valores estão sendo carregados nos controles, os eventos de mudança
+    /// disparam sozinhos. Sem esta trava, "Salvar" nasceria habilitado — que é justamente o
+    /// que A8 proíbe.
+    /// </summary>
+    private bool _carregando;
+
+    private bool _sujo;
 
     public SettingsWindow(SettingsService settingsService)
     {
         InitializeComponent();
         _settingsService = settingsService;
         _currentSettings = _settingsService.LoadSettings();
+
         LoadUiValues();
-        // Não bloqueia o UI Thread
+
+        // Não bloqueia o UI Thread.
         Dispatcher.BeginInvoke(new Action(async () => await RefreshModelsAsync()));
     }
 
-    protected override void OnSourceInitialized(EventArgs e)
-    {
-        base.OnSourceInitialized(e);
-        EnableBlur();
-    }
+    // ─────────────────────────────────────────────────────────────────────
+    // Carga
+    // ─────────────────────────────────────────────────────────────────────
 
-    private void Window_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void LoadUiValues()
     {
-        if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
-            this.DragMove();
+        _carregando = true;
+        try
+        {
+            LoadCharacters();
+            LoadProviders();
+
+            UrlTextBox.Text = _currentSettings.ApiUrl;
+            ModelComboBox.Text = _currentSettings.ModelName;
+
+            int userLevel = LevelService.GetLevel(_currentSettings.MessageCount);
+            MaxHistoryTextBox.Text = LevelService.GetMaxTokensForLevel(userLevel).ToString();
+
+            SendSystemPromptSwitch.IsChecked = _currentSettings.SendSystemPrompt;
+            VerboseLoggingSwitch.IsChecked = _currentSettings.VerboseConsoleLogging;
+
+            SelecionarKeepAlive(_currentSettings.KeepAlive);
+            RefreshKeyTextBoxLabel();
+        }
+        finally
+        {
+            _carregando = false;
+        }
+
+        MarcarLimpo();
     }
 
     private void LoadCharacters()
     {
+        var personagens = new List<string> { "Ayano" };
+
         try
         {
-            var charDir = DirectoryService.CharactersDir;
+            string dir = DirectoryService.CharactersDir;
+            if (System.IO.Directory.Exists(dir))
+            {
+                personagens = System.IO.Directory.GetDirectories(dir)
+                    .Select(System.IO.Path.GetFileName)
+                    .Where(nome => !string.IsNullOrEmpty(nome))
+                    .Select(nome => nome!)
+                    .ToList();
 
-            if (System.IO.Directory.Exists(charDir))
-            {
-                var dirs = System.IO.Directory.GetDirectories(charDir);
-                var characters = dirs.Select(d => System.IO.Path.GetFileName(d)).ToList();
-                if (!characters.Contains("Ayano")) characters.Insert(0, "Ayano");
-                
-                CharacterComboBox.ItemsSource = characters;
-                CharacterComboBox.SelectedItem = _currentSettings.ActiveCharacter ?? "Ayano";
-            }
-            else
-            {
-                CharacterComboBox.ItemsSource = new System.Collections.Generic.List<string> { "Ayano" };
-                CharacterComboBox.SelectedItem = "Ayano";
+                if (!personagens.Contains("Ayano")) personagens.Insert(0, "Ayano");
             }
         }
         catch
         {
-            CharacterComboBox.ItemsSource = new System.Collections.Generic.List<string> { "Ayano" };
-            CharacterComboBox.SelectedItem = "Ayano";
+            // Pasta de personagens ilegível: a lista mínima ainda deixa a tela utilizável.
+            personagens = new List<string> { "Ayano" };
         }
+
+        CharacterComboBox.ItemsSource = personagens;
+        CharacterComboBox.SelectedItem = personagens.Contains(_currentSettings.ActiveCharacter ?? "")
+            ? _currentSettings.ActiveCharacter
+            : personagens[0];
     }
 
-    private void LoadUiValues()
+    private void LoadProviders()
     {
-        LoadCharacters();
-        ProviderComboBox.Text = string.IsNullOrEmpty(_currentSettings.AiProvider) ? "Ollama" : _currentSettings.AiProvider;
-        UrlTextBox.Text = _currentSettings.ApiUrl;
-        ModelComboBox.Text = _currentSettings.ModelName;
-        int userLevel = LevelService.GetLevel(_currentSettings.MessageCount);
-        int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
-        MaxHistoryTextBox.Text = maxTokens.ToString();
-        SendSystemPromptCheckBox.IsChecked = _currentSettings.SendSystemPrompt;
-        VerboseLoggingCheckBox.IsChecked = _currentSettings.VerboseConsoleLogging;
+        var lista = Provedores.ToList();
 
-        foreach (System.Windows.Controls.ComboBoxItem item in KeepAliveComboBox.Items)
+        // Um provedor gravado que saiu da lista (a tela antiga oferecia "Google Gemini")
+        // continua aparecendo. Sumir com ele em silêncio trocaria a configuração do usuário
+        // sem que ele pedisse.
+        string salvo = _currentSettings.AiProvider ?? "";
+        if (salvo.Length > 0 && !lista.Contains(salvo, StringComparer.Ordinal))
+            lista.Add(salvo);
+
+        ProviderComboBox.ItemsSource = lista;
+        ProviderComboBox.SelectedItem = salvo.Length > 0 ? salvo : "Ollama";
+    }
+
+    private void SelecionarKeepAlive(string? valor)
+    {
+        foreach (ComboBoxItem item in KeepAliveComboBox.Items)
         {
-            if (item.Tag?.ToString() == _currentSettings.KeepAlive)
+            if (item.Tag?.ToString() == valor)
             {
                 KeepAliveComboBox.SelectedItem = item;
-                break;
+                return;
             }
         }
-        if (KeepAliveComboBox.SelectedItem == null) KeepAliveComboBox.SelectedIndex = 3; // Default 5m
 
-        UpdateUiForProvider();
-        RefreshKeyTextBoxLabel();
+        KeepAliveComboBox.SelectedIndex = 1;   // "5 Minutos (Recomendado)"
     }
 
     private void RefreshKeyTextBoxLabel()
     {
-        // UI-SPEC Secondary surface — friendly read-only label per sentinel.
-        // KeyTextBox no longer carries an editable value; FirstRunWindow owns the write path.
-        string key = _currentSettings.ApiKey ?? string.Empty;
-        if (key == "use-vault")
+        // A chave atual nunca é exibida (§5 campo 4). O que aparece é o ESTADO dela; a escrita
+        // pertence ao fluxo "Alterar".
+        string chave = _currentSettings.ApiKey ?? string.Empty;
+
+        bool configurada = chave == "use-vault" || chave.StartsWith("sk-", StringComparison.Ordinal);
+
+        // Marcadores em vez de frase: a coluna tem 210px divididos com o botão "Alterar", e
+        // qualquer texto descritivo entra cortado. O estado por extenso vai no ToolTip.
+        KeyTextBox.Text = configurada ? "••••••••••••" : "—";
+
+        KeyTextBox.ToolTip = chave switch
         {
-            KeyTextBox.Text = "Configurada (cofre DPAPI)";
-        }
-        else if (key == "ollama")
-        {
-            KeyTextBox.Text = "(não necessário para Ollama)";
-        }
-        else if (key.StartsWith("sk-"))
-        {
-            // Defensive case — should not occur after first boot post-Phase-2 D-11 migration.
-            KeyTextBox.Text = "Configurada (legado)";
-        }
-        else
-        {
-            KeyTextBox.Text = "(não configurada)";
-        }
+            "use-vault" => "Configurada — guardada no cofre DPAPI",
+            _ when chave.StartsWith("sk-", StringComparison.Ordinal) => "Configurada — formato legado",
+            _ => "Não configurada"
+        };
     }
 
-    private void AlterarChave_Click(object sender, RoutedEventArgs e)
+    // ─────────────────────────────────────────────────────────────────────
+    // Estado sujo — §4 "GATILHOS DE IsDirty"
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Mudança de seleção, de texto ou de switch sujam. Foco, hover e rolagem não.
+    /// </summary>
+    private void Campo_Mudou(object sender, RoutedEventArgs e) => MarcarSujo();
+
+    private void MarcarSujo()
     {
-        // Settings path — NOT first-launch hotkey path. Do NOT shut down the app
-        // on Cancel (T-02-16 mitigation). User stays in SettingsWindow if they cancel.
-        var win = new FirstRunWindow(_settingsService);
-        bool? ok = win.ShowDialog();
-        if (ok == true)
-        {
-            _currentSettings = _settingsService.LoadSettings();
-            RefreshKeyTextBoxLabel();
-        }
+        if (_carregando) return;
+
+        _sujo = true;
+        SaveButton.IsEnabled = true;
     }
 
-    private void ProviderComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    private void MarcarLimpo()
     {
-        UpdateUiForProvider();
+        _sujo = false;
+        SaveButton.IsEnabled = false;
     }
 
-    private void UpdateUiForProvider()
+    // ─────────────────────────────────────────────────────────────────────
+    // Interações
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (AdvancedConnectionPanel == null) return;
-
-        var selected = (ProviderComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content?.ToString() ?? ProviderComboBox.Text;
-        
-        if (selected == "Google Gemini")
-        {
-            AdvancedConnectionPanel.Visibility = Visibility.Collapsed;
-            // Se o usuário mudou para Google, sugerimos preencher a URL se estiver vazia/ollama
-            if (UrlTextBox.Text.Contains("localhost") || UrlTextBox.Text.Contains("127.0.0.1"))
-            {
-                UrlTextBox.Text = "https://generativelanguage.googleapis.com/v1beta/openai/";
-                KeyTextBox.Text = "";
-                ModelComboBox.Text = "gemini-1.5-flash";
-            }
-        }
-        else if (selected == "OpenAI")
-        {
-            // RESEARCH Q1 + Q3 — keep panel visible; clear localhost Ollama default so SDK uses
-            // its built-in default endpoint (https://api.openai.com/v1).
-            AdvancedConnectionPanel.Visibility = Visibility.Visible;
-            if (UrlTextBox.Text == "http://localhost:11434/v1" || UrlTextBox.Text == "http://127.0.0.1:11434/v1")
-            {
-                UrlTextBox.Text = "";
-            }
-        }
-        else
-        {
-            AdvancedConnectionPanel.Visibility = Visibility.Visible;
-        }
+        if (e.LeftButton == MouseButtonState.Pressed) DragMove();
     }
+
+    protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e)
+    {
+        // §4 TECLADO: Esc cancela; Enter salva, se houver alteração.
+        if (e.Key == Key.Escape)
+        {
+            Cancel_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Enter && _sujo)
+        {
+            Save_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
+    }
+
+    private void ProviderComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        MarcarSujo();
+
+        if (_carregando) return;
+        if (ProviderComboBox.SelectedItem is not string provedor) return;
+        if (!UrlPadrao.TryGetValue(provedor, out string? sugerida)) return;
+
+        // Só sugere quando a URL atual é o padrão de OUTRO provedor. Uma URL que o usuário
+        // digitou não pode ser sobrescrita por uma troca de combo.
+        bool ehPadraoDeOutro = UrlPadrao.Values.Any(u =>
+            string.Equals(u, UrlTextBox.Text.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        if (UrlTextBox.Text.Trim().Length == 0 || ehPadraoDeOutro)
+            UrlTextBox.Text = sugerida;
+    }
+
+    private void UrlTextBox_LostFocus(object sender, RoutedEventArgs e) => _ = RefreshModelsAsync();
 
     private async System.Threading.Tasks.Task RefreshModelsAsync()
     {
         LoadingProgress.Visibility = Visibility.Visible;
         try
         {
-            var models = await _settingsService.GetOllamaModelsAsync(UrlTextBox.Text);
-            if (models.Any())
+            var modelos = await _settingsService.GetOllamaModelsAsync(UrlTextBox.Text);
+            if (modelos.Any())
             {
-                var currentModel = ModelComboBox.Text;
-                ModelComboBox.ItemsSource = models;
-                
-                ModelComboBox.Text = currentModel;
+                string atual = ModelComboBox.Text;
+
+                bool antes = _carregando;
+                _carregando = true;
+                try
+                {
+                    ModelComboBox.ItemsSource = modelos;
+                    ModelComboBox.Text = atual;
+                }
+                finally
+                {
+                    _carregando = antes;
+                }
             }
+        }
+        catch
+        {
+            // Provedor fora do ar não é erro de configuração: o campo continua editável à mão.
         }
         finally
         {
@@ -185,37 +273,61 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void UrlTextBox_LostFocus(object sender, RoutedEventArgs e)
+    private void AlterarChave_Click(object sender, RoutedEventArgs e)
     {
-        _ = RefreshModelsAsync();
+        // Caminho de Configurações, NÃO o de primeiro uso: cancelar aqui não encerra o app.
+        var win = new FirstRunWindow(_settingsService);
+        if (win.ShowDialog() == true)
+        {
+            _currentSettings = _settingsService.LoadSettings();
+            RefreshKeyTextBoxLabel();
+        }
+    }
+
+    private void DebugLink_Click(object sender, RoutedEventArgs e)
+    {
+        VerboseLoggingSwitch.IsChecked = true;
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         _currentSettings.ActiveCharacter = CharacterComboBox.SelectedItem?.ToString() ?? "Ayano";
-        _currentSettings.AiProvider = (ProviderComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content?.ToString() ?? ProviderComboBox.Text;
+        _currentSettings.AiProvider = ProviderComboBox.SelectedItem?.ToString() ?? "Ollama";
         _currentSettings.ApiUrl = UrlTextBox.Text;
-        // T-02-15 mitigation — KeyTextBox is now display-only (friendly label per sentinel).
-        // FirstRunWindow owns settings.ApiKey writes (via AlterarChave_Click → ShowDialog).
         _currentSettings.ModelName = ModelComboBox.Text;
 
-        if (KeepAliveComboBox.SelectedItem is System.Windows.Controls.ComboBoxItem selectedKeepAlive && selectedKeepAlive.Tag != null)
-        {
-            _currentSettings.KeepAlive = selectedKeepAlive.Tag.ToString();
-        }
+        // A chave NÃO é escrita a partir daqui: o campo é somente leitura e quem grava é o
+        // FirstRunWindow, pelo botão "Alterar".
 
-        // Limite de tokens agora é dinâmico por nível, não salvamos mais.
+        if (KeepAliveComboBox.SelectedItem is ComboBoxItem ka && ka.Tag != null)
+            _currentSettings.KeepAlive = ka.Tag.ToString();
 
-        _currentSettings.SendSystemPrompt = SendSystemPromptCheckBox.IsChecked ?? true;
-        _currentSettings.VerboseConsoleLogging = VerboseLoggingCheckBox.IsChecked ?? false;
+        // O máximo de tokens vem do nível do usuário: é leitura, não preferência.
+
+        _currentSettings.SendSystemPrompt = SendSystemPromptSwitch.IsChecked ?? true;
+        _currentSettings.VerboseConsoleLogging = VerboseLoggingSwitch.IsChecked ?? false;
 
         _settingsService.SaveSettings(_currentSettings);
-        
-        // Atualiza a ChatWindow se estiver aberta
-        var chatWindow = System.Windows.Application.Current.Windows.OfType<ChatWindow>().FirstOrDefault();
-        if (chatWindow != null)
+        MarcarLimpo();
+
+        var chat = System.Windows.Application.Current.Windows.OfType<ChatWindow>().FirstOrDefault();
+        chat?.ApplyCharacterUI();
+
+        Close();
+    }
+
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        // §3.9: descarta alterações e fecha; se houver alteração, confirma o descarte.
+        if (_sujo)
         {
-            chatWindow.ApplyCharacterUI();
+            bool descartar = ConfirmDialog.Perguntar(
+                this,
+                "Descartar as alterações?",
+                "As mudanças feitas nesta tela não foram salvas e serão perdidas.",
+                dica: "nada foi gravado ainda");
+
+            if (!descartar) return;
         }
 
         Close();
@@ -223,79 +335,34 @@ public partial class SettingsWindow : Window
 
     private void WipeData_Click(object sender, RoutedEventArgs e)
     {
-        var result = System.Windows.MessageBox.Show(
-            "Tem certeza que deseja restaurar o AIB para as configurações de fábrica?\n\nIsso apagará irreversivelmente o histórico de chat, a chave da API do cofre e todas as preferências do usuário.",
-            "Atenção - Reset de Fábrica",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+        // Ação destrutiva: confirmação obrigatória ANTES de executar. O8.
+        bool permitido = ConfirmDialog.Perguntar(
+            this,
+            "Restaurar o AIB para as configurações de fábrica?",
+            "Apaga o histórico de chat, a chave da API guardada no cofre e todas as "
+                + "preferências. Não é possível desfazer. O AIB será encerrado em seguida.",
+            ferramenta: "factory_reset",
+            alvo: DirectoryService.MemoryDir,
+            dica: "irreversível");
 
-        if (result == MessageBoxResult.Yes)
+        if (!permitido) return;
+
+        CredentialService.WipeAllCredentials();
+        ChatHistoryService.ClearHistory();
+        _settingsService.SaveSettings(new UserAppSettings());
+
+        _ = AuditLogService.AppendAsync(new
         {
-            // 1. Apaga Cofre de Credenciais
-            CredentialService.WipeAllCredentials();
+            ts = DateTime.UtcNow.ToString("o"),
+            outcome = "factory_reset"
+        });
 
-            // 2. Apaga Histórico de Chat
-            ChatHistoryService.ClearHistory();
+        System.Windows.MessageBox.Show(
+            "O AIB foi resetado e será encerrado. Inicie-o novamente.",
+            "Reset concluído",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
 
-            // 3. Reseta configurações (salva um objeto limpo)
-            var cleanSettings = new UserAppSettings();
-            _settingsService.SaveSettings(cleanSettings);
-
-            // 4. Loga e fecha
-            _ = AuditLogService.AppendAsync(new
-            {
-                ts = DateTime.UtcNow.ToString("o"),
-                outcome = "factory_reset"
-            });
-
-            System.Windows.MessageBox.Show("O AIB foi resetado com sucesso e será encerrado. Por favor, inicie-o novamente.", "Reset Concluído", MessageBoxButton.OK, MessageBoxImage.Information);
-            System.Windows.Application.Current.Shutdown();
-        }
+        System.Windows.Application.Current.Shutdown();
     }
-
-    private void Cancel_Click(object sender, RoutedEventArgs e)
-    {
-        Close();
-    }
-
-    #region Blur Effect (Acrylic)
-    [DllImport("user32.dll")]
-    internal static extern int SetWindowCompositionAttribute(IntPtr hwnd, ref WindowCompositionAttributeData data);
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct WindowCompositionAttributeData
-    {
-        public int Attribute;
-        public IntPtr Data;
-        public int SizeOfData;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct AccentPolicy
-    {
-        public int AccentState;
-        public int AccentFlags;
-        public int GradientColor;
-        public int AnimationId;
-    }
-
-    internal void EnableBlur()
-    {
-        var windowHelper = new WindowInteropHelper(this);
-        var accent = new AccentPolicy { AccentState = 4, GradientColor = 0x01000000 };
-        var accentStructSize = Marshal.SizeOf(accent);
-        var accentPtr = Marshal.AllocHGlobal(accentStructSize);
-        Marshal.StructureToPtr(accent, accentPtr, false);
-
-        var data = new WindowCompositionAttributeData
-        {
-            Attribute = 19,
-            SizeOfData = accentStructSize,
-            Data = accentPtr
-        };
-
-        SetWindowCompositionAttribute(windowHelper.Handle, ref data);
-        Marshal.FreeHGlobal(accentPtr);
-    }
-    #endregion
 }
