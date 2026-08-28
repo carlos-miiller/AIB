@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -109,17 +109,23 @@ public partial class ChatWindow : Window
     public void ApplyCharacterUI()
     {
         var settings = _settingsService.LoadSettings();
-        if (AgentNameText != null)
-        {
-            AgentNameText.Text = string.IsNullOrEmpty(settings.ActiveCharacter) ? "AIB" : settings.ActiveCharacter.ToUpper();
-        }
-        
+
+        string nome = string.IsNullOrEmpty(settings.ActiveCharacter) ? "AIB" : settings.ActiveCharacter;
+
+        if (AgentNameText != null) AgentNameText.Text = nome.ToUpper();
+
+        // O placeholder e o estado vazio falam com o nome do personagem ativo, como o
+        // "Fale com a KAI..." de §3.7(b).
+        if (InputPlaceholder != null) InputPlaceholder.Text = $"Fale com {nome}...";
+        if (EmptyTitleText != null) EmptyTitleText.Text = $"Converse com {nome}";
+
         // Limpa a tela
         if (MessagesPanel != null) MessagesPanel.Children.Clear();
         // Limpa o contexto do OpenAI Service (injeta o SOUL.MD atual)
         _conversation.ResetHistory();
-        
+
         AddWelcomeBubble();
+        AtualizarEstadoVazio();
     }
 
     private void HandleWarmupState(bool isWarmingUp)
@@ -201,23 +207,25 @@ public partial class ChatWindow : Window
         int requiredXpInLevel = xpNext - xpBase;
 
         LevelText.Text = $"Nível {lvl}";
-        
+
         // Tooltip e Progress Bar
         TooltipLevelInfo.Text = $"Nível {lvl} ({s.MessageCount}/{xpNext} XP)";
         XpProgressBar.Maximum = requiredXpInLevel == 0 ? 1 : requiredXpInLevel;
         XpProgressBar.Value = currentXpInLevel;
 
-        // Cores (Bronze, Prata, Ouro, Platina, Diamante)
-        WColor rankColor;
-        if (lvl <= 2) rankColor = WColor.FromRgb(0xCD, 0x7F, 0x32); // Bronze
-        else if (lvl <= 4) rankColor = WColor.FromRgb(0xC0, 0xC0, 0xC0); // Prata
-        else if (lvl <= 6) rankColor = WColor.FromRgb(0xFF, 0xD7, 0x00); // Ouro
-        else if (lvl <= 8) rankColor = WColor.FromRgb(0x00, 0xFF, 0x7F); // Platina (Verde esmeralda/ciano)
-        else rankColor = WColor.FromRgb(0x00, 0xBF, 0xFF); // Diamante (Azul neon)
+        // Faixa (Bronze, Prata, Ouro, Platina, Diamante). Ela pinta só a barra de XP, dentro
+        // do ToolTip. O texto da pill fica sempre em lilás: §3.3(c) diz que é EXATAMENTE a
+        // pill da tela de seleção, e a moldura neon precisa seguir sendo a única cor saturada
+        // do header (O2). A informação da faixa não se perde — vive onde o usuário vai olhar
+        // para saber do nível.
+        WColor corDaFaixa;
+        if (lvl <= 2) corDaFaixa = WColor.FromRgb(0xCD, 0x7F, 0x32);        // Bronze
+        else if (lvl <= 4) corDaFaixa = WColor.FromRgb(0xC0, 0xC0, 0xC0);  // Prata
+        else if (lvl <= 6) corDaFaixa = WColor.FromRgb(0xFF, 0xD7, 0x00);  // Ouro
+        else if (lvl <= 8) corDaFaixa = WColor.FromRgb(0x00, 0xFF, 0x7F);  // Platina
+        else corDaFaixa = WColor.FromRgb(0x00, 0xBF, 0xFF);                 // Diamante
 
-        var brush = new SolidCB(rankColor);
-        LevelText.Foreground = brush;
-        XpProgressBar.Foreground = brush;
+        XpProgressBar.Foreground = new SolidCB(corDaFaixa);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -234,58 +242,143 @@ public partial class ChatWindow : Window
     // Criação de Bolhas de Chat
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Monta a LINHA que hospeda uma bolha. §3.4 e §3.9.
+    /// <para>
+    /// A hora fica FORA da bolha, na coluna oposta ao alinhamento: nas linhas do usuário à
+    /// esquerda, nas da IA à direita. Se ela fosse irmã da bolha na mesma direção, ocuparia
+    /// espaço e empurraria a bolha para longe da borda. A5.
+    /// </para>
+    /// <para>
+    /// Aparece só no hover da linha, e a bolha é limitada a 74% da largura da lista.
+    /// </para>
+    /// </summary>
+    private Grid NovaLinha(FrameworkElement bolha, bool doUsuario)
+    {
+        var linha = new Grid { Margin = new Thickness(0, 0, 0, 14), Background = WBrushes.Transparent };
+        linha.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        linha.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var hora = new TextBlock
+        {
+            Style = (Style)Resources["StampText"],
+            Text = DateTime.Now.ToString("HH:mm")
+        };
+
+        bolha.MaxWidth = Math.Max(120, ChatScrollViewer.ActualWidth > 0
+            ? ChatScrollViewer.ActualWidth * 0.74
+            : 770 * 0.74);
+
+        if (doUsuario)
+        {
+            linha.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
+            Grid.SetColumn(hora, 0);
+            Grid.SetColumn(bolha, 1);
+        }
+        else
+        {
+            linha.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+            Grid.SetColumn(bolha, 0);
+            Grid.SetColumn(hora, 1);
+        }
+
+        linha.Children.Add(hora);
+        linha.Children.Add(bolha);
+
+        linha.MouseEnter += (_, _) => hora.Opacity = 1;
+        linha.MouseLeave += (_, _) => hora.Opacity = 0;
+
+        MessagesPanel.Children.Add(linha);
+        AtualizarEstadoVazio();
+        return linha;
+    }
+
+    /// <summary>
+    /// Tira do painel a LINHA que hospeda esta bolha.
+    /// <para>
+    /// Desde que a bolha passou a morar dentro de um Grid de linha, remover a bolha direto do
+    /// MessagesPanel não faz nada: ela não é mais filha dele, e Children.Remove de quem não é
+    /// filho falha em silêncio. O indicador de "digitando" ficaria para sempre na tela.
+    /// </para>
+    /// </summary>
+    private void RemoverLinha(FrameworkElement? bolha)
+    {
+        if (bolha == null) return;
+
+        DependencyObject? atual = bolha;
+        while (atual != null)
+        {
+            if (atual is FrameworkElement fe && MessagesPanel.Children.Contains(fe))
+            {
+                MessagesPanel.Children.Remove(fe);
+                AtualizarEstadoVazio();
+                return;
+            }
+
+            atual = System.Windows.Media.VisualTreeHelper.GetParent(atual)
+                    ?? LogicalTreeHelper.GetParent(atual);
+        }
+    }
+
+    /// <summary>Some com o §5.6 assim que existe qualquer mensagem, e o traz de volta ao limpar.</summary>
+    private void AtualizarEstadoVazio()
+    {
+        EmptyState.Visibility = MessagesPanel.Children.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
     private void AddUserBubble(string text)
     {
         var border = new Border
         {
             Style = (Style)Resources["UserBubble"],
-        };
-        border.Background = new LinearGB(
-            WColor.FromRgb(0x4B, 0x6B, 0xFF),
-            WColor.FromRgb(0x7B, 0x3B, 0xCC),
-            new WPoint(0, 0), new WPoint(1, 1));
-
-        border.Child = new TextBlock
-        {
-            Text = text,
-            Foreground = WBrushes.White,
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 13.5
+            Child = new TextBlock
+            {
+                Text = text,
+                Foreground = WBrushes.White,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 14,
+                LineHeight = 21
+            }
         };
 
-        MessagesPanel.Children.Add(border);
-        AnimateBubbleIn(border);
+        var linha = NovaLinha(border, doUsuario: true);
+        AnimateBubbleIn(linha);
         ChatScrollViewer.ScrollToEnd();
     }
 
     private MarkdownViewer AddAgentBubble(string? initialText = null)
     {
-        var border = new Border
-        {
-            Style = (Style)Resources["AgentBubble"],
-            Background = new SolidCB(WColor.FromArgb(0x30, 0xFF, 0xFF, 0xFF)),
-            BorderBrush = new SolidCB(WColor.FromArgb(0x15, 0xFF, 0xFF, 0xFF)),
-            BorderThickness = new Thickness(1)
-        };
+        // A casca vem do estilo: surfaceCard + borderCard + cardShadow + r18. É a mesma do
+        // card NÃO selecionado da tela de seleção (§3.5 B).
+        var border = new Border { Style = (Style)Resources["AgentBubble"] };
 
         var viewer = new MarkdownViewer
         {
             Markdown = initialText ?? "",
-            Foreground = new SolidCB(WColor.FromRgb(0xE0, 0xE0, 0xF0)),
+            Foreground = (System.Windows.Media.Brush)FindResource("TextBodyBrush"),
             HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
             Margin = new Thickness(-6),
         };
 
-        // Força tema escuro nos blocos de código do Markdig
+        // §5.5 — código inline em lilás sobre surfaceCode; bloco em textBody sobre
+        // surfaceCodeBlock. Os dois em mono 12,5. Antes o inline saía ciano, uma cor que não
+        // existe em nenhum dos dois arquivos de spec.
+        var fonteMono = (System.Windows.Media.FontFamily)FindResource("MonoFontFamily");
+        var tamanhoCodigo = (double)FindResource("FontSizeCode");
+
         var inlineCodeStyle = new Style();
-        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.BackgroundProperty, new SolidCB(WColor.FromRgb(0x30, 0x30, 0x3A))));
-        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.ForegroundProperty, new SolidCB(WColor.FromRgb(0x8B, 0xE9, 0xFD))));
-        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontFamilyProperty, new System.Windows.Media.FontFamily("Consolas")));
+        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.BackgroundProperty, FindResource("SurfaceCodeBrush")));
+        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.ForegroundProperty, FindResource("AccentLilacBrush")));
+        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontFamilyProperty, fonteMono));
+        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontSizeProperty, tamanhoCodigo));
 
         var blockCodeStyle = new Style();
-        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.BackgroundProperty, new SolidCB(WColor.FromRgb(0x1E, 0x1E, 0x24))));
-        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.ForegroundProperty, new SolidCB(WColor.FromRgb(0xE0, 0xE0, 0xF0))));
-        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontFamilyProperty, new System.Windows.Media.FontFamily("Consolas")));
+        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.BackgroundProperty, FindResource("SurfaceCodeBlockBrush")));
+        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.ForegroundProperty, FindResource("TextBodyBrush")));
+        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontFamilyProperty, fonteMono));
+        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontSizeProperty, tamanhoCodigo));
 
         viewer.Resources.Add(Markdig.Wpf.Styles.CodeStyleKey, inlineCodeStyle);
         viewer.Resources.Add(Markdig.Wpf.Styles.CodeBlockStyleKey, blockCodeStyle);
@@ -306,8 +399,8 @@ public partial class ChatWindow : Window
         };
 
         border.Child = viewer;
-        MessagesPanel.Children.Add(border);
-        AnimateBubbleIn(border);
+        var linha = NovaLinha(border, doUsuario: false);
+        AnimateBubbleIn(linha);
         ChatScrollViewer.ScrollToEnd();
         return viewer;
     }
@@ -347,43 +440,54 @@ public partial class ChatWindow : Window
     /// </summary>
     private (Border bubble, System.Windows.Threading.DispatcherTimer timer) AddTypingIndicator()
     {
+        // §3.6 — mesma casca da bolha da IA, com padding próprio e três pontos de 6px.
         var border = new Border
         {
             Style = (Style)Resources["AgentBubble"],
-            Background = new SolidCB(WColor.FromArgb(0x30, 0xFF, 0xFF, 0xFF)),
-            BorderBrush = new SolidCB(WColor.FromArgb(0x15, 0xFF, 0xFF, 0xFF)),
-            BorderThickness = new Thickness(1),
+            Padding = new Thickness(18, 15, 18, 15)
         };
 
-        var dots = new TextBlock
+        var pontos = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        var bolinhas = new List<System.Windows.Shapes.Ellipse>();
+
+        for (int i = 0; i < 3; i++)
         {
-            Text = "●",
-            Foreground = new SolidCB(WColor.FromRgb(0x9B, 0x51, 0xE0)),
-            FontSize = 12,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Center,
-            Padding = new Thickness(4, 0, 4, 0),
-        };
+            var bolinha = new System.Windows.Shapes.Ellipse
+            {
+                Width = 6,
+                Height = 6,
+                Fill = (System.Windows.Media.Brush)FindResource("AccentLilacBrush"),
+                Margin = new Thickness(i == 0 ? 0 : 5, 0, 0, 0),
+                Opacity = 0.25,
+                VerticalAlignment = VerticalAlignment.Center
+            };
 
-        border.Child = dots;
-        MessagesPanel.Children.Add(border);
+            bolinhas.Add(bolinha);
+            pontos.Children.Add(bolinha);
+        }
+
+        border.Child = pontos;
+        var linha = NovaLinha(border, doUsuario: false);
         ChatScrollViewer.ScrollToEnd();
 
-        // Animação 400ms: ● → ●● → ●●● → ●
-        int frame = 0;
+        // Opacidade 0.25 -> 1 em 1,2s, em laço, com atraso escalonado de 160ms. O timer
+        // continua sendo devolvido porque o chamador já sabe pará-lo; aqui ele só serve para
+        // encerrar as animações junto.
+        for (int i = 0; i < bolinhas.Count; i++)
+        {
+            var pulso = new DoubleAnimation(0.25, 1.0, new Duration(TimeSpan.FromMilliseconds(600)))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                BeginTime = TimeSpan.FromMilliseconds(i * 160)
+            };
+
+            bolinhas[i].BeginAnimation(UIElement.OpacityProperty, pulso);
+        }
+
         var timer = new System.Windows.Threading.DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(420)
-        };
-        timer.Tick += (s, e) =>
-        {
-            frame = (frame + 1) % 3;
-            dots.Text = frame switch
-            {
-                0 => "●",
-                1 => "● ●",
-                _ => "● ● ●"
-            };
+            Interval = TimeSpan.FromMilliseconds(1200)
         };
         timer.Start();
 
@@ -451,6 +555,14 @@ public partial class ChatWindow : Window
 
     private async void SendButton_Click(object sender, RoutedEventArgs e)
     {
+        // Enquanto grava, o primário é PARAR (§3.7(e)): ele encerra a escuta em vez de enviar.
+        // A transcrição final ainda chega por OnTranscriptionUpdated e dispara o envio.
+        if (_voiceListening)
+        {
+            VoiceButton_Click(sender, e);
+            return;
+        }
+
         if (_isSending)
         {
             _conversation.CancelGeneration();
@@ -517,7 +629,7 @@ public partial class ChatWindow : Window
             if (typingBubble != null)
             {
                 typingTimer?.Stop();
-                MessagesPanel.Children.Remove(typingBubble);
+                RemoverLinha(typingBubble);
                 typingBubble = null;
                 typingTimer = null;
             }
@@ -572,7 +684,7 @@ public partial class ChatWindow : Window
                         if (typingBubble != null)
                         {
                             typingTimer?.Stop();
-                            MessagesPanel.Children.Remove(typingBubble);
+                            RemoverLinha(typingBubble);
                             typingBubble = null;
                             typingTimer = null;
                         }
@@ -621,7 +733,7 @@ public partial class ChatWindow : Window
             if (typingBubble != null)
             {
                 typingTimer?.Stop();
-                MessagesPanel.Children.Remove(typingBubble);
+                RemoverLinha(typingBubble);
             }
 
             // Exibe a fala final de uma só vez. Quando o turno teve várias falas, as anteriores
@@ -719,9 +831,8 @@ public partial class ChatWindow : Window
             _voiceReady = true;
             Dispatcher.BeginInvoke(() =>
             {
-                VoiceButton.Content = "🎙";
+                AplicarEstadoDeGravacao(false);
                 VoiceButton.IsEnabled = true;
-                VoiceButton.ToolTip = "Falar com o AIB (Whisper offline)";
                 Console.WriteLine("[VOICE] Motor Whisper inicializado e pronto.");
             });
         }
@@ -750,9 +861,7 @@ public partial class ChatWindow : Window
             _voiceService.OnTranscriptionUpdated += OnTranscriptionUpdated;
             _voiceService.StartListening();
             _voiceListening = true;
-            VoiceButton.Content = "🔴";
-            VoiceButton.Foreground = new SolidCB(WColor.FromRgb(0xFF, 0x44, 0x44));
-            VoiceButton.ToolTip = "Ouvindo... Clique para parar.";
+            AplicarEstadoDeGravacao(true);
             InputBox.Text = "";
             StatusBar.Visibility = Visibility.Visible;
             StatusText.Text = "🎙 Ouvindo...";
@@ -763,11 +872,48 @@ public partial class ChatWindow : Window
             _voiceService.StopListening();
             _voiceService.OnTranscriptionUpdated -= OnTranscriptionUpdated;
             _voiceListening = false;
-            VoiceButton.Content = "🎙";
-            VoiceButton.Foreground = new SolidCB(WColor.FromRgb(0x88, 0x88, 0x99));
-            VoiceButton.ToolTip = "Falar com o AIB (Whisper offline)";
+            AplicarEstadoDeGravacao(false);
             StatusBar.Visibility = Visibility.Collapsed;
         }
+    }
+
+    /// <summary>
+    /// Troca a aparência do botão primário entre ENVIAR e PARAR — §3.7(e).
+    /// <para>
+    /// O estado de gravação mora no botão primário, e não no microfone: o primário é sempre o
+    /// aviãozinho, e o microfone é um botão separado à esquerda. Já foram trocados por engano
+    /// uma vez (A7).
+    /// </para>
+    /// </summary>
+    private void AplicarEstadoDeGravacao(bool gravando)
+    {
+        if (gravando)
+        {
+            // Quadrado vermelho de 13px, r3 — o "parar" do §3.7(e).
+            SendButton.Content = new Border
+            {
+                Width = 13,
+                Height = 13,
+                CornerRadius = new CornerRadius(3),
+                Background = (System.Windows.Media.Brush)FindResource("DangerBrush")
+            };
+            SendButton.ToolTip = "Parar de gravar";
+            VoiceButton.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
+            VoiceButton.ToolTip = "Ouvindo… clique para parar.";
+            return;
+        }
+
+        SendButton.Content = new System.Windows.Shapes.Path
+        {
+            Data = System.Windows.Media.Geometry.Parse("M2,9 L16,2.5 L10.4,15.5 L8.6,10.4 Z"),
+            Fill = WBrushes.White,
+            Width = 18,
+            Height = 18,
+            Stretch = System.Windows.Media.Stretch.None
+        };
+        SendButton.ToolTip = "Enviar";
+        VoiceButton.Foreground = (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
+        VoiceButton.ToolTip = "Falar com o AIB (Whisper)";
     }
 
     private void OnTranscriptionUpdated(object? sender, TranscriptionEventArgs e)
@@ -781,8 +927,7 @@ public partial class ChatWindow : Window
                 _voiceService.StopListening();
                 _voiceService.OnTranscriptionUpdated -= OnTranscriptionUpdated;
                 _voiceListening = false;
-                VoiceButton.Content = "🎙";
-                VoiceButton.Foreground = new SolidCB(WColor.FromRgb(0x88, 0x88, 0x99));
+                AplicarEstadoDeGravacao(false);
                 StatusBar.Visibility = Visibility.Collapsed;
                 SendButton_Click(this, new RoutedEventArgs());
             }
@@ -798,6 +943,11 @@ public partial class ChatWindow : Window
     private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         string text = InputBox.Text;
+
+        // O placeholder é um TextBlock por baixo, e não a marca d'água do controle: o TextBox
+        // do WPF não tem placeholder nativo.
+        InputPlaceholder.Visibility = text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+
         if (text.StartsWith("/") && text.Length >= 1)
         {
             var matches = _slashCommands.Where(c => c.StartsWith(text, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -956,16 +1106,28 @@ public partial class ChatWindow : Window
         _conversation.ResetHistory();
         int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
+        _lastCachedTokens = null;
         UpdateTokenCounterUI(0, maxTokens);
+        ChatTitleText.Text = "Nova conversa";
         AddWelcomeBubble();
+        AtualizarEstadoVazio();
     }
 
-    private WColor GetTokenColor(double percentage)
+    /// <summary>
+    /// Cor do contador por ECONOMIA de contexto, não por ocupação — §3.8.
+    /// <para>
+    /// A tela antiga pintava de verde a laranja conforme o histórico enchia. A spec inverte o
+    /// que o número comunica: o que importa ali é quanto o cache de prefixo está economizando.
+    /// Verde quer dizer "o cache está trabalhando"; magenta, "cada turno está sendo reenviado
+    /// inteiro".
+    /// </para>
+    /// </summary>
+    private System.Windows.Media.Brush CorDaEconomia(int? economiaPct)
     {
-        if (percentage < 0.5) return WColor.FromRgb(76, 175, 80); // Verde
-        if (percentage < 0.8) return WColor.FromRgb(255, 193, 7); // Amarelo
-        if (percentage < 0.95) return WColor.FromRgb(255, 152, 0); // Laranja
-        return WColor.FromRgb(213, 63, 140); // Rosa Alerta
+        if (!economiaPct.HasValue) return (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
+        if (economiaPct.Value >= 50) return (System.Windows.Media.Brush)FindResource("SuccessBrush");
+        if (economiaPct.Value >= 20) return (System.Windows.Media.Brush)FindResource("WarnBrush");
+        return (System.Windows.Media.Brush)FindResource("MagentaBrush");
     }
 
     private int? _lastCachedTokens = null;
@@ -974,22 +1136,22 @@ public partial class ChatWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            string baseText = $"{current}/{max} tokens";
+            string texto = $"{current}/{max} tokens";
 
             if (cached.HasValue) _lastCachedTokens = cached.Value;
-            
+
+            int? economia = null;
             if (_lastCachedTokens.HasValue && current > 0)
             {
-                int percentage = (int)Math.Round((double)_lastCachedTokens.Value / current * 100);
-                if (percentage > 100) percentage = 100;
-                if (percentage < 0) percentage = 0;
-                baseText += $" (-{percentage}%)";
+                economia = (int)Math.Round((double)_lastCachedTokens.Value / current * 100);
+                economia = Math.Clamp(economia.Value, 0, 100);
+
+                // Negativo = economia, como a spec escreve o exemplo "909/8704 tokens (-91%)".
+                texto += $" (-{economia}%)";
             }
 
-            TokenCounterText.Text = baseText;
-            
-            double ratio = max > 0 ? (double)current / max : 0;
-            TokenCounterText.Foreground = new SolidCB(GetTokenColor(ratio));
+            TokenCounterText.Text = texto;
+            TokenCounterText.Foreground = CorDaEconomia(economia);
         });
     }
 
@@ -1007,7 +1169,10 @@ public partial class ChatWindow : Window
         
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
         
-        double targetWindowWidth = _isSidebarOpen ? 1065 : 760;
+        // A janela de chat tem largura FIXA de 770: ela NÃO encolhe quando o painel abre, o
+        // painel é que aparece ao lado (A2). O que cresce é só a Window que hospeda os dois —
+        // e na etapa seguinte o painel vira janela própria, como manda §6.
+        double targetWindowWidth = _isSidebarOpen ? 1130 : 820;
         double targetSidebarWidth = _isSidebarOpen ? 300 : 0;
 
         var winAnim = new DoubleAnimation(targetWindowWidth, new Duration(TimeSpan.FromMilliseconds(300))) { EasingFunction = ease };

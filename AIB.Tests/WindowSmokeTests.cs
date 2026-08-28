@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using AIB.Services;
+using AIB.Services.Agent;
 using AIB.Views;
 using FluentAssertions;
 using Xunit;
@@ -117,6 +118,55 @@ namespace AIB.Tests
             return new SettingsService(Path.Combine(tmp, "settings.json"));
         }
 
+        /// <summary>
+        /// Provider mudo. A tela de chat só precisa de um para montar; nenhum ensaio daqui
+        /// gera texto, então qualquer chamada que escape é erro do ensaio, não silêncio.
+        /// </summary>
+        private sealed class ProviderMudo : AIB.Services.Ai.IChatProvider
+        {
+            public string Name => "Ensaio";
+            public string Model => "ensaio";
+
+            public async System.Collections.Generic.IAsyncEnumerable<AIB.Services.Ai.StreamChunk> StreamAsync(
+                System.Collections.Generic.IReadOnlyList<OpenAI.Chat.ChatMessage> messages,
+                System.Collections.Generic.IReadOnlyList<OpenAI.Chat.ChatTool> tools,
+                AIB.Services.Ai.ChatRequestOptions options,
+                [System.Runtime.CompilerServices.EnumeratorCancellation] System.Threading.CancellationToken ct)
+            {
+                await System.Threading.Tasks.Task.CompletedTask;
+                yield break;
+            }
+
+            public System.Threading.Tasks.Task<AIB.Services.Ai.ChatCompletionResult> CompleteAsync(
+                System.Collections.Generic.IReadOnlyList<OpenAI.Chat.ChatMessage> messages,
+                System.Collections.Generic.IReadOnlyList<OpenAI.Chat.ChatTool> tools,
+                AIB.Services.Ai.ChatRequestOptions options,
+                System.Threading.CancellationToken ct) =>
+                throw new NotSupportedException("ensaio de janela não conversa com modelo");
+
+            public System.Threading.Tasks.Task WarmupAsync(System.Threading.CancellationToken ct) =>
+                System.Threading.Tasks.Task.CompletedTask;
+        }
+
+        private sealed class FabricaMuda : AIB.Services.Ai.IChatProviderFactory
+        {
+            private readonly AIB.Services.Ai.IChatProvider _p = new ProviderMudo();
+            public AIB.Services.Ai.IChatProvider GetProvider(UserAppSettings settings) => _p;
+        }
+
+        private static ConversationService ConversaDescartavel(SettingsService servico)
+        {
+            var registro = new ToolRegistry();
+            var contador = new TokenCounter();
+            var fabrica = new FabricaMuda();
+            var loop = new AgentLoop(registro, fabrica, servico, contador);
+
+            // Raiz de memória redirecionada: sem isto o ensaio gravaria em ~/.AIB/memory.
+            return new ConversationService(
+                servico, registro, loop, contador, fabrica,
+                Path.Combine(Path.GetTempPath(), "aib-ensaio-mem-" + Guid.NewGuid().ToString("N")));
+        }
+
         [Fact]
         public void TelaDeConfiguracoes_MontaEDesenha()
         {
@@ -149,6 +199,71 @@ namespace AIB.Tests
                 salvar.Should().NotBeNull();
                 salvar.IsEnabled.Should().BeFalse("Salvar só habilita quando algo muda");
 
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void TelaDeChat_MontaEDesenha()
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var servico = ServicoDescartavel();
+                var janela = new ChatWindow(ConversaDescartavel(servico), servico);
+                Desenhar(janela, "chat", 820, 605);
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void TelaDeChat_ComBolhas_DesenhaAsTresVariantes()
+        {
+            // Chama os criadores de bolha por reflexão. São privados, e expor cada um só para
+            // o ensaio ver seria alargar a superfície pública da janela por causa de um PNG.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var servico = ServicoDescartavel();
+                var janela = new ChatWindow(ConversaDescartavel(servico), servico);
+
+                // Uma passada de arranjo antes: MaxWidth da bolha é 74% da largura da lista, e
+                // a lista só tem largura depois de medida.
+                Desenhar(janela, "chat-vazio-descartar", 820, 605);
+
+                const System.Reflection.BindingFlags Privados =
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                var tipo = typeof(ChatWindow);
+
+                tipo.GetMethod("AddUserBubble", Privados)!
+                    .Invoke(janela, new object[] { "Leia o AGENTS.md e me diga o que falta na fase 3." });
+
+                tipo.GetMethod("AddAgentBubble", Privados)!
+                    .Invoke(janela, new object?[]
+                    {
+                        "Li o arquivo. Faltam **dois** itens: validar a promoção de ato contra o "
+                        + "Ollama real e produzir um `facts.md` de execução, que hoje só existe "
+                        + "em teste unitário."
+                    });
+
+                tipo.GetMethod("AddTypingIndicator", Privados)!.Invoke(janela, null);
+
+                // AnimateBubbleIn zera a opacidade e anima de volta para 1. A animação é
+                // tocada pelo relógio de composição, que só corre quando há renderização de
+                // verdade — numa janela nunca exibida ela fica parada no quadro zero e a
+                // bolha some do PNG. Aqui a animação é retirada e o estado final aplicado à
+                // mão. Não é problema da tela: no app o laço existe.
+                var lista = (System.Windows.Controls.Panel)janela.FindName("MessagesPanel");
+                foreach (FrameworkElement filho in lista.Children)
+                {
+                    filho.BeginAnimation(UIElement.OpacityProperty, null);
+                    filho.Opacity = 1;
+                    filho.RenderTransform = Transform.Identity;
+                }
+
+                Desenhar(janela, "chat-bolhas", 820, 605);
                 janela.Close();
             });
         }
