@@ -4,6 +4,14 @@
              xmlns:local="clr-namespace:AIB"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
-         
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Controls.xaml já mescla Tokens.xaml, então uma entrada só.
+                     Listar os dois aqui carregaria os tokens duas vezes e criaria
+                     dois conjuntos de brushes para as mesmas chaves.
+                     Fonte de verdade dos valores: refactor-interface/*.html, §1. -->
+                <ResourceDictionary Source="Themes/Controls.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

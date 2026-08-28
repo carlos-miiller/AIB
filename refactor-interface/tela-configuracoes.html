@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Tela de Configurações — Especificação de Implementação (C# / WPF)</title>
+
+<!--
+================================================================================
+ ARQUIVO: tela-configuracoes.html
+ PAPEL:   Especificação executável da tela de Configurações do AIB.
+ DESTINO: Reimplementação 1:1 em C# / WPF (.NET, XAML + MVVM).
+
+ COMO LER ESTE ARQUIVO
+ ------------------------------------------------------------------------------
+ Este arquivo é a FONTE DE VERDADE do visual. Ele é ao mesmo tempo:
+   (a) um protótipo que renderiza no navegador,
+   (b) uma especificação anotada, e
+   (c) um mapa de conversão para XAML.
+
+ A ordem recomendada de leitura para implementar:
+   1. §0  CONTRATO DE IMPLEMENTAÇÃO  — o que é obrigatório e o que é livre.
+   2. §1  DESIGN TOKENS             — cole em App.xaml antes de qualquer coisa.
+   3. §2  ÁRVORE VISUAL             — a hierarquia de containers.
+   4. §3  ESPECIFICAÇÃO POR COMPONENTE — medidas exatas, por elemento.
+   5. §4  ESTADOS E INTERAÇÕES      — hover/focus/disabled/dirty.
+   6. §5  MODELO DE DADOS (ViewModel) — propriedades, tipos, validação.
+   7. §6  MAPA HTML -> XAML         — tabela de conversão direta.
+   8. §7  ARMADILHAS                — erros que já custaram tempo aqui.
+   9. §8  CHECKLIST DE ACEITE       — como saber que ficou certo.
+  10. O markup abaixo, onde cada elemento tem um comentário `IMPL:` com o
+      XAML equivalente e um atributo `data-spec` com seu id de especificação.
+
+ Além disso, no fim do <body> há um bloco
+ <script type="application/json" id="design-spec"> com TODOS os tokens e
+ medidas em JSON — use-o quando precisar dos valores de forma programática,
+ em vez de reler os comentários.
+
+================================================================================
+ §0  CONTRATO DE IMPLEMENTAÇÃO
+================================================================================
+ OBRIGATÓRIO (não desviar; são decisões já validadas com o usuário):
+   O1. NENHUM campo pode ser adicionado, removido, renomeado ou reordenado.
+       A lista canônica está em §5. Os rótulos são texto do produto, em
+       português, e devem ser copiados VERBATIM.
+   O2. Nada de Blur nativo (Gaussian/Acrylic/DWM). O "vidro fumê" é uma cor
+       sólida quase preta a 90%. Ver §1 `glass` e §7 A1.
+   O3. A borda neon em degradê de 4 paradas é a ÚNICA cor saturada da moldura.
+       Ordem e offsets exatos em §1 `neon`.
+   O4. DropShadowEffect na moldura externa é obrigatório. Sem ela a janela
+       não lê como flutuante. Ver §3.1.
+   O5. Os três cabeçalhos de seção usam o MESMO estilo. Não voltar a colorir
+       uma seção de azul, outra de magenta, outra de laranja. Ver §7 A2.
+   O6. Grade de campo: rótulo à esquerda, controle à direita com largura FIXA
+       de 210px, para que todos os controles alinhem verticalmente. §3.5.
+   O7. "Salvar" nasce desabilitado e só habilita quando algo muda (IsDirty).
+   O8. "Reset de Fábrica" é destrutivo: outline vermelho + diálogo de
+       confirmação obrigatório antes de executar.
+
+ LIVRE (escolha da implementação):
+   L1. Como os Styles são organizados em ResourceDictionaries.
+   L2. Framework de MVVM (CommunityToolkit.Mvvm, Prism, manual).
+   L3. Nomes de classes C#; os nomes sugeridos em §5 são só sugestão.
+   L4. Como a persistência é feita (JSON, registry, appsettings).
+   L5. Animação de transição do switch (duração sugerida, não obrigatória).
+
+================================================================================
+ §1  DESIGN TOKENS  (colar em App.xaml — usados por TODAS as telas do app)
+================================================================================
+ Estes tokens são compartilhados com a tela de seleção de Inteligência e com a
+ tela de chat. Se já existirem no projeto, NÃO duplicar.
+
+ --- SUPERFÍCIES -------------------------------------------------------------
+ id                | valor CSS                    | WPF
+ ------------------|------------------------------|--------------------------------
+ glass             | rgba(18,18,22,0.90)          | Color.FromArgb(230,18,18,22)
+ surfaceCard       | rgba(255,255,255,0.035)      | Color.FromArgb(9,255,255,255)
+ surfaceControl    | rgba(0,0,0,0.28)             | Color.FromArgb(71,0,0,0)
+ surfaceControlRO  | rgba(0,0,0,0.18)             | Color.FromArgb(46,0,0,0)
+ surfaceHoverSoft  | rgba(255,255,255,0.07)       | Color.FromArgb(18,255,255,255)
+
+ --- BORDAS ------------------------------------------------------------------
+ borderCard        | rgba(255,255,255,0.08)       | Color.FromArgb(20,255,255,255)
+ borderControl     | rgba(255,255,255,0.10)       | Color.FromArgb(26,255,255,255)
+ borderOutlineBtn  | rgba(255,255,255,0.18)       | Color.FromArgb(46,255,255,255)
+ borderOutlineHov  | rgba(255,255,255,0.30)       | Color.FromArgb(77,255,255,255)
+ divider           | rgba(255,255,255,0.06)       | Color.FromArgb(15,255,255,255)
+ dividerField      | rgba(255,255,255,0.05)       | Color.FromArgb(13,255,255,255)
+ accentFocus       | rgba(155,81,224,0.45)        | Color.FromArgb(115,155,81,224)
+ dangerBorder      | rgba(229,72,77,0.35)         | Color.FromArgb(89,229,72,77)
+ dangerBorderHov   | rgba(229,72,77,0.55)         | Color.FromArgb(140,229,72,77)
+
+ --- TEXTO -------------------------------------------------------------------
+ textStrong        | #F5F4F7   títulos, rótulos de campo
+ textNormal        | #E8E6EC   valor digitado em inputs e selects
+ textSecondary     | #8B8794   subtítulo, cabeçalho de seção, valor read-only
+ textMuted         | #6F6A7A   linha de ajuda
+ accentLilac       | #C79EF0   glyph ✦, links inline
+ accentLilacHover  | #D9BCFF   link inline em hover
+ dangerText        | #FF8A8D   texto do botão destrutivo
+ danger            | #E5484D   hover do botão fechar, ícone de perigo
+
+ --- GRADIENTES --------------------------------------------------------------
+ neon (moldura da janela) — LinearGradientBrush StartPoint="0,0" EndPoint="1,1"
+   #9B51E0 @ 0.00   (roxo)
+   #3182CE @ 0.35   (azul ciano)
+   #D53F8C @ 0.65   (magenta)
+   #E28743 @ 1.00   (laranja)
+
+ primary (botão Salvar, switch ligado) — StartPoint="0,0" EndPoint="1,1"
+   #9B51E0 @ 0.00
+   #3182CE @ 1.00
+
+ desktopBackdrop (só do mock; no app é a área de trabalho real)
+   radial-gradient(120% 100% at 30% 0%, #241b3a 0%, #0d0b14 55%, #0a0910 100%)
+
+ --- SOMBRA ------------------------------------------------------------------
+ windowShadow      | 0 25px 60px rgba(0,0,0,0.55)
+                   | <DropShadowEffect BlurRadius="60" ShadowDepth="15"
+                   |                   Direction="270" Opacity="0.55"
+                   |                   Color="Black"/>
+
+ --- RAIOS -------------------------------------------------------------------
+ radiusWindowOuter | 20px    moldura neon
+ radiusWindowInner | 18.5px  vidro (= 20 − 1.5 do stroke)
+ radiusCard        | 16px
+ radiusControl     | 10px
+ radiusButton      | 10px
+ radiusIconBtn     | 8px
+ radiusSwitch      | 20px (pílula)
+
+ --- TIPOGRAFIA --------------------------------------------------------------
+ Família UI:    Segoe UI (no WPF é o default; não declarar fonte custom)
+ Família mono:  Cascadia Code -> Consolas (fallback)
+
+ uso                        | size   | weight | color         | extra
+ ---------------------------|--------|--------|---------------|------------------
+ header.title               | 20px   | 600    | textStrong    | letter-spacing −0.01em
+ header.sub                 | 12.5px | 400    | textSecondary |
+ section.head               | 10px   | 600    | textSecondary | UPPER, tracking 0.10em
+ field.label                | 13px   | 400    | textStrong    |
+ field.help                 | 11px   | 400    | textMuted     | line-height 1.4
+ control.value              | 12.5px | 400    | textNormal    |
+ control.value.mono         | 12px   | 400    | textNormal    | fonte mono
+ control.readonly           | 12px   | 400    | textSecondary | fonte mono
+ button.inline (Alterar)    | 12px   | 600    | #CBC8D1       |
+ button.reset               | 12.5px | 600    | dangerText    |
+ button.cancel              | 13px   | 600    | textNormal    |
+ button.save                | 13px   | 700    | #FFFFFF       |
+ link.inline (debug)        | 11px   | 400    | accentLilac   | underline no hover
+
+ --- ESPAÇAMENTO -------------------------------------------------------------
+ window            620 x 560 px (fixo neste desenho; ver §7 A5 sobre resize)
+ header.padding    20px 16px 16px 24px   (top right bottom left)
+ header.gap        10px
+ settings.padding  20px 24px 22px
+ settings.gap      18px   (entre seções)
+ section.gap       10px   (entre cabeçalho e card)
+ card.padding      4px 16px
+ field.padding     13px 0
+ field.gap         16px   (entre texto e controle)
+ control.width     210px  (coluna fixa)
+ control.height    36px
+ footer.padding    14px 24px 18px
+ footer.gap        10px
+ scrollbar.width   6px, thumb rgba(255,255,255,0.15), raio 3px
+
+================================================================================
+ §2  ÁRVORE VISUAL
+================================================================================
+ Window (chrome=None, transparent, 620x560)
+ └── Border  .window-border      neon gradient + padding 1.5 + shadow + r20
+     └── Border  .window         glass + r18.5 + ClipToBounds
+         ├── Grid  .header       Height=Auto, arrastável, divider embaixo
+         │   ├── TextBlock ✦
+         │   ├── StackPanel { title, sub }
+         │   └── Button  fechar (X)
+         ├── ScrollViewer  .settings   (ÚNICA área elástica; Grid.Row=1, *)
+         │   └── StackPanel
+         │       ├── Section  "Identidade (Soul)"   → 1 campo
+         │       ├── Section  "Conexão LLM"         → 4 campos
+         │       └── Section  "Avançado"            → 4 campos
+         └── Grid  .footer       Height=Auto, divider em cima
+             ├── Button Reset de Fábrica   (esquerda)
+             ├── (espaçador *)
+             ├── Button Cancelar
+             └── Button Salvar
+
+ Grid da janela: RowDefinitions="Auto,*,Auto".
+ O `*` na linha do meio é o que faz o rodapé nunca sair da tela. Ver §7 A4.
+
+ Section (template repetido 3x):
+ └── StackPanel
+     ├── Grid  .section-head   { TextBlock UPPER | Rectangle 1px divider * }
+     └── Border .card          surfaceCard + borderCard + r16 + padding 4,16
+         └── StackPanel de Field
+
+ Field (template repetido 9x):
+ └── Border  BorderThickness="0,0,0,1" BorderBrush=dividerField  (último: 0)
+     └── Grid  ColumnDefinitions="*,210"  Margin="0,13"
+         ├── StackPanel  { label, help? }
+         └── ContentControl  o controle
+
+================================================================================
+ §3  ESPECIFICAÇÃO POR COMPONENTE
+================================================================================
+
+ §3.1  JANELA  (data-spec="window")
+ ------------------------------------------------------------------------------
+ WindowStyle=None, AllowsTransparency=True, Background=Transparent,
+ ResizeMode=NoResize (este desenho é de tamanho fixo), ShowInTaskbar=False,
+ SizeToContent=Manual, Width=620, Height=560, WindowStartupLocation=CenterOwner.
+ Topmost: seguir o mesmo comportamento da janela de chat.
+ A moldura externa recebe o DropShadowEffect (§1 windowShadow). Como a sombra
+ precisa de área para desenhar, a Window deve ter Margin/Padding suficiente OU
+ usar AllowsTransparency com um Grid maior; não recortar a sombra.
+
+ §3.2  BORDA NEON  (data-spec="window.border")
+ ------------------------------------------------------------------------------
+ Truque: Border externo com Background = LinearGradientBrush `neon`,
+ CornerRadius=20, Padding=1.5; Border interno com Background = `glass`,
+ CornerRadius=18.5. O gradiente só aparece como contorno.
+ NÃO usar BorderBrush + BorderThickness com gradiente: no WPF o CornerRadius
+ do BorderBrush em degradê produz cantos sujos. Ver §7 A3.
+
+ §3.3  CABEÇALHO  (data-spec="header")
+ ------------------------------------------------------------------------------
+ Altura: Auto (resulta ~78px com estes paddings).
+ Padding: 20,16,16,24. Gap horizontal 10px. Alinhamento: Top (o glyph acompanha
+ a primeira linha do título, não o centro do bloco).
+ Filhos:
+   • glyph "✦"     15px, accentLilac, LineHeight 1.5 para alinhar com o título.
+   • title         "Configurações", 20px/600, textStrong, tracking −0.01em.
+   • sub           "Personalize a identidade, conexão e comportamento do AIB."
+                   12.5px, textSecondary. TEXTO VERBATIM.
+   • espaçador     *
+   • botão fechar  34x34, r8, Background=Transparent, Foreground=textSecondary.
+                   Hover: Background rgba(229,72,77,0.16), Foreground=danger.
+                   Ícone: X de 18px, stroke 1.5, path "M4 4l8 8M12 4l-8 8"
+                   num viewBox 0 0 16 16.
+ Divisória inferior: 1px `divider`.
+ Arraste: MouseLeftButtonDown -> DragMove() no container do header. Excluir os
+ filhos interativos (o botão fechar já consome o clique).
+
+ §3.4  SEÇÃO  (data-spec="section")
+ ------------------------------------------------------------------------------
+ Cabeçalho: TextBlock 10px/600, textSecondary, TextTransform manual (escrever
+ o texto já em maiúsculas OU aplicar via converter), CharacterSpacing
+ equivalente a letter-spacing 0.10em → no WPF use
+ TextBlock.CharacterSpacing="100" (1/1000 em) como aproximação.
+ Após o texto, um Rectangle Height=1 Fill=`divider` com Grid coluna `*`,
+ alinhado ao centro vertical, gap 10px.
+ Os três títulos, VERBATIM: "Identidade (Soul)", "Conexão LLM", "Avançado".
+ Card: Border surfaceCard + 1px borderCard + r16 + Padding="16,4".
+
+ §3.5  CAMPO  (data-spec="field")
+ ------------------------------------------------------------------------------
+ Grid ColumnDefinitions="*,210". Margin vertical 13px em cada campo.
+ Divisória inferior 1px `dividerField` em todos, EXCETO o último de cada card.
+ (No XAML: BorderThickness="0,0,0,1" e um Style trigger para o último item, ou
+ simplesmente não desenhar a borda no último elemento da coleção.)
+ Coluna 0: StackPanel vertical, gap 2px
+   • label 13px textStrong (VERBATIM)
+   • help  11px textMuted, LineHeight 1.4  — opcional
+ Coluna 1: largura fixa 210px, conteúdo em StackPanel horizontal com gap 8px
+ (necessário no caso API Key, que tem input + botão).
+ O alinhamento vertical de tudo é Center.
+
+ §3.6  CONTROLE BASE (ComboBox / TextBox)  (data-spec="control")
+ ------------------------------------------------------------------------------
+ Height=36, Background=surfaceControl, BorderBrush=borderControl,
+ BorderThickness=1, CornerRadius=10, Padding="12,0",
+ Foreground=textNormal, FontSize=12.5, VerticalContentAlignment=Center.
+ Hover E Focus: BorderBrush=accentFocus (mesma cor para os dois estados).
+ Variante `.mono`: FontFamily="Cascadia Code, Consolas", FontSize=12.
+   Aplicar em: Base URL, API Key, Modelo LLM, Máximo de Tokens.
+   Motivo: são valores técnicos que o usuário confere caractere por caractere.
+ Variante `.readonly`: IsReadOnly=True, Background=surfaceControlRO,
+   Foreground=textSecondary, Cursor=Arrow, e o hover NÃO muda a borda.
+ ComboBox: a seta nativa não segue a paleta — substituir no ControlTemplate por
+ um Path de 10px, stroke 1.6, "M2.6 4.4L6 7.8l3.4-3.4" (viewBox 0 0 12 12),
+ Fill=None, Stroke=textSecondary, alinhado à direita com margem 12px e
+ IsHitTestVisible=False. Reservar Padding direito de 32px para ela.
+ O Popup do ComboBox deve usar surfaceControl + borderControl + r10, item em
+ hover com surfaceHoverSoft — não deixar o popup branco default.
+
+ §3.7  BOTÃO INLINE "Alterar"  (data-spec="button.inline")
+ ------------------------------------------------------------------------------
+ Height=36, Padding="14,0", r10, Background=Transparent,
+ BorderBrush=borderOutlineBtn 1px, Foreground=#CBC8D1, 12px/600.
+ Hover: BorderBrush=accentFocus, Background=rgba(155,81,224,0.10).
+ Nunca preenchido: ele não pode competir com "Salvar".
+ Ação: abre o fluxo de troca da chave (mascarada; não exibir a chave atual).
+
+ §3.8  SWITCH  (data-spec="switch")
+ ------------------------------------------------------------------------------
+ Substitui as CheckBoxes da tela antiga.
+ Trilho: 38x22, r20 (pílula), Background=rgba(255,255,255,0.10).
+ Botão:  16x16 círculo, Margin=3, Background=#CBC8D1.
+ Ligado: trilho = gradiente `primary`; botão desloca +16px no X e vira #FFFFFF.
+ Transição: 0.15s ease em background e transform (sugestão, não obrigatório).
+ Alinhado à direita da coluna de controle (MarginLeft=Auto).
+ WPF: ToggleButton com ControlTemplate próprio; a translação do botão é um
+ TranslateTransform animado no VisualState Checked.
+ ToolTip: "Ativado" / "Desativado".
+
+ §3.9  RODAPÉ  (data-spec="footer")
+ ------------------------------------------------------------------------------
+ Divisória superior 1px `divider`. Padding 14,24,18. Gap 10px.
+ Ordem: [Reset de Fábrica] ... espaçador ... [Cancelar] [Salvar]
+   • Reset de Fábrica — 12.5px/600, dangerText, outline dangerBorder 1px,
+     Padding="16,9", r10. Hover: Background rgba(229,72,77,0.12),
+     BorderBrush dangerBorderHov. AÇÃO DESTRUTIVA: abrir confirmação no mesmo
+     padrão do card de confirmação da tela de chat (pill "Ação destrutiva",
+     título em pergunta, consequência, botão Permitir vermelho).
+   • Cancelar — outline neutro borderOutlineBtn, 13px/600, textNormal,
+     Padding="20,9", r10. Hover: BorderBrush=borderOutlineHov.
+     Descarta alterações e fecha; se IsDirty, confirmar o descarte.
+   • Salvar — Background=gradiente `primary`, sem sombra/glow, 13px/700,
+     #FFFFFF, Padding="24,9", r10.
+     IsEnabled = IsDirty. Desabilitado: Opacity=0.45, Cursor=Arrow.
+
+================================================================================
+ §4  ESTADOS E INTERAÇÕES  (matriz completa)
+================================================================================
+ componente          | hover                       | focus            | disabled
+ --------------------|-----------------------------|------------------|-------------
+ botão fechar        | bg danger 16% / fg danger    | —                | —
+ ComboBox / TextBox  | borda accentFocus            | borda accentFocus| —
+ TextBox readonly    | (nenhuma mudança)            | —                | —
+ botão Alterar       | borda accentFocus + bg 10%   | idem hover       | —
+ switch              | (sem estado de hover)        | —                | —
+ link debug          | underline + accentLilacHover  | —                | —
+ Reset de Fábrica    | bg danger 12% + borda 55%    | idem hover       | —
+ Cancelar            | borda 30%                    | idem hover       | —
+ Salvar              | (sem mudança)                | —                | opacity .45
+
+ GATILHOS DE IsDirty (habilita "Salvar"):
+   • qualquer SelectionChanged de ComboBox
+   • qualquer TextChanged de TextBox editável
+   • qualquer Checked/Unchecked de switch
+ Não marcar dirty por foco, hover ou scroll.
+
+ SCROLL:
+   Só a área de seções rola (VerticalScrollBarVisibility=Auto). Cabeçalho e
+   rodapé são fixos. Scrollbar de 6px, thumb rgba(255,255,255,0.15) r3, sem
+   setas e sem trilho visível.
+
+ TECLADO:
+   Esc   -> Cancelar
+   Enter -> Salvar, se IsDirty
+   Tab   -> ordem natural, de cima para baixo, campo por campo.
+
+================================================================================
+ §5  MODELO DE DADOS (ViewModel)  — lista CANÔNICA de campos
+================================================================================
+ Ordem, rótulos e tipos abaixo são normativos. Rótulos VERBATIM em português.
+
+ SEÇÃO 1 — "Identidade (Soul)"
+ ------------------------------------------------------------------------------
+ 1. "Personagem Ativo"
+    prop:    ActiveCharacter : string
+    editor:  ComboBox (itens = Inteligências disponíveis)
+    ajuda:   "A Inteligência escolhida na tela de seleção."
+    exemplo: "Kai"  (demais: Ayano Kikuchi, Sora Tanaka, Ren Okabe)
+    nota:    é o mesmo nome exibido no header da janela de chat; trocar aqui
+             troca lá.
+
+ SEÇÃO 2 — "Conexão LLM"
+ ------------------------------------------------------------------------------
+ 2. "Provedor de IA"
+    prop:    Provider : enum { Ollama, OpenAI, Anthropic, LmStudio }
+    editor:  ComboBox
+    exemplo: "Ollama"
+    efeito:  ao trocar, sugerir Base URL padrão do provedor e recalcular se
+             API Key é obrigatória (ver campo 4).
+ 3. "Base URL"
+    prop:    BaseUrl : string (Uri)
+    editor:  TextBox mono
+    exemplo: "http://127.0.0.1:11434/v1"
+    valida:  Uri absoluta; erro se vazio.
+ 4. "API Key"
+    prop:    ApiKey : SecureString (nunca exibir o valor atual)
+    editor:  TextBox mono do tipo password + botão "Alterar"
+    ajuda:   "Não necessário para Ollama."
+    valida:  obrigatório quando Provider ∈ { OpenAI, Anthropic }.
+ 5. "Modelo LLM (Principal)"
+    prop:    MainModel : string
+    editor:  ComboBox mono, populado pelo provedor
+    exemplo: "qwen3.5:9b"  (demais: llama3.2:8b, mistral:7b)
+
+ SEÇÃO 3 — "Avançado"
+ ------------------------------------------------------------------------------
+ 6. "Máximo de Tokens de Contexto"
+    prop:    MaxContextTokens : int   { get; }  — SOMENTE LEITURA
+    editor:  TextBox mono readonly
+    ajuda:   "Definido pelo modelo carregado."
+    exemplo: 8704
+    nota:    é o mesmo total exibido no contador do rodapé da tela de chat.
+ 7. "Tempo de Memória da IA (Keep-Alive)"
+    prop:    KeepAlive : enum { OneMinute, FiveMinutes, ThirtyMinutes, Always }
+    editor:  ComboBox
+    default: "5 Minutos (Recomendado)"
+    rótulos: "1 Minuto", "5 Minutos (Recomendado)", "30 Minutos",
+             "Sempre carregado"
+ 8. "Enviar System Prompt a cada requisição"
+    prop:    SendSystemPromptEveryRequest : bool
+    editor:  switch
+    ajuda:   "KV Caching."
+    default: true
+ 9. "Logs detalhados no console"
+    prop:    VerboseLogging : bool
+    editor:  switch
+    ajuda:   "Modo debug." — a palavra "debug" é um link inline (accentLilac)
+             que abre a documentação/console de debug.
+    default: true
+
+ COMANDOS
+ ------------------------------------------------------------------------------
+ SaveCommand    CanExecute = IsDirty
+ CancelCommand  se IsDirty, confirmar descarte antes de fechar
+ ResetCommand   confirmação destrutiva obrigatória; restaura defaults e
+                marca IsDirty
+ ChangeApiKeyCommand  abre o fluxo de troca da chave
+
+================================================================================
+ §6  MAPA HTML -> XAML  (conversão direta)
+================================================================================
+ seletor CSS         | elemento WPF            | observação
+ --------------------|-------------------------|--------------------------------
+ body                | (fora do escopo)        | é o desktop; não implementar
+ .window-border      | Border                  | Background=neon, Padding=1.5
+ .window             | Border                  | Background=glass, r18.5
+ .header             | Grid                    | DragMove no MouseLeftButtonDown
+ .header-glyph       | TextBlock "✦"           | accentLilac
+ .header-title       | TextBlock               | 20/600
+ .header-sub         | TextBlock               | 12.5, textSecondary
+ .icon-btn           | Button + Style          | 34x34, r8
+ .settings           | ScrollViewer>StackPanel | única área com `*`
+ .section            | StackPanel              |
+ .section-head       | Grid{TextBlock,Rect}    | Rect Height=1 col `*`
+ .card               | Border                  | r16, Padding="16,4"
+ .field              | Border>Grid("*,210")    | Border faz a divisória
+ .f-label            | TextBlock               | 13, textStrong
+ .f-help             | TextBlock               | 11, textMuted
+ .f-control          | StackPanel Horizontal   | gap 8 (Margin nos filhos)
+ .control            | TextBox / ComboBox      | Style compartilhado
+ .control.mono       | + FontFamily mono       |
+ .control.readonly   | + IsReadOnly            |
+ .select-wrap .arrow | Path no ControlTemplate | IsHitTestVisible=False
+ .btn-inline         | Button + Style outline  |
+ .switch             | ToggleButton + Template |
+ .footer             | Grid                    | 3 colunas + espaçador
+ .btn-reset          | Button + Style danger   |
+ .btn-cancel         | Button + Style outline  |
+ .btn-save           | Button + Style primary  | IsEnabled=IsDirty
+
+ Equivalências de CSS que costumam confundir:
+   gap: Npx            -> Margin nos filhos (WPF não tem gap)
+   letter-spacing      -> TextBlock.CharacterSpacing (unidade 1/1000 em)
+   text-transform      -> escrever o texto já em maiúsculas
+   ::after régua       -> Rectangle numa coluna `*` do Grid
+   flex: 1 1 auto      -> ColumnDefinition/RowDefinition Width/Height="*"
+   flex: 0 0 210px     -> ColumnDefinition Width="210"
+   overflow-y: auto    -> ScrollViewer VerticalScrollBarVisibility="Auto"
+   appearance: none    -> ControlTemplate próprio do ComboBox
+
+================================================================================
+ §7  ARMADILHAS  (erros reais, já pagos — não repetir)
+================================================================================
+ A1. BLUR NATIVO. Gaussian/Acrylic/DWM blur no Windows dá glitch de render e
+     custa frame. O vidro fumê é UMA cor sólida a 90%. Se parecer "chapado",
+     o problema é contraste de conteúdo, não falta de blur.
+ A2. QUATRO ACENTOS. A tela antiga pintava cada seção de uma cor (azul,
+     magenta, laranja). Resultado: nada tinha hierarquia. Os três cabeçalhos
+     usam o MESMO cinza. As cores neon vivem na moldura e no botão primário.
+ A3. GRADIENTE COMO BorderBrush. Com CornerRadius, o WPF renderiza cantos
+     sujos. Use o truque de dois Borders aninhados (§3.2).
+ A4. ROD APÉ EMPURRADO PARA FORA. Se a área de seções não tiver altura
+     definida/`*`, ela cresce com o conteúdo e empurra o rodapé fora da
+     janela. RowDefinitions="Auto,*,Auto" e a lista com `*`.
+ A5. TAMANHO. 620x560 é o desenho de referência. Se a janela virar
+     redimensionável, apenas a área de seções cresce; a coluna de controle
+     permanece em 210px (não esticar controles).
+ A6. PLACEHOLDER COMO AJUDA. "(não necessário para Ollama)" era placeholder e
+     desaparecia ao digitar. Agora é linha de ajuda, sempre visível. Não
+     voltar a usar placeholder para informação necessária.
+ A7. CAMPO EMPILHADO. Rótulo em cima + campo largo embaixo dobrava a altura da
+     tela e criava scroll. Rótulo à esquerda, controle à direita, 210px.
+ A8. "Salvar" SEMPRE ATIVO. Sem IsDirty o usuário não sabe se mexeu em algo.
+ A9. POPUP BRANCO. O ComboBox default abre um popup claro que quebra o tema;
+     estilizar o Popup junto com o controle.
+ A10. VALORES TÉCNICOS EM FONTE DE UI. URL, modelo e token em Segoe UI ficam
+     difíceis de conferir. Use mono nesses quatro campos.
+
+================================================================================
+ §8  CHECKLIST DE ACEITE
+================================================================================
+ [ ] 9 campos, na ordem de §5, com rótulos verbatim.
+ [ ] 3 cabeçalhos de seção visualmente idênticos entre si.
+ [ ] Nenhum blur; fundo = cor sólida Argb(230,18,18,22).
+ [ ] Moldura: 4 paradas na ordem roxo→azul→magenta→laranja, 1.5px.
+ [ ] DropShadow presente e não recortada.
+ [ ] Todos os controles alinhados à direita numa coluna de 210px.
+ [ ] Base URL, API Key, Modelo e Máximo de Tokens em fonte monoespaçada.
+ [ ] Máximo de Tokens não editável.
+ [ ] 2 switches (não checkboxes), ambos ligados por default.
+ [ ] "Salvar" desabilitado ao abrir; habilita ao alterar qualquer campo.
+ [ ] "Reset de Fábrica" com outline vermelho e confirmação antes de agir.
+ [ ] Cabeçalho e rodapé fixos; só a área de seções rola.
+ [ ] Cabeçalho arrasta a janela.
+ [ ] Esc cancela; Enter salva quando há alterações.
+================================================================================
+-->
+
+<style>
+  /* ==========================================================================
+     RESET
+     Só o necessário. No WPF nada disto tem equivalente — o layout é explícito.
+     ========================================================================== */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+
+  /* ==========================================================================
+     DESKTOP DO MOCK — NÃO IMPLEMENTAR
+     Representa a área de trabalho atrás da janela flutuante. Existe só para
+     que a sombra e a borda neon possam ser avaliadas em contexto.
+     ========================================================================== */
+  body {
+    display: flex;
+    align-items: flex-start;      /* center cortaria o topo se não couber */
+    justify-content: flex-start;  /* a centralização real vem do margin:auto */
+    padding: 32px 40px;
+    background: radial-gradient(120% 100% at 30% 0%, #241b3a 0%, #0d0b14 55%, #0a0910 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  }
+
+  /* ==========================================================================
+     §3.2  MOLDURA NEON  →  Border externo (Background = LinearGradientBrush)
+     O gradiente é o FUNDO; o padding de 1.5px é o que o transforma em contorno.
+     Não converter para BorderBrush — ver §7 A3.
+     ========================================================================== */
+  .window-border {
+    width: 620px;                 /* §1 window */
+    height: 560px;
+    flex: 0 0 620px;
+    margin: auto;                 /* centraliza só quando há espaço sobrando */
+    border-radius: 20px;          /* radiusWindowOuter */
+    padding: 1.5px;               /* espessura do stroke neon */
+    background: linear-gradient(135deg,
+      #9B51E0 0%,                 /* neon.0  roxo    */
+      #3182CE 35%,                /* neon.1  azul    */
+      #D53F8C 65%,                /* neon.2  magenta */
+      #E28743 100%);              /* neon.3  laranja */
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.55);   /* windowShadow — §0 O4 */
+  }
+
+  /* ==========================================================================
+     VIDRO FUMÊ  →  Border interno (Background = Argb(230,18,18,22))
+     Cor sólida a 90%. Proibido Blur — ver §0 O2 e §7 A1.
+     ========================================================================== */
+  .window {
+    height: 100%;
+    border-radius: 18.5px;              /* radiusWindowInner = 20 − 1.5 */
+    background: rgba(18, 18, 22, 0.90); /* glass */
+    display: flex;                      /* → Grid RowDefinitions="Auto,*,Auto" */
+    flex-direction: column;
+    overflow: hidden;                   /* → ClipToBounds="True" */
+  }
+
+  /* ==========================================================================
+     §3.3  CABEÇALHO  (Grid, Row 0 = Auto). Arrastável: DragMove().
+     ========================================================================== */
+  .header {
+    flex: 0 0 auto;                                   /* Row Height="Auto" */
+    display: flex;
+    align-items: flex-start;                          /* glyph na 1ª linha */
+    gap: 10px;                                        /* → Margin nos filhos */
+    padding: 20px 16px 16px 24px;                     /* header.padding */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);  /* divider */
+  }
+  .header-glyph { font-size: 15px; color: #C79EF0; line-height: 1.5; }
+  .header-text { display: flex; flex-direction: column; gap: 3px; }
+  .header-title {
+    font-size: 20px; font-weight: 600; color: #F5F4F7;
+    letter-spacing: -0.01em;
+  }
+  .header-sub { font-size: 12.5px; color: #8B8794; }
+  .header-spacer { flex: 1 1 auto; }                  /* ColumnDefinition="*" */
+
+  /* botão de ícone do cabeçalho (só o fechar existe aqui) */
+  .icon-btn {
+    width: 34px; height: 34px; flex: 0 0 34px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; border-radius: 8px;                 /* radiusIconBtn */
+    background: transparent;
+    color: #8B8794;                                   /* textSecondary */
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  /* hover destrutivo: este botão fecha a janela */
+  .icon-btn:hover { background: rgba(229, 72, 77, 0.16); color: #E5484D; }
+
+  /* ==========================================================================
+     §3.4  ÁREA DE SEÇÕES  (ScrollViewer, Row 1 = "*")
+     É a ÚNICA área elástica. min-height:0 é o que permite encolher e rolar
+     em vez de empurrar o rodapé para fora — ver §7 A4.
+     ========================================================================== */
+  .settings {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;                     /* VerticalScrollBarVisibility=Auto */
+    display: flex;
+    flex-direction: column;
+    gap: 18px;                            /* settings.gap entre seções */
+    padding: 20px 24px 22px;              /* settings.padding */
+  }
+  .settings::-webkit-scrollbar { width: 6px; }
+  .settings::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+  }
+
+  .section { display: flex; flex-direction: column; gap: 10px; }
+
+  /* Cabeçalho de seção — IDÊNTICO nas três seções (§0 O5, §7 A2).
+     A régua é o ::after: no XAML, um Rectangle Height=1 na coluna "*". */
+  .section-head {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.10em;               /* CharacterSpacing ≈ 100 */
+    text-transform: uppercase;            /* no XAML, texto já em maiúsculas */
+    color: #8B8794;                       /* textSecondary */
+  }
+  .section-head::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);   /* divider */
+  }
+
+  /* Card da seção — mesma casca da bolha da IA e dos itens do painel lateral */
+  .card {
+    background: rgba(255, 255, 255, 0.035);      /* surfaceCard */
+    border: 1px solid rgba(255, 255, 255, 0.08); /* borderCard */
+    border-radius: 16px;                         /* radiusCard */
+    padding: 4px 16px;                           /* card.padding */
+  }
+
+  /* ==========================================================================
+     §3.5  CAMPO  →  Border(divisória) > Grid ColumnDefinitions="*,210"
+     ========================================================================== */
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 16px;                                       /* field.gap */
+    padding: 13px 0;                                 /* field.padding */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);  /* dividerField */
+  }
+  .field:last-child { border-bottom: none; }         /* último não tem régua */
+
+  .f-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+  .f-label { font-size: 13px; color: #F5F4F7; }      /* textStrong — VERBATIM */
+  .f-help { font-size: 11px; color: #6F6A7A; line-height: 1.4; }  /* textMuted */
+
+  /* Coluna do controle: 210px FIXOS para tudo alinhar — §0 O6.
+     Ao redimensionar a janela, esta coluna NÃO cresce (§7 A5). */
+  .f-control { flex: 0 0 210px; display: flex; align-items: center; gap: 8px; }
+
+  /* ==========================================================================
+     §3.6  CONTROLE BASE — casca compartilhada por TextBox e ComboBox
+     ========================================================================== */
+  .control {
+    width: 100%;
+    height: 36px;                                      /* control.height */
+    background: rgba(0, 0, 0, 0.28);                   /* surfaceControl */
+    border: 1px solid rgba(255, 255, 255, 0.10);       /* borderControl */
+    border-radius: 10px;                               /* radiusControl */
+    color: #E8E6EC;                                    /* textNormal */
+    font-size: 12.5px;
+    font-family: inherit;
+    padding: 0 12px;
+    outline: none;
+    transition: border-color 0.12s ease;
+  }
+  /* hover e focus compartilham a MESMA cor de borda */
+  .control:hover, .control:focus { border-color: rgba(155, 81, 224, 0.45); }
+
+  /* valores técnicos em monoespaçada — §7 A10.
+     Aplicado em: Base URL, API Key, Modelo LLM, Máximo de Tokens. */
+  .control.mono {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 12px;
+  }
+  /* somente leitura: o valor vem do modelo carregado; o usuário não digita */
+  .control.readonly {
+    color: #8B8794;                        /* textSecondary */
+    background: rgba(0, 0, 0, 0.18);       /* surfaceControlRO */
+    cursor: default;
+  }
+  .control.readonly:hover { border-color: rgba(255, 255, 255, 0.10); }
+
+  /* ComboBox: seta própria, porque a nativa não segue a paleta (§7 A9).
+     No XAML isto vira um Path dentro do ControlTemplate. */
+  .select-wrap { position: relative; width: 100%; }
+  .select-wrap select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 32px;                   /* espaço reservado para a seta */
+    cursor: pointer;
+  }
+  .select-wrap .arrow {
+    position: absolute;
+    right: 12px; top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;                  /* IsHitTestVisible="False" */
+    color: #8B8794;
+    display: flex;
+  }
+
+  /* ==========================================================================
+     §3.7  BOTÃO INLINE "Alterar" — outline compacto, nunca preenchido
+     ========================================================================== */
+  .btn-inline {
+    flex: 0 0 auto;
+    height: 36px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.18);   /* borderOutlineBtn */
+    border-radius: 10px;
+    color: #CBC8D1;
+    font-size: 12px; font-weight: 600; font-family: inherit;
+    padding: 0 14px;
+    cursor: pointer;
+    transition: border-color 0.12s ease, background 0.12s ease;
+  }
+  .btn-inline:hover {
+    border-color: rgba(155, 81, 224, 0.45);
+    background: rgba(155, 81, 224, 0.10);
+  }
+
+  /* ==========================================================================
+     §3.8  SWITCH — substitui as CheckBoxes da tela antiga
+     WPF: ToggleButton com ControlTemplate; o círculo desloca 16px no X.
+     ========================================================================== */
+  .switch {
+    margin-left: auto;                     /* encostado à direita da coluna */
+    width: 38px; height: 22px;
+    flex: 0 0 38px;
+    border: none; border-radius: 20px;     /* radiusSwitch — pílula */
+    background: rgba(255, 255, 255, 0.10);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .switch::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #CBC8D1;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  /* estado ligado: trilho com o gradiente primário, círculo branco */
+  .switch.on { background: linear-gradient(135deg, #9B51E0, #3182CE); }
+  .switch.on::after { transform: translateX(16px); background: #FFFFFF; }
+
+  /* link inline (a palavra "debug" na ajuda) */
+  .inline-link { color: #C79EF0; font-size: 11px; text-decoration: none; }
+  .inline-link:hover { text-decoration: underline; color: #D9BCFF; }
+  /* defaults de link para o resto do documento */
+  a { color: #C79EF0; }
+  a:hover { color: #D9BCFF; }
+
+  /* ==========================================================================
+     §3.9  RODAPÉ  (Grid, Row 2 = Auto). Fixo: nunca rola.
+     ========================================================================== */
+  .footer {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;                                        /* footer.gap */
+    padding: 14px 24px 18px;                          /* footer.padding */
+    border-top: 1px solid rgba(255, 255, 255, 0.06);  /* divider */
+  }
+  .footer-spacer { flex: 1 1 auto; }
+
+  /* ação destrutiva — exige diálogo de confirmação (§0 O8) */
+  .btn-reset {
+    background: transparent;
+    border: 1px solid rgba(229, 72, 77, 0.35);        /* dangerBorder */
+    color: #FF8A8D;                                   /* dangerText */
+    font-size: 12.5px; font-weight: 600; font-family: inherit;
+    padding: 9px 16px; border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .btn-reset:hover {
+    background: rgba(229, 72, 77, 0.12);
+    border-color: rgba(229, 72, 77, 0.55);            /* dangerBorderHov */
+  }
+
+  .btn-cancel {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.18);      /* borderOutlineBtn */
+    color: #E8E6EC;
+    font-size: 13px; font-weight: 600; font-family: inherit;
+    padding: 9px 20px; border-radius: 10px;
+    cursor: pointer;
+  }
+  .btn-cancel:hover { border-color: rgba(255, 255, 255, 0.30); }
+
+  /* botão primário — mesmo degradê do "Próximo" da tela de seleção, SEM glow */
+  .btn-save {
+    background: linear-gradient(135deg, #9B51E0, #3182CE);   /* primary */
+    border: none;
+    color: #FFFFFF;
+    font-size: 13px; font-weight: 700; font-family: inherit;
+    padding: 9px 24px; border-radius: 10px;
+    cursor: pointer;
+  }
+  /* IsEnabled = IsDirty — §0 O7, §7 A8 */
+  .btn-save:disabled { opacity: 0.45; cursor: default; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================================
+     JANELA  (data-spec="window")
+     IMPL: <Window WindowStyle="None" AllowsTransparency="True"
+                   Background="Transparent" ResizeMode="NoResize"
+                   Width="620" Height="560"/>
+     ============================================================================ -->
+<div class="window-border" data-spec="window.border">
+  <div class="window" data-spec="window.glass">
+
+    <!-- ========================================================================
+         §3.3  CABEÇALHO  (data-spec="header")   Grid.Row=0, Height=Auto
+         IMPL: Grid com MouseLeftButtonDown -> DragMove().
+         ======================================================================== -->
+    <div class="header" data-spec="header">
+      <!-- IMPL: <TextBlock Text="✦" FontSize="15" Foreground="{AccentLilac}"/> -->
+      <span class="header-glyph">✦</span>
+
+      <span class="header-text">
+        <!-- TEXTO VERBATIM — não traduzir, não reescrever -->
+        <span class="header-title">Configurações</span>
+        <span class="header-sub">Personalize a identidade, conexão e comportamento do AIB.</span>
+      </span>
+
+      <!-- IMPL: ColumnDefinition Width="*" -->
+      <span class="header-spacer"></span>
+
+      <!-- IMPL: Button Style="IconButtonDanger" Command="{CloseCommand}" -->
+      <button class="icon-btn" data-spec="header.close" title="Fechar">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M4 4l8 8M12 4l-8 8"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- ========================================================================
+         §3.4  ÁREA DE SEÇÕES  (data-spec="settings")   Grid.Row=1, Height="*"
+         IMPL: <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
+         ÚNICA área que rola. Cabeçalho e rodapé são fixos.
+         ======================================================================== -->
+    <div class="settings" data-spec="settings">
+
+      <!-- ====================================================================
+           SEÇÃO 1 — IDENTIDADE (SOUL)   §5 campo 1
+           ==================================================================== -->
+      <div class="section" data-spec="section.identity">
+        <!-- IMPL: Grid { TextBlock UPPER | Rectangle Height=1 Width=* } -->
+        <div class="section-head">Identidade (Soul)</div>
+
+        <div class="card">
+          <!-- CAMPO 1/9 — ActiveCharacter : string -->
+          <div class="field" data-spec="field.activeCharacter">
+            <span class="f-text">
+              <span class="f-label">Personagem Ativo</span>
+              <span class="f-help">A Inteligência escolhida na tela de seleção.</span>
+            </span>
+            <span class="f-control">
+              <!-- IMPL: ComboBox ItemsSource="{AvailableCharacters}"
+                                  SelectedItem="{ActiveCharacter}" -->
+              <span class="select-wrap">
+                <select class="control">
+                  <option>Kai</option>
+                  <option>Ayano Kikuchi</option>
+                  <option>Sora Tanaka</option>
+                  <option>Ren Okabe</option>
+                </select>
+                <!-- seta custom: IsHitTestVisible=False -->
+                <span class="arrow">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2.6 4.4L6 7.8l3.4-3.4"></path>
+                  </svg>
+                </span>
+              </span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           SEÇÃO 2 — CONEXÃO LLM   §5 campos 2 a 5
+           ==================================================================== -->
+      <div class="section" data-spec="section.llm">
+        <div class="section-head">Conexão LLM</div>
+
+        <div class="card">
+
+          <!-- CAMPO 2/9 — Provider : enum
+               Ao trocar: sugerir Base URL padrão e recalcular se API Key
+               é obrigatória. -->
+          <div class="field" data-spec="field.provider">
+            <span class="f-text">
+              <span class="f-label">Provedor de IA</span>
+            </span>
+            <span class="f-control">
+              <span class="select-wrap">
+                <select class="control">
+                  <option>Ollama</option>
+                  <option>OpenAI</option>
+                  <option>Anthropic</option>
+                  <option>LM Studio</option>
+                </select>
+                <span class="arrow">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2.6 4.4L6 7.8l3.4-3.4"></path>
+                  </svg>
+                </span>
+              </span>
+            </span>
+          </div>
+
+          <!-- CAMPO 3/9 — BaseUrl : string (Uri absoluta, obrigatório)
+               mono: valor técnico conferido caractere por caractere -->
+          <div class="field" data-spec="field.baseUrl">
+            <span class="f-text">
+              <span class="f-label">Base URL</span>
+            </span>
+            <span class="f-control">
+              <input class="control mono" type="text" value="http://127.0.0.1:11434/v1">
+            </span>
+          </div>
+
+          <!-- CAMPO 4/9 — ApiKey : SecureString
+               A chave atual NUNCA é exibida. A ajuda saiu do placeholder
+               (§7 A6). Botão "Alterar" abre o fluxo de troca. -->
+          <div class="field" data-spec="field.apiKey">
+            <span class="f-text">
+              <span class="f-label">API Key</span>
+              <span class="f-help">Não necessário para Ollama.</span>
+            </span>
+            <span class="f-control">
+              <input class="control mono" type="password" value="">
+              <!-- IMPL: Button Style="InlineOutline" Command="{ChangeApiKeyCommand}" -->
+              <button class="btn-inline">Alterar</button>
+            </span>
+          </div>
+
+          <!-- CAMPO 5/9 — MainModel : string (populado pelo provedor) -->
+          <div class="field" data-spec="field.mainModel">
+            <span class="f-text">
+              <span class="f-label">Modelo LLM (Principal)</span>
+            </span>
+            <span class="f-control">
+              <span class="select-wrap">
+                <select class="control mono">
+                  <option>qwen3.5:9b</option>
+                  <option>llama3.2:8b</option>
+                  <option>mistral:7b</option>
+                </select>
+                <span class="arrow">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2.6 4.4L6 7.8l3.4-3.4"></path>
+                  </svg>
+                </span>
+              </span>
+            </span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           SEÇÃO 3 — AVANÇADO   §5 campos 6 a 9
+           ==================================================================== -->
+      <div class="section" data-spec="section.advanced">
+        <div class="section-head">Avançado</div>
+
+        <div class="card">
+
+          <!-- CAMPO 6/9 — MaxContextTokens : int { get; }  SOMENTE LEITURA
+               É o mesmo total exibido no contador do rodapé da tela de chat. -->
+          <div class="field" data-spec="field.maxContextTokens">
+            <span class="f-text">
+              <span class="f-label">Máximo de Tokens de Contexto</span>
+              <span class="f-help">Definido pelo modelo carregado.</span>
+            </span>
+            <span class="f-control">
+              <!-- IMPL: TextBox IsReadOnly="True" Style="ControlReadOnlyMono" -->
+              <input class="control mono readonly" type="text" value="8704" readonly>
+            </span>
+          </div>
+
+          <!-- CAMPO 7/9 — KeepAlive : enum, default FiveMinutes -->
+          <div class="field" data-spec="field.keepAlive">
+            <span class="f-text">
+              <span class="f-label">Tempo de Memória da IA (Keep-Alive)</span>
+            </span>
+            <span class="f-control">
+              <span class="select-wrap">
+                <select class="control">
+                  <option>5 Minutos (Recomendado)</option>
+                  <option>1 Minuto</option>
+                  <option>30 Minutos</option>
+                  <option>Sempre carregado</option>
+                </select>
+                <span class="arrow">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2.6 4.4L6 7.8l3.4-3.4"></path>
+                  </svg>
+                </span>
+              </span>
+            </span>
+          </div>
+
+          <!-- CAMPO 8/9 — SendSystemPromptEveryRequest : bool, default true
+               Era CheckBox na tela antiga; virou switch (§3.8) -->
+          <div class="field" data-spec="field.sendSystemPrompt">
+            <span class="f-text">
+              <span class="f-label">Enviar System Prompt a cada requisição</span>
+              <span class="f-help">KV Caching.</span>
+            </span>
+            <span class="f-control">
+              <!-- IMPL: ToggleButton Style="Switch" IsChecked="{...}" -->
+              <button class="switch on" data-switch data-spec="switch" title="Ativado"></button>
+            </span>
+          </div>
+
+          <!-- CAMPO 9/9 — VerboseLogging : bool, default true
+               "debug" é link inline: abre a documentação/console de debug. -->
+          <div class="field" data-spec="field.verboseLogging">
+            <span class="f-text">
+              <span class="f-label">Logs detalhados no console</span>
+              <span class="f-help">Modo <a class="inline-link" href="#debug">debug</a>.</span>
+            </span>
+            <span class="f-control">
+              <button class="switch on" data-switch title="Ativado"></button>
+            </span>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========================================================================
+         §3.9  RODAPÉ  (data-spec="footer")   Grid.Row=2, Height=Auto
+         Fixo — nunca entra na área de scroll.
+         ======================================================================== -->
+    <div class="footer" data-spec="footer">
+      <!-- DESTRUTIVO: exige diálogo de confirmação antes de executar (§0 O8) -->
+      <button class="btn-reset" data-spec="footer.reset">Reset de Fábrica</button>
+
+      <span class="footer-spacer"></span>
+
+      <!-- Se IsDirty, confirmar o descarte antes de fechar -->
+      <button class="btn-cancel" data-spec="footer.cancel">Cancelar</button>
+
+      <!-- IsEnabled = IsDirty. Nasce desabilitado (§0 O7) -->
+      <button class="btn-save" id="saveBtn" data-spec="footer.save" disabled>Salvar</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================================
+     ESPECIFICAÇÃO EM JSON
+     Os mesmos tokens e medidas dos comentários, em formato consumível por
+     ferramenta. Bloco inerte: não afeta a renderização.
+     ============================================================================ -->
+<script type="application/json" id="design-spec">
+{
+  "screen": "settings",
+  "target": "csharp-wpf",
+  "window": {
+    "width": 620, "height": 560,
+    "chrome": "none", "transparent": true, "resize": "none",
+    "radiusOuter": 20, "radiusInner": 18.5, "neonStroke": 1.5,
+    "shadow": { "blurRadius": 60, "shadowDepth": 15, "opacity": 0.55, "color": "#000000" },
+    "draggableRegion": "header"
+  },
+  "tokens": {
+    "surfaces": {
+      "glass": "rgba(18,18,22,0.90)",
+      "glassArgb": [230, 18, 18, 22],
+      "surfaceCard": "rgba(255,255,255,0.035)",
+      "surfaceControl": "rgba(0,0,0,0.28)",
+      "surfaceControlReadOnly": "rgba(0,0,0,0.18)",
+      "surfaceHoverSoft": "rgba(255,255,255,0.07)"
+    },
+    "borders": {
+      "borderCard": "rgba(255,255,255,0.08)",
+      "borderControl": "rgba(255,255,255,0.10)",
+      "borderOutlineBtn": "rgba(255,255,255,0.18)",
+      "borderOutlineBtnHover": "rgba(255,255,255,0.30)",
+      "divider": "rgba(255,255,255,0.06)",
+      "dividerField": "rgba(255,255,255,0.05)",
+      "accentFocus": "rgba(155,81,224,0.45)",
+      "dangerBorder": "rgba(229,72,77,0.35)",
+      "dangerBorderHover": "rgba(229,72,77,0.55)"
+    },
+    "text": {
+      "textStrong": "#F5F4F7",
+      "textNormal": "#E8E6EC",
+      "textSecondary": "#8B8794",
+      "textMuted": "#6F6A7A",
+      "accentLilac": "#C79EF0",
+      "accentLilacHover": "#D9BCFF",
+      "dangerText": "#FF8A8D",
+      "danger": "#E5484D"
+    },
+    "gradients": {
+      "neon": { "angle": "135deg", "stops": [
+        { "color": "#9B51E0", "offset": 0.00 },
+        { "color": "#3182CE", "offset": 0.35 },
+        { "color": "#D53F8C", "offset": 0.65 },
+        { "color": "#E28743", "offset": 1.00 }
+      ]},
+      "primary": { "angle": "135deg", "stops": [
+        { "color": "#9B51E0", "offset": 0.00 },
+        { "color": "#3182CE", "offset": 1.00 }
+      ]}
+    },
+    "radius": {
+      "windowOuter": 20, "windowInner": 18.5, "card": 16,
+      "control": 10, "button": 10, "iconButton": 8, "switch": 20
+    },
+    "spacing": {
+      "headerPadding": [20, 16, 16, 24],
+      "settingsPadding": [20, 24, 22, 24],
+      "settingsGap": 18,
+      "sectionGap": 10,
+      "cardPadding": [4, 16, 4, 16],
+      "fieldPaddingY": 13,
+      "fieldGap": 16,
+      "controlColumnWidth": 210,
+      "controlHeight": 36,
+      "footerPadding": [14, 24, 18, 24],
+      "footerGap": 10
+    },
+    "typography": {
+      "uiFamily": "Segoe UI",
+      "monoFamily": ["Cascadia Code", "Consolas"],
+      "headerTitle": { "size": 20, "weight": 600, "color": "#F5F4F7", "tracking": "-0.01em" },
+      "headerSub": { "size": 12.5, "weight": 400, "color": "#8B8794" },
+      "sectionHead": { "size": 10, "weight": 600, "color": "#8B8794", "upper": true, "tracking": "0.10em" },
+      "fieldLabel": { "size": 13, "weight": 400, "color": "#F5F4F7" },
+      "fieldHelp": { "size": 11, "weight": 400, "color": "#6F6A7A", "lineHeight": 1.4 },
+      "controlValue": { "size": 12.5, "weight": 400, "color": "#E8E6EC" },
+      "controlValueMono": { "size": 12, "weight": 400, "color": "#E8E6EC", "mono": true },
+      "buttonSave": { "size": 13, "weight": 700, "color": "#FFFFFF" },
+      "buttonCancel": { "size": 13, "weight": 600, "color": "#E8E6EC" },
+      "buttonReset": { "size": 12.5, "weight": 600, "color": "#FF8A8D" },
+      "buttonInline": { "size": 12, "weight": 600, "color": "#CBC8D1" }
+    },
+    "switch": {
+      "track": [38, 22], "knob": 16, "knobMargin": 3, "travelX": 16,
+      "trackOff": "rgba(255,255,255,0.10)", "trackOn": "gradient:primary",
+      "knobOff": "#CBC8D1", "knobOn": "#FFFFFF", "duration": "0.15s"
+    },
+    "scrollbar": { "width": 6, "thumb": "rgba(255,255,255,0.15)", "radius": 3 }
+  },
+  "sections": [
+    {
+      "id": "identity", "title": "Identidade (Soul)",
+      "fields": [
+        { "id": "activeCharacter", "label": "Personagem Ativo",
+          "help": "A Inteligência escolhida na tela de seleção.",
+          "control": "combo", "prop": "ActiveCharacter", "type": "string",
+          "sample": "Kai",
+          "options": ["Kai", "Ayano Kikuchi", "Sora Tanaka", "Ren Okabe"] }
+      ]
+    },
+    {
+      "id": "llm", "title": "Conexão LLM",
+      "fields": [
+        { "id": "provider", "label": "Provedor de IA",
+          "control": "combo", "prop": "Provider", "type": "enum",
+          "sample": "Ollama",
+          "options": ["Ollama", "OpenAI", "Anthropic", "LM Studio"],
+          "onChange": "sugerir BaseUrl padrão; recalcular obrigatoriedade de ApiKey" },
+        { "id": "baseUrl", "label": "Base URL",
+          "control": "text", "mono": true, "prop": "BaseUrl", "type": "string",
+          "sample": "http://127.0.0.1:11434/v1",
+          "validate": "Uri absoluta, obrigatório" },
+        { "id": "apiKey", "label": "API Key",
+          "help": "Não necessário para Ollama.",
+          "control": "password+button", "buttonLabel": "Alterar",
+          "mono": true, "prop": "ApiKey", "type": "SecureString",
+          "validate": "obrigatório se Provider em [OpenAI, Anthropic]",
+          "note": "nunca exibir o valor atual" },
+        { "id": "mainModel", "label": "Modelo LLM (Principal)",
+          "control": "combo", "mono": true, "prop": "MainModel", "type": "string",
+          "sample": "qwen3.5:9b",
+          "options": ["qwen3.5:9b", "llama3.2:8b", "mistral:7b"],
+          "note": "opções vêm do provedor selecionado" }
+      ]
+    },
+    {
+      "id": "advanced", "title": "Avançado",
+      "fields": [
+        { "id": "maxContextTokens", "label": "Máximo de Tokens de Contexto",
+          "help": "Definido pelo modelo carregado.",
+          "control": "text", "mono": true, "readOnly": true,
+          "prop": "MaxContextTokens", "type": "int", "sample": 8704,
+          "note": "mesmo total exibido no contador do rodapé da tela de chat" },
+        { "id": "keepAlive", "label": "Tempo de Memória da IA (Keep-Alive)",
+          "control": "combo", "prop": "KeepAlive", "type": "enum",
+          "default": "5 Minutos (Recomendado)",
+          "options": ["1 Minuto", "5 Minutos (Recomendado)", "30 Minutos", "Sempre carregado"] },
+        { "id": "sendSystemPrompt", "label": "Enviar System Prompt a cada requisição",
+          "help": "KV Caching.",
+          "control": "switch", "prop": "SendSystemPromptEveryRequest",
+          "type": "bool", "default": true },
+        { "id": "verboseLogging", "label": "Logs detalhados no console",
+          "help": "Modo debug.", "helpLink": { "text": "debug", "action": "abrir console de debug" },
+          "control": "switch", "prop": "VerboseLogging",
+          "type": "bool", "default": true }
+      ]
+    }
+  ],
+  "footer": {
+    "buttons": [
+      { "id": "reset", "label": "Reset de Fábrica", "align": "left",
+        "style": "outline-danger", "destructive": true,
+        "requiresConfirmation": true, "command": "ResetCommand" },
+      { "id": "cancel", "label": "Cancelar", "align": "right",
+        "style": "outline", "command": "CancelCommand",
+        "note": "se IsDirty, confirmar descarte" },
+      { "id": "save", "label": "Salvar", "align": "right",
+        "style": "primary", "command": "SaveCommand",
+        "enabledWhen": "IsDirty", "disabledOpacity": 0.45 }
+    ]
+  },
+  "keyboard": { "Escape": "cancel", "Enter": "save (se IsDirty)" },
+  "dirtyTriggers": ["combo.SelectionChanged", "text.TextChanged", "switch.Toggled"],
+  "constraints": [
+    "sem blur nativo; vidro = cor sólida Argb(230,18,18,22)",
+    "borda neon é a única cor saturada da moldura",
+    "os três cabeçalhos de seção usam o mesmo estilo",
+    "coluna de controle fixa em 210px",
+    "nenhum campo adicionado, removido ou renomeado",
+    "rótulos em português, verbatim"
+  ]
+}
+</script>
+
+<script>
+  /*
+    ==========================================================================
+    COMPORTAMENTO DO MOCK
+    Só o suficiente para revisar o design. A lógica real vive no ViewModel.
+
+    IMPL (WPF):
+      • switches  -> ToggleButton com o Style de §3.8; IsChecked bound às
+                     props booleanas de §5.
+      • IsDirty   -> propriedade do ViewModel; SaveCommand.CanExecute = IsDirty.
+                     Os gatilhos estão em §4 (SelectionChanged, TextChanged,
+                     Checked/Unchecked). Foco, hover e scroll NÃO marcam dirty.
+    ==========================================================================
+  */
+  (function () {
+    var save = document.getElementById('saveBtn');
+
+    /* equivale a: ViewModel.IsDirty = true (habilita SaveCommand) */
+    function markDirty() { save.disabled = false; }
+
+    /* switches: ToggleButton.Checked / .Unchecked */
+    Array.prototype.forEach.call(document.querySelectorAll('[data-switch]'), function (sw) {
+      sw.addEventListener('click', function () {
+        sw.classList.toggle('on');
+        sw.title = sw.classList.contains('on') ? 'Ativado' : 'Desativado';
+        markDirty();
+      });
+    });
+
+    /* combos e inputs editáveis: SelectionChanged / TextChanged.
+       O campo readonly (Máximo de Tokens) está excluído do seletor. */
+    Array.prototype.forEach.call(
+      document.querySelectorAll('select.control, input.control:not([readonly])'),
+      function (el) {
+        el.addEventListener('change', markDirty);
+        el.addEventListener('input', markDirty);
+      }
+    );
+  })();
+</script>
+
+</body>
+</html>
