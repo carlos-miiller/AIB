@@ -359,8 +359,14 @@ public partial class ChatWindow : Window
             Markdown = initialText ?? "",
             Foreground = (System.Windows.Media.Brush)FindResource("TextBodyBrush"),
             HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-            Margin = new Thickness(-6),
+            FontSize = (double)FindResource("FontSizeBubble"),
         };
+
+        // O documento de fluxo nasce com margem própria de página, e ela se somava ao padding
+        // da bolha. A margem negativa que existia aqui compensava isso puxando o conteúdo para
+        // fora nos quatro lados — o que também comia o padding de 17x13 que a spec pede.
+        // Zerar na fonte é o certo.
+        ZerarMargemDoDocumento(viewer);
 
         // §5.5 — código inline em lilás sobre surfaceCode; bloco em textBody sobre
         // surfaceCodeBlock. Os dois em mono 12,5. Antes o inline saía ciano, uma cor que não
@@ -398,11 +404,49 @@ public partial class ChatWindow : Window
             }
         };
 
-        border.Child = viewer;
+        // O ShrinkWrap é o que faz a bolha da IA encolher até o texto, como a do usuário.
+        // Sem ele o FlowDocument aceita toda a largura oferecida e "Kai online. Olá." vira uma
+        // bolha de 74% da lista com um vão enorme à direita.
+        //
+        // A medição vai por fora, sobre o documento: perguntar ao visualizador não adianta,
+        // porque ele devolve como desejada a mesma largura que recebeu. Os 2px de folga cobrem
+        // o arredondamento entre a medição do texto e o desenho dele.
+        border.Child = new AIB.Ui.ShrinkWrap
+        {
+            Child = viewer,
+            MedirNatural = () => AIB.Ui.FlowDocumentMeasure.LarguraNatural(viewer.Document) + 2
+        };
+
         var linha = NovaLinha(border, doUsuario: false);
         AnimateBubbleIn(linha);
         ChatScrollViewer.ScrollToEnd();
         return viewer;
+    }
+
+    /// <summary>
+    /// Zera a margem de página do <c>FlowDocument</c> do visualizador, agora e a cada vez que
+    /// ele for trocado.
+    /// <para>
+    /// Reaplicar não é zelo: atribuir <c>Markdown</c> reconstrói o documento inteiro, e o
+    /// streaming da resposta faz isso a cada pedaço que chega. Zerar uma vez só valeria até a
+    /// primeira letra da resposta.
+    /// </para>
+    /// </summary>
+    private static void ZerarMargemDoDocumento(MarkdownViewer viewer)
+    {
+        static void Aplicar(MarkdownViewer v)
+        {
+            if (v.Document == null) return;
+            v.Document.PagePadding = new Thickness(0);
+            v.Document.PageWidth = double.NaN;
+        }
+
+        Aplicar(viewer);
+
+        var descritor = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(
+            MarkdownViewer.DocumentProperty, typeof(MarkdownViewer));
+
+        descritor?.AddValueChanged(viewer, (_, _) => Aplicar(viewer));
     }
 
     /// <summary>

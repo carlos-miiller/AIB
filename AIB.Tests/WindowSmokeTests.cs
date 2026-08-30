@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Threading;
 using System.Windows;
@@ -167,6 +167,7 @@ namespace AIB.Tests
                 Path.Combine(Path.GetTempPath(), "aib-ensaio-mem-" + Guid.NewGuid().ToString("N")));
         }
 
+
         [Fact]
         public void TelaDeConfiguracoes_MontaEDesenha()
         {
@@ -247,6 +248,15 @@ namespace AIB.Tests
                         + "Ollama real e produzir um `facts.md` de execução, que hoje só existe "
                         + "em teste unitário."
                     });
+
+                tipo.GetMethod("AddUserBubble", Privados)!.Invoke(janela, new object[] { "Ok" });
+
+                // Resposta curta: é o caso que denunciou o problema. Um FlowDocument aceita
+                // toda a largura oferecida, então "Kai online. Olá." vinha numa bolha de 74%
+                // da lista com um vão enorme à direita, enquanto a bolha do usuário — que é
+                // um TextBlock — encolhia certo.
+                tipo.GetMethod("AddAgentBubble", Privados)!
+                    .Invoke(janela, new object?[] { "Kai online. Olá." });
 
                 tipo.GetMethod("AddTypingIndicator", Privados)!.Invoke(janela, null);
 
