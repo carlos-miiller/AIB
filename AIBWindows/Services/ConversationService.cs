@@ -605,6 +605,22 @@ public sealed class ConversationService : IMessageStore
                         yield return new ChatStreamItem.SegmentBreak(segment.Iteration);
                         break;
 
+                    case AgentEvent.ToolStarted iniciada:
+                        yield return new ChatStreamItem.ToolStarted(
+                            iniciada.Id,
+                            iniciada.Tool,
+                            Memory.ArtifactExtractor.ResumirArgumento(iniciada.Tool, iniciada.Arguments));
+                        break;
+
+                    case AgentEvent.ToolFinished terminada:
+                        yield return new ChatStreamItem.ToolFinished(
+                            terminada.Id,
+                            terminada.Failed,
+                            Memory.ArtifactExtractor.Recusado(terminada.Result),
+                            terminada.Artifact,
+                            terminada.Failed ? PrimeiraLinhaDoErro(terminada.Result) : null);
+                        break;
+
                     case AgentEvent.Completed completed
                         when completed.Outcome == TurnOutcome.IterationLimitReached:
                         // O teto do ReAct nunca vira sucesso silencioso: o usuário vê o corte.
@@ -845,6 +861,26 @@ public sealed class ConversationService : IMessageStore
             Console.WriteLine($"[CHARACTERS ERRO] Falha ao carregar SOUL.MD: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Primeira linha útil de um resultado de erro, para caber no chip que falhou (§4.7).
+    /// <para>
+    /// Só a primeira: a saída de um comando que falhou costuma trazer stack trace inteiro, e o
+    /// chip tem uma linha. O texto completo continua no histórico e no tooltip.
+    /// </para>
+    /// </summary>
+    private static string? PrimeiraLinhaDoErro(string? resultado)
+    {
+        if (string.IsNullOrWhiteSpace(resultado)) return null;
+
+        foreach (var linha in resultado.Split('\n'))
+        {
+            string limpa = linha.Trim();
+            if (limpa.Length > 0) return limpa.Length > 160 ? limpa[..160] + "…" : limpa;
+        }
+
+        return null;
     }
 
     private void RaiseTechnical(Action<string>? callback, string value)

@@ -61,6 +61,54 @@ public static class ArtifactExtractor
         return artefatos;
     }
 
+    /// <summary>
+    /// Um artefato a partir de uma chamada já resolvida, sem precisar do turno inteiro.
+    /// <para>
+    /// É o mesmo caminho que a memória usa no fim do turno, exposto para a interface poder
+    /// mostrar o literal AO VIVO, enquanto a cadeia de ações acontece. Ter dois extratores —
+    /// um para a tela, outro para o disco — deixaria a bolha e o capítulo discordando sobre o
+    /// que foi feito.
+    /// </para>
+    /// </summary>
+    public static Artifact? Construir(string ferramenta, string argumentosJson, string resultado) =>
+        Build(ferramenta, argumentosJson, resultado);
+
+    /// <summary>
+    /// Se o resultado de uma ferramenta representa fracasso.
+    /// <para>
+    /// Separado do <see cref="Construir"/> porque nem toda ferramenta tem extrator próprio: a
+    /// que não tem devolve artefato nulo mesmo quando falhou, e deduzir o fracasso da ausência
+    /// de artefato marcaria todo erro dessas como sucesso.
+    /// </para>
+    /// </summary>
+    public static bool Falhou(string? resultado)
+    {
+        if (string.IsNullOrEmpty(resultado)) return false;
+
+        return resultado.Contains(TextoRecusa, StringComparison.Ordinal)
+            || resultado.StartsWith("ERRO", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Se o resultado veio de uma recusa do usuário no portão de confirmação.</summary>
+    public static bool Recusado(string? resultado) =>
+        resultado != null && resultado.Contains(TextoRecusa, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Resumo curto dos argumentos, para o chip em execução (§4.2d da spec de chat).
+    /// <para>
+    /// Sai dos mesmos campos que viram artefato: caminho para as ferramentas de arquivo, linha
+    /// de comando para <c>run_command</c>. Ferramenta sem extrator devolve vazio — melhor um
+    /// chip só com o nome do que um JSON cru espremido em 11px.
+    /// </para>
+    /// </summary>
+    public static string ResumirArgumento(string ferramenta, string argumentosJson) =>
+        ferramenta switch
+        {
+            "write_file" or "read_file" => CaminhoDe(argumentosJson),
+            "run_command" => StringDe(argumentosJson, "command"),
+            _ => ""
+        };
+
     private static Artifact? Build(string ferramenta, string argumentosJson, string resultado)
     {
         bool recusado = resultado.Contains(TextoRecusa, StringComparison.Ordinal);

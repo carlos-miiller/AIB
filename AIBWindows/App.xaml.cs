@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -24,6 +24,7 @@ public partial class App : System.Windows.Application
 
     private SettingsService _settingsService = null!;
     private ToolRegistry _toolRegistry = null!;
+    private ChatConfirmationPrompt _confirmationPrompt = null!;
     private TokenCounter _tokenCounter = null!;
     private IToolCallHealer _healer = null!;
     private IChatProviderFactory _providerFactory = null!;
@@ -80,7 +81,12 @@ public partial class App : System.Windows.Application
 
             // Portão humano ligado aqui: é o único lugar do app onde existe UI para pedir
             // autorização. Sem este argumento o registry recusa toda ferramenta destrutiva.
-            _toolRegistry = new ToolRegistry(new WpfConfirmationPrompt(), _settingsService);
+            //
+            // A pergunta agora acontece DENTRO da conversa (§5.3 da spec de chat), e não numa
+            // janela modal. Quem apresenta é a ChatWindow, que se conecta logo abaixo; até lá
+            // — e se ela morrer — o prompt recusa por padrão.
+            _confirmationPrompt = new ChatConfirmationPrompt();
+            _toolRegistry = new ToolRegistry(_confirmationPrompt, _settingsService);
             _tokenCounter = new TokenCounter();
             _healer = new RegexToolCallHealer();
             _providerFactory = new ChatProviderFactory(_httpClient, _healer);
@@ -89,6 +95,10 @@ public partial class App : System.Windows.Application
                                                     _tokenCounter, _providerFactory);
 
             _chatWindow = new ChatWindow(_conversation, _settingsService);
+
+            // A partir daqui o portão tem onde perguntar. Antes desta linha, e depois que a
+            // janela morrer, ele recusa por padrão.
+            _confirmationPrompt.Conectar(_chatWindow.PerguntarConfirmacaoAsync);
 
             // MainWindow explícito: o modal de confirmação usa Application.Current.MainWindow
             // como Owner. Sem atribuir, o WPF elege a primeira janela criada — que pode ser a

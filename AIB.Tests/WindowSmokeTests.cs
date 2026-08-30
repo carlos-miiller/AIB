@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using AIB.Services;
 using AIB.Services.Agent;
+using AIB.Services.Memory;
 using AIB.Views;
 using FluentAssertions;
 using Xunit;
@@ -95,6 +96,36 @@ namespace AIB.Tests
                 dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x14, 0x10, 0x1E)),
                                  null, new Rect(0, 0, w, h));
                 dc.DrawRectangle(new VisualBrush(raiz), null, new Rect(0, 0, w, h));
+            }
+
+            var bmp = new RenderTargetBitmap((int)w, (int)h, 96, 96, PixelFormats.Pbgra32);
+            bmp.Render(visual);
+
+            var png = new PngBitmapEncoder();
+            png.Frames.Add(BitmapFrame.Create(bmp));
+
+            using var fs = File.Create(Path.Combine(dir, nome + ".png"));
+            png.Save(fs);
+        }
+
+        /// <summary>Desenha um controle avulso, sem janela em volta.</summary>
+        private static void DesenharSolto(FrameworkElement raiz, string nome, double w, double h)
+        {
+            raiz.Measure(new Size(w, h));
+            raiz.Arrange(new Rect(0, 0, w, h));
+            raiz.UpdateLayout();
+
+            if (Environment.GetEnvironmentVariable("AIB_UI_PNG") != "1") return;
+
+            string dir = Environment.GetEnvironmentVariable("AIB_UI_PNG_DIR") ?? Path.GetTempPath();
+            Directory.CreateDirectory(dir);
+
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x16, 0x14, 0x1C)),
+                                 null, new Rect(0, 0, w, h));
+                dc.DrawRectangle(new VisualBrush(raiz), null, new Rect(8, 8, w - 16, h - 16));
             }
 
             var bmp = new RenderTargetBitmap((int)w, (int)h, 96, 96, PixelFormats.Pbgra32);
@@ -275,6 +306,129 @@ namespace AIB.Tests
 
                 Desenhar(janela, "chat-bolhas", 820, 605);
                 janela.Close();
+            });
+        }
+
+        [Fact]
+        public void CadeiaDeAcoes_ColapsaConcluidasEMostraAEmCurso()
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var cadeia = new ToolChainView();
+
+                // Sete concluídas: a trilha mostra no máximo cinco por vez e a barra de 4px é
+                // o único aviso de que há mais (A11 — nada de contador "+N").
+                for (int i = 0; i < 7; i++)
+                {
+                    string id = "t" + i;
+                    cadeia.Iniciar(id, "read_file", $@"C:\Users\Carlo\CPAPS\AIB\arquivo{i}.cs");
+                    cadeia.Concluir(id, falhou: false, recusada: false,
+                        artefato: new Artifact(ArtifactKind.FileRead, "read_file",
+                                               $@"C:\Users\Carlo\CPAPS\AIB\arquivo{i}.cs", false),
+                        detalhe: null);
+                }
+
+                cadeia.Concluidas.Should().Be(7);
+
+                // E uma em curso ao lado.
+                cadeia.Iniciar("t7", "run_command", "dotnet test AIB.Tests");
+                cadeia.TemAcaoEmCurso.Should().BeTrue();
+
+                DesenharSolto(cadeia, "cadeia-acoes", 640, 70);
+            });
+        }
+
+        [Fact]
+        public void CadeiaDeAcoes_FalhaFicaVisivelAteAProximaAcao()
+        {
+            // §4.7: o erro é o que o usuário precisa ler. Colapsar num ícone de 22px junto com
+            // os sucessos transformaria a falha em detalhe.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var cadeia = new ToolChainView();
+
+                cadeia.Iniciar("a", "write_file", @"C:\Windows\System32\config\algo.txt");
+                cadeia.Concluir("a", falhou: true, recusada: false,
+                    artefato: new Artifact(ArtifactKind.FileWritten, "write_file",
+                                           @"C:\Windows\System32\config\algo.txt", true, "acesso negado"),
+                    detalhe: "ERRO: acesso negado ao caminho.");
+
+                cadeia.TemAcaoEmCurso.Should().BeTrue("a falha continua visível");
+                cadeia.Concluidas.Should().Be(0, "a falha ainda não virou ícone");
+
+                DesenharSolto(cadeia, "cadeia-falha", 640, 70);
+
+                // A ação seguinte recolhe a falha para a trilha.
+                cadeia.RecolherFalhaPendente();
+                cadeia.Concluidas.Should().Be(1);
+            });
+        }
+
+        [Fact]
+        public void CadeiaDeAcoes_AguardandoConfirmacao_TrocaORotulo()
+        {
+            // §5.3: enquanto o card de confirmação está na tela, a fila fica bloqueada e o chip
+            // correspondente diz "Aguardando", não "Executando".
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var cadeia = new ToolChainView();
+                cadeia.Iniciar("x", "run_command", "Remove-Item -Recurse C:\\temp");
+                cadeia.Aguardar();
+
+                var rotulo = (System.Windows.Controls.TextBlock)cadeia.FindName("RotuloEstado");
+                rotulo.Text.Should().Be("Aguardando");
+
+                DesenharSolto(cadeia, "cadeia-aguardando", 640, 70);
+            });
+        }
+
+        [Fact]
+        public void CardDeConfirmacao_MostraOComandoExatoEDesenha()
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var card = new ConfirmCardView();
+                card.Preencher(new CommandConfirmationContext
+                {
+                    Tool = "run_command",
+                    Command = "Remove-Item -Recurse -Force C:\\Users\\Carlo\\CPAPS\\AIB\\bin",
+                    Level = 5,
+                    Cwd = "C:\\Users\\Carlo\\CPAPS\\AIB"
+                });
+
+                var alvo = (System.Windows.Controls.TextBlock)card.FindName("AlvoText");
+                alvo.Text.Should().Be("Remove-Item -Recurse -Force C:\\Users\\Carlo\\CPAPS\\AIB\\bin",
+                    "o card mostra o comando EXATO que vai rodar");
+
+                DesenharSolto(card, "card-confirmacao", 620, 260);
+            });
+        }
+
+        [Fact]
+        public void CardDeConfirmacao_Descartado_DevolveRecusa()
+        {
+            // O card vive na lista de mensagens: limpar a conversa apaga o elemento da tela, e
+            // quem espera a resposta precisa receber recusa em vez de esperar para sempre.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var card = new ConfirmCardView();
+                card.Preencher(new CommandConfirmationContext { Tool = "run_command", Command = "x" });
+
+                card.Resposta.IsCompleted.Should().BeFalse();
+                card.Descartar();
+
+                card.Resposta.IsCompleted.Should().BeTrue();
+                card.Resposta.Result.Allowed.Should().BeFalse("descarte nunca autoriza");
             });
         }
 

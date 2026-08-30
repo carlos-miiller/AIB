@@ -120,7 +120,9 @@ public partial class ChatWindow : Window
         if (EmptyTitleText != null) EmptyTitleText.Text = $"Converse com {nome}";
 
         // Limpa a tela
+        DescartarConfirmacaoPendente();
         if (MessagesPanel != null) MessagesPanel.Children.Clear();
+        _cadeiaAtual = null;
         // Limpa o contexto do OpenAI Service (injeta o SOUL.MD atual)
         _conversation.ResetHistory();
 
@@ -318,6 +320,127 @@ public partial class ChatWindow : Window
             atual = System.Windows.Media.VisualTreeHelper.GetParent(atual)
                     ?? LogicalTreeHelper.GetParent(atual);
         }
+    }
+
+    /// <summary>
+    /// Cadeia de ações do turno corrente. Uma por turno: as ferramentas de um mesmo turno
+    /// colapsam todas no mesmo chip de ícones.
+    /// </summary>
+    private ToolChainView? _cadeiaAtual;
+
+    /// <summary>
+    /// Devolve a cadeia do turno, criando-a se ainda não existir.
+    /// <para>
+    /// Ela entra ACIMA do indicador "digitando" (§4): o agente ainda está trabalhando, e ver os
+    /// três pontos abaixo das ações é o que faz o conjunto ler como "fez isto, e continua".
+    /// </para>
+    /// </summary>
+    private ToolChainView GarantirCadeia(ref Border? typingBubble)
+    {
+        if (_cadeiaAtual != null) return _cadeiaAtual;
+
+        var cadeia = new ToolChainView { Margin = new Thickness(0, 0, 0, 14) };
+
+        // Posição: antes da linha do "digitando", se ela estiver na tela.
+        int indice = MessagesPanel.Children.Count;
+        if (typingBubble != null)
+        {
+            var linhaDoTyping = LinhaDe(typingBubble);
+            if (linhaDoTyping != null)
+            {
+                int achado = MessagesPanel.Children.IndexOf(linhaDoTyping);
+                if (achado >= 0) indice = achado;
+            }
+        }
+
+        MessagesPanel.Children.Insert(indice, cadeia);
+        AtualizarEstadoVazio();
+
+        _cadeiaAtual = cadeia;
+        return cadeia;
+    }
+
+    /// <summary>Card de confirmação à espera de decisão. Só pode haver um por vez.</summary>
+    private ConfirmCardView? _confirmacaoPendente;
+
+    /// <summary>
+    /// Mostra o card de confirmação na conversa e espera a decisão do usuário — §5.3.
+    /// <para>
+    /// Chamado pelo portão, de dentro da execução da ferramenta, que roda FORA da thread de
+    /// interface. Todo o trabalho visual é empurrado para o Dispatcher; o que volta é só a
+    /// resposta.
+    /// </para>
+    /// <para>
+    /// Enquanto o card está na tela a fila fica bloqueada (O7) e o chip da ação passa a
+    /// "Aguardando". O <see cref="ModalGuard"/> segura o desaparecimento da janela: o chat se
+    /// esconde ao perder o foco, e sumir com a pergunta pendente deixaria o agente parado sem
+    /// nada visível na tela.
+    /// </para>
+    /// </summary>
+    public async Task<(bool, bool)> PerguntarConfirmacaoAsync(CommandConfirmationContext contexto)
+    {
+        var card = await Dispatcher.InvokeAsync(() =>
+        {
+            var novo = new ConfirmCardView { Margin = new Thickness(0, 0, 0, 14) };
+            novo.Preencher(contexto);
+
+            _confirmacaoPendente = novo;
+            _cadeiaAtual?.Aguardar();
+
+            MessagesPanel.Children.Add(novo);
+            AtualizarEstadoVazio();
+            ChatScrollViewer.ScrollToEnd();
+
+            // A janela precisa estar visível para a pergunta ser vista.
+            if (Visibility != Visibility.Visible)
+            {
+                RepositionWindow();
+                Show();
+                Activate();
+            }
+
+            return novo;
+        });
+
+        using (ModalGuard.Enter())
+        {
+            var resposta = await card.Resposta.ConfigureAwait(false);
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (ReferenceEquals(_confirmacaoPendente, card)) _confirmacaoPendente = null;
+            });
+
+            return resposta;
+        }
+    }
+
+    /// <summary>
+    /// Descarta uma confirmação pendente, devolvendo recusa a quem espera.
+    /// <para>
+    /// Necessário porque o card vive na lista de mensagens: limpar a conversa ou trocar de
+    /// personagem apaga o elemento da tela, e sem isto a ferramenta ficaria esperando para
+    /// sempre por uma resposta que nunca viria.
+    /// </para>
+    /// </summary>
+    private void DescartarConfirmacaoPendente()
+    {
+        _confirmacaoPendente?.Descartar();
+        _confirmacaoPendente = null;
+    }
+
+    /// <summary>A linha do painel que hospeda este elemento, ou nulo se ele não estiver lá.</summary>
+    private FrameworkElement? LinhaDe(FrameworkElement? elemento)
+    {
+        DependencyObject? atual = elemento;
+        while (atual != null)
+        {
+            if (atual is FrameworkElement fe && MessagesPanel.Children.Contains(fe)) return fe;
+            atual = System.Windows.Media.VisualTreeHelper.GetParent(atual)
+                    ?? LogicalTreeHelper.GetParent(atual);
+        }
+
+        return null;
     }
 
     /// <summary>Some com o §5.6 assim que existe qualquer mensagem, e o traz de volta ao limpar.</summary>
@@ -682,34 +805,11 @@ public partial class ChatWindow : Window
 
         try
         {
-            var stream = _conversation.StreamResponseAsync(text, tech =>
-            {
-                // Log técnico interno
-                Console.Write(tech);
-
-                // Exibe visualmente o uso de ferramentas
-                var match = System.Text.RegularExpressions.Regex.Match(tech, @"\[(?:FALLBACK REGEX )?FERRAMENTA\] Nome: ([a-zA-Z_]+)");
-                if (match.Success)
-                {
-                    string toolName = match.Groups[1].Value;
-                    Dispatcher.BeginInvoke(() =>
-                    {
-                        var toolInfo = new TextBlock
-                        {
-                            Text = $"🔧 Usando ferramenta: {toolName}...",
-                            Foreground = new SolidCB(WColor.FromRgb(0x88, 0x88, 0x99)),
-                            FontSize = 11,
-                            FontStyle = FontStyles.Italic,
-                            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-                            Margin = new Thickness(12, 2, 0, 4)
-                        };
-                        // Insere antes dos 3 pontos se estiverem na tela, senão no final
-                        int insertIndex = typingBubble != null ? Math.Max(0, MessagesPanel.Children.Count - 1) : MessagesPanel.Children.Count;
-                        MessagesPanel.Children.Insert(insertIndex, toolInfo);
-                        ChatScrollViewer.ScrollToEnd();
-                    });
-                }
-            });
+            // O log técnico volta a ser só log. A cadeia de ações é desenhada a partir dos
+            // eventos tipados ToolStarted/ToolFinished, e não mais de uma expressão regular
+            // sobre a frase que o console imprime: mudar a frase do log quebrava a exibição
+            // sem quebrar teste nenhum.
+            var stream = _conversation.StreamResponseAsync(text, Console.Write);
 
             // Acumula a resposta completa silenciosamente.
             // SEM ConfigureAwait(false) de propósito: este laço é de interface, não de rede.
@@ -718,6 +818,26 @@ public partial class ChatWindow : Window
             // o catch e o finally continuem na thread de UI, como sempre foi.
             await foreach (var item in stream)
             {
+                // ── §4  CADEIA DE AÇÕES ──────────────────────────────────────────
+                if (item is ChatStreamItem.ToolStarted iniciada)
+                {
+                    // A cadeia entra ACIMA do indicador "digitando", na coluna da IA.
+                    var cadeia = GarantirCadeia(ref typingBubble);
+                    cadeia.RecolherFalhaPendente();
+                    cadeia.Iniciar(iniciada.Id, iniciada.Tool, iniciada.Argument);
+                    ChatScrollViewer.ScrollToEnd();
+                    continue;
+                }
+
+                if (item is ChatStreamItem.ToolFinished terminada)
+                {
+                    _cadeiaAtual?.Concluir(
+                        terminada.Id, terminada.Failed, terminada.Denied,
+                        terminada.Artifact, terminada.Detail);
+                    ChatScrollViewer.ScrollToEnd();
+                    continue;
+                }
+
                 // Fronteira de fala: o agente terminou de dizer o que ia dizer e vai usar uma
                 // ferramenta. Fecha o balão com o que foi acumulado e recomeça o acúmulo — o
                 // balão continua sendo renderizado só quando completo, como sempre foi.
@@ -779,6 +899,12 @@ public partial class ChatWindow : Window
                 typingTimer?.Stop();
                 RemoverLinha(typingBubble);
             }
+
+            // A cadeia deste turno fecha aqui. A falha que ainda estivesse visível recolhe
+            // para a trilha, e a próxima pergunta começa uma cadeia nova — as ações de turnos
+            // diferentes não se misturam no mesmo chip.
+            _cadeiaAtual?.RecolherFalhaPendente();
+            _cadeiaAtual = null;
 
             // Exibe a fala final de uma só vez. Quando o turno teve várias falas, as anteriores
             // já viraram balão na fronteira de cada ferramenta; aqui fecha só a última.
@@ -1146,7 +1272,9 @@ public partial class ChatWindow : Window
 
     private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
+        DescartarConfirmacaoPendente();
         MessagesPanel.Children.Clear();
+        _cadeiaAtual = null;
         _conversation.ResetHistory();
         int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
@@ -1235,6 +1363,8 @@ public partial class ChatWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        // Uma pergunta pendente vira recusa: fechar a janela não autoriza nada.
+        DescartarConfirmacaoPendente();
         _conversation?.ResetHistory();
         _voiceService?.Dispose();
         _shadowService?.Stop();

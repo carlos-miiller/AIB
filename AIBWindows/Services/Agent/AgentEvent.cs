@@ -42,6 +42,32 @@ public abstract record AgentEvent
     /// </summary>
     public sealed record TurnSegment(int Iteration) : AgentEvent;
 
+    /// <summary>
+    /// Uma ferramenta começou a executar.
+    /// <para>
+    /// Viaja tipado, e não como texto técnico, porque a interface precisa dele para desenhar a
+    /// cadeia de ações. Antes a tela lia o nome da ferramenta com uma expressão regular sobre a
+    /// mesma string de log que o console imprime — qualquer ajuste na frase do log quebrava a
+    /// exibição sem quebrar teste nenhum.
+    /// </para>
+    /// <para>
+    /// Quando o modelo pede várias ferramentas na mesma iteração, TODAS são anunciadas antes de
+    /// a primeira executar: elas rodam em paralelo, e a cadeia precisa mostrar isso.
+    /// </para>
+    /// </summary>
+    public sealed record ToolStarted(string Id, string Tool, string Arguments) : AgentEvent;
+
+    /// <summary>
+    /// Uma ferramenta terminou. <paramref name="Artifact"/> traz o literal já extraído — o
+    /// caminho absoluto, a linha de comando — pelo mesmo extrator que alimenta a memória.
+    /// </summary>
+    public sealed record ToolFinished(
+        string Id,
+        string Tool,
+        bool Failed,
+        Memory.Artifact? Artifact,
+        string Result) : AgentEvent;
+
     /// <summary>Fim do turno. Emitido exatamente uma vez, por último.</summary>
     public sealed record Completed(TurnOutcome Outcome, int IterationsUsed) : AgentEvent;
 }

@@ -208,8 +208,14 @@ public sealed class AgentLoop
 
                 if (calls.Count > 1)
                     yield return new AgentEvent.Technical($"\n[PARALELO] Executando {calls.Count} ferramentas em paralelo:\n");
+
+                // Todas anunciadas ANTES de a primeira executar: elas rodam em paralelo logo
+                // abaixo, e a cadeia de ações precisa mostrar as que estão em curso juntas.
                 foreach (var tc in calls)
+                {
                     yield return new AgentEvent.Technical($"[FERRAMENTA] Nome: {tc.Name} | Args: {tc.ArgumentsOrEmpty()}\n");
+                    yield return new AgentEvent.ToolStarted(tc.Id, tc.Name, tc.ArgumentsOrEmpty());
+                }
 
                 // EXECUÇÃO PARALELA: dispara todas e espera o conjunto. Em CPU lenta, três
                 // leituras de arquivo independentes rodam concorrentes em vez de seriadas.
@@ -220,6 +226,16 @@ public sealed class AgentLoop
                 foreach (var (tc, result) in results)
                 {
                     yield return new AgentEvent.Technical($"[FERRAMENTA] Resultado ({tc.Name}): {result}\n");
+
+                    // O literal sai do MESMO extrator que alimenta a memória. Dois extratores
+                    // fariam a bolha e o capítulo discordarem sobre o que foi feito.
+                    var artefato = Memory.ArtifactExtractor.Construir(tc.Name, tc.ArgumentsOrEmpty(), result);
+
+                    // O fracasso vem do resultado, não do artefato: ferramenta sem extrator
+                    // próprio devolve artefato nulo mesmo quando deu erro.
+                    yield return new AgentEvent.ToolFinished(
+                        tc.Id, tc.Name, Memory.ArtifactExtractor.Falhou(result), artefato, result);
+
                     store.AppendToolResult(tc.Id, result);
                     TrackRecentFile(tc);
                     if (tc.Name == "materialize_skill") _toolRegistry.Refresh();
