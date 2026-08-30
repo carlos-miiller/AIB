@@ -72,18 +72,6 @@ public partial class ChatWindow : Window
         ApplyCharacterUI();
         InputBox.Focus();
 
-        ContextSidebarControl.OnRecoverChat += (session) =>
-        {
-            if (string.IsNullOrWhiteSpace(session.Content)) return;
-            
-            _conversation.AppendRecoveredContext(session.Title, session.Content);
-            
-            AddUserBubble($"Recuperando contexto: {session.Title}");
-            AddAgentBubble("Contexto antigo carregado com sucesso. Como deseja continuar?");
-            
-            // Auto close sidebar after recovery
-            if (_isSidebarOpen) SidebarButton_Click(null, null);
-        };
 
 
 
@@ -358,6 +346,40 @@ public partial class ChatWindow : Window
 
         _cadeiaAtual = cadeia;
         return cadeia;
+    }
+
+    /// <summary>
+    /// Alimenta as abas do painel a partir de uma ação concluída — §6.2 e §6.3.
+    /// <para>
+    /// Os mesmos eventos que desenham a cadeia servem aqui. A cadeia mostra o turno corrente e
+    /// some com ele; o registro e a lista de arquivos atravessam a conversa inteira.
+    /// </para>
+    /// </summary>
+    private static void RegistrarAcao(ChatStreamItem.ToolFinished acao)
+    {
+        var artefato = acao.Artifact;
+
+        ActionLogService.Add(ActionLogService.Construir(
+            artefato?.Tool ?? "",
+            artefato,
+            acao.Failed,
+            acao.Detail,
+            saidaBruta: null));
+
+        // Só arquivo entra na lista de contexto, e só quando a ação deu certo: um caminho que
+        // falhou ou foi recusado não está no contexto de coisa nenhuma.
+        if (acao.Failed || artefato == null) return;
+
+        switch (artefato.Kind)
+        {
+            case AIB.Services.Memory.ArtifactKind.FileWritten:
+                ContextService.AddFile(artefato.Value, ContextOrigin.CreatedByAi);
+                break;
+
+            case AIB.Services.Memory.ArtifactKind.FileRead:
+                ContextService.AddFile(artefato.Value, ContextOrigin.ReadByAi);
+                break;
+        }
     }
 
     /// <summary>Card de confirmação à espera de decisão. Só pode haver um por vez.</summary>
@@ -834,6 +856,8 @@ public partial class ChatWindow : Window
                     _cadeiaAtual?.Concluir(
                         terminada.Id, terminada.Failed, terminada.Denied,
                         terminada.Artifact, terminada.Detail);
+
+                    RegistrarAcao(terminada);
                     ChatScrollViewer.ScrollToEnd();
                     continue;
                 }
@@ -1333,33 +1357,62 @@ public partial class ChatWindow : Window
     // Side Panel (Dashboard) Handlers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private bool _isSidebarOpen = false;
+    /// <summary>
+    /// O painel lateral é uma segunda JANELA (§6), e não um filho desta.
+    /// <para>
+    /// Como filho, ele dividia a largura com o chat: a janela de conversa encolhia ao abrir o
+    /// painel, que é exatamente a armadilha A2. Agora a de chat tem largura fixa e o painel
+    /// aparece ao lado, alinhado pela base.
+    /// </para>
+    /// </summary>
+    private SidePanelWindow? _painel;
 
     private void SidebarButton_Click(object sender, RoutedEventArgs e)
     {
-        _isSidebarOpen = !_isSidebarOpen;
-        
-        var ease = new QuadraticEase { EasingMode = EasingMode.EaseInOut };
-        
-        // A janela de chat tem largura FIXA de 770: ela NÃO encolhe quando o painel abre, o
-        // painel é que aparece ao lado (A2). O que cresce é só a Window que hospeda os dois —
-        // e na etapa seguinte o painel vira janela própria, como manda §6.
-        double targetWindowWidth = _isSidebarOpen ? 1130 : 820;
-        double targetSidebarWidth = _isSidebarOpen ? 300 : 0;
-
-        var winAnim = new DoubleAnimation(targetWindowWidth, new Duration(TimeSpan.FromMilliseconds(300))) { EasingFunction = ease };
-        var sidebarAnim = new DoubleAnimation(targetSidebarWidth, new Duration(TimeSpan.FromMilliseconds(300))) { EasingFunction = ease };
-
-        this.BeginAnimation(Window.WidthProperty, winAnim);
-        SidebarPanel.BeginAnimation(Border.WidthProperty, sidebarAnim);
-        
-        if (_isSidebarOpen)
+        if (_painel is { IsVisible: true })
         {
-            ContextSidebarControl.Refresh();
+            _painel.Hide();
+            return;
         }
+
+        if (_painel == null)
+        {
+            _painel = new SidePanelWindow(RecuperarChat) { Owner = this };
+
+            // A janela é criada uma vez e escondida, nunca fechada pelo botão: recriar a cada
+            // abertura perderia a aba selecionada e a posição que o usuário escolheu.
+            _painel.Closed += (_, _) => _painel = null;
+        }
+
+        PosicionarPainel();
+        _painel.Recarregar();
+        _painel.Show();
     }
 
+    /// <summary>Encosta o painel na direita da janela de chat, alinhado pela BASE.</summary>
+    private void PosicionarPainel()
+    {
+        if (_painel == null) return;
 
+        _painel.Left = Left + Width - 10;
+        _painel.Top = Top + Height - _painel.Height;
+    }
+
+    /// <summary>
+    /// Restaura uma conversa do histórico — §6.1. O painel permanece ABERTO depois da troca.
+    /// </summary>
+    private void RecuperarChat(ChatSession sessao)
+    {
+        if (string.IsNullOrWhiteSpace(sessao.Content)) return;
+
+        _conversation.AppendRecoveredContext(sessao.Title, sessao.Content);
+
+        AddUserBubble($"Recuperando contexto: {sessao.Title}");
+        AddAgentBubble("Contexto antigo carregado com sucesso. Como deseja continuar?");
+
+        ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
+        ChatScrollViewer.ScrollToEnd();
+    }
 
     protected override void OnClosed(EventArgs e)
     {

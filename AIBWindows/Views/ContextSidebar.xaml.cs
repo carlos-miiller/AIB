@@ -8,6 +8,24 @@ using AIB.Services;
 
 namespace AIB.Views
 {
+    /// <summary>
+    /// PAINEL ANTIGO — ESTACIONADO, SEM CHAMADOR.
+    /// <para>
+    /// O painel lateral vivo é a <see cref="SidePanelWindow"/>, com as três abas da §6 da spec
+    /// de chat: histórico de chats, arquivos no contexto e histórico de ações. Este controle
+    /// deixou de ser usado quando o painel virou janela própria.
+    /// </para>
+    /// <para>
+    /// Ele NÃO foi removido porque guarda as quatro abas que ficaram fora da spec — Lembretes,
+    /// Memória Recente, Arquivos Recentes e Shadow —, mantidas para revisão futura a pedido do
+    /// usuário. É a única razão de este arquivo existir: ele é o depósito daquele desenho, não
+    /// um caminho alternativo.
+    /// </para>
+    /// <para>
+    /// Nada aqui está ligado à interface. Antes de reaproveitar qualquer parte, note que as
+    /// cores são literais antigos e não passam pelos tokens de <c>Themes/Tokens.xaml</c>.
+    /// </para>
+    /// </summary>
     public partial class ContextSidebar : System.Windows.Controls.UserControl
     {
         public event Action<ChatSession> OnRecoverChat;

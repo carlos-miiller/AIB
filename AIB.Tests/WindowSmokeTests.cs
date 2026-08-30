@@ -433,6 +433,65 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void PainelLateral_AsTresAbasMontamEDesenham()
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                ContextService.Clear();
+                ActionLogService.Clear();
+
+                // Arquivos: um criado pela IA, um lido, um anexado pelo usuário.
+                ContextService.AddFile(@"C:\Users\Carlo\CPAPS\AIB\AIBWindows\Ui\ShrinkWrap.cs",
+                                       ContextOrigin.CreatedByAi);
+                ContextService.AddFile(@"C:\Users\Carlo\CPAPS\AIB\.planning\MEMORIA-HIERARQUICA.md",
+                                       ContextOrigin.ReadByAi);
+                ContextService.AddFile(@"C:\Users\Carlo\Downloads\relatorio-de-erros.log",
+                                       ContextOrigin.AttachedByUser);
+
+                // Ações: escrita, leitura e uma falha.
+                ActionLogService.Add(ActionLogService.Construir(
+                    "write_file",
+                    new Artifact(ArtifactKind.FileWritten, "write_file",
+                                 @"C:\Users\Carlo\CPAPS\AIB\AIBWindows\Ui\ShrinkWrap.cs", false, "2,1 KB"),
+                    falhou: false, detalhe: null, saidaBruta: null));
+
+                ActionLogService.Add(ActionLogService.Construir(
+                    "read_file",
+                    new Artifact(ArtifactKind.FileRead, "read_file",
+                                 @"C:\Users\Carlo\CPAPS\AIB\.planning\MEMORIA-HIERARQUICA.md", false),
+                    falhou: false, detalhe: null, saidaBruta: null));
+
+                ActionLogService.Add(ActionLogService.Construir(
+                    "run_command",
+                    new Artifact(ArtifactKind.CommandRun, "run_command",
+                                 "dotnet test AIB.Tests --filter Categoria=Integracao", true,
+                                 "conexão recusada"),
+                    falhou: true, detalhe: "ERRO: 127.0.0.1:11434 recusou a conexão.",
+                    saidaBruta: null));
+
+                var painel = new SidePanelWindow();
+
+                var abaArquivos = (System.Windows.Controls.RadioButton)painel.FindName("AbaArquivos");
+                var abaAcoes = (System.Windows.Controls.RadioButton)painel.FindName("AbaAcoes");
+
+                Desenhar(painel, "painel-historico", 350, 605);
+
+                abaArquivos.IsChecked = true;
+                Desenhar(painel, "painel-arquivos", 350, 605);
+
+                abaAcoes.IsChecked = true;
+                Desenhar(painel, "painel-acoes", 350, 605);
+
+                painel.Close();
+
+                ContextService.Clear();
+                ActionLogService.Clear();
+            });
+        }
+
+        [Fact]
         public void ConfirmacaoDestrutiva_Monta()
         {
             EmSta(() =>
