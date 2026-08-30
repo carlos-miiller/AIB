@@ -9,10 +9,15 @@ namespace AIB.Tests
     /// <summary>
     /// O portão humano das ferramentas destrutivas.
     /// <para>
-    /// Estes testes existem porque a ausência deles foi a causa raiz: a
-    /// CommandConfirmationWindow estava completa e correta, e ficou com ZERO chamadores em toda
-    /// a árvore sem que nada acusasse. O registry chamava WPF direto, então não havia como
-    /// exercitar o portão — e um gate que não é testado é um gate que some em silêncio.
+    /// Estes testes existem porque a ausência deles foi a causa raiz: a janela de confirmação
+    /// estava completa e correta, e ficou com ZERO chamadores em toda a árvore sem que nada
+    /// acusasse. O registry chamava WPF direto, então não havia como exercitar o portão — e um
+    /// gate que não é testado é um gate que some em silêncio.
+    /// </para>
+    /// <para>
+    /// Eles não sabem QUEM pergunta, e é isso que os manteve válidos quando a janela modal deu
+    /// lugar ao card dentro da conversa: o que está travado aqui é o contrato do portão, não a
+    /// forma da tela.
     /// </para>
     /// </summary>
     public class ConfirmationGateTests
