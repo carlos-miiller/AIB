@@ -37,7 +37,12 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
     public ToolChainView()
     {
         InitializeComponent();
-        Unloaded += (_, _) => PararSpinner();
+        Unloaded += (_, _) =>
+        {
+            PararSpinner();
+            _ritmo?.Stop();
+            _ritmo = null;
+        };
     }
 
     /// <summary>Quantas ações desta cadeia já terminaram.</summary>
@@ -95,23 +100,92 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
         RotuloEstado.Text = "Aguardando";
     }
 
+    /// <summary>Tempo mínimo que uma ação fica visível como "em execução".</summary>
+    /// <remarks>
+    /// Ler um arquivo pequeno leva milissegundos. Sem um piso, a ação aparecia e virava ícone
+    /// no mesmo quadro — e, com várias em paralelo, a tela cuspia a lista inteira de uma vez,
+    /// sem que desse para ver o que estava sendo feito. O atraso é SÓ do desenho: a ferramenta
+    /// já executou e o resultado já seguiu para o modelo. Nada espera por isto.
+    /// </remarks>
+    private static readonly TimeSpan TempoMinimoVisivel = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Conclusões esperando a vez de virar ícone.</summary>
+    private readonly Queue<(string Ferramenta, bool Falhou, bool Recusada, Artifact? Artefato, string? Detalhe)>
+        _aguardandoDesenho = new();
+
+    private System.Windows.Threading.DispatcherTimer? _ritmo;
+
     /// <summary>
     /// Encerra a ação: ela vira ícone na trilha do chip concluído, ou deixa o chip em curso em
     /// estado de erro (§4.3 e §4.7).
+    /// <para>
+    /// A conclusão entra numa FILA em vez de ser desenhada na hora. As ferramentas de um mesmo
+    /// bloco rodam em paralelo e terminam quase juntas; desenhá-las conforme chegam faz a
+    /// trilha aparecer inteira num piscar. A fila dá a cada uma o seu momento na tela.
+    /// </para>
     /// </summary>
     public void Concluir(string id, bool falhou, bool recusada, Artifact? artefato, string? detalhe)
     {
         _emCurso.TryGetValue(id, out string? ferramenta);
-        _emCurso.Remove(id);
         ferramenta ??= artefato?.Tool ?? "";
 
-        if (falhou)
+        // A remoção de _emCurso acontece só quando a conclusão for DESENHADA: até lá a ação
+        // ainda é uma das que estão em curso, e a contagem do chip precisa dizer isso.
+        _aguardandoDesenho.Enqueue((ferramenta, falhou, recusada, artefato, detalhe));
+        _idsAguardando.Enqueue(id);
+
+        GarantirRitmo();
+    }
+
+    private readonly Queue<string> _idsAguardando = new();
+
+    private void GarantirRitmo()
+    {
+        if (_ritmo != null) return;
+
+        _ritmo = new System.Windows.Threading.DispatcherTimer { Interval = TempoMinimoVisivel };
+        _ritmo.Tick += (_, _) => DesenharProxima();
+
+        // Começa a contar AGORA e só desenha no primeiro disparo: é isso que garante o piso de
+        // meio segundo para a ação que acabou de ser anunciada.
+        _ritmo.Start();
+    }
+
+    /// <summary>
+    /// Desenha na hora tudo que está na fila, ignorando o ritmo.
+    /// <para>
+    /// Existe para os ensaios: esperar meio segundo por ação transformaria um teste de lógica
+    /// em teste de relógio, lento e instável. O caminho de produção continua sendo a fila.
+    /// </para>
+    /// </summary>
+    private void DrenarParaEnsaio()
+    {
+        while (_aguardandoDesenho.Count > 0) DesenharProxima();
+
+        _ritmo?.Stop();
+        _ritmo = null;
+    }
+
+    private void DesenharProxima()
+    {
+        if (_aguardandoDesenho.Count == 0)
         {
-            MostrarFalha(ferramenta, recusada, artefato, detalhe);
+            _ritmo?.Stop();
+            _ritmo = null;
             return;
         }
 
-        AcrescentarIcone(ferramenta, artefato, falhou: false, recusada: false, detalhe: null);
+        var item = _aguardandoDesenho.Dequeue();
+        string id = _idsAguardando.Count > 0 ? _idsAguardando.Dequeue() : "";
+        if (id.Length > 0) _emCurso.Remove(id);
+
+        if (item.Falhou)
+        {
+            MostrarFalha(item.Ferramenta, item.Recusada, item.Artefato, item.Detalhe);
+            return;
+        }
+
+        AcrescentarIcone(item.Ferramenta, item.Artefato, falhou: false, recusada: false, detalhe: null);
 
         // Ainda há paralelas em curso: o chip continua, com a contagem atualizada.
         if (_emCurso.Count > 0)

@@ -278,6 +278,19 @@ namespace AIB.Tests
             });
         }
 
+        /// <summary>
+        /// Força a cadeia a desenhar tudo que está na fila, sem esperar o ritmo de meio segundo.
+        /// Por reflexão para não abrir um método de produção só por causa do ensaio — é o mesmo
+        /// caminho que os outros ensaios daqui usam para alcançar membros privados.
+        /// </summary>
+        private static void Drenar(ToolChainView cadeia)
+        {
+            typeof(ToolChainView)
+                .GetMethod("DrenarParaEnsaio", System.Reflection.BindingFlags.NonPublic
+                                             | System.Reflection.BindingFlags.Instance)!
+                .Invoke(cadeia, null);
+        }
+
         [Fact]
         public void CadeiaDeAcoes_ColapsaConcluidasEMostraAEmCurso()
         {
@@ -297,6 +310,7 @@ namespace AIB.Tests
                         artefato: new Artifact(ArtifactKind.FileRead, "read_file",
                                                $@"C:\Users\Carlo\CPAPS\AIB\arquivo{i}.cs", false),
                         detalhe: null);
+                Drenar(cadeia);
                 }
 
                 cadeia.Concluidas.Should().Be(7);
@@ -331,16 +345,19 @@ namespace AIB.Tests
                 // Uma termina: a contagem acompanha, e o chip não some com duas ainda rodando.
                 cadeia.Concluir("a", false, false,
                     new Artifact(ArtifactKind.FileRead, "read_file", @"C:.cs", false), null);
+                Drenar(cadeia);
 
                 cadeia.TemAcaoEmCurso.Should().BeTrue("ainda há duas em curso");
                 nome.Text.Should().Be("2 ferramentas");
 
                 cadeia.Concluir("b", false, false,
                     new Artifact(ArtifactKind.FileRead, "read_file", @"C:.cs", false), null);
+                Drenar(cadeia);
                 nome.Text.Should().Be("read_file", "sobrando uma, ela volta a aparecer pelo nome");
 
                 cadeia.Concluir("c", false, false,
                     new Artifact(ArtifactKind.FileRead, "read_file", @"C:\c.cs", false), null);
+                Drenar(cadeia);
 
                 cadeia.TemAcaoEmCurso.Should().BeFalse();
                 cadeia.Concluidas.Should().Be(3);
@@ -363,6 +380,7 @@ namespace AIB.Tests
                     artefato: new Artifact(ArtifactKind.FileWritten, "write_file",
                                            @"C:\Windows\System32\config\algo.txt", true, "acesso negado"),
                     detalhe: "ERRO: acesso negado ao caminho.");
+                Drenar(cadeia);
 
                 cadeia.TemAcaoEmCurso.Should().BeTrue("a falha continua visível");
                 cadeia.Concluidas.Should().Be(0, "a falha ainda não virou ícone");
@@ -371,6 +389,7 @@ namespace AIB.Tests
 
                 // A ação seguinte recolhe a falha para a trilha.
                 cadeia.RecolherFalhaPendente();
+                Drenar(cadeia);
                 cadeia.Concluidas.Should().Be(1);
             });
         }
