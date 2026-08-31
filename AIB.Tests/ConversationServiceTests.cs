@@ -692,8 +692,73 @@ namespace AIB.Tests
             await foreach (var _ in conversation.StreamResponseAsync("tudo bem?")) { }
 
             conversation.Chapters.Should().BeEmpty();
-            // Cada compactação custa um prefill frio: disparar cedo seria pior que o corte seco.
-            provider.CompleteCalls.Should().Be(0, "nenhuma chamada ao resumidor sem necessidade");
+
+            // Cada compactação custa um prefill frio: disparar cedo seria pior que o corte
+            // seco. A única chamada fora do stream aqui é a titulação, que acontece uma vez,
+            // depois do primeiro turno, quando o histórico ainda é pequeno.
+            provider.CompleteCalls.Should().Be(1, "só a titulação, e nenhuma ao resumidor");
+            conversation.Title.Should().Be("SISTEMA ONLINE", "o título vem do CompleteAsync, não do stream");
+        }
+
+        [Fact]
+        public async Task Titulo_SaiUmaVezSo_DepoisDoPrimeiroTurno()
+        {
+            // Renomear a conversa a cada turno é pior que um nome imperfeito: o item muda de
+            // nome embaixo do usuário enquanto ele lê a lista. E cada titulação derruba o
+            // cache de prefixo, que fica mais caro de reconstruir a cada turno que passa.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("ok");
+            provider.CompleteReply = "Ajuste no painel lateral";
+
+            var conversation = BuildConversation(settings, provider, out _);
+
+            var avisos = new List<string>();
+            conversation.OnTitleChanged += t => avisos.Add(t);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+            conversation.Title.Should().Be("Ajuste no painel lateral");
+
+            await foreach (var _ in conversation.StreamResponseAsync("e agora?")) { }
+            await foreach (var _ in conversation.StreamResponseAsync("e depois?")) { }
+
+            provider.CompleteCalls.Should().Be(1, "titula uma vez, não a cada turno");
+            avisos.Should().ContainSingle();
+        }
+
+        [Fact]
+        public async Task TituloImpublicavel_DeixaAConversaSemNome()
+        {
+            // Um modelo que responde um parágrafo em vez de um título não pode pendurar esse
+            // parágrafo no cabeçalho. Sem nome, quem arquiva cai na heurística antiga.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("ok");
+            provider.CompleteReply = new string('x', ChatTitler.MaxCaracteres + 20);
+
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+
+            conversation.Title.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task FalhaAoTitular_NaoDerrubaOTurno()
+        {
+            // A titulação roda depois de o usuário já ter a resposta. Nada nela pode escapar.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("resposta ao usuário");
+            provider.CompleteThrows = new InvalidOperationException("modelo fora do ar");
+
+            var conversation = BuildConversation(settings, provider, out _);
+
+            var texto = "";
+            await foreach (var item in conversation.StreamResponseAsync("oi"))
+            {
+                if (item is ChatStreamItem.Text t) texto += t.Value;
+            }
+
+            texto.Should().Contain("resposta ao usuário");
+            conversation.Title.Should().BeNull();
         }
 
         [Fact]

@@ -93,7 +93,12 @@ namespace AIB.Services
             catch { }
         }
 
-        public static void SaveCurrentSession(List<ChatMessage> currentHistory)
+        /// <param name="titulo">
+        /// Nome dado pelo modelo, quando existe. Sem ele vale a heurística antiga — a primeira
+        /// mensagem do usuário, cortada em 40 caracteres —, que nomeia o começo da conversa e
+        /// não o assunto dela.
+        /// </param>
+        public static void SaveCurrentSession(List<ChatMessage> currentHistory, string? titulo = null)
         {
             if (currentHistory == null || currentHistory.Count <= 1) return; // Only system prompt
 
@@ -131,7 +136,7 @@ namespace AIB.Services
 
             if (lines.Count == 0) return;
 
-            session.Title = firstUserMessage;
+            session.Title = string.IsNullOrWhiteSpace(titulo) ? firstUserMessage : titulo!;
             session.Content = string.Join("\n\n", lines);
 
             var history = LoadHistory();

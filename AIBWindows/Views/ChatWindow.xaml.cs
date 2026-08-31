@@ -43,6 +43,7 @@ public partial class ChatWindow : Window
         _conversation = conversation;
         _conversation.OnTokenCountChanged += UpdateTokenCounterUI;
         _conversation.OnWarmupStateChanged += HandleWarmupState;
+        _conversation.OnTitleChanged += AplicarTitulo;
 
         _shadowService = new ShadowAssistantService(_conversation, _settingsService);
         _shadowService.OnSuggestionReceived += OnShadowSuggestion;
@@ -1427,6 +1428,18 @@ public partial class ChatWindow : Window
             BtnToggleShadow.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#888899"));
             ManageShadowState();
         }
+    }
+
+    /// <summary>
+    /// Põe no cabeçalho o nome que o modelo deu à conversa.
+    /// <para>
+    /// O evento vem do fim do turno, fora da thread de interface — a titulação roda ainda sob
+    /// o portão, na thread do stream.
+    /// </para>
+    /// </summary>
+    private void AplicarTitulo(string titulo)
+    {
+        Dispatcher.BeginInvoke(new Action(() => ChatTitleText.Text = titulo));
     }
 
     private void ClearButton_Click(object sender, RoutedEventArgs e)

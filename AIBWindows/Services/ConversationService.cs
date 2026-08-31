@@ -82,6 +82,18 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private int _turnsRecorded;
 
+    /// <summary>
+    /// Nome da conversa, quando o modelo já o produziu. Enquanto for null, quem arquiva usa a
+    /// heurística antiga — a primeira mensagem do usuário, cortada.
+    /// </summary>
+    public string? Title { get; private set; }
+
+    /// <summary>Avisa a interface que a conversa ganhou nome. Dispara fora da thread de UI.</summary>
+    public event Action<string>? OnTitleChanged;
+
+    /// <summary>Já houve a retitulação do primeiro capítulo? Ela acontece uma vez só.</summary>
+    private bool _tituloRevisado;
+
     /// <summary>Capitulos desta sessao. So a thread que segura o <see cref="_turnGate"/> mexe.</summary>
     private readonly MemoryLayer _memory = new();
 
@@ -162,7 +174,7 @@ public sealed class ConversationService : IMessageStore
         }
 
         // IO de disco fora do lock: nada bloqueante segura o histórico.
-        if (toSave != null) ChatHistoryService.SaveCurrentSession(toSave);
+        if (toSave != null) ChatHistoryService.SaveCurrentSession(toSave, Title);
 
         // Histórico zerado é sessão nova: pasta nova em memory/sessions e contagem de turnos
         // reiniciada. Continuar gravando na pasta anterior misturaria duas conversas num
@@ -171,6 +183,8 @@ public sealed class ConversationService : IMessageStore
         {
             _sessionMemory = NewSessionMemory();
             _turnsRecorded = 0;
+            _tituloRevisado = false;
+            Title = null;
             _memory.Clear();
         }
 
@@ -377,6 +391,10 @@ public sealed class ConversationService : IMessageStore
             // Promoção antes de reescrever o bloco: se um ato nascer agora, ele já entra no
             // mesmo prompt, e o prefixo é invalidado UMA vez em vez de duas.
             await PromoteIfNeededAsync(compactor, ct).ConfigureAwait(false);
+
+            // Mesma carona: o prefixo já foi invalidado por esta compactação, então revisar o
+            // nome da conversa agora não custa cache nenhum.
+            await RetitularPeloCapituloAsync(capitulo.Summary, ct).ConfigureAwait(false);
 
             RefreshMemoryMessage(quota);
 
@@ -689,6 +707,12 @@ public sealed class ConversationService : IMessageStore
             // histórico enquanto este ainda não foi registrado.
             RecordLastTurn();
 
+            // A titulação vem ANTES da compactação, e cedo: ela usa um prefixo próprio e
+            // derruba o cache do prefixo da conversa. Depois do primeiro turno o histórico é
+            // pequeno e reconstruí-lo custa quase nada; mais tarde custaria caro.
+            if (!cancelado)
+                await TitularSeNecessarioAsync().ConfigureAwait(false);
+
             // Compactação só depois de um turno que terminou inteiro. Cancelado no meio, o
             // histórico pode ter um tool_calls pendente, e resumir metade de uma cadeia
             // produziria um capítulo que afirma o que ainda não aconteceu.
@@ -698,6 +722,95 @@ public sealed class ConversationService : IMessageStore
 
             _turnGate.Release();
         }
+    }
+
+    /// <summary>Quanto a titulação pode demorar antes de ser abandonada.</summary>
+    private static readonly TimeSpan TitleTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Dá nome à conversa depois do primeiro turno completo.
+    /// <para>
+    /// Uma vez só, e cedo. Cedo porque a chamada usa prefixo próprio e derruba o cache da
+    /// conversa: com um turno no histórico, reconstruir o prefixo é barato; com a janela cheia,
+    /// não. Uma vez porque renomear a conversa embaixo do usuário, a cada turno, é pior do que
+    /// um nome imperfeito.
+    /// </para>
+    /// <para>
+    /// Falha, tempo esgotado ou resposta impublicável deixam o título como estava. Quem arquiva
+    /// cai na heurística antiga — a primeira mensagem do usuário. Nada aqui pode estragar o
+    /// turno, que já terminou.
+    /// </para>
+    /// </summary>
+    private async Task TitularSeNecessarioAsync()
+    {
+        if (Title != null || _turnsRecorded != 1) return;
+
+        try
+        {
+            var turnos = TurnSplitter.Split(Snapshot());
+            if (turnos.Count == 0) return;
+
+            var primeiro = turnos[0];
+            string material = ChatTitler.Material(primeiro.UserText, primeiro.AssistantText);
+
+            var settings = _settingsService.LoadSettings();
+            var titulador = new ChatTitler(_providerFactory.GetProvider(settings));
+
+            using var timeout = new CancellationTokenSource(TitleTimeout);
+            string? titulo = await titulador.TitularAsync(material, timeout.Token).ConfigureAwait(false);
+
+            DefinirTitulo(titulo);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TITULO] Falha ao nomear a conversa: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Renomeia a conversa quando o primeiro capítulo fecha.
+    /// <para>
+    /// O título do primeiro turno nomeia a INTENÇÃO inicial, que às vezes não é o assunto: uma
+    /// conversa que começa em "por que isso não compila" pode terminar sendo a reforma de um
+    /// subsistema. O resumo do capítulo já sabe disso.
+    /// </para>
+    /// <para>
+    /// Aqui não custa cache: a compactação que acabou de rodar já invalidou o prefixo. Por isso
+    /// esta é a única retitulação — em qualquer outro momento ela seria paga duas vezes.
+    /// </para>
+    /// </summary>
+    private async Task RetitularPeloCapituloAsync(string resumo, CancellationToken ct)
+    {
+        if (_tituloRevisado) return;
+        _tituloRevisado = true;
+
+        if (string.IsNullOrWhiteSpace(resumo)) return;
+
+        try
+        {
+            var settings = _settingsService.LoadSettings();
+            var titulador = new ChatTitler(_providerFactory.GetProvider(settings));
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TitleTimeout);
+
+            string? titulo = await titulador.TitularAsync(resumo, timeout.Token).ConfigureAwait(false);
+            DefinirTitulo(titulo);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TITULO] Falha ao revisar o nome da conversa: {ex.Message}");
+        }
+    }
+
+    private void DefinirTitulo(string? titulo)
+    {
+        if (string.IsNullOrWhiteSpace(titulo)) return;
+        if (titulo == Title) return;
+
+        Title = titulo;
+        Console.WriteLine($"[TITULO] Conversa nomeada: {titulo}");
+        OnTitleChanged?.Invoke(titulo);
     }
 
     /// <summary>Resposta única e sem estado (Shadow Assistant, utilitários).</summary>
