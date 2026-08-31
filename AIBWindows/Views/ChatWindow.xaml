@@ -268,7 +268,7 @@
                     </Grid>
 
                     <!-- ── §3.7  BARRA DE INPUT ─────────────────────────── -->
-                    <Grid Grid.Row="2" Margin="20,0,20,10">
+                    <Grid Grid.Row="2" Margin="20,0,20,0">
                         <Border Background="{StaticResource InputFrameBrush}"
                                 CornerRadius="{StaticResource RadiusInputFrame}"
                                 Padding="1.5">
@@ -400,7 +400,13 @@
                     </Grid>
 
                     <!-- ── §3.8  RODAPÉ DE CONTEXTO ─────────────────────── -->
-                    <Grid Grid.Row="3" Margin="26,0,26,14" MinHeight="26">
+                    <!-- 5px acima e abaixo, e nada mais.
+                         O vão de antes vinha de três somas invisíveis: 10px de margem
+                         inferior da barra de digitação, 14px de margem inferior daqui e um
+                         MinHeight de 26 que centralizava um texto de 12 — mais 5 de cada
+                         lado. A linha parecia flutuar no meio de um espaço vazio. Sem o
+                         MinHeight, a altura é a do texto. -->
+                    <Grid Grid.Row="3" Margin="26,5,26,5">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
