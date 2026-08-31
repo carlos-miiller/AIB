@@ -956,6 +956,27 @@ public partial class ChatWindow : Window
                     continue;
                 }
 
+                // O modelo começou a raciocinar. Em modelo de raciocínio isto acontece bem
+                // antes da primeira palavra — em CPU, dezenas de segundos antes — e às vezes é
+                // tudo que acontece, porque o turno termina em ferramenta sem nenhuma fala.
+                //
+                // É o momento certo para os três pontos. Adiantá-los para o ENVIO era mentira:
+                // ali o modelo pode nem ter sido carregado ainda. Aqui existe token saindo.
+                if (item is ChatStreamItem.Thinking)
+                {
+                    if (typingBubble == null)
+                    {
+                        var pensando = AddTypingIndicator();
+                        typingBubble = pensando.bubble;
+                        typingTimer = pensando.timer;
+                        ChatScrollViewer.ScrollToEnd();
+                    }
+
+                    idleTimer.Stop();
+                    idleTimer.Start();
+                    continue;
+                }
+
                 // Fronteira de fala: o agente terminou de dizer o que ia dizer e vai usar uma
                 // ferramenta. Fecha o balão com o que foi acumulado e recomeça o acúmulo — o
                 // balão continua sendo renderizado só quando completo, como sempre foi.
@@ -986,15 +1007,9 @@ public partial class ChatWindow : Window
                 fullText += chunk;
                 GibberishVoiceService.SpeakChunk(chunk);
 
-                // Os três pontos nascem com a PRIMEIRA palavra, e não com o envio.
-                //
-                // Já foram adiantados para o começo do turno, para dar sinal de vida enquanto o
-                // modelo pensa em silêncio. Ficou errado: o indicador afirma que a IA está
-                // falando, e durante a geração ela ainda não está. Quem cobre o silêncio é a
-                // cadeia de ações, que aparece assim que a primeira ferramenta começa.
-                //
-                // Este mesmo trecho também repõe o indicador quando ele foi retirado pelos 3
-                // segundos de inatividade e o texto voltou a chegar.
+                // Os três pontos, quando o modelo não raciocina — aí a primeira palavra é
+                // mesmo o primeiro sinal. Repõe também o indicador retirado pelos 3 segundos
+                // de inatividade.
                 if (typingBubble == null)
                 {
                     var tuple = AddTypingIndicator();

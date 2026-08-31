@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -119,7 +119,7 @@ public sealed class AgentLoop
                     }
                     else
                     {
-                        yield return new AgentEvent.Technical(text.Text);
+                        yield return new AgentEvent.Reasoning(text.Text);
                     }
                 }
                 else if (chunk is StreamChunk.ToolCallDelta delta)

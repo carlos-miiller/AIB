@@ -597,6 +597,14 @@ public sealed class ConversationService : IMessageStore
                         RaiseTechnical(onTechnicalContent, technical.Value);
                         break;
 
+                    // O raciocínio segue para o console como sempre foi; o que ele ganha aqui
+                    // é um item EM BANDA, para a tela saber que a geração começou sem precisar
+                    // do texto pensado.
+                    case AgentEvent.Reasoning reasoning:
+                        RaiseTechnical(onTechnicalContent, reasoning.Value);
+                        yield return new ChatStreamItem.Thinking();
+                        break;
+
                     case AgentEvent.TokenUsage usage:
                         RaiseTokenCount(usage.Total, usage.Max, usage.Cached);
                         break;

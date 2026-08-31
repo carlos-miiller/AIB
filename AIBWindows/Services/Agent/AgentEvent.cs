@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using AIB.Services.Ai;
 using OpenAI.Chat;
 
@@ -25,8 +25,23 @@ public abstract record AgentEvent
     /// <summary>Texto de canal final — vai para o balão do usuário.</summary>
     public sealed record Text(string Value) : AgentEvent;
 
-    /// <summary>Conteúdo técnico: think, logs de ferramenta, diagnóstico do stream.</summary>
+    /// <summary>Conteúdo técnico: logs de ferramenta, diagnóstico do stream.</summary>
     public sealed record Technical(string Value) : AgentEvent;
+
+    /// <summary>
+    /// Texto do canal de raciocínio — o que o modelo pensa antes de responder.
+    /// <para>
+    /// Separado do <see cref="Technical"/> porque tem um significado que os logs de ferramenta
+    /// não têm: o modelo já está GERANDO. É o primeiro sinal de vida de um turno, e chega bem
+    /// antes da primeira palavra da resposta — em modelo de raciocínio rodando em CPU, dezenas
+    /// de segundos antes. Quem desenha a tela precisa distinguir isso de uma linha de log.
+    /// </para>
+    /// <para>
+    /// O conteúdo continua indo para o console junto com o resto do técnico; o que muda é que
+    /// agora dá para reagir à CHEGADA dele.
+    /// </para>
+    /// </summary>
+    public sealed record Reasoning(string Value) : AgentEvent;
 
     /// <summary>Contador de tokens durante o stream.</summary>
     public sealed record TokenUsage(int Total, int Max, int? Cached) : AgentEvent;

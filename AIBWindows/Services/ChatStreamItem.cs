@@ -1,4 +1,4 @@
-namespace AIB.Services;
+﻿namespace AIB.Services;
 
 /// <summary>
 /// Unidade do fluxo devolvido por <see cref="ConversationService.StreamResponseAsync"/>.
@@ -16,6 +16,16 @@ public abstract record ChatStreamItem
 
     /// <summary>Pedaço de texto do canal final.</summary>
     public sealed record Text(string Value) : ChatStreamItem;
+
+    /// <summary>
+    /// O modelo está raciocinando: chegou texto pelo canal de pensamento.
+    /// <para>
+    /// Não traz o conteúdo, de propósito. O pensamento não é fala e não entra na conversa —
+    /// ele continua indo só para o console. O que interessa à tela é o FATO de ele existir,
+    /// que é a prova de que a geração começou.
+    /// </para>
+    /// </summary>
+    public sealed record Thinking : ChatStreamItem;
 
     /// <summary>
     /// A fala corrente terminou e o agente partiu para uma ferramenta. O que veio até aqui é

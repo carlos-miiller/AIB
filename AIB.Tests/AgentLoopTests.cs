@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -254,6 +254,35 @@ namespace AIB.Tests
             string userText = string.Concat(events.OfType<AgentEvent.Text>().Select(t => t.Value));
             userText.Should().Be("Nada a fazer.");
             events.OfType<AgentEvent.Completed>().Single().Outcome.Should().Be(TurnOutcome.Answered);
+        }
+
+        [Fact]
+        public async Task Raciocinio_SaiComoEventoProprio_NaoComoTecnico()
+        {
+            // O raciocínio é o primeiro sinal de que o modelo está gerando, e chega muito
+            // antes da primeira palavra. A tela usa isso para acender o indicador de
+            // digitação; misturado aos logs de ferramenta no evento técnico, não havia como
+            // distinguir "modelo pensando" de "orquestrador imprimindo linha de log".
+            var provider = new ScriptedProvider(
+                null,
+                new StreamChunk[]
+                {
+                    new StreamChunk.TextDelta("hmm, deixa eu ver", TextChannel.Reasoning),
+                    new StreamChunk.TextDelta("Pronto.", TextChannel.Final),
+                    new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+                });
+            var store = new RecordingStore();
+
+            var events = await DrainAsync(BuildLoop(provider).RunAsync(Request(store), CancellationToken.None));
+
+            events.OfType<AgentEvent.Reasoning>().Select(r => r.Value)
+                .Should().Equal("hmm, deixa eu ver");
+
+            // E não pode vazar para o balão nem para o técnico.
+            events.OfType<AgentEvent.Technical>()
+                .Should().NotContain(t => t.Value.Contains("deixa eu ver"));
+            string userText = string.Concat(events.OfType<AgentEvent.Text>().Select(t => t.Value));
+            userText.Should().Be("Pronto.");
         }
 
         [Fact]
