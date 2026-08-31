@@ -63,16 +63,18 @@ public class RunCommandTool : ITool
     );
 
     /// <summary>
-    /// Remove o bloco CLIXML que o PowerShell escreve no stderr quando os fluxos estão
-    /// redirecionados.
+    /// Converte o bloco CLIXML do stderr em texto legivel, preservando o que houver de erro.
     /// <para>
-    /// O <c>$ProgressPreference</c> já cala o progresso, que é a fonte comum. Isto é a segunda
-    /// linha: aviso e informação também saem serializados, e o modelo não tem nada a fazer com
-    /// XML de infraestrutura — ele ocupa contexto e atrapalha a leitura do resultado.
+    /// Com stdout e stderr redirecionados, o PowerShell serializa em CLIXML tudo que nao e
+    /// texto puro — progresso, aviso, e tambem os REGISTROS DE ERRO. A primeira versao disto
+    /// jogava o bloco inteiro fora, e com isso cegava o modelo: um cmdlet que falhasse
+    /// devolvia "Comando executado com sucesso (sem saida)", e ele seguia adiante achando que
+    /// nao havia o que corrigir.
     /// </para>
     /// <para>
-    /// O que vem ANTES do bloco é preservado: erro de verdade e o CLIXML podem sair no mesmo
-    /// stderr, e engolir o erro junto seria trocar ruído por cegueira.
+    /// Agora o bloco e desmontado: os elementos de texto viram linhas, e as de progresso — as
+    /// unicas que nao dizem nada ao modelo — saem. O que estiver fora do bloco e preservado
+    /// como veio.
     /// </para>
     /// </summary>
     internal static string SemClixml(string? stderr)
@@ -82,12 +84,57 @@ public class RunCommandTool : ITool
         int inicio = stderr.IndexOf("#< CLIXML", StringComparison.Ordinal);
         if (inicio < 0) return stderr;
 
-        string antes = stderr.Substring(0, inicio);
-
         int fim = stderr.LastIndexOf("</Objs>", StringComparison.Ordinal);
-        string depois = fim < 0 ? "" : stderr.Substring(fim + "</Objs>".Length);
 
-        return (antes + depois).Trim();
+        string antes = stderr.Substring(0, inicio);
+        string depois = fim < 0 ? "" : stderr.Substring(fim + "</Objs>".Length);
+        string bloco = fim < 0 ? stderr.Substring(inicio) : stderr.Substring(inicio, fim - inicio);
+
+        var partes = new System.Collections.Generic.List<string>();
+        if (antes.Trim().Length > 0) partes.Add(antes.Trim());
+
+        string texto = TextoDoClixml(bloco);
+        if (texto.Length > 0) partes.Add(texto);
+
+        if (depois.Trim().Length > 0) partes.Add(depois.Trim());
+
+        return string.Join("\n", partes).Trim();
+    }
+
+    /// <summary>
+    /// Junta os elementos de texto do CLIXML, descartando os objetos de progresso.
+    /// <para>
+    /// Nao e um desserializador de CLIXML — e uma extracao deliberadamente burra. O que
+    /// interessa e a mensagem que o PowerShell escreveria no console; a arvore de tipos nao
+    /// tem uso nenhum para quem le do outro lado.
+    /// </para>
+    /// </summary>
+    private static string TextoDoClixml(string bloco)
+    {
+        // Objetos de progresso inteiros saem antes: o texto deles ("Preparando modulos para
+        // primeiro uso") seria colhido junto e nao diz nada sobre a falha.
+        string limpo = System.Text.RegularExpressions.Regex.Replace(
+            bloco,
+            "<Obj[^>]*S=\"progress\".*?</Obj>",
+            "",
+            System.Text.RegularExpressions.RegexOptions.Singleline
+            | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        var linhas = new System.Collections.Generic.List<string>();
+
+        foreach (System.Text.RegularExpressions.Match m in
+                 System.Text.RegularExpressions.Regex.Matches(limpo, "<S[^>]*>(.*?)</S>",
+                     System.Text.RegularExpressions.RegexOptions.Singleline))
+        {
+            string valor = System.Net.WebUtility.HtmlDecode(m.Groups[1].Value)
+                .Replace("_x000D__x000A_", "\n")
+                .Replace("_x000A_", "\n")
+                .Trim();
+
+            if (valor.Length > 0) linhas.Add(valor);
+        }
+
+        return string.Join("\n", linhas).Trim();
     }
 
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)

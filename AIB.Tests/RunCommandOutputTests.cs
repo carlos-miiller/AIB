@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using AIB.Services.Tools;
 using FluentAssertions;
 using Xunit;
@@ -29,6 +29,34 @@ namespace AIB.Tests
         public void BlocoDeProgresso_SaiInteiro()
         {
             Limpar(Ruido).Should().BeEmpty();
+        }
+
+        [Fact]
+        public void ErroSerializadoDentroDoBloco_ChegaAoModelo()
+        {
+            // A primeira versão disto jogava o bloco inteiro fora, e com isso cegava o modelo:
+            // um cmdlet que falhasse devolvia "sem saída", e ele seguia adiante achando que não
+            // havia o que corrigir. O erro do PowerShell viaja DENTRO do CLIXML.
+            string comErro =
+                "#< CLIXML\r\n<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\">"
+                + "<S S=\"Error\">Import-Csv : Não é possível processar o arquivo.</S></Objs>";
+
+            Limpar(comErro).Should().Contain("Import-Csv")
+                .And.Contain("Não é possível processar o arquivo");
+        }
+
+        [Fact]
+        public void ProgressoNaoContamina_OTextoDoErro()
+        {
+            string misturado =
+                "#< CLIXML\r\n<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\">"
+                + "<Obj S=\"progress\" RefId=\"0\"><MS><AV>Preparando módulos para primeiro uso.</AV></MS></Obj>"
+                + "<S S=\"Error\">Falha de verdade.</S></Objs>";
+
+            string limpo = Limpar(misturado);
+
+            limpo.Should().Contain("Falha de verdade");
+            limpo.Should().NotContain("Preparando módulos");
         }
 
         [Fact]

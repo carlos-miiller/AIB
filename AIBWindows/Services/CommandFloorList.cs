@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
@@ -44,7 +44,22 @@ public static class CommandFloorList
          "recursive-delete",
          "ACESSO NEGADO (FLOOR): deleção recursiva (Remove-Item -Recurse) — requer Nível 7."),
         // Format / partition
-        (new Regex(@"\bformat\b|\bdiskpart\b|\bwmic\s+logicaldisk\b|\bcipher\s+/w\b",
+        // O "\bformat\b" sozinho barrava Format-Table, Format-List e Format-Hex: o hifen
+        // e caractere nao-palavra, entao existe fronteira logo depois de "format" e a palavra
+        // casava dentro do nome do cmdlet. Aconteceu em uso real — uma busca por um nome numa
+        // planilha foi recusada com "formatacao/particao de disco", e o modelo passou os
+        // turnos seguintes tentando contornar uma permissao que nunca esteve em jogo.
+        //
+        // Uma recusa que mente sobre o motivo e pior que uma recusa: manda o agente procurar
+        // solucao no lugar errado.
+        //
+        // A negativa (?!\s*-\w) deixa passar os verbos-substantivo de formatacao de texto, e
+        // os cmdlets de disco que de fato destroem entram um a um, pelo nome. A cobertura
+        // ficou MAIOR que a anterior: Clear-Disk, Initialize-Disk e as operacoes de particao
+        // nao eram alcancadas.
+        (new Regex(@"\bformat\b(?!\s*-\w)|\bformat-volume\b|\bclear-disk\b"
+                   + @"|\binitialize-disk\b|\b(new|set|remove|resize)-partition\b"
+                   + @"|\bdiskpart\b|\bwmic\s+logicaldisk\b|\bcipher\s+/w\b",
                    RegexOptions.IgnoreCase | RegexOptions.Compiled),
          "format",
          "ACESSO NEGADO (FLOOR): formatação/partição de disco — requer Nível 7."),

@@ -1,4 +1,4 @@
-using AIB.Services;
+﻿using AIB.Services;
 using FluentAssertions;
 using Xunit;
 
@@ -10,6 +10,43 @@ namespace AIB.Tests
     /// </summary>
     public class CommandFloorListTests
     {
+        [Theory]
+        // Formatacao de TEXTO nao e formatacao de DISCO. O padrao antigo era "\bformat\b", e o
+        // hifen e caractere nao-palavra: havia fronteira logo depois de "format", entao a
+        // palavra casava dentro do nome do cmdlet.
+        //
+        // Aconteceu em uso real: uma busca por um nome numa planilha foi recusada com
+        // "formatacao/particao de disco", e o modelo passou os turnos seguintes tentando
+        // contornar uma permissao que nunca esteve em jogo. Recusa que mente sobre o motivo
+        // manda o agente procurar solucao no lugar errado.
+        [InlineData(@"Import-Csv arquivo.csv | Format-Table")]
+        [InlineData(@"Get-Process | Format-List")]
+        [InlineData(@"Get-Content bin | Format-Hex")]
+        [InlineData(@"Get-ChildItem | Format-Table -AutoSize")]
+        public void FormatacaoDeTexto_NaoEBloqueada(string comando)
+        {
+            var (hit, _) = CommandFloorList.Match(comando, userLevel: 1);
+
+            hit.Should().BeFalse($"'{comando}' formata SAIDA, nao disco");
+        }
+
+        [Theory]
+        // A contrapartida: os cmdlets de disco que de fato destroem. Clear-Disk,
+        // Initialize-Disk e as operacoes de particao nao eram alcancadas pelo padrao antigo.
+        [InlineData(@"Format-Volume -DriveLetter D")]
+        [InlineData(@"Clear-Disk -Number 1 -RemoveData")]
+        [InlineData(@"Initialize-Disk -Number 2")]
+        [InlineData(@"New-Partition -DiskNumber 1 -UseMaximumSize")]
+        [InlineData(@"Remove-Partition -DiskNumber 1 -PartitionNumber 2")]
+        [InlineData(@"format D: /fs:ntfs")]
+        public void FormatacaoDeDisco_ContinuaBloqueada(string comando)
+        {
+            var (hit, reason) = CommandFloorList.Match(comando, userLevel: 6);
+
+            hit.Should().BeTrue($"'{comando}' mexe em disco");
+            reason.Should().Contain("ACESSO NEGADO (FLOOR)");
+        }
+
         [Theory]
         // A forma nativa do PowerShell: era a que passava batido. O padrão original usava
         // "\b-recurse\b", e \b antes de hífen nunca casa — entre um espaço e um '-' os dois
