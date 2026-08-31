@@ -11,7 +11,10 @@
         WindowStartupLocation="Manual"
         Topmost="True"
         ShowInTaskbar="False"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
 
     <!--
         Implementação de refactor-interface/tela-chat-v3.html.

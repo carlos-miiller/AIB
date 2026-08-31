@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Reflection;
 using System.Threading;
@@ -27,35 +27,9 @@ namespace AIB.Tests
     /// </summary>
     public class SidePanelVisibilityTests
     {
-        private static void EmSta(Action acao)
-        {
-            Exception? falha = null;
+        private static void EmSta(Action acao) => WpfHost.EmSta(acao);
 
-            var t = new Thread(() =>
-            {
-                try { acao(); }
-                catch (Exception ex) { falha = ex; }
-            });
-
-            t.SetApartmentState(ApartmentState.STA);
-            t.Start();
-            t.Join(TimeSpan.FromSeconds(30)).Should().BeTrue();
-
-            if (falha != null) throw new Xunit.Sdk.XunitException($"{falha.GetType().Name}: {falha.Message}");
-        }
-
-        private static void GarantirRecursos()
-        {
-            var app = System.Windows.Application.Current ?? new System.Windows.Application();
-
-            if (app.Resources.MergedDictionaries.Count == 0)
-            {
-                app.Resources.MergedDictionaries.Add(new ResourceDictionary
-                {
-                    Source = new Uri("pack://application:,,,/AIB;component/Themes/Controls.xaml")
-                });
-            }
-        }
+        private static void GarantirRecursos() => WpfHost.GarantirRecursos();
 
         [Fact]
         public void OPainel_AbreSemRoubarOFoco()

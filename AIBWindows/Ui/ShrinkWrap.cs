@@ -76,10 +76,17 @@ public sealed class ShrinkWrap : Decorator
             return filho.DesiredSize;
         }
 
+        // Arredonda para cima, para pixel inteiro. A medição do texto devolve fração —
+        // 1000,4 numa medida real —, e largura fracionária põe o conteúdo em meia posição de
+        // pixel. Texto em meio pixel é rasterizado borrado, e foi o que apareceu como um leve
+        // borrão na bolha da IA. Para cima, e não para baixo: para baixo cortaria a última
+        // letra por causa do arredondamento.
+        largura = Math.Ceiling(largura);
+
         // 2ª passada: a altura precisa refletir a quebra na largura que vai valer de fato.
         filho.Measure(new Size(largura, constraint.Height));
 
-        return new Size(largura, filho.DesiredSize.Height);
+        return new Size(largura, Math.Ceiling(filho.DesiredSize.Height));
     }
 
     protected override Size ArrangeOverride(Size arrangeSize)

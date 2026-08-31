@@ -34,40 +34,9 @@ namespace AIB.Tests
         /// é mais simples que trazer um pacote só para isso, e deixa a falha visível como
         /// exceção normal.
         /// </summary>
-        private static void EmSta(Action acao)
-        {
-            Exception? falha = null;
+        private static void EmSta(Action acao) => WpfHost.EmSta(acao);
 
-            var t = new Thread(() =>
-            {
-                try { acao(); }
-                catch (Exception ex) { falha = ex; }
-            });
-
-            t.SetApartmentState(ApartmentState.STA);
-            t.Start();
-            t.Join(TimeSpan.FromSeconds(60)).Should().BeTrue("a janela não pode travar ao montar");
-
-            if (falha != null) throw new Xunit.Sdk.XunitException(
-                $"a janela não montou: {falha.GetType().Name}: {falha.Message}");
-        }
-
-        /// <summary>
-        /// Aplica os dicionários do App.xaml. Sem isto não existe Application.Current e todo
-        /// StaticResource de Themes/ some.
-        /// </summary>
-        private static void GarantirRecursos()
-        {
-            var app = Application.Current ?? new Application();
-
-            if (app.Resources.MergedDictionaries.Count == 0)
-            {
-                app.Resources.MergedDictionaries.Add(new ResourceDictionary
-                {
-                    Source = new Uri("pack://application:,,,/AIB;component/Themes/Controls.xaml")
-                });
-            }
-        }
+        private static void GarantirRecursos() => WpfHost.GarantirRecursos();
 
         private static void Desenhar(Window janela, string nome, double largura = 0, double altura = 0)
         {
@@ -490,6 +459,7 @@ namespace AIB.Tests
                 ActionLogService.Clear();
             });
         }
+
 
         [Fact]
         public void ConfirmacaoDestrutiva_Monta()

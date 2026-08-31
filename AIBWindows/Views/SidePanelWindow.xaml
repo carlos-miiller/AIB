@@ -8,7 +8,10 @@
         ShowInTaskbar="False" ResizeMode="NoResize"
         WindowStartupLocation="Manual"
         Topmost="True"
-        ShowActivated="False">
+        ShowActivated="False"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
 
     <!--
         §6 — PAINEL LATERAL, segunda janela flutuante de 300x520.

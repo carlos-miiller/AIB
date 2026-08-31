@@ -296,6 +296,44 @@ public partial class ChatWindow : Window
     /// Aparece só no hover da linha, e a bolha é limitada a 74% da largura da lista.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Casca da bolha da IA: a sombra numa camada, o conteúdo em OUTRA.
+    /// <para>
+    /// No WPF, um <c>Effect</c> obriga a subárvore inteira a ser rasterizada numa superfície
+    /// intermediária, e ali o ClearType é desligado — o texto passa a ser suavizado em escala
+    /// de cinza e fica visivelmente mais mole. Como a spec exige a sombra na bolha da IA (§3.5)
+    /// e a do usuário não tem nenhuma (O5), o efeito aparecia como um borrão só do lado da IA.
+    /// </para>
+    /// <para>
+    /// A saída é o conteúdo ser IRMÃO da camada que carrega a sombra, e não filho dela. Assim a
+    /// sombra continua sendo desenhada com efeito, e o texto é desenhado direto na tela.
+    /// </para>
+    /// <para>
+    /// Isto não vale para a bolha do usuário: sem sombra, ela nunca teve o problema, e uma
+    /// camada extra ali seria custo sem retorno.
+    /// </para>
+    /// </summary>
+    private Grid CascaDaIa(UIElement conteudo, Thickness recheio)
+    {
+        var grade = new Grid();
+
+        var fundo = new Border
+        {
+            Background = (System.Windows.Media.Brush)FindResource("SurfaceCardBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("BorderCardBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(18),
+            Effect = (System.Windows.Media.Effects.Effect)FindResource("CardShadow")
+        };
+
+        var caixa = new Border { Padding = recheio, Child = conteudo };
+
+        grade.Children.Add(fundo);
+        grade.Children.Add(caixa);
+
+        return grade;
+    }
+
     private Grid NovaLinha(FrameworkElement bolha, bool doUsuario)
     {
         var linha = new Grid { Margin = new Thickness(0, 0, 0, 14), Background = WBrushes.Transparent };
@@ -376,7 +414,7 @@ public partial class ChatWindow : Window
     /// três pontos abaixo das ações é o que faz o conjunto ler como "fez isto, e continua".
     /// </para>
     /// </summary>
-    private ToolChainView GarantirCadeia(ref Border? typingBubble)
+    private ToolChainView GarantirCadeia(ref FrameworkElement? typingBubble)
     {
         if (_cadeiaAtual != null) return _cadeiaAtual;
 
@@ -548,9 +586,6 @@ public partial class ChatWindow : Window
 
     private MarkdownViewer AddAgentBubble(string? initialText = null)
     {
-        // A casca vem do estilo: surfaceCard + borderCard + cardShadow + r18. É a mesma do
-        // card NÃO selecionado da tela de seleção (§3.5 B).
-        var border = new Border { Style = (Style)Resources["AgentBubble"] };
 
         var viewer = new MarkdownViewer
         {
@@ -609,13 +644,13 @@ public partial class ChatWindow : Window
         // A medição vai por fora, sobre o documento: perguntar ao visualizador não adianta,
         // porque ele devolve como desejada a mesma largura que recebeu. Os 2px de folga cobrem
         // o arredondamento entre a medição do texto e o desenho dele.
-        border.Child = new AIB.Ui.ShrinkWrap
+        var encolhido = new AIB.Ui.ShrinkWrap
         {
             Child = viewer,
             MedirNatural = () => AIB.Ui.FlowDocumentMeasure.LarguraNatural(viewer.Document) + 2
         };
 
-        var linha = NovaLinha(border, doUsuario: false);
+        var linha = NovaLinha(CascaDaIa(encolhido, new Thickness(17, 13, 17, 13)), doUsuario: false);
         AnimateBubbleIn(linha);
         ChatScrollViewer.ScrollToEnd();
         return viewer;
@@ -680,14 +715,9 @@ public partial class ChatWindow : Window
     /// Adiciona uma bolha "digitando" com 3 pontos animados.
     /// Retorna o Border e o DispatcherTimer para que o chamador possa pará-los.
     /// </summary>
-    private (Border bubble, System.Windows.Threading.DispatcherTimer timer) AddTypingIndicator()
+    private (FrameworkElement bubble, System.Windows.Threading.DispatcherTimer timer) AddTypingIndicator()
     {
-        // §3.6 — mesma casca da bolha da IA, com padding próprio e três pontos de 6px.
-        var border = new Border
-        {
-            Style = (Style)Resources["AgentBubble"],
-            Padding = new Thickness(18, 15, 18, 15)
-        };
+        // §3.6 — mesma casca da bolha da IA, com recheio próprio e três pontos de 6px.
 
         var pontos = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
         var bolinhas = new List<System.Windows.Shapes.Ellipse>();
@@ -708,7 +738,7 @@ public partial class ChatWindow : Window
             pontos.Children.Add(bolinha);
         }
 
-        border.Child = pontos;
+        var border = CascaDaIa(pontos, new Thickness(18, 15, 18, 15));
         var linha = NovaLinha(border, doUsuario: false);
         ChatScrollViewer.ScrollToEnd();
 
@@ -863,7 +893,7 @@ public partial class ChatWindow : Window
         string allText = "";
         string? errorText = null;
         
-        Border? typingBubble = null;
+        FrameworkElement? typingBubble = null;
         System.Windows.Threading.DispatcherTimer? typingTimer = null;
         var idleTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         idleTimer.Tick += (s, ev) =>
