@@ -1127,11 +1127,12 @@ public sealed class ConversationService : IMessageStore
             if (skills.Count > 0)
             {
                 contextualPrompt += "\n\nHabilidades dinâmicas disponíveis (use a ferramenta 'execute_skill' para chamá-las passando 'skill_name'):\n";
+                // Skill de documentacao entra na lista como qualquer outra: chama-la devolve
+                // o texto de instrucoes em vez de rodar um script, e isso e util — e como uma
+                // skill ensina um procedimento sem automatiza-lo. Pular as de markdown deixava
+                // instalada uma habilidade que o modelo nunca ficava sabendo que existia.
                 foreach (var skill in skills)
-                {
-                    if (skill.Interpreter.Equals("markdown", StringComparison.OrdinalIgnoreCase)) continue;
                     contextualPrompt += $"- {skill.Name}: {skill.Description}\n";
-                }
             }
         }
         catch { }

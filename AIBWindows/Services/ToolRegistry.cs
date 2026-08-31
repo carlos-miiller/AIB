@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -133,10 +133,14 @@ public class ToolRegistry
         return (true, null);
     }
 
+    /// <summary>
+    /// Reavalia as skills em disco. Chamado quando uma skill nasce durante a conversa: sem
+    /// isto, a habilidade recem-instalada so existiria na proxima abertura do app.
+    /// </summary>
     public void Refresh()
     {
-        // No Lazy Loading, não registramos skills dinâmicas no registry.
-        Console.WriteLine($"[REGISTRY] Refresh completo. Total de ferramentas nativas: {_tools.Count}");
+        AtualizarFerramentaDeSkills();
+        Console.WriteLine($"[REGISTRY] Refresh completo. Total de ferramentas: {_tools.Count}");
     }
 
     public bool Contains(string toolName) => _tools.ContainsKey(toolName);
@@ -155,6 +159,38 @@ public class ToolRegistry
             _tools[tool.Name] = tool;
             _nativeToolNames.Add(tool.Name);
             Console.WriteLine($"[REGISTRY] Ferramenta nativa registrada: '{tool.Name}'");
+        }
+
+        AtualizarFerramentaDeSkills();
+    }
+
+    /// <summary>
+    /// A execute_skill so existe quando ha skill instalada.
+    /// <para>
+    /// O schema de toda ferramenta registrada e reenviado ao modelo em CADA requisicao. Numa
+    /// instalacao sem skills, deixa-la registrada seria pagar ~80 tokens por turno, para
+    /// sempre, por uma ferramenta que so pode responder "nenhuma habilidade instalada".
+    /// </para>
+    /// <para>
+    /// E o outro lado da mesma moeda do lazy loading: as skills nao viram ferramentas
+    /// individuais, e a porta de entrada delas some quando nao ha nenhuma.
+    /// </para>
+    /// </summary>
+    private void AtualizarFerramentaDeSkills()
+    {
+        var skill = new ExecuteSkillTool();
+        int quantas = SkillService.GetSkillCount();
+
+        if (quantas > 0)
+        {
+            _tools[skill.Name] = skill;
+            _nativeToolNames.Add(skill.Name);
+            Console.WriteLine($"[REGISTRY] execute_skill registrada ({quantas} habilidade(s) instalada(s)).");
+        }
+        else
+        {
+            _tools.Remove(skill.Name);
+            _nativeToolNames.Remove(skill.Name);
         }
     }
 }

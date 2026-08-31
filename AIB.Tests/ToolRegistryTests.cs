@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using AIB.Services;
@@ -11,6 +12,7 @@ namespace AIB.Tests
     /// O registry é o único portão entre o modelo e o sistema do usuário: o gating por
     /// RequiredLevel e a recusa de nome desconhecido são a superfície de segurança inteira.
     /// </summary>
+    [Collection("Skills")]
     public class ToolRegistryTests
     {
         [Fact]
@@ -85,9 +87,37 @@ namespace AIB.Tests
             names.Should().OnlyHaveUniqueItems("nome duplicado corrompe a gramática de tools do modelo");
         }
 
+        /// <summary>
+        /// Aponta as skills para uma pasta vazia enquanto o bloco durar.
+        /// <para>
+        /// Sem isto, o registry passa a depender do que o usuario tem instalado em
+        /// ~/.AIB/skills: a execute_skill so e registrada quando ha alguma skill, e o ensaio
+        /// que conta ferramentas mudaria de resultado conforme a maquina.
+        /// </para>
+        /// </summary>
+        private sealed class SemSkills : IDisposable
+        {
+            private readonly string? _anterior = SkillService.SkillsDirectoryOverride;
+            private readonly string _vazia;
+
+            public SemSkills()
+            {
+                _vazia = Path.Combine(Path.GetTempPath(), "aib-sem-skills-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(_vazia);
+                SkillService.SkillsDirectoryOverride = _vazia;
+            }
+
+            public void Dispose()
+            {
+                SkillService.SkillsDirectoryOverride = _anterior;
+                try { Directory.Delete(_vazia, true); } catch { }
+            }
+        }
+
         [Fact]
         public void FerramentasNativasRegistradas_SaoAsTres()
         {
+            using var _ = new SemSkills();
             var registry = new ToolRegistry();
 
             var names = registry.GetActiveTools(9).Select(t => t.FunctionName).OrderBy(n => n).ToList();
@@ -95,6 +125,44 @@ namespace AIB.Tests
             // As três estão registradas. run_command e write_file só executam depois do
             // portão de confirmação — ver ToolRegistryTests do gate.
             names.Should().Equal("read_file", "run_command", "write_file");
+        }
+
+        [Fact]
+        public void ComHabilidadeInstalada_AExecuteSkillEntra()
+        {
+            // O outro lado do lazy loading: o schema da execute_skill é reenviado ao modelo em
+            // toda requisição, então numa instalação sem skills ela não deve existir.
+            using var _ = new SemSkills();
+
+            new ToolRegistry().Contains("execute_skill")
+                .Should().BeFalse("sem skill instalada, a porta de entrada delas não existe");
+
+            string pasta = Path.Combine(SkillService.Raiz, "ensaio");
+            Directory.CreateDirectory(pasta);
+            File.WriteAllText(Path.Combine(pasta, "SKILL.md"),
+                "---\nname: ensaio\ndescription: d\ninterpreter: markdown\n---\ncorpo");
+
+            new ToolRegistry().Contains("execute_skill").Should().BeTrue();
+        }
+
+        [Fact]
+        public void Refresh_ReavaliaAsSkillsEmDisco()
+        {
+            // Uma skill pode nascer durante a conversa. Sem o Refresh reavaliar, ela só
+            // existiria na próxima abertura do app.
+            using var _ = new SemSkills();
+            var registry = new ToolRegistry();
+
+            registry.Contains("execute_skill").Should().BeFalse();
+
+            string pasta = Path.Combine(SkillService.Raiz, "nova");
+            Directory.CreateDirectory(pasta);
+            File.WriteAllText(Path.Combine(pasta, "SKILL.md"),
+                "---\nname: nova\ndescription: d\ninterpreter: markdown\n---\ncorpo");
+
+            registry.Refresh();
+
+            registry.Contains("execute_skill").Should().BeTrue();
         }
 
         [Theory]
@@ -115,6 +183,7 @@ namespace AIB.Tests
         [Fact]
         public void GetCategorizedTools_DevolveAsNativasESemDinamicas()
         {
+            using var _ = new SemSkills();
             var registry = new ToolRegistry();
 
             var (natives, dynamics) = registry.GetCategorizedTools();
