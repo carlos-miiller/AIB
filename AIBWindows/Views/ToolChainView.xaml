@@ -1,4 +1,4 @@
-<UserControl x:Class="AIB.Views.ToolChainView"
+﻿<UserControl x:Class="AIB.Views.ToolChainView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              HorizontalAlignment="Left">
@@ -37,7 +37,7 @@
                       VerticalAlignment="Center" Margin="0,0,8,0"/>
 
                 <!-- ── §4.4  TRILHA DE ÍCONES ──────────────────────────────
-                     No máximo 5 visíveis: 5 x 22 + 4 x 8 = 142. A barra de 4px
+                     No máximo 5 visíveis: 5 x 22 + 4 x 8 = 142. A barra de 5px
                      é o ÚNICO aviso de que há mais ações fora de vista — o
                      contador "+N" foi implementado e removido de propósito,
                      não readicionar (A11). -->

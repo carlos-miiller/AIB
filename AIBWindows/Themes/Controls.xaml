@@ -1,4 +1,4 @@
-<!--
+﻿<!--
     ============================================================================
      ESTILOS COMPARTILHADOS — derivados de Tokens.xaml
     ============================================================================
@@ -35,6 +35,14 @@
          Sem setas e sem trilho visível: a spec não tem nenhum dos dois. -->
     <Style TargetType="ScrollBar">
         <Setter Property="Width" Value="6"/>
+        <!-- MinWidth e MinHeight PRECISAM estar aqui.
+             Um estilo implícito não substitui o estilo de tema inteiro: as propriedades que
+             ele não define continuam vindo de lá. O tema do WPF traz MinWidth/MinHeight de
+             SystemParameters.*ScrollBarHeight, que no Windows vale 17. Resultado medido:
+             Width=6 no estilo e ActualWidth=17 na tela — a barra ficava com quase três vezes
+             a espessura da spec, sem erro nenhum e sem nada no XAML que denunciasse. -->
+        <Setter Property="MinWidth" Value="6"/>
+        <Setter Property="MinHeight" Value="0"/>
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -67,7 +75,9 @@
         <Style.Triggers>
             <Trigger Property="Orientation" Value="Horizontal">
                 <Setter Property="Width" Value="Auto"/>
-                <Setter Property="Height" Value="4"/>
+                <Setter Property="MinWidth" Value="0"/>
+                <Setter Property="Height" Value="5"/>
+                <Setter Property="MinHeight" Value="5"/>
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="ScrollBar">
