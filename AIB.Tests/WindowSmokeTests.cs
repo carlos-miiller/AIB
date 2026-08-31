@@ -310,6 +310,44 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void CadeiaDeAcoes_VariasEmParalelo_MostramATodasEmVezDaUltima()
+        {
+            // O modelo pede várias ferramentas na mesma iteração e elas rodam juntas. O chip é
+            // um só: antes, cada anúncio sobrescrevia o anterior e a tela mostrava uma das
+            // três. Depois as três terminavam quase juntas e viravam três ícones de uma vez —
+            // parecia rajada, era a fila escondida atrás do último nome.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var cadeia = new ToolChainView();
+                cadeia.Iniciar("a", "read_file", @"C:.cs");
+                cadeia.Iniciar("b", "read_file", @"C:.cs");
+                cadeia.Iniciar("c", "read_file", @"C:\c.cs");
+
+                var nome = (System.Windows.Controls.TextBlock)cadeia.FindName("NomeFerramenta");
+                nome.Text.Should().Be("3 ferramentas", "as três em curso precisam ser visíveis");
+
+                // Uma termina: a contagem acompanha, e o chip não some com duas ainda rodando.
+                cadeia.Concluir("a", false, false,
+                    new Artifact(ArtifactKind.FileRead, "read_file", @"C:.cs", false), null);
+
+                cadeia.TemAcaoEmCurso.Should().BeTrue("ainda há duas em curso");
+                nome.Text.Should().Be("2 ferramentas");
+
+                cadeia.Concluir("b", false, false,
+                    new Artifact(ArtifactKind.FileRead, "read_file", @"C:.cs", false), null);
+                nome.Text.Should().Be("read_file", "sobrando uma, ela volta a aparecer pelo nome");
+
+                cadeia.Concluir("c", false, false,
+                    new Artifact(ArtifactKind.FileRead, "read_file", @"C:\c.cs", false), null);
+
+                cadeia.TemAcaoEmCurso.Should().BeFalse();
+                cadeia.Concluidas.Should().Be(3);
+            });
+        }
+
+        [Fact]
         public void CadeiaDeAcoes_FalhaFicaVisivelAteAProximaAcao()
         {
             // §4.7: o erro é o que o usuário precisa ler. Colapsar num ícone de 22px junto com

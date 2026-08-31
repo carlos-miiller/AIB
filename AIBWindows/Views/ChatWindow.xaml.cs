@@ -921,6 +921,17 @@ public partial class ChatWindow : Window
 
         try
         {
+            // Os três pontos entram AGORA, antes da primeira palavra.
+            //
+            // Antes eles só nasciam quando chegava texto. Quando o modelo vai direto para as
+            // ferramentas — que é o comportamento normal dele — não havia texto nenhum, e a
+            // tela ficava parada durante a geração inteira: em CPU, dezenas de segundos sem
+            // um único sinal de vida. Depois tudo aparecia junto, e parecia travamento seguido
+            // de rajada. Não era; era silêncio.
+            var inicio = AddTypingIndicator();
+            typingBubble = inicio.bubble;
+            typingTimer = inicio.timer;
+
             // O log técnico volta a ser só log. A cadeia de ações é desenhada a partir dos
             // eventos tipados ToolStarted/ToolFinished, e não mais de uma expressão regular
             // sobre a frase que o console imprime: mudar a frase do log quebrava a exibição
@@ -986,12 +997,13 @@ public partial class ChatWindow : Window
                 fullText += chunk;
                 GibberishVoiceService.SpeakChunk(chunk);
 
-                // Mostra os 3 pontos apenas quando a IA estiver enviando pedaços de texto (escrevendo)
+                // O indicador já está na tela desde o começo do turno; se ele foi retirado por
+                // inatividade, volta ao chegar texto novo.
                 if (typingBubble == null)
                 {
                     var tuple = AddTypingIndicator();
-                    typingBubble = tuple.Item1;
-                    typingTimer = tuple.Item2;
+                    typingBubble = tuple.bubble;
+                    typingTimer = tuple.timer;
                 }
 
                 // Reseta o timer de inatividade de 3 segundos

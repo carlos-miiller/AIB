@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -60,13 +61,27 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
 
         RotuloEstado.Text = "Executando";
         RotuloEstado.Foreground = (Brush)FindResource("TextSecondaryBrush");
-        NomeFerramenta.Text = ferramenta;
         NomeFerramenta.Foreground = (Brush)FindResource("AccentLilacBrush");
-        ArgumentoResumido.Text = argumento ?? "";
+
+        // O modelo pede várias ferramentas na MESMA iteração e elas rodam em paralelo. O chip
+        // é um só, e antes cada anúncio sobrescrevia o anterior: das três em curso, a tela
+        // mostrava uma, e depois as três terminavam quase juntas e viravam três ícones de uma
+        // vez. Parecia rajada; era a fila inteira escondida atrás do último nome.
+        if (_emCurso.Count > 1)
+        {
+            NomeFerramenta.Text = $"{_emCurso.Count} ferramentas";
+            ArgumentoResumido.Text = "em paralelo";
+            ChipEmCurso.ToolTip = MontarTooltipSimples(
+                string.Join(", ", _emCurso.Values), null);
+        }
+        else
+        {
+            NomeFerramenta.Text = ferramenta;
+            ArgumentoResumido.Text = argumento ?? "";
+            ChipEmCurso.ToolTip = MontarTooltipSimples(ferramenta, argumento);
+        }
 
         ChipEmCurso.Visibility = Visibility.Visible;
-        ChipEmCurso.ToolTip = MontarTooltipSimples(ferramenta, argumento);
-
         IniciarSpinner();
     }
 
@@ -96,10 +111,18 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
             return;
         }
 
+        AcrescentarIcone(ferramenta, artefato, falhou: false, recusada: false, detalhe: null);
+
+        // Ainda há paralelas em curso: o chip continua, com a contagem atualizada.
+        if (_emCurso.Count > 0)
+        {
+            var restante = _emCurso.First();
+            Iniciar(restante.Key, restante.Value, "");
+            return;
+        }
+
         PararSpinner();
         ChipEmCurso.Visibility = Visibility.Collapsed;
-
-        AcrescentarIcone(ferramenta, artefato, falhou: false, recusada: false, detalhe: null);
     }
 
     /// <summary>
