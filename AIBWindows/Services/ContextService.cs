@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -189,6 +189,38 @@ public static class ContextService
     }
 
     /// <summary>Tamanho legível: "38 KB", "1,2 MB".</summary>
+    /// <summary>
+    /// Bloco que apresenta ao modelo os arquivos que o USUÁRIO anexou. Vazio quando não há
+    /// nenhum, e nesse caso nada é inserido no prompt.
+    /// <para>
+    /// Só o caminho, nunca o conteúdo. Embutir o arquivo garantiria que o modelo o visse, mas
+    /// uma planilha de 240 KB não cabe na janela e a lista aceita até
+    /// <see cref="MaxRecentes"/> itens. Com o caminho literal na mão, ele chama
+    /// <c>read_file</c> quando precisar — e só do que precisar.
+    /// </para>
+    /// <para>
+    /// Só os anexados pelo usuário. O que a IA leu ou escreveu já está no histórico da
+    /// conversa; repetir aqui seria pagar duas vezes pela mesma informação.
+    /// </para>
+    /// </summary>
+    public static string RenderizarAnexados()
+    {
+        var anexados = Ativos.Where(a => a.Origin == ContextOrigin.AttachedByUser).ToList();
+        if (anexados.Count == 0) return "";
+
+        var texto = new System.Text.StringBuilder();
+        texto.AppendLine("Arquivos que o usuário anexou a esta conversa:");
+
+        foreach (var arquivo in anexados)
+            texto.AppendLine($"- {arquivo.FilePath}");
+
+        texto.Append(
+            "Use read_file com o caminho exato acima quando o usuário se referir a um deles "
+            + "pelo nome. Não os leia sem necessidade.");
+
+        return texto.ToString();
+    }
+
     public static string Humanizar(long bytes)
     {
         if (bytes <= 0) return "0 B";

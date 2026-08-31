@@ -701,6 +701,38 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task ArquivoAnexado_ChegaAoPromptDoModelo()
+        {
+            // O caminho tem de estar no que o provider recebe, e não só na lista da interface:
+            // era essa a lacuna — anexar pelo painel não informava nada ao modelo.
+            string caminho = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(), "anexo-" + Guid.NewGuid().ToString("N") + ".md");
+
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var provider = ProviderQueResponde("ok");
+            var conversation = BuildConversation(settings, provider, out _);
+
+            try
+            {
+                ContextService.AddFile(caminho, ContextOrigin.AttachedByUser);
+
+                await foreach (var _ in conversation.StreamResponseAsync("analisa esse arquivo")) { }
+
+                string prompt = string.Concat(
+                    conversation.SnapshotHistory()
+                        .OfType<SystemChatMessage>()
+                        .Select(m => string.Concat(m.Content.Where(c => c.Text != null).Select(c => c.Text))));
+
+                prompt.Should().Contain(caminho);
+            }
+            finally
+            {
+                foreach (var arquivo in ContextService.ActiveFiles.ToList())
+                    ContextService.RemoveFile(arquivo);
+            }
+        }
+
+        [Fact]
         public async Task Titulo_SaiUmaVezSo_DepoisDoPrimeiroTurno()
         {
             // Renomear a conversa a cada turno é pior que um nome imperfeito: o item muda de

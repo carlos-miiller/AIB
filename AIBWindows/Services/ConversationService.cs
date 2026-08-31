@@ -567,6 +567,20 @@ public sealed class ConversationService : IMessageStore
 
         string bloco = _memory.Render(quota, _tokenCounter);
 
+        // Os arquivos anexados viajam na MESMA mensagem da memória, e não numa terceira.
+        //
+        // Não é economia de linhas: o prefixo do prompt é lido pelo cache do Ollama de cima
+        // para baixo, e cada bloco novo é mais uma coisa que pode mudar de tamanho e invalidar
+        // tudo que vem depois. Uma mensagem só mantém a ordem estável — prompt de sistema,
+        // depois o que muda devagar, depois a conversa viva.
+        //
+        // Vai DEPOIS da memória de propósito: fatos, atos e capítulos mudam quando um capítulo
+        // nasce; a lista de anexos muda quando o usuário clica no "+", que é bem mais
+        // frequente. O que muda mais fica mais perto do fim.
+        string anexados = ContextService.RenderizarAnexados();
+        if (anexados.Length > 0)
+            bloco = bloco.Length > 0 ? bloco + "\n\n" + anexados : anexados;
+
         lock (_gate)
         {
             bool temBase = _history.Count > 0 && _history[0] is SystemChatMessage;
@@ -613,6 +627,12 @@ public sealed class ConversationService : IMessageStore
             _generationCts = cts;
         }
         var ct = cts.Token;
+
+        // Remontado a cada turno por causa dos anexos: o usuário pode ter clicado no "+" entre
+        // dois turnos, e esperar o próximo capítulo para o modelo saber do arquivo seria
+        // esperar demais. Custa uma montagem de string; quando nada mudou, o texto sai
+        // idêntico e o cache de prefixo não percebe diferença.
+        RefreshMemoryMessage(CurrentQuota(userLevel));
 
         try
         {
