@@ -4,7 +4,6 @@ using System.Windows;
 using AIB.Services;
 using AIB.Ui;
 
-using Brush = System.Windows.Media.Brush;
 using UserControl = System.Windows.Controls.UserControl;
 
 namespace AIB.Views;
@@ -76,15 +75,25 @@ public partial class ConfirmCardView : UserControl
         Loaded += (_, _) => RecusarButton.Focus();
     }
 
-    /// <summary>Trava os botões depois da decisão, para o card virar registro do que foi feito.</summary>
+    /// <summary>
+    /// Registra a decisão e trava os botões.
+    /// <para>
+    /// Travar não é enfeite: entre o clique e a saída do card da conversa existe um intervalo,
+    /// e um segundo clique nesse intervalo chegaria a um card já respondido. O
+    /// <see cref="TaskCompletionSource{TResult}.TrySetResult"/> já ignoraria o segundo, mas
+    /// deixar o botão vivo depois de decidido dá a impressão de que a decisão ainda está em
+    /// aberto.
+    /// </para>
+    /// <para>
+    /// Quem tira o card da tela é a janela de chat, assim que a resposta chega. Aqui só se
+    /// responde.
+    /// </para>
+    /// </summary>
     private void Encerrar(bool permitido)
     {
         PermitirButton.IsEnabled = false;
         RecusarButton.IsEnabled = false;
         SempreCheck.IsEnabled = false;
-
-        DicaText.Text = permitido ? "autorizado" : "recusado";
-        DicaText.Foreground = (Brush)FindResource(permitido ? "SuccessBrush" : "DangerBrush");
 
         _resposta.TrySetResult((permitido, permitido && SempreCheck.IsChecked == true));
     }

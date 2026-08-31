@@ -462,6 +462,66 @@ namespace AIB.Tests
 
 
         [Fact]
+        public async System.Threading.Tasks.Task CardDeConfirmacao_SaiDaConversaDepoisDeDecidido()
+        {
+            // O card é uma PERGUNTA, não uma mensagem. Respondida, ela sai: uma pergunta morta
+            // ocupando espaço permanente empurra o que veio depois para longe, e numa conversa
+            // com várias ações a lista vira uma pilha de formulários mortos.
+            //
+            // Nada se perde ao removê-lo: o autorizado vira ícone na cadeia de ações, e o
+            // histórico de ações do painel guarda a linha inteira com o comando exato.
+            System.Threading.Tasks.Task<(bool, bool)>? pergunta = null;
+            ChatWindow? chat = null;
+            System.Windows.Controls.Panel? lista = null;
+
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var servico = ServicoDescartavel();
+                chat = new ChatWindow(ConversaDescartavel(servico), servico);
+                lista = (System.Windows.Controls.Panel)chat.FindName("MessagesPanel");
+
+                pergunta = chat.PerguntarConfirmacaoAsync(new CommandConfirmationContext
+                {
+                    Tool = "run_command",
+                    Command = "dotnet --version",
+                    Level = 5
+                });
+            });
+
+            // O card não aparece no mesmo instante: PerguntarConfirmacaoAsync começa por um
+            // Dispatcher.InvokeAsync, que ENFILEIRA quando o chamador já está na thread de
+            // interface. Em produção a chamada vem da execução da ferramenta, que roda fora
+            // dela; aqui o segundo bloco é o que deixa a fila andar.
+            EmSta(() =>
+            {
+                var card = AcharCard(lista!);
+                card.Should().NotBeNull("o card entra na conversa ao perguntar");
+
+                var permitir = (System.Windows.Controls.Button)card!.FindName("PermitirButton");
+                permitir.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            });
+
+            var resposta = await pergunta!;
+            resposta.Item1.Should().BeTrue("o clique em Permitir autoriza");
+
+            EmSta(() =>
+            {
+                AcharCard(lista!).Should().BeNull("respondido, o card sai da conversa");
+                chat!.Close();
+            });
+        }
+
+        private static ConfirmCardView? AcharCard(System.Windows.Controls.Panel lista)
+        {
+            foreach (var filho in lista.Children)
+                if (filho is ConfirmCardView card) return card;
+
+            return null;
+        }
+
+        [Fact]
         public void ConfirmacaoDestrutiva_Monta()
         {
             EmSta(() =>

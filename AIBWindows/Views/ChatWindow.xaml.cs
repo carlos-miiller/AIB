@@ -522,6 +522,17 @@ public partial class ChatWindow : Window
             await Dispatcher.InvokeAsync(() =>
             {
                 if (ReferenceEquals(_confirmacaoPendente, card)) _confirmacaoPendente = null;
+
+                // Decidido, o card SAI da conversa. Ele é uma pergunta, não uma mensagem: uma
+                // pergunta já respondida ocupando espaço permanente empurra o que veio depois
+                // para longe, e numa conversa com várias ações a lista vira uma pilha de
+                // formulários mortos.
+                //
+                // Nada se perde: o que foi autorizado vira ícone na cadeia de ações, e o
+                // histórico de ações do painel guarda a linha inteira, com o comando exato no
+                // tooltip. Uma recusa vira ícone vermelho, com o mesmo registro.
+                MessagesPanel.Children.Remove(card);
+                AtualizarEstadoVazio();
             });
 
             return resposta;
