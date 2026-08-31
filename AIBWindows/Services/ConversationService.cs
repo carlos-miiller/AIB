@@ -94,6 +94,27 @@ public sealed class ConversationService : IMessageStore
     /// <summary>Já houve a retitulação do primeiro capítulo? Ela acontece uma vez só.</summary>
     private bool _tituloRevisado;
 
+    /// <summary>
+    /// Identidade da conversa VIVA no histórico arquivado.
+    /// <para>
+    /// Existe para o arquivamento poder acontecer a cada turno sem duplicar a entrada: a mesma
+    /// conversa é regravada por cima de si mesma até terminar. Troca no
+    /// <see cref="ResetHistory"/>, que é onde uma conversa acaba e outra começa.
+    /// </para>
+    /// </summary>
+    private string _sessionId = Guid.NewGuid().ToString();
+
+    /// <summary>
+    /// A conversa inteira, para o histórico arquivado — separada do histórico VIVO de propósito.
+    /// <para>
+    /// O histórico vivo encolhe: o Trim corta o começo e a compactação troca turnos por
+    /// capítulos. Arquivar a partir dele daria certo no primeiro turno e, depois da primeira
+    /// compactação, substituiria a conversa gravada por um pedaço dela — perdendo justamente a
+    /// parte antiga, que é a que o usuário não lembra e por isso vai procurar no histórico.
+    /// </para>
+    /// </summary>
+    private readonly List<ChatMessage> _transcricao = new();
+
     /// <summary>Capitulos desta sessao. So a thread que segura o <see cref="_turnGate"/> mexe.</summary>
     private readonly MemoryLayer _memory = new();
 
@@ -166,25 +187,28 @@ public sealed class ConversationService : IMessageStore
     /// <summary>Salva a sessão atual e recria o system prompt (SOUL/skills/home dir).</summary>
     public void ResetHistory()
     {
-        List<ChatMessage>? toSave = null;
+        bool tinhaConversa;
         lock (_gate)
         {
-            if (_history.Count > 1) toSave = new List<ChatMessage>(_history);
+            tinhaConversa = _transcricao.Count > 0;
             _history.Clear();
         }
 
         // IO de disco fora do lock: nada bloqueante segura o histórico.
-        if (toSave != null) ChatHistoryService.SaveCurrentSession(toSave, Title);
+        // A gravação final é por cima da mesma entrada que os turnos já vinham atualizando.
+        if (tinhaConversa) ArquivarConversaViva();
 
         // Histórico zerado é sessão nova: pasta nova em memory/sessions e contagem de turnos
         // reiniciada. Continuar gravando na pasta anterior misturaria duas conversas num
         // raw.jsonl só, e o resumo de capítulo sairia costurando assuntos sem relação.
-        if (toSave != null)
+        if (tinhaConversa)
         {
             _sessionMemory = NewSessionMemory();
             _turnsRecorded = 0;
             _tituloRevisado = false;
             Title = null;
+            _sessionId = Guid.NewGuid().ToString();
+            lock (_gate) { _transcricao.Clear(); }
             _memory.Clear();
         }
 
@@ -237,9 +261,15 @@ public sealed class ConversationService : IMessageStore
         {
             foreach (var fala in falas)
             {
-                _history.Add(fala.DoUsuario
+                var mensagem = fala.DoUsuario
                     ? ChatMessage.CreateUserMessage(fala.Texto)
-                    : ChatMessage.CreateAssistantMessage(fala.Texto));
+                    : (ChatMessage)ChatMessage.CreateAssistantMessage(fala.Texto);
+
+                _history.Add(mensagem);
+
+                // A transcrição também: quem abre uma conversa e continua nela espera que o
+                // arquivado continue de onde parou, e não que comece do turno seguinte.
+                _transcricao.Add(mensagem);
             }
         }
     }
@@ -281,6 +311,17 @@ public sealed class ConversationService : IMessageStore
 
             if (_sessionMemory.AppendTurn(ultimo with { Index = _turnsRecorded }))
                 _turnsRecorded++;
+
+            // A mesma unidade que vai para o disco alimenta a transcrição do histórico. Só as
+            // duas falas: o miolo de ferramentas do turno não é conversa.
+            lock (_gate)
+            {
+                if (!string.IsNullOrWhiteSpace(ultimo.UserText))
+                    _transcricao.Add(ChatMessage.CreateUserMessage(ultimo.UserText));
+
+                if (!string.IsNullOrWhiteSpace(ultimo.AssistantText))
+                    _transcricao.Add(ChatMessage.CreateAssistantMessage(ultimo.AssistantText));
+            }
         }
         catch (Exception ex)
         {
@@ -733,6 +774,16 @@ public sealed class ConversationService : IMessageStore
             if (!cancelado)
                 await TitularSeNecessarioAsync().ConfigureAwait(false);
 
+            // Arquiva a conversa a cada turno, por cima da própria entrada.
+            //
+            // Antes isto só acontecia no ResetHistory — fechar a janela, começar conversa nova,
+            // trocar de personagem. Uma conversa interrompida de qualquer outra forma (processo
+            // encerrado à força, queda de energia, atualização que reinicia o app) sumia
+            // inteira do histórico, e o usuário não tinha como saber que ela nunca chegou a ser
+            // gravada. Um histórico que só existe se o programa for fechado do jeito certo não
+            // é um histórico.
+            ArquivarConversaViva();
+
             // Compactação só depois de um turno que terminou inteiro. Cancelado no meio, o
             // histórico pode ter um tool_calls pendente, e resumir metade de uma cadeia
             // produziria um capítulo que afirma o que ainda não aconteceu.
@@ -741,6 +792,35 @@ public sealed class ConversationService : IMessageStore
                 await CompactIfNeededAsync(userLevel, CancellationToken.None).ConfigureAwait(false);
 
             _turnGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Grava a conversa viva no histórico, substituindo a própria entrada.
+    /// <para>
+    /// Regravar o arquivo inteiro a cada turno é aceitável porque ele guarda no máximo 50
+    /// conversas e é lido pelo painel de uma vez só. A alternativa — anexar incrementalmente —
+    /// exigiria um formato novo e um caminho de recuperação para arquivo cortado no meio.
+    /// </para>
+    /// </summary>
+    private void ArquivarConversaViva()
+    {
+        try
+        {
+            List<ChatMessage> transcricao;
+            lock (_gate) { transcricao = new List<ChatMessage>(_transcricao); }
+
+            // O primeiro item faz o papel do prompt de sistema, que o arquivador descarta: sem
+            // ele, uma conversa de um turno só teria duas mensagens e passaria pelo corte de
+            // "só o prompt de sistema".
+            transcricao.Insert(0, ChatMessage.CreateSystemMessage(""));
+
+            ChatHistoryService.SaveCurrentSession(transcricao, Title, _sessionId);
+        }
+        catch (Exception ex)
+        {
+            // Arquivar é acréscimo. Nada aqui pode escapar para o turno, que já terminou.
+            Console.WriteLine($"[HISTORICO] Falha ao arquivar a conversa: {ex.Message}");
         }
     }
 

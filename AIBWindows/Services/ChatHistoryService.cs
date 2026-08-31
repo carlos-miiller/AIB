@@ -98,7 +98,12 @@ namespace AIB.Services
         /// mensagem do usuário, cortada em 40 caracteres —, que nomeia o começo da conversa e
         /// não o assunto dela.
         /// </param>
-        public static void SaveCurrentSession(List<ChatMessage> currentHistory, string? titulo = null)
+        /// <param name="id">
+        /// Identidade da conversa VIVA. Passando o mesmo id de novo, a entrada é substituída em
+        /// vez de duplicada — é o que permite arquivar a cada turno em vez de só no fim.
+        /// </param>
+        public static void SaveCurrentSession(
+            List<ChatMessage> currentHistory, string? titulo = null, string? id = null)
         {
             if (currentHistory == null || currentHistory.Count <= 1) return; // Only system prompt
 
@@ -106,6 +111,8 @@ namespace AIB.Services
             {
                 Timestamp = DateTime.Now
             };
+
+            if (!string.IsNullOrWhiteSpace(id)) session.Id = id!;
 
             var lines = new List<string>();
             string firstUserMessage = "Novo Chat";
@@ -141,9 +148,20 @@ namespace AIB.Services
 
             var history = LoadHistory();
 
-            // Abrir uma conversa antiga põe o conteúdo dela no histórico vivo, e a próxima
-            // troca de conversa salvaria esse mesmo conteúdo como se fosse uma sessão nova.
-            // Sem esta checagem, cada ida e volta pelo painel multiplicava a mesma conversa.
+            // Mesma conversa gravada de novo: substitui no lugar. A conversa viva é arquivada
+            // a cada turno, e sem isto ela apareceria na lista uma vez por turno, cada cópia
+            // com um pedaço a mais.
+            int existente = history.FindIndex(h => h.Id == session.Id);
+            if (existente >= 0)
+            {
+                history[existente] = session;
+                SaveHistory(history);
+                return;
+            }
+
+            // Abrir uma conversa antiga põe o conteúdo dela no histórico vivo, e arquivá-la
+            // gravaria esse mesmo conteúdo como se fosse uma sessão nova. Sem esta checagem,
+            // cada ida e volta pelo painel multiplicava a mesma conversa.
             if (history.Any(h => h.Content == session.Content)) return;
 
             history.Insert(0, session);
