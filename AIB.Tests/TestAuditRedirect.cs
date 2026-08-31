@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using AIB.Services;
@@ -31,6 +31,16 @@ namespace AIB.Tests
 
             Directory.CreateDirectory(dir);
             AuditLogService.LogDirectoryOverride = dir;
+
+            // O histórico de conversas pelo mesmo motivo: fechar uma ChatWindow de ensaio
+            // chama ResetHistory, que arquiva a conversa. Sem desviar, a suíte deixava um
+            // chat_history.json de mentira dentro do ~/.AIB real.
+            string historico = Path.Combine(
+                Path.GetTempPath(),
+                "AIB_TestHistory_" + Guid.NewGuid().ToString("N"));
+
+            Directory.CreateDirectory(historico);
+            ChatHistoryService.HistoryDirectoryOverride = historico;
         }
     }
 }

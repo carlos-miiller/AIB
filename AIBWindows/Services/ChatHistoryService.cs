@@ -27,7 +27,38 @@ namespace AIB.Services
         private const string PrefixoUsuario = "USER: ";
         private const string PrefixoAgente = "AIB: ";
 
-        private static readonly string HistoryFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AIB", "chat_history.json");
+        /// <summary>
+        /// O histórico mora na pasta do usuário, junto com o resto do que é dele.
+        /// <para>
+        /// Ficava em <c>%APPDATA%\AIB</c>, sobra de antes da migração para <c>~/.AIB</c> —
+        /// era o único arquivo do usuário que tinha ficado para trás. A pasta do programa é
+        /// failsafe de leitura; a do usuário é a autoridade, e isso vale para o histórico
+        /// como vale para memória, personagens e skills.
+        /// </para>
+        /// <para>
+        /// Não há migração do arquivo antigo: ele foi descartado de propósito, a pedido, para
+        /// o histórico recomeçar limpo no formato lido pelo <see cref="Parse"/>.
+        /// </para>
+        /// </summary>
+        private static string HistoryFilePath => Path.Combine(DiretorioDoHistorico, "chat_history.json");
+
+        /// <summary>
+        /// Raiz alternativa para a suíte de ensaios. Mesmo papel do override da auditoria: um
+        /// ensaio que fecha uma janela de conversa dispara o arquivamento, e sem isto a suíte
+        /// escreveria conversas inventadas no histórico real do usuário.
+        /// </summary>
+        public static string? HistoryDirectoryOverride { get; set; }
+
+        private static string DiretorioDoHistorico => ResolverDiretorio(HistoryDirectoryOverride);
+
+        /// <summary>
+        /// Onde o histórico vai parar, dada a sobrescrita. Função pura de propósito: a suíte
+        /// inteira roda com a sobrescrita ligada, então um ensaio que lesse o caminho efetivo
+        /// só veria a pasta temporária e nunca perceberia se o padrão de produção voltasse
+        /// para o lugar errado.
+        /// </summary>
+        public static string ResolverDiretorio(string? sobrescrita) =>
+            sobrescrita ?? DirectoryService.DataDir;
 
         public static List<ChatSession> LoadHistory()
         {
