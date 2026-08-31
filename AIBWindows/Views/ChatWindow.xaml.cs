@@ -921,17 +921,6 @@ public partial class ChatWindow : Window
 
         try
         {
-            // Os três pontos entram AGORA, antes da primeira palavra.
-            //
-            // Antes eles só nasciam quando chegava texto. Quando o modelo vai direto para as
-            // ferramentas — que é o comportamento normal dele — não havia texto nenhum, e a
-            // tela ficava parada durante a geração inteira: em CPU, dezenas de segundos sem
-            // um único sinal de vida. Depois tudo aparecia junto, e parecia travamento seguido
-            // de rajada. Não era; era silêncio.
-            var inicio = AddTypingIndicator();
-            typingBubble = inicio.bubble;
-            typingTimer = inicio.timer;
-
             // O log técnico volta a ser só log. A cadeia de ações é desenhada a partir dos
             // eventos tipados ToolStarted/ToolFinished, e não mais de uma expressão regular
             // sobre a frase que o console imprime: mudar a frase do log quebrava a exibição
@@ -997,8 +986,15 @@ public partial class ChatWindow : Window
                 fullText += chunk;
                 GibberishVoiceService.SpeakChunk(chunk);
 
-                // O indicador já está na tela desde o começo do turno; se ele foi retirado por
-                // inatividade, volta ao chegar texto novo.
+                // Os três pontos nascem com a PRIMEIRA palavra, e não com o envio.
+                //
+                // Já foram adiantados para o começo do turno, para dar sinal de vida enquanto o
+                // modelo pensa em silêncio. Ficou errado: o indicador afirma que a IA está
+                // falando, e durante a geração ela ainda não está. Quem cobre o silêncio é a
+                // cadeia de ações, que aparece assim que a primeira ferramenta começa.
+                //
+                // Este mesmo trecho também repõe o indicador quando ele foi retirado pelos 3
+                // segundos de inatividade e o texto voltou a chegar.
                 if (typingBubble == null)
                 {
                     var tuple = AddTypingIndicator();
