@@ -32,11 +32,18 @@ namespace AIB.Views;
 public partial class SidePanelWindow : Window
 {
     private readonly Action<ChatSession>? _aoRecuperarChat;
+    private readonly Action<ChatSession>? _aoAbrirChat;
+    private readonly Action<ChatSession>? _aoExcluirChat;
 
-    public SidePanelWindow(Action<ChatSession>? aoRecuperarChat = null)
+    public SidePanelWindow(
+        Action<ChatSession>? aoRecuperarChat = null,
+        Action<ChatSession>? aoAbrirChat = null,
+        Action<ChatSession>? aoExcluirChat = null)
     {
         InitializeComponent();
         _aoRecuperarChat = aoRecuperarChat;
+        _aoAbrirChat = aoAbrirChat;
+        _aoExcluirChat = aoExcluirChat;
 
         // As listas são observáveis: o painel acompanha sem consultar. Sem isto, abrir o painel
         // mostraria o estado do momento da abertura e congelaria.
@@ -153,12 +160,46 @@ public partial class SidePanelWindow : Window
 
             var card = new Border { Style = (Style)FindResource("ItemCard"), Child = corpo };
             var alvo = sessao;
+
+            // O clique esquerdo continua sendo o que sempre foi: recuperar o contexto dentro
+            // da conversa corrente. Mexer nisso quebraria a mão de quem já usa o painel.
             card.MouseLeftButtonUp += (_, _) => _aoRecuperarChat?.Invoke(alvo);
+            card.ContextMenu = MenuDaConversa(alvo);
 
             ListaHistorico.Items.Add(card);
         }
 
         HistoricoVazio.Visibility = ListaHistorico.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Menu do botão direito de um item do histórico.
+    /// <para>
+    /// As duas primeiras opções são coisas diferentes, e a diferença importa: RECUPERAR traz a
+    /// conversa antiga para dentro da atual, como material de consulta, e o que está na tela
+    /// continua lá; ABRIR troca a conversa da tela pela antiga, que volta a ser a conversa
+    /// corrente. Uma soma, a outra substitui.
+    /// </para>
+    /// </summary>
+    private ContextMenu MenuDaConversa(ChatSession sessao)
+    {
+        var menu = new ContextMenu();
+
+        var recuperar = new MenuItem { Header = "Recuperar contexto na conversa atual" };
+        recuperar.Click += (_, _) => _aoRecuperarChat?.Invoke(sessao);
+
+        var abrir = new MenuItem { Header = "Abrir conversa" };
+        abrir.Click += (_, _) => _aoAbrirChat?.Invoke(sessao);
+
+        var excluir = new MenuItem { Header = "Excluir", Tag = "perigo" };
+        excluir.Click += (_, _) => _aoExcluirChat?.Invoke(sessao);
+
+        menu.Items.Add(recuperar);
+        menu.Items.Add(abrir);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(excluir);
+
+        return menu;
     }
 
     // ─────────────────────────────────────────────────────────────────────

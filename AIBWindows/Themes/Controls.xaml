@@ -610,4 +610,80 @@
         <Setter Property="Foreground" Value="{StaticResource AccentLilacBrush}"/>
     </Style>
 
+    <!-- ══════════════════════════════════════════════════════════════════
+         MENU DE CONTEXTO
+         Não consta das specs: nasceu com o botão direito no histórico de
+         conversas. Segue a casca do tooltip (§4.6), que é o elemento
+         flutuante que já existia, para não inventar uma terceira aparência.
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <Style TargetType="ContextMenu">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <!-- A margem existe para a sombra caber: o popup recorta no
+                         limite do conteúdo, e sem folga a sombra sai cortada. -->
+                    <Border Margin="8"
+                            Background="{StaticResource SurfaceTooltipBrush}"
+                            BorderBrush="{StaticResource BorderCardBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource RadiusTooltip}"
+                            Padding="4"
+                            Effect="{StaticResource TooltipShadow}">
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{StaticResource TextBodyBrush}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="Root" Background="Transparent"
+                            CornerRadius="6" Padding="10,6">
+                        <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource SurfaceHoverSoftBrush}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextStrongBrush}"/>
+                        </Trigger>
+                        <!-- Tag="perigo": item que apaga. Vermelho só no hover, para a lista
+                             em repouso não parecer um alerta. -->
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="Tag" Value="perigo"/>
+                                <Condition Property="IsHighlighted" Value="True"/>
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource DangerFill16Brush}"/>
+                            <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                        </MultiTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="Separator">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Separator">
+                    <Border Height="1" Margin="6,4"
+                            Background="{StaticResource BorderCardBrush}"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

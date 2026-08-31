@@ -201,6 +201,35 @@ public sealed class ConversationService : IMessageStore
         }
     }
 
+    /// <summary>
+    /// Troca o histórico vivo pela conversa arquivada inteira — o "Abrir conversa" do painel.
+    /// <para>
+    /// Diferente do <see cref="AppendRecoveredContext"/>, que ANEXA a conversa antiga como um
+    /// bloco de texto dentro da conversa corrente. Aqui a conversa antiga PASSA A SER a
+    /// corrente: cada fala volta ao seu papel — usuário como usuário, agente como agente — e
+    /// o modelo enxerga um diálogo, não um relatório sobre um diálogo.
+    /// </para>
+    /// <para>
+    /// O <see cref="ResetHistory"/> antes disso não é detalhe: ele salva a conversa que estava
+    /// aberta, abre pasta nova em memory/sessions e recria o system prompt. Sem ele, a conversa
+    /// aberta ficaria emendada na anterior e as duas dividiriam o mesmo raw.jsonl.
+    /// </para>
+    /// </summary>
+    public void LoadConversation(IReadOnlyList<ChatTurn> falas)
+    {
+        ResetHistory();
+
+        lock (_gate)
+        {
+            foreach (var fala in falas)
+            {
+                _history.Add(fala.DoUsuario
+                    ? ChatMessage.CreateUserMessage(fala.Texto)
+                    : ChatMessage.CreateAssistantMessage(fala.Texto));
+            }
+        }
+    }
+
     /// <summary>Aquecimento em background. Chamado pelo App, nunca por um construtor.</summary>
     public Task StartWarmupAsync() => _warmupService.RunAsync(SnapshotHistory(), CancellationToken.None);
 

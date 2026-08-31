@@ -1507,7 +1507,7 @@ public partial class ChatWindow : Window
 
         if (_painel == null)
         {
-            _painel = new SidePanelWindow(RecuperarChat) { Owner = this };
+            _painel = new SidePanelWindow(RecuperarChat, AbrirChat, ExcluirChat) { Owner = this };
 
             // A janela é criada uma vez e escondida, nunca fechada pelo botão: recriar a cada
             // abertura perderia a aba selecionada e a posição que o usuário escolheu.
@@ -1549,6 +1549,81 @@ public partial class ChatWindow : Window
 
         ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
         ChatScrollViewer.ScrollToEnd();
+    }
+
+    /// <summary>
+    /// Abre uma conversa do histórico no lugar da atual — botão direito, "Abrir conversa".
+    /// <para>
+    /// Não é o mesmo que recuperar contexto, e a diferença é a razão de existirem as duas.
+    /// Recuperar SOMA: a conversa antiga entra como material dentro da que está na tela.
+    /// Abrir SUBSTITUI: a conversa antiga volta a ser a conversa, com cada fala no seu balão e
+    /// no seu papel dentro do histórico do modelo.
+    /// </para>
+    /// <para>
+    /// A conversa que estava aberta não se perde: o ResetHistory lá dentro a arquiva antes.
+    /// </para>
+    /// </summary>
+    private void AbrirChat(ChatSession sessao)
+    {
+        var falas = ChatHistoryService.Parse(sessao.Content);
+        if (falas.Count == 0) return;
+
+        DescartarConfirmacaoPendente();
+
+        _conversation.LoadConversation(falas);
+
+        MessagesPanel.Children.Clear();
+        _cadeiaAtual = null;
+
+        foreach (var fala in falas)
+        {
+            if (fala.DoUsuario) AddUserBubble(fala.Texto);
+            else AddAgentBubble(fala.Texto);
+        }
+
+        ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
+
+        int nivel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
+        _lastCachedTokens = null;
+        UpdateTokenCounterUI(_conversation.CurrentTokenCount, LevelService.GetMaxTokensForLevel(nivel));
+
+        AtualizarEstadoVazio();
+        ChatScrollViewer.ScrollToEnd();
+
+        // O painel continua aberto, mas a lista mudou de posição: a conversa que estava na
+        // tela foi arquivada e agora é o item mais recente.
+        _painel?.Recarregar();
+    }
+
+    /// <summary>
+    /// Apaga uma conversa do histórico — botão direito, "Excluir".
+    /// <para>
+    /// Passa por confirmação porque não há desfazer: o arquivo é reescrito sem a entrada. O
+    /// que está na tela não é tocado, mesmo que seja a conversa excluída — apagar o registro
+    /// não é apagar o que o usuário está lendo.
+    /// </para>
+    /// </summary>
+    private void ExcluirChat(ChatSession sessao)
+    {
+        string titulo = string.IsNullOrWhiteSpace(sessao.Title) ? "(sem título)" : sessao.Title;
+
+        bool confirmado;
+        using (ModalGuard.Enter())
+        {
+            confirmado = ConfirmDialog.Perguntar(
+                _painel ?? (Window)this,
+                "Excluir esta conversa do histórico?",
+                "A conversa sai do histórico e não é possível recuperá-la. O que está na tela "
+                + "agora não é alterado.",
+                ferramenta: "histórico",
+                alvo: titulo,
+                dica: "não há desfazer");
+        }
+
+        if (!confirmado) return;
+
+        ChatHistoryService.DeleteSession(sessao.Id);
+        _painel?.Recarregar();
     }
 
     protected override void OnClosed(EventArgs e)
