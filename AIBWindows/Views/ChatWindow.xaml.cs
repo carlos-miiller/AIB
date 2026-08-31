@@ -141,26 +141,79 @@ public partial class ChatWindow : Window
         });
     }
 
+    /// <summary>
+    /// Some quando o usuário vai fazer outra coisa — e SÓ nesse caso.
+    /// <para>
+    /// Perder o foco para outra janela do próprio AIB não é sair: o painel lateral é uma janela
+    /// separada, e abrir o painel escondia a conversa inteira, deixando o painel sozinho na
+    /// tela. O <see cref="ModalGuard"/> já cobria os modais; janela irmã não-modal não passava
+    /// por ele.
+    /// </para>
+    /// <para>
+    /// A verificação é adiada de propósito. No instante do <c>Deactivated</c> a janela que
+    /// RECEBEU o foco ainda não se declarou ativa, então perguntar agora responderia sempre
+    /// "ninguém do AIB está ativo" e o chat sumiria de qualquer jeito.
+    /// </para>
+    /// </summary>
     private void Window_Deactivated(object? sender, EventArgs e)
     {
-        // Perder o foco para um modal do próprio AIB não é o usuário indo fazer outra coisa.
         if (ModalGuard.IsAnyModalOpen) return;
 
-        if (this.Visibility == Visibility.Visible) this.Hide();
+        Dispatcher.BeginInvoke(
+            new Action(EsconderSeOFocoSaiuDoAib),
+            System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+    }
+
+    private void EsconderSeOFocoSaiuDoAib()
+    {
+        if (ModalGuard.IsAnyModalOpen) return;
+        if (AlgumaJanelaDoAibEstaAtiva()) return;
+
+        EsconderTudo();
+    }
+
+    /// <summary>Se alguma janela do próprio AIB está com o foco agora.</summary>
+    private static bool AlgumaJanelaDoAibEstaAtiva()
+    {
+        foreach (Window janela in System.Windows.Application.Current.Windows)
+            if (janela.IsActive) return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Esconde a conversa e o painel juntos.
+    /// <para>
+    /// O painel precisa vir junto porque esconder a janela DONA não esconde as janelas que ela
+    /// possui: o painel ficava na tela sozinho, sem a conversa a que pertence, e sem o botão
+    /// que o abriu para poder fechá-lo.
+    /// </para>
+    /// </summary>
+    private void EsconderTudo()
+    {
+        _painel?.Hide();
+        if (Visibility == Visibility.Visible) Hide();
     }
 
     public void ToggleWindow()
     {
         if (this.Visibility == Visibility.Visible)
         {
-            this.Hide();
+            EsconderTudo();
+            return;
         }
-        else
+
+        RepositionWindow();
+        Show();
+        Activate();
+        InputBox.Focus();
+
+        // O painel volta com a conversa se estava aberto quando ela sumiu — quem escondeu os
+        // dois juntos deve trazer os dois juntos de volta.
+        if (_painelAberto && _painel != null)
         {
-            RepositionWindow();
-            this.Show();
-            this.Activate();
-            InputBox.Focus();
+            PosicionarPainel();
+            _painel.Show();
         }
     }
 
@@ -1351,7 +1404,7 @@ public partial class ChatWindow : Window
         });
     }
 
-    private void CloseButton_Click(object sender, RoutedEventArgs e) => this.Hide();
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => EsconderTudo();
 
     // ─────────────────────────────────────────────────────────────────────────
     // Side Panel (Dashboard) Handlers
@@ -1367,13 +1420,26 @@ public partial class ChatWindow : Window
     /// </summary>
     private SidePanelWindow? _painel;
 
+    /// <summary>
+    /// Se o painel deve reaparecer junto com a conversa.
+    /// <para>
+    /// Separado de <c>IsVisible</c> porque os dois somem juntos ao perder o foco: na volta,
+    /// perguntar se o painel está visível responderia sempre "não", e ele nunca voltaria. Este
+    /// campo guarda a INTENÇÃO do usuário, não o estado da janela.
+    /// </para>
+    /// </summary>
+    private bool _painelAberto;
+
     private void SidebarButton_Click(object sender, RoutedEventArgs e)
     {
         if (_painel is { IsVisible: true })
         {
+            _painelAberto = false;
             _painel.Hide();
             return;
         }
+
+        _painelAberto = true;
 
         if (_painel == null)
         {
@@ -1382,6 +1448,13 @@ public partial class ChatWindow : Window
             // A janela é criada uma vez e escondida, nunca fechada pelo botão: recriar a cada
             // abertura perderia a aba selecionada e a posição que o usuário escolheu.
             _painel.Closed += (_, _) => _painel = null;
+
+            // O painel entra na MESMA regra de foco da conversa: clicar fora dos dois esconde
+            // os dois. Sem isto, clicar fora com o painel em foco deixaria o painel na tela.
+            _painel.Deactivated += (_, _) => Window_Deactivated(null, EventArgs.Empty);
+
+            // Fechar pelo X do painel é decisão do usuário: ele não volta sozinho depois.
+            _painel.FechadoPeloUsuario += () => _painelAberto = false;
         }
 
         PosicionarPainel();

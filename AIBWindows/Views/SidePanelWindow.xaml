@@ -1,4 +1,4 @@
-<Window x:Class="AIB.Views.SidePanelWindow"
+﻿<Window x:Class="AIB.Views.SidePanelWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:AIB.Ui"
@@ -7,7 +7,8 @@
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ResizeMode="NoResize"
         WindowStartupLocation="Manual"
-        Topmost="True">
+        Topmost="True"
+        ShowActivated="False">
 
     <!--
         §6 — PAINEL LATERAL, segunda janela flutuante de 300x520.

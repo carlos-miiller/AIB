@@ -75,7 +75,21 @@ public partial class SidePanelWindow : Window
         if (e.LeftButton == MouseButtonState.Pressed) DragMove();
     }
 
-    private void Fechar_Click(object sender, RoutedEventArgs e) => Hide();
+    /// <summary>
+    /// Disparado quando o usuário fecha o painel pelo X dele.
+    /// <para>
+    /// Distinto de simplesmente ficar invisível: a conversa esconde os dois ao perder o foco, e
+    /// precisa saber diferenciar "sumiu junto comigo" de "o usuário fechou" para decidir se o
+    /// painel volta na próxima vez que a conversa aparecer.
+    /// </para>
+    /// </summary>
+    public event Action? FechadoPeloUsuario;
+
+    private void Fechar_Click(object sender, RoutedEventArgs e)
+    {
+        Hide();
+        FechadoPeloUsuario?.Invoke();
+    }
 
     private void Aba_Checked(object sender, RoutedEventArgs e)
     {
