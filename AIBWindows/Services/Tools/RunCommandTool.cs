@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -62,6 +62,34 @@ public class RunCommandTool : ITool
         """)
     );
 
+    /// <summary>
+    /// Remove o bloco CLIXML que o PowerShell escreve no stderr quando os fluxos estão
+    /// redirecionados.
+    /// <para>
+    /// O <c>$ProgressPreference</c> já cala o progresso, que é a fonte comum. Isto é a segunda
+    /// linha: aviso e informação também saem serializados, e o modelo não tem nada a fazer com
+    /// XML de infraestrutura — ele ocupa contexto e atrapalha a leitura do resultado.
+    /// </para>
+    /// <para>
+    /// O que vem ANTES do bloco é preservado: erro de verdade e o CLIXML podem sair no mesmo
+    /// stderr, e engolir o erro junto seria trocar ruído por cegueira.
+    /// </para>
+    /// </summary>
+    internal static string SemClixml(string? stderr)
+    {
+        if (string.IsNullOrEmpty(stderr)) return "";
+
+        int inicio = stderr.IndexOf("#< CLIXML", StringComparison.Ordinal);
+        if (inicio < 0) return stderr;
+
+        string antes = stderr.Substring(0, inicio);
+
+        int fim = stderr.LastIndexOf("</Objs>", StringComparison.Ordinal);
+        string depois = fim < 0 ? "" : stderr.Substring(fim + "</Objs>".Length);
+
+        return (antes + depois).Trim();
+    }
+
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
         try
@@ -80,7 +108,14 @@ public class RunCommandTool : ITool
             // anterior era command.Replace("\"", "\\\""), e a barra invertida não é o caractere
             // de escape do PowerShell (é a crase) — qualquer comando terminado em separador de
             // caminho do Windows era corrompido antes de rodar.
-            string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
+            // O prefixo cala a barra de progresso. Com stdout/stderr redirecionados, o
+            // PowerShell serializa os fluxos que não são texto em CLIXML e os despeja no
+            // stderr: um Get-ChildItem -Recurse devolvia meio kilobyte de
+            // <Obj S="progress">…</Obj> junto com três linhas de resultado útil. Isso ia
+            // inteiro para o histórico e para o resumo — contexto pago para dizer
+            // "Preparando módulos para primeiro uso".
+            string encoded = Convert.ToBase64String(
+                Encoding.Unicode.GetBytes("$ProgressPreference = 'SilentlyContinue'; " + command));
 
             var startInfo = new ProcessStartInfo
             {
@@ -124,7 +159,7 @@ public class RunCommandTool : ITool
                 return "ERRO: O comando demorou mais de 30 segundos e foi interrompido (Timeout).";
             }
 
-            string finalOutput = await stdoutTask + "\n" + await stderrTask;
+            string finalOutput = await stdoutTask + "\n" + SemClixml(await stderrTask);
             
             if (string.IsNullOrWhiteSpace(finalOutput))
                 return "Comando executado com sucesso (sem saída).";

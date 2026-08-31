@@ -36,15 +36,24 @@ public partial class SidePanelWindow : Window
     private readonly Action<ChatSession>? _aoAbrirChat;
     private readonly Action<ChatSession>? _aoExcluirChat;
 
+    /// <summary>
+    /// Qual conversa está aberta agora. É função e não valor porque o painel é montado uma vez
+    /// e recarregado muitas: guardar o id da abertura deixaria a marcação presa na conversa
+    /// errada assim que o usuário começasse outra.
+    /// </summary>
+    private readonly Func<string?>? _sessaoAtiva;
+
     public SidePanelWindow(
         Action<ChatSession>? aoRecuperarChat = null,
         Action<ChatSession>? aoAbrirChat = null,
-        Action<ChatSession>? aoExcluirChat = null)
+        Action<ChatSession>? aoExcluirChat = null,
+        Func<string?>? sessaoAtiva = null)
     {
         InitializeComponent();
         _aoRecuperarChat = aoRecuperarChat;
         _aoAbrirChat = aoAbrirChat;
         _aoExcluirChat = aoExcluirChat;
+        _sessaoAtiva = sessaoAtiva;
 
         // As listas são observáveis: o painel acompanha sem consultar. Sem isto, abrir o painel
         // mostraria o estado do momento da abertura e congelaria.
@@ -179,10 +188,13 @@ public partial class SidePanelWindow : Window
     private void MontarHistorico()
     {
         var sessoes = ChatHistoryService.LoadHistory();
+        string? ativa = _sessaoAtiva?.Invoke();
         ListaHistorico.Items.Clear();
 
         foreach (var sessao in sessoes)
         {
+            bool emAndamento = ativa != null && sessao.Id == ativa;
+
             var titulo = new TextBlock
             {
                 Text = string.IsNullOrWhiteSpace(sessao.Title) ? "(sem título)" : sessao.Title,
@@ -222,19 +234,56 @@ public partial class SidePanelWindow : Window
             corpo.Children.Add(linhaTopo);
             corpo.Children.Add(trecho);
 
+            if (emAndamento) corpo.Children.Add(PillEmAndamento());
+
             var card = new Border { Style = (Style)FindResource("ItemCard"), Child = corpo };
             var alvo = sessao;
 
-            // O clique esquerdo continua sendo o que sempre foi: recuperar o contexto dentro
-            // da conversa corrente. Mexer nisso quebraria a mão de quem já usa o painel.
-            card.MouseLeftButtonUp += (_, _) => _aoRecuperarChat?.Invoke(alvo);
-            card.ContextMenu = MenuDaConversa(alvo);
+            // A conversa em andamento aparece na lista, mas não se abre nem se apaga: ela já
+            // está na tela. Recuperar o contexto dela dentro dela mesma duplicaria a conversa
+            // no próprio prompt, e excluí-la apagaria o registro do que o usuário está lendo,
+            // enquanto os turnos seguintes continuariam gravando — o registro voltaria sozinho.
+            if (emAndamento)
+            {
+                card.Cursor = System.Windows.Input.Cursors.Arrow;
+                card.Opacity = 0.85;
+            }
+            else
+            {
+                // O clique esquerdo continua sendo o que sempre foi: recuperar o contexto
+                // dentro da conversa corrente. Mexer nisso quebraria a mão de quem já usa o
+                // painel.
+                card.MouseLeftButtonUp += (_, _) => _aoRecuperarChat?.Invoke(alvo);
+                card.ContextMenu = MenuDaConversa(alvo);
+            }
 
             ListaHistorico.Items.Add(card);
         }
 
         HistoricoVazio.Visibility = ListaHistorico.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    /// <summary>
+    /// Marca visual da conversa que está aberta. Sem ela, o item que não responde ao clique
+    /// pareceria um item quebrado.
+    /// </summary>
+    private Border PillEmAndamento() => new()
+    {
+        CornerRadius = new CornerRadius(20),
+        Padding = new Thickness(7, 1, 7, 1),
+        BorderThickness = new Thickness(1),
+        Background = (Brush)FindResource("AccentFill12Brush"),
+        BorderBrush = (Brush)FindResource("AccentBorderBrush"),
+        HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+        Margin = new Thickness(0, 6, 0, 0),
+        Child = new TextBlock
+        {
+            Text = "em andamento",
+            FontSize = 10,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("AccentLilacBrush")
+        }
+    };
 
     /// <summary>
     /// Menu do botão direito de um item do histórico.

@@ -106,6 +106,23 @@ public sealed class ConversationService : IMessageStore
     private string _sessionId = Guid.NewGuid().ToString();
 
     /// <summary>
+    /// Identidade da conversa que está aberta agora. Quem desenha o histórico usa isto para
+    /// distinguir a conversa em andamento das arquivadas: ela aparece na lista, mas não é para
+    /// ser recuperada nem excluída — está na tela.
+    /// </summary>
+    public string SessionId => _sessionId;
+
+    /// <summary>
+    /// O histórico arquivado mudou: entrada nova, conteúdo novo ou nome novo.
+    /// <para>
+    /// Dispara fora da thread de interface. Existe porque o painel lê o arquivo uma vez ao
+    /// montar: sem aviso, a conversa em andamento só aparecia na lista quando o painel fosse
+    /// reaberto, e o nome dado pelo modelo chegava um passo atrasado.
+    /// </para>
+    /// </summary>
+    public event Action? OnHistoryChanged;
+
+    /// <summary>
     /// A conversa inteira, para o histórico arquivado — separada do histórico VIVO de propósito.
     /// <para>
     /// O histórico vivo encolhe: o Trim corta o começo e a compactação troca turnos por
@@ -115,6 +132,12 @@ public sealed class ConversationService : IMessageStore
     /// </para>
     /// </summary>
     private readonly List<ChatMessage> _transcricao = new();
+
+    /// <summary>
+    /// Turno que estava aberto quando o registro passou por ele. Guardado para ser gravado
+    /// assim que ficar claro que não vai fechar — isto é, quando outro turno começar.
+    /// </summary>
+    private Turn? _turnoPendente;
 
     /// <summary>Capitulos desta sessao. So a thread que segura o <see cref="_turnGate"/> mexe.</summary>
     private readonly MemoryLayer _memory = new();
@@ -209,6 +232,7 @@ public sealed class ConversationService : IMessageStore
             _tituloRevisado = false;
             Title = null;
             _sessionId = Guid.NewGuid().ToString();
+            _turnoPendente = null;
             lock (_gate) { _transcricao.Clear(); }
             _memory.Clear();
         }
@@ -305,29 +329,66 @@ public sealed class ConversationService : IMessageStore
 
             var ultimo = turnos[^1];
 
-            // Turno aberto (cancelado no meio, ou teto de iterações com ferramenta pendente):
-            // gravá-lo deixaria em disco um tool_calls sem resultado. Fica para a próxima —
-            // as mensagens continuam no histórico vivo.
-            if (!TurnSplitter.IsClosed(ultimo)) return;
-
-            if (_sessionMemory.AppendTurn(ultimo with { Index = _turnsRecorded }))
-                _turnsRecorded++;
-
-            // A mesma unidade que vai para o disco alimenta a transcrição do histórico. Só as
-            // duas falas: o miolo de ferramentas do turno não é conversa.
-            lock (_gate)
+            // Um turno que ficou aberto na chamada ANTERIOR não vai fechar mais: o usuário já
+            // mandou outra mensagem por cima. Ele é gravado agora, antes do atual, para a ordem
+            // se manter.
+            //
+            // Sem isto o turno era perdido para sempre, e em silêncio. Só o ÚLTIMO turno é
+            // examinado a cada chamada, então um turno pulado nunca voltava a ser olhado — o
+            // comentário antigo dizia "fica para a próxima", e não ficava. Medido: uma conversa
+            // de dois turnos em que o primeiro terminou sem resposta do modelo foi para o disco
+            // com um turno só, tanto no raw.jsonl quanto no histórico arquivado.
+            if (_turnoPendente != null && !MesmoTurno(_turnoPendente, ultimo))
             {
-                if (!string.IsNullOrWhiteSpace(ultimo.UserText))
-                    _transcricao.Add(ChatMessage.CreateUserMessage(ultimo.UserText));
-
-                if (!string.IsNullOrWhiteSpace(ultimo.AssistantText))
-                    _transcricao.Add(ChatMessage.CreateAssistantMessage(ultimo.AssistantText));
+                Gravar(_turnoPendente);
+                _turnoPendente = null;
             }
+
+            // Turno aberto (cancelado no meio, ou teto de iterações com ferramenta pendente):
+            // gravá-lo agora deixaria em disco um tool_calls sem resultado, e ele ainda pode
+            // fechar no próximo passo do mesmo turno. Fica guardado.
+            if (!TurnSplitter.IsClosed(ultimo))
+            {
+                _turnoPendente = ultimo;
+                return;
+            }
+
+            _turnoPendente = null;
+            Gravar(ultimo);
         }
         catch (Exception ex)
         {
             // Registro é acréscimo. Nenhuma falha aqui pode escapar para o turno do usuário.
             Console.WriteLine($"[MEMORIA] Falha ao registrar o turno: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Dois turnos são o mesmo quando abrem na MESMA mensagem de usuário.
+    /// <para>
+    /// Comparar as instâncias de <see cref="Turn"/> não serve: o <see cref="TurnSplitter"/>
+    /// cria objetos novos a cada chamada. As mensagens, não — são as mesmas referências do
+    /// histórico vivo.
+    /// </para>
+    /// </summary>
+    private static bool MesmoTurno(Turn a, Turn b) =>
+        a.Messages.Count > 0 && b.Messages.Count > 0 && ReferenceEquals(a.Messages[0], b.Messages[0]);
+
+    /// <summary>Põe um turno no registro cru e na transcrição do histórico.</summary>
+    private void Gravar(Turn turno)
+    {
+        if (_sessionMemory.AppendTurn(turno with { Index = _turnsRecorded }))
+            _turnsRecorded++;
+
+        // A mesma unidade que vai para o disco alimenta a transcrição do histórico. Só as
+        // duas falas: o miolo de ferramentas do turno não é conversa.
+        lock (_gate)
+        {
+            if (!string.IsNullOrWhiteSpace(turno.UserText))
+                _transcricao.Add(ChatMessage.CreateUserMessage(turno.UserText));
+
+            if (!string.IsNullOrWhiteSpace(turno.AssistantText))
+                _transcricao.Add(ChatMessage.CreateAssistantMessage(turno.AssistantText));
         }
     }
 
@@ -817,6 +878,7 @@ public sealed class ConversationService : IMessageStore
             transcricao.Insert(0, ChatMessage.CreateSystemMessage(""));
 
             ChatHistoryService.SaveCurrentSession(transcricao, Title, _sessionId);
+            OnHistoryChanged?.Invoke();
         }
         catch (Exception ex)
         {
@@ -912,6 +974,10 @@ public sealed class ConversationService : IMessageStore
         Title = titulo;
         Console.WriteLine($"[TITULO] Conversa nomeada: {titulo}");
         OnTitleChanged?.Invoke(titulo);
+
+        // O nome muda DEPOIS de a conversa já ter sido arquivada com o nome antigo (ou sem
+        // nome). Regravar aqui é o que faz a lista mostrar o nome novo em vez do provisório.
+        ArquivarConversaViva();
     }
 
     /// <summary>Resposta única e sem estado (Shadow Assistant, utilitários).</summary>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -146,15 +146,30 @@ public sealed class ChannelSplitter
             EmitFinal(_waitBuffer.ToString(), output);
             _waitBuffer.Clear();
         }
-        // 2. Terminou em InsideThink (modelo abriu <think> e nunca fechou — bug do modelo):
-        //    o conteúdo do think era na verdade a resposta. Vaza para o usuário como último
-        //    recurso, melhor que mostrar "Ação executada com sucesso".
-        else if (_mode == 1 && _thinkBuffer.Length > 0 && !_anyFinal && !anyToolCallSeen)
+        // 2. O turno RACIOCINOU e não respondeu: nada no canal final, nenhuma ferramenta, e
+        //    raciocínio acumulado. O conteúdo do pensamento era, de fato, a resposta. Vaza
+        //    para o usuário como último recurso — melhor que a bolha vazia.
+        //
+        //    Cobre os dois caminhos pelos quais o raciocínio chega:
+        //
+        //    - tag inline aberta e nunca fechada (_mode == 1), bug do modelo;
+        //    - campo separado message.thinking (_mode == 0), que é como qwen3.5 e os demais
+        //      modelos de raciocínio modernos operam.
+        //
+        //    O segundo caso não era coberto: a condição exigia _mode == 1, e o campo separado
+        //    nunca muda o modo. Um turno que só pensou terminava com rawText=0ch e o usuário
+        //    via um balão vazio, com a resposta certa presa no raciocínio — foi exatamente o
+        //    que aconteceu numa busca por arquivo: o caminho encontrado ficou só no
+        //    pensamento.
+        else if (_thinkBuffer.Length > 0 && !_anyFinal && !anyToolCallSeen)
         {
             int before = output.Count;
             EmitFinal(_thinkBuffer.ToString(), output);
             if (output.Count > before)
-                Console.WriteLine("[STREAM-END] Fallback: <think> nunca fechou, emitindo conteúdo do think como resposta.");
+            {
+                Console.WriteLine(
+                    "[STREAM-END] Fallback: o turno só raciocinou; emitindo o pensamento como resposta.");
+            }
         }
 
         _thinkBuffer.Clear();

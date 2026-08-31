@@ -44,6 +44,7 @@ public partial class ChatWindow : Window
         _conversation.OnTokenCountChanged += UpdateTokenCounterUI;
         _conversation.OnWarmupStateChanged += HandleWarmupState;
         _conversation.OnTitleChanged += AplicarTitulo;
+        _conversation.OnHistoryChanged += AtualizarPainelDeHistorico;
 
         _shadowService = new ShadowAssistantService(_conversation, _settingsService);
         _shadowService.OnSuggestionReceived += OnShadowSuggestion;
@@ -1444,6 +1445,26 @@ public partial class ChatWindow : Window
         Dispatcher.BeginInvoke(new Action(() => ChatTitleText.Text = titulo));
     }
 
+    /// <summary>
+    /// Remonta o painel quando o histórico arquivado muda.
+    /// <para>
+    /// A conversa é arquivada a cada turno, mas o painel lê o arquivo só ao montar. Sem este
+    /// aviso, a conversa em andamento só aparecia na lista depois de fechar e reabrir o painel,
+    /// e o nome dado pelo modelo chegava um turno atrasado.
+    /// </para>
+    /// <para>
+    /// Só quando o painel está na tela: remontar uma janela escondida é trabalho para ninguém
+    /// ver, e ela remonta sozinha ao abrir.
+    /// </para>
+    /// </summary>
+    private void AtualizarPainelDeHistorico()
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_painel is { IsVisible: true }) _painel.Recarregar();
+        }));
+    }
+
     private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
         DescartarConfirmacaoPendente();
@@ -1452,7 +1473,7 @@ public partial class ChatWindow : Window
         _conversation.ResetHistory();
         int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
-        _lastCachedTokens = null;
+        _ultimaEconomiaPct = null;
         UpdateTokenCounterUI(0, maxTokens);
         ChatTitleText.Text = "Nova conversa";
         AddWelcomeBubble();
@@ -1476,7 +1497,22 @@ public partial class ChatWindow : Window
         return (System.Windows.Media.Brush)FindResource("MagentaBrush");
     }
 
-    private int? _lastCachedTokens = null;
+    /// <summary>
+    /// A última economia MEDIDA, em porcentagem — e não em tokens.
+    /// <para>
+    /// Guardar o número absoluto de tokens reaproveitados era o defeito: nem toda notificação
+    /// traz medição de cache. A do fim do turno não traz, e o contador então dividia a medição
+    /// ANTIGA pelo total NOVO, que acabara de crescer com a resposta inteira e com o raciocínio
+    /// que vai para o histórico. A conta desabava, o rótulo pulava para perto de zero e o texto
+    /// ficava magenta bem no instante em que a resposta chegava — justamente quando o cache
+    /// tinha acabado de trabalhar mais.
+    /// </para>
+    /// <para>
+    /// A porcentagem sobrevive à mudança do total porque já é uma razão. Sem medição nova, o
+    /// certo é repetir a última que existiu, não recalculá-la com metade dos dados.
+    /// </para>
+    /// </summary>
+    private int? _ultimaEconomiaPct;
 
     private void UpdateTokenCounterUI(int current, int max, int? cached = null)
     {
@@ -1484,17 +1520,16 @@ public partial class ChatWindow : Window
         {
             string texto = $"{current}/{max} tokens";
 
-            if (cached.HasValue) _lastCachedTokens = cached.Value;
-
-            int? economia = null;
-            if (_lastCachedTokens.HasValue && current > 0)
+            if (cached.HasValue && current > 0)
             {
-                economia = (int)Math.Round((double)_lastCachedTokens.Value / current * 100);
-                economia = Math.Clamp(economia.Value, 0, 100);
-
-                // Negativo = economia, como a spec escreve o exemplo "909/8704 tokens (-91%)".
-                texto += $" (-{economia}%)";
+                _ultimaEconomiaPct = Math.Clamp(
+                    (int)Math.Round((double)cached.Value / current * 100), 0, 100);
             }
+
+            int? economia = _ultimaEconomiaPct;
+
+            // Negativo = economia, como a spec escreve o exemplo "909/8704 tokens (-91%)".
+            if (economia.HasValue) texto += $" (-{economia}%)";
 
             TokenCounterText.Text = texto;
             TokenCounterText.Foreground = CorDaEconomia(economia);
@@ -1540,7 +1575,11 @@ public partial class ChatWindow : Window
 
         if (_painel == null)
         {
-            _painel = new SidePanelWindow(RecuperarChat, AbrirChat, ExcluirChat) { Owner = this };
+            _painel = new SidePanelWindow(
+                RecuperarChat, AbrirChat, ExcluirChat, () => _conversation.SessionId)
+            {
+                Owner = this
+            };
 
             // A janela é criada uma vez e escondida, nunca fechada pelo botão: recriar a cada
             // abertura perderia a aba selecionada e a posição que o usuário escolheu.
@@ -1617,7 +1656,7 @@ public partial class ChatWindow : Window
         ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
 
         int nivel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
-        _lastCachedTokens = null;
+        _ultimaEconomiaPct = null;
         UpdateTokenCounterUI(_conversation.CurrentTokenCount, LevelService.GetMaxTokensForLevel(nivel));
 
         AtualizarEstadoVazio();

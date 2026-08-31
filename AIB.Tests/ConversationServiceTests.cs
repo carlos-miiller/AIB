@@ -701,6 +701,37 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task TurnoQueNaoFechou_EGravadoQuandoOProximoComeca()
+        {
+            // Defeito real, medido no disco: uma conversa de dois turnos foi para o histórico
+            // com um turno só. O primeiro terminou sem resposta do modelo — turno aberto — e o
+            // registro só olha o ÚLTIMO turno a cada chamada, então ele nunca voltou a ser
+            // examinado. O comentário antigo dizia "fica para a próxima"; não ficava.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("resposta");
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("primeira pergunta")) { }
+
+            // Deixa o turno aberto à força: uma chamada de ferramenta sem o resultado
+            // correspondente é exatamente o estado de um turno cancelado no meio.
+            conversation.AppendAssistantText("");
+            conversation.AppendAssistantToolCalls(new[]
+            {
+                ChatToolCall.CreateFunctionToolCall("id-x", "read_file", BinaryData.FromString("{}"))
+            });
+
+            await foreach (var _ in conversation.StreamResponseAsync("segunda pergunta")) { }
+
+            string arquivo = System.IO.Path.Combine(conversation.SessionMemoryDir, "raw.jsonl");
+            System.IO.File.Exists(arquivo).Should().BeTrue();
+
+            string bruto = System.IO.File.ReadAllText(arquivo);
+            bruto.Should().Contain("primeira pergunta");
+            bruto.Should().Contain("segunda pergunta", "o turno pulado não pode levar os outros junto");
+        }
+
+        [Fact]
         public async Task ArquivoAnexado_ChegaAoPromptDoModelo()
         {
             // O caminho tem de estar no que o provider recebe, e não só na lista da interface:

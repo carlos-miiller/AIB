@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using AIB.Services.Ai;
 using FluentAssertions;
@@ -26,6 +26,58 @@ namespace AIB.Tests
             Reasoning(deltas).Should().Contain("raciocínio interno");
             splitter.FinalText.Should().Be("Resposta ao usuário.");
             splitter.AnythingEmittedAsFinal.Should().BeTrue();
+        }
+
+        [Fact]
+        public void TurnoQueSoPensou_PeloCampoSeparado_EmiteOPensamentoComoResposta()
+        {
+            // Defeito real: o modelo raciocinou, chegou à resposta DENTRO do pensamento e
+            // encerrou sem emitir nada no canal final e sem chamar ferramenta. O usuário viu um
+            // balão vazio, com o caminho do arquivo que ele procurava preso no raciocínio.
+            //
+            // O fallback existia, mas só para a tag inline <think> nunca fechada. O campo
+            // separado message.thinking — que é como qwen3.5 opera — não passava por ele.
+            var splitter = new ChannelSplitter();
+
+            var deltas = new List<StreamChunk.TextDelta>();
+            deltas.AddRange(splitter.PushThinking("Encontrei o arquivo. "));
+            deltas.AddRange(splitter.PushThinking(@"C:\Users\Carlo\Downloads\Ramais.xlsx"));
+            deltas.AddRange(splitter.Flush(anyToolCallSeen: false));
+
+            Final(deltas).Should().Contain("Ramais.xlsx", "melhor vazar o pensamento que devolver vazio");
+            splitter.AnythingEmittedAsFinal.Should().BeTrue();
+        }
+
+        [Fact]
+        public void TurnoQuePensouERespondeu_NaoRepeteOPensamento()
+        {
+            // O fallback é último recurso. Havendo resposta de verdade, o pensamento fica onde
+            // sempre esteve: no canal de raciocínio e no histórico, nunca no balão.
+            var splitter = new ChannelSplitter();
+
+            var deltas = new List<StreamChunk.TextDelta>();
+            deltas.AddRange(splitter.PushThinking("vou procurar em Downloads"));
+            deltas.AddRange(splitter.Push("Achei em Downloads."));
+            deltas.AddRange(splitter.Flush(anyToolCallSeen: false));
+
+            Final(deltas).Should().Be("Achei em Downloads.");
+            Final(deltas).Should().NotContain("vou procurar");
+        }
+
+        [Fact]
+        public void TurnoQuePensouEChamouFerramenta_NaoVazaOPensamento()
+        {
+            // Turno que termina em ferramenta não tem resposta para dar ainda: o texto viria
+            // na iteração seguinte. Vazar o pensamento aqui encheria a conversa de rascunho a
+            // cada passo de uma tarefa de vários passos.
+            var splitter = new ChannelSplitter();
+
+            var deltas = new List<StreamChunk.TextDelta>();
+            deltas.AddRange(splitter.PushThinking("preciso listar a pasta primeiro"));
+            deltas.AddRange(splitter.Flush(anyToolCallSeen: true));
+
+            Final(deltas).Should().BeEmpty();
+            splitter.AnythingEmittedAsFinal.Should().BeFalse();
         }
 
         [Fact]

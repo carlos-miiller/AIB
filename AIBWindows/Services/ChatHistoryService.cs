@@ -24,6 +24,17 @@ namespace AIB.Services
 
     public static class ChatHistoryService
     {
+        /// <summary>
+        /// Serializa ler-modificar-gravar do arquivo de histórico.
+        /// <para>
+        /// Sem isto, dois arquivamentos concorrentes leem a mesma lista, cada um acrescenta a
+        /// sua conversa e o segundo grava por cima do primeiro: uma das conversas some sem
+        /// erro nenhum. Deixou de ser hipótese quando a conversa passou a ser arquivada a cada
+        /// turno — antes havia uma gravação por conversa, agora há uma por turno.
+        /// </para>
+        /// </summary>
+        private static readonly object Trava = new();
+
         private const string PrefixoUsuario = "USER: ";
         private const string PrefixoAgente = "AIB: ";
 
@@ -146,6 +157,15 @@ namespace AIB.Services
             session.Title = string.IsNullOrWhiteSpace(titulo) ? firstUserMessage : titulo!;
             session.Content = string.Join("\n\n", lines);
 
+            lock (Trava)
+            {
+                Persistir(session);
+            }
+        }
+
+        /// <summary>Insere ou substitui a sessão no arquivo. Sempre sob <see cref="Trava"/>.</summary>
+        private static void Persistir(ChatSession session)
+        {
             var history = LoadHistory();
 
             // Mesma conversa gravada de novo: substitui no lugar. A conversa viva é arquivada
@@ -224,10 +244,12 @@ namespace AIB.Services
 
         public static void DeleteSession(string sessionId)
         {
-            var history = LoadHistory();
-            var item = history.FirstOrDefault(h => h.Id == sessionId);
-            if (item != null)
+            lock (Trava)
             {
+                var history = LoadHistory();
+                var item = history.FirstOrDefault(h => h.Id == sessionId);
+                if (item == null) return;
+
                 history.Remove(item);
                 SaveHistory(history);
             }
