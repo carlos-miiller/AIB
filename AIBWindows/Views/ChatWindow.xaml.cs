@@ -75,13 +75,18 @@ public partial class ChatWindow : Window
 
 
 
-        // Posiciona a janela: centralizada horizontal, flutuando 45px acima da barra de tarefas
+        // Posiciona a janela: centralizada horizontal, flutuando acima da barra de tarefas
         this.Left = (SystemParameters.PrimaryScreenWidth - this.Width) / 2;
-        this.Top = SystemParameters.WorkArea.Bottom - this.ActualHeight - 45;
+        this.Top = SystemParameters.WorkArea.Bottom - this.ActualHeight - FolgaDaBarraDeTarefas;
 
         // Reposiciona após a janela ter tamanho real (SizeToContent)
         this.Loaded += (s, e) => RepositionWindow();
         this.SizeChanged += (s, e) => RepositionWindow();
+
+        // O painel é uma janela separada, mas não uma janela independente: ele fica colado na
+        // conversa. Arrastar a conversa, redimensioná-la ou reposicioná-la leva o painel
+        // junto, senão os dois se soltam e o conjunto deixa de parecer uma peça só.
+        this.LocationChanged += (s, e) => PosicionarPainel();
 
         // Esconde ao clicar fora
         this.Deactivated += Window_Deactivated;
@@ -217,11 +222,24 @@ public partial class ChatWindow : Window
         }
     }
 
+    /// <summary>
+    /// Distância entre a base da janela e a barra de tarefas.
+    /// <para>
+    /// Era 45. A janela flutuava alto demais e o vão embaixo dela chamava mais atenção que a
+    /// própria conversa. Metade disso mantém a impressão de flutuar sem o buraco.
+    /// </para>
+    /// </summary>
+    private const double FolgaDaBarraDeTarefas = 22;
+
     private void RepositionWindow()
     {
         double taskbarBottom = SystemParameters.WorkArea.Bottom;
         this.Left = (SystemParameters.PrimaryScreenWidth - this.Width) / 2;
-        this.Top = taskbarBottom - this.ActualHeight - 45;
+        this.Top = taskbarBottom - this.ActualHeight - FolgaDaBarraDeTarefas;
+
+        // A altura muda com SizeToContent; o painel se alinha pela BASE da conversa, então
+        // reposicionar a conversa sem reposicionar o painel desencontra os dois.
+        PosicionarPainel();
     }
 
     public void RefreshLevelUI(bool incrementXp = false)

@@ -14,6 +14,7 @@ using PenLineJoin = System.Windows.Media.PenLineJoin;
 using Stretch = System.Windows.Media.Stretch;
 using Button = System.Windows.Controls.Button;
 using Cursors = System.Windows.Input.Cursors;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 
 namespace AIB.Views;
 
@@ -77,9 +78,72 @@ public partial class SidePanelWindow : Window
     // Janela
     // ─────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Arrastar pelo cabeçalho do painel move a CONVERSA, não o painel.
+    /// <para>
+    /// O painel é uma janela separada por causa de A2 — como painel embutido ele encolhia a
+    /// conversa ao abrir —, mas separado não quer dizer independente: os dois são uma peça só
+    /// na tela. Com o <c>DragMove</c> próprio que havia aqui, dava para descolar o painel e
+    /// deixá-lo perdido num canto, sem nada que o trouxesse de volta.
+    /// </para>
+    /// <para>
+    /// Move-se a dona e o painel vem atrás pelo <c>LocationChanged</c> dela. O
+    /// <c>DragMove</c> do WPF não serve para isso porque move a janela em que o clique
+    /// aconteceu; aqui o arrasto é feito à mão, por diferença entre duas posições do cursor.
+    /// </para>
+    /// </summary>
+    private System.Windows.Point? _arrasteAnterior;
+
     private void Cabecalho_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.LeftButton == MouseButtonState.Pressed) DragMove();
+        if (e.LeftButton != MouseButtonState.Pressed) return;
+
+        // Sem dona não há o que arrastar junto: volta a mover a si mesmo. É o caso dos
+        // ensaios, que montam o painel sozinho.
+        if (Owner == null)
+        {
+            DragMove();
+            return;
+        }
+
+        _arrasteAnterior = PontoNaTela(e);
+        ((UIElement)sender).CaptureMouse();
+    }
+
+    private void Cabecalho_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_arrasteAnterior == null || Owner == null) return;
+
+        var agora = PontoNaTela(e);
+
+        Owner.Left += agora.X - _arrasteAnterior.Value.X;
+        Owner.Top += agora.Y - _arrasteAnterior.Value.Y;
+
+        // A dona reposiciona o painel, e o cursor acaba sobre o mesmo ponto do cabeçalho de
+        // onde saiu — por isso a referência é a posição NOVA, e não a do começo do arrasto.
+        _arrasteAnterior = agora;
+    }
+
+    private void Cabecalho_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        _arrasteAnterior = null;
+        ((UIElement)sender).ReleaseMouseCapture();
+    }
+
+    /// <summary>
+    /// Posição do cursor na tela, em unidades independentes de dispositivo.
+    /// <para>
+    /// O <see cref="Visual.PointToScreen"/> devolve PIXEL FÍSICO, e <c>Left</c>/<c>Top</c> de
+    /// uma janela são DIP. Somar um no outro só coincide a 100% de escala; a 125% o painel
+    /// andaria um quarto a mais que o cursor.
+    /// </para>
+    /// </summary>
+    private System.Windows.Point PontoNaTela(MouseEventArgs e)
+    {
+        var fisico = PointToScreen(e.GetPosition(this));
+        var transformacao = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice;
+
+        return transformacao.HasValue ? transformacao.Value.Transform(fisico) : fisico;
     }
 
     /// <summary>
