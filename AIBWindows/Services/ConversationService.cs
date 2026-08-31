@@ -40,6 +40,7 @@ public sealed class ConversationService : IMessageStore
         - Se uma ferramenta falhar, leia o erro, corrija os argumentos e tente mais UMA vez.
         - Operações destrutivas passam por confirmação do usuário. Receber "Ação Rejeitada pelo Usuário." é normal: reconheça e proponha alternativa, sem repetir a mesma chamada.
         - Não peça permissão em texto — chame a ferramenta. Responda em Português (Brasil), conciso.
+        - Formate a resposta: parágrafos curtos separados por linha em branco, lista com "- " ao enumerar, blocos ``` para código e saída de comando. Conciso não é tudo grudado num parágrafo só.
         """;
 
     private readonly List<ChatMessage> _history = new();

@@ -619,6 +619,8 @@ public partial class ChatWindow : Window
 
         var viewer = new MarkdownViewer
         {
+            // Antes do texto: trocar o interpretador depois obrigaria a remontar o documento.
+            Pipeline = AIB.Ui.MarkdownPipelines.Conversa,
             Markdown = initialText ?? "",
             Foreground = (System.Windows.Media.Brush)FindResource("TextBodyBrush"),
             HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
