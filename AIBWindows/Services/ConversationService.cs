@@ -811,8 +811,6 @@ public sealed class ConversationService : IMessageStore
         _memory.SetFacts(_facts.ReadFacts());
 
         string narrativa = _memory.RenderNarrative(quota, _tokenCounter);
-        _tokensDeResumo = narrativa.Length == 0 ? 0 : _tokenCounter.CountText(narrativa);
-
         string bloco = _memory.Render(quota, _tokenCounter);
 
         // Os arquivos anexados viajam na MESMA mensagem da memória, e não numa terceira.
@@ -832,6 +830,19 @@ public sealed class ConversationService : IMessageStore
         lock (_gate)
         {
             bool temBase = _history.Count > 0 && _history[0] is SystemChatMessage;
+
+            // O custo do resumo so e contabilizado quando o bloco de fato ENTRA no prompt.
+            //
+            // Com "SendSystemPrompt" desligado nao ha onde ancorar a memoria e ela nunca e
+            // enviada — mas o numero continuava sendo descontado do total do contador, que
+            // entao ficava MENOR que o contexto e batia na guarda de sanidade. O efeito era a
+            // economia sumir da tela para sempre, em toda conversa desses usuarios, sem
+            // nenhum sinal de que algo estava errado.
+            bool entrou = temBase && !string.IsNullOrEmpty(bloco);
+            _tokensDeResumo = entrou && narrativa.Length > 0
+                ? _tokenCounter.CountText(narrativa)
+                : 0;
+
             if (!temBase) return; // sem prompt de sistema não há onde ancorar o bloco
 
             bool temMemoria = _history.Count > 1 && _history[1] is SystemChatMessage;

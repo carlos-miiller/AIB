@@ -1533,9 +1533,12 @@ public partial class ChatWindow : Window
         {
             int? economia = relatorio.EconomiaPct;
 
+            // O teto do nivel no lugar da porcentagem. Os dois numeros da esquerda ja dizem
+            // quanto foi poupado — a porcentagem repetia isso em outra forma, e ocupava o
+            // espaco do unico dado que faltava: o quanto ainda cabe.
             string texto = economia.HasValue
-                ? $"{relatorio.Total:N0} > {relatorio.Contexto:N0} tokens (-{economia}%)"
-                : $"{relatorio.Contexto:N0} tokens";
+                ? $"{relatorio.Total:N0} > {relatorio.Contexto:N0} tokens | {relatorio.Max:N0}"
+                : $"{relatorio.Contexto:N0} tokens | {relatorio.Max:N0}";
 
             TokenCounterText.Text = texto;
             TokenCounterText.Foreground = CorDaEconomia(economia);
@@ -1580,7 +1583,12 @@ public partial class ChatWindow : Window
         finally
         {
             pensando.timer.Stop();
-            MessagesPanel.Children.Remove(pensando.bubble);
+
+            // RemoverLinha, e nao Children.Remove: a bolha mora dentro de um Grid de linha, e
+            // remove-la direto do painel falha EM SILENCIO porque ela nao e filha dele. O
+            // indicador ficava na tela para sempre — a mesma armadilha que o proprio
+            // RemoverLinha foi escrito para consertar.
+            RemoverLinha(pensando.bubble);
 
             InputBox.IsEnabled = true;
             InputBox.Focus();

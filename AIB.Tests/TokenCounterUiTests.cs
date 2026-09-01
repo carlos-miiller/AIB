@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Windows.Controls;
 using System.Windows.Media;
 using AIB.Services;
@@ -32,7 +32,7 @@ namespace AIB.Tests
             ((TextBlock)janela.FindName("TokenCounterText")).Foreground;
 
         [Fact]
-        public void ComEconomia_MostraOsDoisNumerosEAPorcentagem()
+        public void ComEconomia_MostraOsDoisNumerosEOTeto()
         {
             WpfHost.EmSta(() =>
             {
@@ -42,7 +42,9 @@ namespace AIB.Tests
                 Atualizar(janela, new TokenReport(Total: 12000, Contexto: 3000, Max: 8704));
 
                 Texto(janela).Should().Contain(">", "a seta separa o que a conversa pesaria do que ela pesa");
-                Texto(janela).Should().Contain("(-75%)");
+                Texto(janela).Should().Contain("|", "depois da barra vem o teto do nivel");
+                Texto(janela).Should().Contain("8.704");
+                Texto(janela).Should().NotContain("%", "a porcentagem saiu: os dois numeros ja dizem o quanto foi poupado");
 
                 janela.Close();
             });
@@ -63,7 +65,8 @@ namespace AIB.Tests
 
                 Texto(janela).Should().NotContain(">");
                 Texto(janela).Should().NotContain("%");
-                Texto(janela).Should().Contain("tokens");
+                Texto(janela).Should().Contain("1.204 tokens");
+                Texto(janela).Should().Contain("| 8.704", "o teto aparece com ou sem compactacao");
 
                 janela.Close();
             });

@@ -758,6 +758,66 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task SemPromptDeSistema_OResumoNaoEhDescontadoDoTotal()
+        {
+            // Com "SendSystemPrompt" desligado nao ha onde ancorar o bloco de memoria, e ele
+            // nunca e enviado. O custo do resumo continuava sendo descontado do total assim
+            // mesmo, e o total ficava MENOR que o contexto — a guarda de sanidade entao
+            // igualava os dois e a economia sumia da tela para sempre.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = string.Concat(
+                Enumerable.Repeat("um resumo deliberadamente longo para superar os turnos crus. ", 20));
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 4; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"curta {i}")) { }
+
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            var relatorio = conversation.CurrentTokenReport;
+
+            relatorio.Total.Should().BeGreaterThan(relatorio.Contexto,
+                "os turnos compactados pesam no total, e o resumo nao entrou no prompt");
+        }
+
+        [Fact]
+        public async Task OAtoEncolheOContextoESeguraOTotal()
+        {
+            // O que o ato faz e o que ele NAO faz. Ele troca os capitulos pelo resumo deles,
+            // entao o contexto encolhe. O total nao se mexe: ele representa o que a conversa
+            // crua custaria, e a conversa crua nao mudou por causa da promocao.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "O usuario perguntou varias coisas e o agente respondeu.";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            // Turnos GRANDES de proposito. Com mensagens curtas o resumo custa mais que os
+            // turnos que ele substituiu, a guarda de sanidade iguala total e contexto, e o
+            // ensaio mediria o clamp em vez da promocao.
+            string longa = string.Concat(Enumerable.Repeat("uma frase qualquer para gastar tokens. ", 30));
+
+            for (int i = 0; i < 4; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"{longa} primeira leva {i}")) { }
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            for (int i = 0; i < 4; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"{longa} segunda leva {i}")) { }
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            var antes = conversation.CurrentTokenReport;
+
+            await conversation.ForcarAtoAsync(userLevel: 1);
+
+            var depois = conversation.CurrentTokenReport;
+
+            depois.Contexto.Should().BeLessThan(antes.Contexto,
+                "o ato substitui os capitulos no prompt");
+            depois.Total.Should().Be(antes.Total,
+                "promover nao muda o que a conversa crua custaria");
+        }
+
+        [Fact]
         public async Task ForcarAto_ComDoisCapitulos_Fecha()
         {
             var settings = BuildSettings(sendSystemPrompt: false);
