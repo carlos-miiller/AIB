@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using AIB.Services;
@@ -47,6 +47,46 @@ namespace AIB.Tests
             fatos.Should().BeGreaterThan(-1);
             fatos.Should().BeLessThan(atos);
             atos.Should().BeLessThan(capitulos);
+        }
+
+        [Fact]
+        public void RenderNarrative_DeixaOsFatosDeFora()
+        {
+            // O contador de tokens compara esta faixa com os turnos que ela engoliu. Fatos
+            // atravessam sessoes e nao substituiram conversa nenhuma: conta-los aqui creditaria
+            // a compactacao por texto que ela nunca resumiu.
+            var camada = new MemoryLayer();
+            camada.SetFacts(new[] { "- um fato duravel" });
+            camada.Add(Ato(0, 0, 3, "o arco do primeiro ato"));
+
+            string narrativa = camada.RenderNarrative(Larga, Counter);
+
+            narrativa.Should().Contain("o arco do primeiro ato");
+            narrativa.Should().NotContain("um fato duravel");
+        }
+
+        [Fact]
+        public void RenderNarrative_SemAtoNemCapitulo_DevolveVazio()
+        {
+            var camada = new MemoryLayer();
+            camada.SetFacts(new[] { "- um fato duravel" });
+
+            camada.RenderNarrative(Larga, Counter).Should().BeEmpty(
+                "so fatos nao e memoria de conversa, e cobrar por eles inventaria economia");
+        }
+
+        [Fact]
+        public void RenderNarrative_EhOMesmoTextoQueEntraNoBloco()
+        {
+            // Se as duas montagens divergirem, o contador passa a medir uma coisa e o prompt a
+            // carregar outra — e a economia exibida deixa de corresponder ao que foi enviado.
+            var camada = new MemoryLayer();
+            camada.Add(Ato(0, 0, 3, "o arco do primeiro ato"));
+            camada.Add(Capitulo(4, "capitulo solto"));
+
+            string narrativa = camada.RenderNarrative(Larga, Counter);
+
+            camada.Render(Larga, Counter).Should().Contain(narrativa.TrimEnd());
         }
 
         [Fact]

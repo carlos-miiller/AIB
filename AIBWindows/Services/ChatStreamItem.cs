@@ -50,12 +50,18 @@ public abstract record ChatStreamItem
     /// Uma ferramenta terminou — o chip colapsa em ícone, ou vira erro (§4.3 e §4.7).
     /// </summary>
     /// <param name="Id">Mesmo id do <see cref="ToolStarted"/> correspondente.</param>
+    /// <param name="Tool">
+    /// Nome da ferramenta. Vem junto porque nem toda ferramenta produz artefato, e o registro
+    /// de acoes tirava o nome DALI: uma execute_skill bem-sucedida chegava com artefato nulo e
+    /// virava uma linha em branco na aba de logs.
+    /// </param>
     /// <param name="Failed">Se falhou ou foi recusada pelo usuário.</param>
     /// <param name="Denied">Se o motivo foi recusa no portão de confirmação.</param>
     /// <param name="Artifact">Literal preservado, quando a ferramenta tem um.</param>
     /// <param name="Detail">Primeira linha do erro, quando falhou.</param>
     public sealed record ToolFinished(
         string Id,
+        string Tool,
         bool Failed,
         bool Denied,
         Memory.Artifact? Artifact,

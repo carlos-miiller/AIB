@@ -682,6 +682,45 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task SemCapitulo_OTotalEhOProprioContexto()
+        {
+            // O contador nao pode inventar economia antes de haver o que economizar: sem
+            // capitulo nenhum turno foi substituido por resumo, e os dois numeros sao o mesmo.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, ProviderQueResponde("ok"), out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+
+            var relatorio = conversation.CurrentTokenReport;
+
+            relatorio.Contexto.Should().BePositive();
+            relatorio.Total.Should().Be(relatorio.Contexto);
+            relatorio.EconomiaPct.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task DepoisDoCapitulo_OTotalGuardaOsTurnosCrus()
+        {
+            // A conta que o rodape mostra: o total continua carregando os turnos que sairam do
+            // contexto, e o contexto encolheu para o resumo. Sem isto o numero da esquerda
+            // encolheria junto com o da direita e a economia sumiria no instante em que ela
+            // passou a existir.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "O usuario perguntou varias coisas.";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            int turnos = await ConversarAteCompactar(conversation);
+            turnos.Should().BePositive();
+
+            var relatorio = conversation.CurrentTokenReport;
+
+            relatorio.Total.Should().BeGreaterThan(relatorio.Contexto,
+                "os turnos compactados continuam pesando no total");
+            relatorio.EconomiaPct.Should().BePositive();
+        }
+
+        [Fact]
         public async Task ConversaCurta_NaoCompacta()
         {
             var settings = BuildSettings(sendSystemPrompt: false);

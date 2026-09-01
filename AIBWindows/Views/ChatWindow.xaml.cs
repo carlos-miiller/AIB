@@ -68,9 +68,7 @@ public partial class ChatWindow : Window
 
         // Inicializa UI
         RefreshLevelUI(false);
-        int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
-        int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
-        UpdateTokenCounterUI(_conversation.CurrentTokenCount, maxTokens);
+        UpdateTokenCounterUI(_conversation.CurrentTokenReport);
         ApplyCharacterUI();
         InputBox.Focus();
 
@@ -466,12 +464,16 @@ public partial class ChatWindow : Window
     /// some com ele; o registro e a lista de arquivos atravessam a conversa inteira.
     /// </para>
     /// </summary>
-    private static void RegistrarAcao(ChatStreamItem.ToolFinished acao)
+    // Publico para ensaio: e o ponto exato onde a linha do registro nasce, e onde ela
+    // nascia em branco. Nao toca em nada da janela — so no ActionLogService.
+    public static void RegistrarAcao(ChatStreamItem.ToolFinished acao)
     {
         var artefato = acao.Artifact;
 
+        // O nome vem do EVENTO. Tira-lo do artefato deixava a linha em branco sempre que a
+        // ferramenta nao tinha extrator proprio — foi o que aconteceu com a execute_skill.
         ActionLogService.Add(ActionLogService.Construir(
-            artefato?.Tool ?? "",
+            acao.Tool,
             artefato,
             acao.Failed,
             acao.Detail,
@@ -900,7 +902,7 @@ public partial class ChatWindow : Window
                 _settingsService.SaveSettings(settings);
                 
                 int maxTokens = LevelService.GetMaxTokensForLevel(targetLevel);
-                UpdateTokenCounterUI(0, maxTokens);
+                UpdateTokenCounterUI(new TokenReport(0, 0, maxTokens));
                 AddAgentBubble($"Cheat ativado! Avançando MessageCount para {neededXP}. Você agora é Nível {targetLevel} e possui {maxTokens} tokens de memória local livre.");
             }
             else
@@ -1473,20 +1475,24 @@ public partial class ChatWindow : Window
         _conversation.ResetHistory();
         int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
-        _ultimaEconomiaPct = null;
-        UpdateTokenCounterUI(0, maxTokens);
+        UpdateTokenCounterUI(new TokenReport(0, 0, maxTokens));
         ChatTitleText.Text = "Nova conversa";
         AddWelcomeBubble();
         AtualizarEstadoVazio();
     }
 
     /// <summary>
-    /// Cor do contador por ECONOMIA de contexto, não por ocupação — §3.8.
+    /// Cor do contador por ECONOMIA de contexto, nao por ocupacao — §3.8.
     /// <para>
-    /// A tela antiga pintava de verde a laranja conforme o histórico enchia. A spec inverte o
-    /// que o número comunica: o que importa ali é quanto o cache de prefixo está economizando.
-    /// Verde quer dizer "o cache está trabalhando"; magenta, "cada turno está sendo reenviado
-    /// inteiro".
+    /// A tela antiga pintava de verde a laranja conforme o historico enchia. A spec inverte o
+    /// que o numero comunica. O que ele mede mudou de novo: era a fatia do prompt que o cache
+    /// do Ollama nao precisou reprocessar, e agora e quanto o sistema de capitulos e atos
+    /// esta poupando. Verde quer dizer "a memoria esta trabalhando"; magenta, "a conversa vai
+    /// quase inteira em toda requisicao".
+    /// </para>
+    /// <para>
+    /// Sem economia medida a cor e neutra, e nao magenta: antes do primeiro capitulo nao ha
+    /// falha nenhuma a sinalizar.
     /// </para>
     /// </summary>
     private System.Windows.Media.Brush CorDaEconomia(int? economiaPct)
@@ -1498,38 +1504,24 @@ public partial class ChatWindow : Window
     }
 
     /// <summary>
-    /// A última economia MEDIDA, em porcentagem — e não em tokens.
+    /// Escreve o contador do rodape: quanto a conversa inteira pesaria, quanto ela pesa agora
+    /// e quanto o sistema de capitulos e atos esta poupando.
     /// <para>
-    /// Guardar o número absoluto de tokens reaproveitados era o defeito: nem toda notificação
-    /// traz medição de cache. A do fim do turno não traz, e o contador então dividia a medição
-    /// ANTIGA pelo total NOVO, que acabara de crescer com a resposta inteira e com o raciocínio
-    /// que vai para o histórico. A conta desabava, o rótulo pulava para perto de zero e o texto
-    /// ficava magenta bem no instante em que a resposta chegava — justamente quando o cache
-    /// tinha acabado de trabalhar mais.
-    /// </para>
-    /// <para>
-    /// A porcentagem sobrevive à mudança do total porque já é uma razão. Sem medição nova, o
-    /// certo é repetir a última que existiu, não recalculá-la com metade dos dados.
+    /// A seta so aparece quando ha compactacao. Antes do primeiro capitulo os dois numeros sao
+    /// o mesmo, e escrever "1.204 &gt; 1.204" seria ocupar o rodape para nao dizer nada. Sem
+    /// economia medida o texto tambem nao ganha porcentagem nem cor: um "-0%" magenta no
+    /// comeco da conversa acusaria o sistema de falhar quando ele so ainda nao teve trabalho.
     /// </para>
     /// </summary>
-    private int? _ultimaEconomiaPct;
-
-    private void UpdateTokenCounterUI(int current, int max, int? cached = null)
+    private void UpdateTokenCounterUI(TokenReport relatorio)
     {
         Dispatcher.Invoke(() =>
         {
-            string texto = $"{current}/{max} tokens";
+            int? economia = relatorio.EconomiaPct;
 
-            if (cached.HasValue && current > 0)
-            {
-                _ultimaEconomiaPct = Math.Clamp(
-                    (int)Math.Round((double)cached.Value / current * 100), 0, 100);
-            }
-
-            int? economia = _ultimaEconomiaPct;
-
-            // Negativo = economia, como a spec escreve o exemplo "909/8704 tokens (-91%)".
-            if (economia.HasValue) texto += $" (-{economia}%)";
+            string texto = economia.HasValue
+                ? $"{relatorio.Total:N0} > {relatorio.Contexto:N0} tokens (-{economia}%)"
+                : $"{relatorio.Contexto:N0} tokens";
 
             TokenCounterText.Text = texto;
             TokenCounterText.Foreground = CorDaEconomia(economia);
@@ -1655,9 +1647,7 @@ public partial class ChatWindow : Window
 
         ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
 
-        int nivel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
-        _ultimaEconomiaPct = null;
-        UpdateTokenCounterUI(_conversation.CurrentTokenCount, LevelService.GetMaxTokensForLevel(nivel));
+        UpdateTokenCounterUI(_conversation.CurrentTokenReport);
 
         AtualizarEstadoVazio();
         ChatScrollViewer.ScrollToEnd();

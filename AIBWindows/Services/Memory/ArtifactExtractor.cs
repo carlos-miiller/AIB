@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -106,6 +106,7 @@ public static class ArtifactExtractor
         {
             "write_file" or "read_file" => CaminhoDe(argumentosJson),
             "run_command" => StringDe(argumentosJson, "command"),
+            "execute_skill" => ChamadaDeSkill(argumentosJson),
             _ => ""
         };
 
@@ -149,6 +150,20 @@ public static class ArtifactExtractor
                     falhou ? PrimeiraLinha(resultado) : null);
             }
 
+            case "execute_skill":
+            {
+                // O literal aqui e a chamada: nome da habilidade mais os argumentos que ela
+                // recebeu. So o nome da ferramenta nao serve — "execute_skill" repetido na
+                // trilha nao diz QUAL habilidade rodou, que e a unica coisa que se quer saber
+                // ao olhar para tras.
+                string chamada = ChamadaDeSkill(argumentosJson);
+                if (chamada.Length == 0) return null;
+                if (recusado) return new Artifact(ArtifactKind.Denied, ferramenta, chamada, true, "habilidade recusada");
+
+                return new Artifact(ArtifactKind.CommandRun, ferramenta, chamada, falhou,
+                    falhou ? PrimeiraLinha(resultado) : null);
+            }
+
             default:
                 // Ferramenta sem extrator próprio: registra só a recusa, que vale para qualquer
                 // uma. Sucesso genérico não tem literal a preservar.
@@ -163,6 +178,19 @@ public static class ArtifactExtractor
     /// "config.json" guardado como está deixa de ser um literal — vira ambiguidade.
     /// Passa pelo mesmo reparo de escape das ferramentas.
     /// </summary>
+    /// <summary>
+    /// "ler-planilha -Path C:\lista.xlsx" — nome da habilidade e os argumentos dela.
+    /// Vazio quando nem o nome veio, que e o unico caso em que nada aconteceu.
+    /// </summary>
+    private static string ChamadaDeSkill(string argumentosJson)
+    {
+        string nome = StringDe(argumentosJson, "skill_name").Trim();
+        if (nome.Length == 0) return "";
+
+        string extra = StringDe(argumentosJson, "arguments").Trim();
+        return extra.Length == 0 ? nome : nome + " " + extra;
+    }
+
     private static string CaminhoDe(string argumentosJson)
     {
         string bruto = PathArgumentRepair.Normalize(StringDe(argumentosJson, "path"));

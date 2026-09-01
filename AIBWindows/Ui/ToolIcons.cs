@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows.Media;
 using AIB.Services.Memory;
@@ -50,6 +50,7 @@ public static class ToolIcons
         "write_file" => Gravar,
         "read_file" => Ler,
         "run_command" => Terminal,
+        "execute_skill" => Terminal,
         _ => Generico
     });
 

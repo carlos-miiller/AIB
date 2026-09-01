@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,9 +42,6 @@ public sealed class WarmupService
     /// <summary>Disparado no início e no fim do aquecimento (true/false).</summary>
     public event Action<bool>? OnWarmupStateChanged;
 
-    /// <summary>Métricas do prefill, para o contador de tokens da UI.</summary>
-    public event Action<int, int, int?>? OnTokenCountChanged;
-
     /// <summary>Roda o aquecimento inteiro sobre uma cópia descartável. Nunca lança.</summary>
     public async Task RunAsync(IReadOnlyList<ChatMessage> historySeed, CancellationToken ct)
     {
@@ -84,8 +81,10 @@ public sealed class WarmupService
             if (result.PromptEvalCount.HasValue)
             {
                 int totalTokens = store.CountTokens();
-                int cachedTokens = Math.Max(0, totalTokens - result.PromptEvalCount.Value);
-                OnTokenCountChanged?.Invoke(totalTokens, LevelService.GetMaxTokensForLevel(userLevel), cachedTokens);
+                int reaproveitados = Math.Max(0, totalTokens - result.PromptEvalCount.Value);
+                Console.WriteLine(
+                    $"[WARMUP] Prefill: {result.PromptEvalCount.Value} de {totalTokens} tokens reprocessados "
+                    + $"({reaproveitados} vieram do cache de prefixo).");
             }
 
             Console.WriteLine($"[WARMUP] Gramática em cache! Resposta final: {result.Text}");

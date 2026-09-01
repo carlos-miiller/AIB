@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -69,23 +69,42 @@ public sealed class MemoryLayer
     public string Render(MemoryQuota quota, TokenCounter counter)
     {
         string fatos = FactStore.Render(_facts, quota, counter);
-        string atos = RenderActs(quota, counter);
-        string capitulos = RenderChapters(quota, counter);
+        string narrativa = RenderNarrative(quota, counter);
 
-        if (fatos.Length == 0 && atos.Length == 0 && capitulos.Length == 0) return "";
+        if (fatos.Length == 0 && narrativa.Length == 0) return "";
 
         var texto = new StringBuilder();
 
         if (fatos.Length > 0) texto.Append(fatos).Append('\n');
-
-        if (atos.Length > 0 || capitulos.Length > 0)
-        {
-            texto.Append("## Memória da conversa\n");
-            texto.Append("Trechos anteriores já compactados. Os artefatos são literais e podem ser usados como estão.\n\n");
-            texto.Append(atos).Append(capitulos);
-        }
+        texto.Append(narrativa);
 
         return texto.ToString().TrimEnd() + "\n";
+    }
+
+    /// <summary>
+    /// So a faixa NARRATIVA: atos e capitulos soltos, com o cabecalho deles. Vazia quando nao
+    /// existe nenhum dos dois.
+    /// <para>
+    /// Separada do <see cref="Render"/> porque e ela, e so ela, que entrou no lugar de
+    /// conversa crua. Fatos atravessam sessoes e anexos sao escolha do usuario: nenhum dos
+    /// dois substituiu turno nenhum. O contador de tokens compara esta faixa com os turnos que
+    /// ela engoliu, e medir o bloco inteiro creditaria a compactacao por texto que ela nunca
+    /// resumiu.
+    /// </para>
+    /// </summary>
+    public string RenderNarrative(MemoryQuota quota, TokenCounter counter)
+    {
+        string atos = RenderActs(quota, counter);
+        string capitulos = RenderChapters(quota, counter);
+
+        if (atos.Length == 0 && capitulos.Length == 0) return "";
+
+        var texto = new StringBuilder();
+        texto.Append("## Memória da conversa\n");
+        texto.Append("Trechos anteriores já compactados. Os artefatos são literais e podem ser usados como estão.\n\n");
+        texto.Append(atos).Append(capitulos);
+
+        return texto.ToString();
     }
 
     /// <summary>

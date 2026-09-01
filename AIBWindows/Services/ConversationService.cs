@@ -84,6 +84,20 @@ public sealed class ConversationService : IMessageStore
     private int _turnsRecorded;
 
     /// <summary>
+    /// Tokens dos turnos CRUS que ja foram engolidos por um capitulo. Cresce a cada
+    /// compactacao e e a metade esquerda da conta: o que a conversa custaria se nada tivesse
+    /// sido resumido.
+    /// </summary>
+    private int _tokensCompactados;
+
+    /// <summary>
+    /// Tokens da faixa narrativa da memoria — atos e capitulos soltos — como ela esta AGORA no
+    /// prompt. E o que substituiu os turnos acima, e por isso sai da conta: sem descontar,
+    /// a economia apareceria maior do que e.
+    /// </summary>
+    private int _tokensDeResumo;
+
+    /// <summary>
     /// Nome da conversa, quando o modelo já o produziu. Enquanto for null, quem arquiva usa a
     /// heurística antiga — a primeira mensagem do usuário, cortada.
     /// </summary>
@@ -178,7 +192,13 @@ public sealed class ConversationService : IMessageStore
 
         _warmupService = new WarmupService(_settingsService, _toolRegistry, _providerFactory, _tokenCounter);
         _warmupService.OnWarmupStateChanged += state => RaiseWarmupState(state);
-        _warmupService.OnTokenCountChanged += (total, max, cached) => RaiseTokenCount(total, max, cached);
+        // Ao SAIR do aquecimento o contador e refeito: o prefixo fixo ja esta montado e o
+        // numero deixa de ser o da janela recem-aberta.
+        _warmupService.OnWarmupStateChanged += aquecendo =>
+        {
+            if (!aquecendo)
+                NotifyTokenCount(LevelService.GetLevel(_settingsService.LoadSettings().MessageCount));
+        };
 
         // Popula o histórico inicial (System Prompt / SOUL) para já termos a métrica de
         // tokens. Nenhuma tarefa de fundo nasce daqui: o aquecimento é explícito.
@@ -189,12 +209,16 @@ public sealed class ConversationService : IMessageStore
     // Eventos e superfície pública
     // ─────────────────────────────────────────────────────────────────────────
 
-    public event Action<int, int, int?>? OnTokenCountChanged;
+    public event Action<TokenReport>? OnTokenCountChanged;
     public event Action<bool>? OnWarmupStateChanged;
 
     public ToolRegistry Registry => _toolRegistry;
 
     public int CurrentTokenCount => CountTokens();
+
+    /// <summary>Fotografia atual do custo de contexto, para a interface desenhar.</summary>
+    public TokenReport CurrentTokenReport =>
+        MontarRelatorio(LevelService.GetLevel(_settingsService.LoadSettings().MessageCount));
 
     public void CancelGeneration()
     {
@@ -229,6 +253,8 @@ public sealed class ConversationService : IMessageStore
         {
             _sessionMemory = NewSessionMemory();
             _turnsRecorded = 0;
+        _tokensCompactados = 0;
+        _tokensDeResumo = 0;
             _tituloRevisado = false;
             Title = null;
             _sessionId = Guid.NewGuid().ToString();
@@ -486,6 +512,11 @@ public sealed class ConversationService : IMessageStore
 
             // Só remove DEPOIS que o capítulo existe. Remover antes e falhar o resumo perderia
             // os turnos das duas pontas: fora do contexto e sem substituto.
+            // Medido ANTES da remocao, e sobre as mensagens originais: e este o custo que o
+            // capitulo acabou de tirar do prompt, e o unico numero que torna a economia
+            // verificavel depois.
+            _tokensCompactados += _tokenCounter.CountMessages(candidatos.SelectMany(t => t.Messages));
+
             RemoveOldestMessages(candidatos.Sum(t => t.Messages.Count));
 
             _memory.Add(capitulo);
@@ -668,6 +699,9 @@ public sealed class ConversationService : IMessageStore
         // ou ato nasce.
         _memory.SetFacts(_facts.ReadFacts());
 
+        string narrativa = _memory.RenderNarrative(quota, _tokenCounter);
+        _tokensDeResumo = narrativa.Length == 0 ? 0 : _tokenCounter.CountText(narrativa);
+
         string bloco = _memory.Render(quota, _tokenCounter);
 
         // Os arquivos anexados viajam na MESMA mensagem da memória, e não numa terceira.
@@ -775,8 +809,10 @@ public sealed class ConversationService : IMessageStore
                         yield return new ChatStreamItem.Thinking();
                         break;
 
+                    // O contador ao vivo do laco ja mede o contexto do turno em andamento; a
+                    // parte compactada e a mesma o turno inteiro, e vem dos campos guardados.
                     case AgentEvent.TokenUsage usage:
-                        RaiseTokenCount(usage.Total, usage.Max, usage.Cached);
+                        RaiseTokenCount(Relatorio(usage.Total, usage.Max));
                         break;
 
                     case AgentEvent.TurnSegment segment:
@@ -793,6 +829,7 @@ public sealed class ConversationService : IMessageStore
                     case AgentEvent.ToolFinished terminada:
                         yield return new ChatStreamItem.ToolFinished(
                             terminada.Id,
+                            terminada.Tool,
                             terminada.Failed,
                             Memory.ArtifactExtractor.Recusado(terminada.Result),
                             terminada.Artifact,
@@ -1095,7 +1132,30 @@ public sealed class ConversationService : IMessageStore
 
     public void NotifyTokenCount(int userLevel, int? cachedTokens = null)
     {
-        RaiseTokenCount(CountTokens(), LevelService.GetMaxTokensForLevel(userLevel), cachedTokens);
+        RaiseTokenCount(MontarRelatorio(userLevel));
+    }
+
+    /// <summary>
+    /// As duas medidas do contexto.
+    /// <para>
+    /// O total NAO e a soma de tudo que ja passou pela conversa: mensagem cortada pela poda de
+    /// emergencia nao entra. A poda descarta sem substituto, e credita-la aqui faria o sistema
+    /// de capitulos parecer melhor justamente quando ele nao deu conta.
+    /// </para>
+    /// </summary>
+    private TokenReport MontarRelatorio(int userLevel) =>
+        Relatorio(CountTokens(), LevelService.GetMaxTokensForLevel(userLevel));
+
+    private TokenReport Relatorio(int contexto, int max)
+    {
+        int total = contexto - _tokensDeResumo + _tokensCompactados;
+
+        // Guarda de sanidade: sem nada compactado os dois numeros sao o mesmo. O bloco de
+        // memoria pode existir so com fatos ou anexos, e nenhum dos dois entrou no lugar de
+        // conversa — descontar por eles produziria um total MENOR que o contexto.
+        if (total < contexto) total = contexto;
+
+        return new TokenReport(total, contexto, max);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1207,11 +1267,11 @@ public sealed class ConversationService : IMessageStore
         Post(() => callback(value));
     }
 
-    private void RaiseTokenCount(int total, int max, int? cached)
+    private void RaiseTokenCount(TokenReport relatorio)
     {
         var handler = OnTokenCountChanged;
         if (handler == null) return;
-        Post(() => handler(total, max, cached));
+        Post(() => handler(relatorio));
     }
 
     private void RaiseWarmupState(bool warming)
