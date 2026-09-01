@@ -681,6 +681,106 @@ namespace AIB.Tests
             linhas[0].Should().Contain("\"Index\":0");
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // Capitulo e ato a pedido do usuario
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task ForcarCapitulo_FechaSemOGatilhoDeTokens()
+        {
+            // Conversa curta: o gatilho automatico nunca dispararia aqui. O comando existe
+            // justamente para isso.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "O usuario cumprimentou e perguntou das horas.";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 4; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"pergunta {i}")) { }
+
+            conversation.Chapters.Should().BeEmpty("o gatilho de tokens nao foi cruzado");
+
+            string resposta = await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            conversation.Chapters.Should().ContainSingle();
+            resposta.Should().Contain("fechado");
+        }
+
+        [Fact]
+        public async Task ForcarCapitulo_SemTurnoSobrando_RecusaDizendoPorque()
+        {
+            // Os dois turnos mais recentes ficam sempre fora do capitulo. Com dois turnos no
+            // total nao sobra nada, e a recusa precisa dizer isso — "nao foi possivel" mandaria
+            // o usuario tentar de novo sem saber o que mudar.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, ProviderQueResponde("ok"), out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+
+            string resposta = await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            conversation.Chapters.Should().BeEmpty();
+            resposta.Should().Contain("recentes");
+        }
+
+        [Fact]
+        public async Task ForcarAto_SemCapitulo_RecusaEExplicaOCaminho()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, ProviderQueResponde("ok"), out _);
+
+            string resposta = await conversation.ForcarAtoAsync(userLevel: 1);
+
+            conversation.Acts.Should().BeEmpty();
+            resposta.Should().Contain("capitulo", "a recusa precisa apontar o passo que falta");
+        }
+
+        [Fact]
+        public async Task ForcarAto_ComUmCapituloSo_Recusa()
+        {
+            // Um ato sobre um capitulo e resumo de resumo: troca o texto por outro mais pobre e
+            // ainda esconde o original, porque capitulo coberto por ato para de ser renderizado.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "resumo do capitulo";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 4; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"pergunta {i}")) { }
+
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+            conversation.Chapters.Should().ContainSingle();
+
+            string resposta = await conversation.ForcarAtoAsync(userLevel: 1);
+
+            conversation.Acts.Should().BeEmpty();
+            resposta.Should().Contain("resumo de resumo");
+        }
+
+        [Fact]
+        public async Task ForcarAto_ComDoisCapitulos_Fecha()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "resumo qualquer";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 4; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"primeira leva {i}")) { }
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            for (int i = 0; i < 4; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"segunda leva {i}")) { }
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            conversation.Chapters.Should().HaveCount(2);
+
+            string resposta = await conversation.ForcarAtoAsync(userLevel: 1);
+
+            conversation.Acts.Should().ContainSingle();
+            resposta.Should().Contain("Ato");
+        }
+
         [Fact]
         public async Task SemCapitulo_OTotalEhOProprioContexto()
         {

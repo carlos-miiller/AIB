@@ -888,6 +888,20 @@ public partial class ChatWindow : Window
             return;
         }
 
+        // Memoria a pedido: fecha um capitulo ou um ato agora, sem esperar o gatilho.
+        if (text.Equals("/capitulo", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("/capítulo", StringComparison.OrdinalIgnoreCase))
+        {
+            await RodarComandoDeMemoria(text, nivel => _conversation.ForcarCapituloAsync(nivel));
+            return;
+        }
+
+        if (text.Equals("/ato", StringComparison.OrdinalIgnoreCase))
+        {
+            await RodarComandoDeMemoria(text, nivel => _conversation.ForcarAtoAsync(nivel));
+            return;
+        }
+
         // Comando secreto para desbloquear nível
         if (text.StartsWith("/unlock_level", StringComparison.OrdinalIgnoreCase))
         {
@@ -1526,6 +1540,56 @@ public partial class ChatWindow : Window
             TokenCounterText.Text = texto;
             TokenCounterText.Foreground = CorDaEconomia(economia);
         });
+    }
+
+    /// <summary>
+    /// Roda um comando de memoria e devolve a resposta numa bolha.
+    /// <para>
+    /// Trava a interface como um turno normal, e pelo mesmo motivo: o resumidor pode levar ate
+    /// quatro minutos, e nesse tempo ele segura o portao do turno. Sem travar, a mensagem
+    /// seguinte do usuario ficaria parada esperando sem nenhum sinal na tela.
+    /// </para>
+    /// <para>
+    /// A frase mostrada vem do servico, inclusive quando ele recusa. Uma recusa muda de motivo
+    /// — nao ha turno fechado, so ha um capitulo solto, o resumidor estourou o tempo — e
+    /// traduzir tudo para "nao foi possivel" aqui apagaria justamente o que o usuario precisa
+    /// saber para tentar de outro jeito.
+    /// </para>
+    /// </summary>
+    private async Task RodarComandoDeMemoria(string comando, Func<int, Task<string>> acao)
+    {
+        InputBox.Clear();
+        AddUserBubble(comando);
+
+        _isSending = true;
+        InputBox.IsEnabled = false;
+
+        var pensando = AddTypingIndicator();
+        ChatScrollViewer.ScrollToEnd();
+
+        string resposta;
+        try
+        {
+            int nivel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
+            resposta = await acao(nivel);
+        }
+        catch (Exception ex)
+        {
+            resposta = $"O comando falhou: {ex.Message}";
+        }
+        finally
+        {
+            pensando.timer.Stop();
+            MessagesPanel.Children.Remove(pensando.bubble);
+
+            InputBox.IsEnabled = true;
+            InputBox.Focus();
+            _isSending = false;
+        }
+
+        AddAgentBubble(resposta);
+        AtualizarPainelDeHistorico();
+        ChatScrollViewer.ScrollToEnd();
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => EsconderTudo();

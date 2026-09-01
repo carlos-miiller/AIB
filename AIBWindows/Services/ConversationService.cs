@@ -500,39 +500,7 @@ public sealed class ConversationService : IMessageStore
 
             Console.WriteLine($"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > gatilho={gatilho}.");
 
-            var settings = _settingsService.LoadSettings();
-            var compactor = new Compactor(_providerFactory.GetProvider(settings));
-
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(SummaryTimeout);
-
-            var capitulo = await compactor
-                .SummarizeAsync(_memory.NextChapterIndex, candidatos, timeout.Token)
-                .ConfigureAwait(false);
-
-            // Só remove DEPOIS que o capítulo existe. Remover antes e falhar o resumo perderia
-            // os turnos das duas pontas: fora do contexto e sem substituto.
-            // Medido ANTES da remocao, e sobre as mensagens originais: e este o custo que o
-            // capitulo acabou de tirar do prompt, e o unico numero que torna a economia
-            // verificavel depois.
-            _tokensCompactados += _tokenCounter.CountMessages(candidatos.SelectMany(t => t.Messages));
-
-            RemoveOldestMessages(candidatos.Sum(t => t.Messages.Count));
-
-            _memory.Add(capitulo);
-            _sessionMemory.AppendChapter(capitulo);
-
-            // Promoção antes de reescrever o bloco: se um ato nascer agora, ele já entra no
-            // mesmo prompt, e o prefixo é invalidado UMA vez em vez de duas.
-            await PromoteIfNeededAsync(compactor, ct).ConfigureAwait(false);
-
-            // Mesma carona: o prefixo já foi invalidado por esta compactação, então revisar o
-            // nome da conversa agora não custa cache nenhum.
-            await RetitularPeloCapituloAsync(capitulo.Summary, ct).ConfigureAwait(false);
-
-            RefreshMemoryMessage(quota);
-
-            Console.WriteLine($"[MEMORIA] Capítulo {capitulo.Index} fechado ({capitulo.Artifacts.Count} artefato(s)). Vivo agora: {LiveTokens()} tokens.");
+            await FecharCapituloAsync(candidatos, quota, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -547,6 +515,141 @@ public sealed class ConversationService : IMessageStore
             Console.WriteLine(
                 $"[MEMORIA] Compactação falhou: {ex.Message}. " +
                 $"Nova tentativa em {CompactionCooldownTurns} turno(s).");
+        }
+    }
+
+    /// <summary>
+    /// Fecha um capitulo sobre <paramref name="candidatos"/>: resume, tira os turnos do
+    /// contexto, grava e reescreve o bloco de memoria. Lanca em falha de resumo — quem chama
+    /// decide o que dizer ao usuario.
+    /// </summary>
+    private async Task<Chapter> FecharCapituloAsync(
+        List<Turn> candidatos, MemoryQuota quota, CancellationToken ct)
+    {
+        var settings = _settingsService.LoadSettings();
+        var compactor = new Compactor(_providerFactory.GetProvider(settings));
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(SummaryTimeout);
+
+        var capitulo = await compactor
+            .SummarizeAsync(_memory.NextChapterIndex, candidatos, timeout.Token)
+            .ConfigureAwait(false);
+
+        // Medido ANTES da remocao, e sobre as mensagens originais: e este o custo que o
+        // capitulo acabou de tirar do prompt, e o unico numero que torna a economia
+        // verificavel depois.
+        _tokensCompactados += _tokenCounter.CountMessages(candidatos.SelectMany(t => t.Messages));
+
+        // So remove DEPOIS que o capitulo existe. Remover antes e falhar o resumo perderia os
+        // turnos das duas pontas: fora do contexto e sem substituto.
+        RemoveOldestMessages(candidatos.Sum(t => t.Messages.Count));
+
+        _memory.Add(capitulo);
+        _sessionMemory.AppendChapter(capitulo);
+
+        // Promocao antes de reescrever o bloco: se um ato nascer agora, ele ja entra no mesmo
+        // prompt, e o prefixo e invalidado UMA vez em vez de duas.
+        await PromoverAsync(compactor, ChaptersPerAct, ct).ConfigureAwait(false);
+
+        // Mesma carona: o prefixo ja foi invalidado por esta compactacao, entao revisar o nome
+        // da conversa agora nao custa cache nenhum.
+        await RetitularPeloCapituloAsync(capitulo.Summary, ct).ConfigureAwait(false);
+
+        RefreshMemoryMessage(quota);
+
+        Console.WriteLine($"[MEMORIA] Capitulo {capitulo.Index} fechado ({capitulo.Artifacts.Count} artefato(s)). Vivo agora: {LiveTokens()} tokens.");
+
+        return capitulo;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Compactação a pedido do usuário
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Fecha um capitulo AGORA, com as mensagens que existem, sem esperar o gatilho de tokens.
+    /// <para>
+    /// Segura o mesmo portao do turno: compactar no meio de uma resposta mexeria no historico
+    /// embaixo do laco. Devolve a frase que a interface mostra — inclusive a de recusa, porque
+    /// um "nao deu" sem motivo e pior que nao ter o comando.
+    /// </para>
+    /// </summary>
+    public async Task<string> ForcarCapituloAsync(int userLevel, CancellationToken ct = default)
+    {
+        await _turnGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var quota = CurrentQuota(userLevel);
+            if (quota.IsOff)
+                return "Nao ha cota de memoria neste nivel: o prompt fixo ja ocupa o orcamento inteiro.";
+
+            var candidatos = SelectTurnsToCompact(quota, LiveTokens(), forcado: true);
+            if (candidatos.Count == 0)
+                return $"Nada a compactar: os {KeepRecentTurns} turnos mais recentes ficam sempre fora, "
+                     + "e nao ha turno fechado antes deles.";
+
+            var capitulo = await FecharCapituloAsync(candidatos, quota, ct).ConfigureAwait(false);
+
+            NotifyTokenCount(userLevel);
+
+            return $"Capitulo {capitulo.Index} fechado: {candidatos.Count} turno(s) viraram resumo, "
+                 + $"com {capitulo.Artifacts.Count} artefato(s) preservados.";
+        }
+        catch (OperationCanceledException)
+        {
+            return $"O resumidor passou de {SummaryTimeout.TotalMinutes:F0} minutos e foi interrompido. "
+                 + "As mensagens continuam no contexto.";
+        }
+        catch (Exception ex)
+        {
+            return $"A compactacao falhou: {ex.Message}. As mensagens continuam no contexto.";
+        }
+        finally
+        {
+            _turnGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Fecha um ato AGORA sobre os capitulos soltos, sem esperar os
+    /// <see cref="ChaptersPerAct"/> de praxe.
+    /// <para>
+    /// Exige dois capitulos no minimo. Um ato sobre um capitulo so e resumo de resumo sem
+    /// ganho nenhum: trocaria o texto por outro mais pobre e ainda esconderia o original, que
+    /// deixa de ser renderizado assim que um ato o cobre.
+    /// </para>
+    /// </summary>
+    public async Task<string> ForcarAtoAsync(int userLevel, CancellationToken ct = default)
+    {
+        await _turnGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            int soltos = _memory.UncoveredChapters.Count;
+            if (soltos < 2)
+                return soltos == 0
+                    ? "Nao ha capitulo solto para promover. Feche um capitulo antes."
+                    : "So ha um capitulo solto. Um ato sobre ele seria resumo de resumo, sem "
+                    + "ganho e com perda: o capitulo original deixaria de ser mostrado.";
+
+            var settings = _settingsService.LoadSettings();
+            var compactor = new Compactor(_providerFactory.GetProvider(settings));
+
+            var ato = await PromoverAsync(compactor, minimo: 2, ct).ConfigureAwait(false);
+            if (ato == null) return "A promocao falhou. Os capitulos seguem soltos.";
+
+            RefreshMemoryMessage(CurrentQuota(userLevel));
+            NotifyTokenCount(userLevel);
+
+            return $"Ato {ato.Index} fechado sobre os capitulos {ato.FirstChapter}-{ato.LastChapter}.";
+        }
+        catch (Exception ex)
+        {
+            return $"A promocao falhou: {ex.Message}. Os capitulos seguem soltos.";
+        }
+        finally
+        {
+            _turnGate.Release();
         }
     }
 
@@ -573,12 +676,12 @@ public sealed class ConversationService : IMessageStore
     /// Nunca lança: o capítulo já está fechado e gravado, e uma falha aqui não pode desfazê-lo.
     /// </para>
     /// </summary>
-    private async Task PromoteIfNeededAsync(Compactor compactor, CancellationToken ct)
+    private async Task<Act?> PromoverAsync(Compactor compactor, int minimo, CancellationToken ct)
     {
         try
         {
             var soltos = _memory.UncoveredChapters;
-            if (soltos.Count < ChaptersPerAct) return;
+            if (soltos.Count < minimo) return null;
 
             Console.WriteLine($"[MEMORIA] Promovendo {soltos.Count} capítulo(s) a ato.");
 
@@ -601,14 +704,18 @@ public sealed class ConversationService : IMessageStore
             Console.WriteLine(
                 $"[MEMORIA] Ato {ato.Index} fechado (capítulos {ato.FirstChapter}–{ato.LastChapter}, " +
                 $"{ato.Artifacts.Count} artefato(s)). Fatos novos: {promovidos}.");
+
+            return ato;
         }
         catch (OperationCanceledException)
         {
             Console.WriteLine("[MEMORIA] Promoção cancelada. Os capítulos seguem soltos.");
+            return null;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[MEMORIA] Promoção falhou: {ex.Message}");
+            return null;
         }
     }
 
@@ -644,7 +751,11 @@ public sealed class ConversationService : IMessageStore
     /// cota. Nunca os <see cref="KeepRecentTurns"/> últimos, e nunca um turno aberto — um
     /// tool_calls sem resultado quebra a requisição seguinte.
     /// </summary>
-    private List<Turn> SelectTurnsToCompact(MemoryQuota quota, int vivo)
+    /// <param name="forcado">
+    /// Ignora o alvo de tokens e leva os turnos disponiveis mesmo com a conversa folgada. E o
+    /// caminho do comando do usuario: ele pediu um capitulo, nao perguntou se compensava.
+    /// </param>
+    private List<Turn> SelectTurnsToCompact(MemoryQuota quota, int vivo, bool forcado = false)
     {
         List<ChatMessage> vivos;
         lock (_gate) { vivos = _history.Skip(FirstRemovableIndex()).ToList(); }
@@ -659,7 +770,7 @@ public sealed class ConversationService : IMessageStore
 
         int teto = Math.Min(disponiveis, MaxTurnsPerChapter);
 
-        for (int i = 0; i < teto && restante > alvo; i++)
+        for (int i = 0; i < teto && (forcado || restante > alvo); i++)
         {
             if (!TurnSplitter.IsClosed(turnos[i])) break;
 
