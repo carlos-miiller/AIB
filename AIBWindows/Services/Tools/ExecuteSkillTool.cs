@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -163,6 +163,15 @@ public class ExecuteSkillTool : ITool
             Arguments = string.IsNullOrWhiteSpace(argumentos) ? prefixo : $"{prefixo} {argumentos}",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+
+            // Entrada redirecionada e FECHADA logo apos o Start. Sem isto o filho herda o
+            // console do app, e um script com parametro obrigatorio ausente abre o prompt
+            // "Supply values for the following parameters" e fica parado ate o teto de 60s.
+            // Era o que acontecia aqui: a llm chamava a skill sem -Path, esperava um minuto
+            // e recebia "passou de 60 segundos" - uma mensagem que nao diz o que faltou.
+            // Com a entrada fechada o prompt le EOF e o erro volta na hora, nomeando o
+            // parametro ausente.
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true,
 
@@ -177,6 +186,8 @@ public class ExecuteSkillTool : ITool
         {
             using var processo = new Process { StartInfo = inicio };
             processo.Start();
+
+            try { processo.StandardInput.Close(); } catch { }
 
             // Os dois canos lidos em PARALELO, pelo mesmo motivo do run_command: ler um até o
             // fim antes do outro trava assim que o filho enche o buffer de 4KB do que sobrou.
@@ -200,10 +211,24 @@ public class ExecuteSkillTool : ITool
 
             string texto = (await saida + "\n" + RunCommandTool.SemClixml(await erro)).Trim();
 
-            if (texto.Length == 0) return $"Habilidade '{skill.Name}' executada (sem saída).";
-
             if (texto.Length > MaxSaida)
                 texto = texto.Substring(0, MaxSaida) + "\n...[Saída truncada devido ao tamanho máximo].";
+
+            // O corpo do SKILL.md so vai ao modelo QUANDO A CHAMADA FALHA, e e para isso
+            // que ele serve: o prompt de sistema lista nome e descricao, nada sobre os
+            // argumentos. Sem isto o modelo tinha de adivinhar a assinatura, errava, e
+            // recebia de volta um erro sem nenhuma pista da forma certa - foram tres
+            // tentativas cegas seguidas. Mandar as instrucoes sempre custaria contexto em
+            // toda chamada bem-sucedida; manda-las no erro custa so quando servem.
+            if (processo.ExitCode != 0 && skill.Instructions.Length > 0)
+                texto += $"\n\n--- Como usar a habilidade '{skill.Name}' ---\n{skill.Instructions}";
+
+            if (texto.Length == 0)
+            {
+                return processo.ExitCode == 0
+                    ? $"Habilidade '{skill.Name}' executada (sem saída)."
+                    : $"ERRO: a habilidade '{skill.Name}' terminou com código {processo.ExitCode} e nao escreveu nada.";
+            }
 
             return texto;
         }

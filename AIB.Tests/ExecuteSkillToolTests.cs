@@ -120,6 +120,56 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task ParametroObrigatorioAusente_FalhaNaHoraEmVezDeTravar()
+        {
+            // O bug de verdade: a entrada do processo era herdada do console do app, entao o
+            // PowerShell abria "Supply values for the following parameters" e ficava parado ate
+            // o teto de 60 segundos. A llm chamou a skill de planilha sem -Path tres vezes e
+            // esperou um minuto em cada uma, recebendo de volta "passou de 60 segundos" — uma
+            // mensagem que nao diz nada sobre o parametro que faltou.
+            Instalar("exigente", "powershell",
+                script: "param([Parameter(Mandatory=$true)][string]$Obrigatorio) Write-Output $Obrigatorio");
+
+            var relogio = System.Diagnostics.Stopwatch.StartNew();
+            string saida = await _tool.ExecuteAsync("{\"skill_name\":\"exigente\"}");
+            relogio.Stop();
+
+            saida.Should().NotContain("passou de", "o prompt tem de ler EOF em vez de esperar alguem digitar");
+            saida.Should().Contain("Obrigatorio", "o erro precisa nomear o parametro que falta");
+            relogio.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(30));
+        }
+
+        [Fact]
+        public async Task ChamadaQueFalha_RecebeAsInstrucoesDeUso()
+        {
+            // O prompt de sistema lista nome e descricao da skill, nada sobre os argumentos.
+            // Sem devolver o corpo do SKILL.md no erro, o modelo so pode adivinhar a
+            // assinatura de novo — que foi exatamente o loop de tres tentativas.
+            Instalar("exigente", "powershell",
+                script: "param([Parameter(Mandatory=$true)][string]$Obrigatorio) Write-Output $Obrigatorio",
+                corpo: "Chame com -Obrigatorio \"texto\".");
+
+            string saida = await _tool.ExecuteAsync("{\"skill_name\":\"exigente\"}");
+
+            saida.Should().Contain("Chame com -Obrigatorio");
+        }
+
+        [Fact]
+        public async Task ChamadaQueDaCerto_NaoCarregaAsInstrucoes()
+        {
+            // Contexto pago: mandar o SKILL.md junto de toda saida boa custaria o corpo inteiro
+            // em cada chamada, e o modelo ja sabe usar a skill quando ela funcionou.
+            Instalar("certeira", "powershell",
+                script: "Write-Output 'pronto'",
+                corpo: "ISTO NAO DEVE APARECER.");
+
+            string saida = await _tool.ExecuteAsync("{\"skill_name\":\"certeira\"}");
+
+            saida.Should().Contain("pronto");
+            saida.Should().NotContain("ISTO NAO DEVE APARECER");
+        }
+
+        [Fact]
         public async Task ScriptPowerShell_RodaEDevolveASaida()
         {
             Instalar("eco", "powershell", script: "param([string]$Texto) Write-Output \"eco: $Texto\"");

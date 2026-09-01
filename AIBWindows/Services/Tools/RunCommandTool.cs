@@ -170,6 +170,13 @@ public class RunCommandTool : ITool
                 Arguments = $"-NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+
+                // Entrada redirecionada e fechada logo apos o Start: sem isto o powershell
+                // herda o console do app, e qualquer coisa que pergunte algo (Read-Host, um
+                // cmdlet com parametro obrigatorio ausente, uma confirmacao) fica parada ate
+                // o teto de 30s e volta como "Timeout" - uma mensagem que esconde a causa.
+                // Com a entrada fechada o prompt le EOF e o erro real volta na hora.
+                RedirectStandardInput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WorkingDirectory = Environment.CurrentDirectory
@@ -177,6 +184,8 @@ public class RunCommandTool : ITool
 
             using var process = new Process { StartInfo = startInfo };
             process.Start();
+
+            try { process.StandardInput.Close(); } catch { }
 
             // Os dois pipes são lidos EM PARALELO. Ler stdout até o fim e só depois stderr
             // trava assim que o filho enche o buffer do stderr (~4KB): ele bloqueia escrevendo,
