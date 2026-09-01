@@ -1706,7 +1706,7 @@ public partial class ChatWindow : Window
 
         DescartarConfirmacaoPendente();
 
-        _conversation.LoadConversation(falas);
+        _conversation.LoadConversation(falas, sessao.MemorySessionId, sessao.Id);
 
         MessagesPanel.Children.Clear();
         _cadeiaAtual = null;

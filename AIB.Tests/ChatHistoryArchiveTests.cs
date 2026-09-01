@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using AIB.Services;
@@ -44,6 +44,32 @@ namespace AIB.Tests
 
         private static ChatSession? Buscar(string id) =>
             ChatHistoryService.LoadHistory().FirstOrDefault(h => h.Id == id);
+
+        [Fact]
+        public void SessaoGravada_LevaAPastaDaMemoriaJunto()
+        {
+            // Sem este campo nao ha como voltar aos capitulos de uma conversa: o Id daqui e um
+            // Guid e a pasta da memoria e um carimbo de tempo, e nada os relacionava.
+            string id = Id("memoria");
+
+            ChatHistoryService.SaveCurrentSession(
+                Conversa("com pasta de memoria", "ola"), "titulo", id,
+                memorySessionId: "20260901-120000-000");
+
+            Buscar(id)!.MemorySessionId.Should().Be("20260901-120000-000");
+        }
+
+        [Fact]
+        public void SemPastaDeMemoria_OCampoFicaVazio()
+        {
+            string id = Id("sem-memoria");
+
+            // Texto proprio: o arquivador recusa gravar conteudo identico ao de outra sessao,
+            // e reaproveitar as falas do ensaio anterior faria este aqui nao gravar nada.
+            ChatHistoryService.SaveCurrentSession(Conversa("sem pasta de memoria", "ola"), "titulo", id);
+
+            Buscar(id)!.MemorySessionId.Should().BeEmpty();
+        }
 
         [Fact]
         public void GravarEReler_DevolveAConversa()

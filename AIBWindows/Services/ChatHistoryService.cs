@@ -13,6 +13,16 @@ namespace AIB.Services
         public string Title { get; set; } = "";
         public DateTime Timestamp { get; set; } = DateTime.Now;
         public string Content { get; set; } = "";
+
+        /// <summary>
+        /// Pasta desta conversa em <c>memory/sessions</c>. Vazia nas conversas gravadas antes
+        /// deste campo existir — elas reabrem sem memoria, do jeito antigo.
+        /// <para>
+        /// Sem esta ligacao nao ha como voltar aos capitulos e atos de uma conversa: o Id aqui
+        /// e um Guid e a pasta e um carimbo de tempo, e nada os relacionava.
+        /// </para>
+        /// </summary>
+        public string MemorySessionId { get; set; } = "";
     }
 
     /// <summary>
@@ -114,7 +124,8 @@ namespace AIB.Services
         /// vez de duplicada — é o que permite arquivar a cada turno em vez de só no fim.
         /// </param>
         public static void SaveCurrentSession(
-            List<ChatMessage> currentHistory, string? titulo = null, string? id = null)
+            List<ChatMessage> currentHistory, string? titulo = null, string? id = null,
+            string? memorySessionId = null)
         {
             if (currentHistory == null || currentHistory.Count <= 1) return; // Only system prompt
 
@@ -124,6 +135,7 @@ namespace AIB.Services
             };
 
             if (!string.IsNullOrWhiteSpace(id)) session.Id = id!;
+            if (!string.IsNullOrWhiteSpace(memorySessionId)) session.MemorySessionId = memorySessionId!;
 
             var lines = new List<string>();
             string firstUserMessage = "Novo Chat";

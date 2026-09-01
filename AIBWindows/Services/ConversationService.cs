@@ -253,8 +253,8 @@ public sealed class ConversationService : IMessageStore
         {
             _sessionMemory = NewSessionMemory();
             _turnsRecorded = 0;
-        _tokensCompactados = 0;
-        _tokensDeResumo = 0;
+            _tokensCompactados = 0;
+            _tokensDeResumo = 0;
             _tituloRevisado = false;
             Title = null;
             _sessionId = Guid.NewGuid().ToString();
@@ -304,9 +304,23 @@ public sealed class ConversationService : IMessageStore
     /// aberta ficaria emendada na anterior e as duas dividiriam o mesmo raw.jsonl.
     /// </para>
     /// </summary>
-    public void LoadConversation(IReadOnlyList<ChatTurn> falas)
+    /// <param name="memorySessionId">
+    /// Pasta da conversa em <c>memory/sessions</c>. Quando ela existe, os capitulos e atos
+    /// voltam com a conversa e os turnos que eles resumem NAO voltam crus.
+    /// </param>
+    /// <param name="sessionId">
+    /// Id da entrada no historico. Continuar a conversa aberta tem de atualizar a MESMA linha
+    /// da lista; sem isto ela seguiria com um Guid novo e a mesma conversa apareceria duas
+    /// vezes no painel, uma parada no passado e outra crescendo.
+    /// </param>
+    public void LoadConversation(
+        IReadOnlyList<ChatTurn> falas, string? memorySessionId = null, string? sessionId = null)
     {
         ResetHistory();
+
+        if (!string.IsNullOrWhiteSpace(sessionId)) _sessionId = sessionId!;
+
+        bool comMemoria = RestaurarMemoria(memorySessionId);
 
         lock (_gate)
         {
@@ -316,12 +330,95 @@ public sealed class ConversationService : IMessageStore
                     ? ChatMessage.CreateUserMessage(fala.Texto)
                     : (ChatMessage)ChatMessage.CreateAssistantMessage(fala.Texto);
 
-                _history.Add(mensagem);
-
-                // A transcrição também: quem abre uma conversa e continua nela espera que o
-                // arquivado continue de onde parou, e não que comece do turno seguinte.
+                // A transcrição sempre leva a conversa INTEIRA: ela é o que volta para o
+                // arquivo, e arquivar só o que sobrou no contexto encolheria a conversa um
+                // pouco a cada vez que ela fosse aberta.
                 _transcricao.Add(mensagem);
+
+                // O contexto vivo só recebe tudo quando não houve memória a restaurar. Com
+                // memória, os turnos resumidos já estão representados pelos capítulos, e
+                // acrescentá-los aqui mandaria a mesma conversa duas vezes ao modelo.
+                if (!comMemoria) _history.Add(mensagem);
             }
+        }
+
+        if (comMemoria)
+            RefreshMemoryMessage(CurrentQuota(
+                LevelService.GetLevel(_settingsService.LoadSettings().MessageCount)));
+    }
+
+    /// <summary>
+    /// Traz de volta os capitulos, atos e turnos crus de uma sessao arquivada. Devolve false
+    /// quando nao ha pasta, quando ela esta vazia ou quando o id nao presta — e ai quem chama
+    /// carrega a conversa do jeito antigo, toda crua.
+    /// <para>
+    /// Os turnos ja cobertos por capitulo NAO voltam ao contexto: eles viram tokens no total do
+    /// contador, que e o unico lugar onde continuam pesando. Os demais voltam, mas so as falas
+    /// de usuario e do agente. Chamada de ferramenta e resultado ficam de fora de proposito:
+    /// um tool_calls sem o resultado correspondente quebra a requisicao seguinte, e remontar os
+    /// pares a partir do disco e uma chance de erro sem ganho — os literais que importavam
+    /// ficaram nos artefatos dos capitulos.
+    /// </para>
+    /// </summary>
+    private bool RestaurarMemoria(string? memorySessionId)
+    {
+        if (string.IsNullOrWhiteSpace(memorySessionId)) return false;
+
+        try
+        {
+            var memoria = new SessionMemory(memorySessionId!, _memoryRootOverride);
+            var turnos = memoria.ReadTurns();
+            var capitulos = memoria.ReadChapters();
+            var atos = memoria.ReadActs();
+
+            if (turnos.Count == 0 && capitulos.Count == 0) return false;
+
+            _sessionMemory = memoria;
+            _turnsRecorded = turnos.Count == 0 ? 0 : turnos[^1].Index + 1;
+
+            _memory.Clear();
+            _memory.AddRange(capitulos);
+            foreach (var ato in atos) _memory.Add(ato);
+
+            int ultimoCoberto = _memory.LastCoveredTurn;
+            _tokensCompactados = 0;
+
+            lock (_gate)
+            {
+                foreach (var turno in turnos)
+                {
+                    if (turno.Index <= ultimoCoberto)
+                    {
+                        // O turno inteiro, inclusive o miolo de ferramentas: e isso que a
+                        // conversa custaria se o capitulo nao existisse.
+                        foreach (var registro in turno.Messages)
+                            _tokensCompactados += _tokenCounter.CountText(registro.Text ?? "");
+
+                        continue;
+                    }
+
+                    foreach (var registro in turno.Messages)
+                    {
+                        if (string.IsNullOrWhiteSpace(registro.Text)) continue;
+
+                        if (registro.Role == "user")
+                            _history.Add(ChatMessage.CreateUserMessage(registro.Text));
+                        else if (registro.Role == "assistant")
+                            _history.Add(ChatMessage.CreateAssistantMessage(registro.Text));
+                    }
+                }
+            }
+
+            Console.WriteLine(
+                $"[MEMORIA] Conversa reaberta em {memorySessionId}: {capitulos.Count} capitulo(s), " +
+                $"{atos.Count} ato(s), {turnos.Count} turno(s) gravados.");
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Nao foi possivel restaurar '{memorySessionId}': {ex.Message}");
+            return false;
         }
     }
 
@@ -1036,7 +1133,8 @@ public sealed class ConversationService : IMessageStore
             // "só o prompt de sistema".
             transcricao.Insert(0, ChatMessage.CreateSystemMessage(""));
 
-            ChatHistoryService.SaveCurrentSession(transcricao, Title, _sessionId);
+            ChatHistoryService.SaveCurrentSession(
+                transcricao, Title, _sessionId, _sessionMemory.SessionId);
             OnHistoryChanged?.Invoke();
         }
         catch (Exception ex)

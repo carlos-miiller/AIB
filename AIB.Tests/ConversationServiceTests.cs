@@ -841,6 +841,92 @@ namespace AIB.Tests
             resposta.Should().Contain("Ato");
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // Reabrir uma conversa arquivada
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task ReabrirConversa_TrazDeVoltaOsCapitulos()
+        {
+            // O defeito: abrir uma conversa antiga jogava fora os capitulos e os atos dela e
+            // recarregava a conversa inteira crua. O contador voltava a mostrar so o numero do
+            // contexto, sem economia nenhuma, e o trabalho de compactacao daquela sessao era
+            // perdido — em conversa longa, direto para a poda de emergencia.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "O usuario perguntou varias coisas e o agente respondeu.";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            string longa = string.Concat(Enumerable.Repeat("uma frase qualquer para gastar tokens. ", 30));
+            for (int i = 0; i < 4; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"{longa} turno {i}")) { }
+
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+            conversation.Chapters.Should().ContainSingle();
+
+            string memoria = Path.GetFileName(conversation.SessionMemoryDir);
+
+            var falas = new List<ChatTurn> { new(true, "pergunta antiga"), new(false, "resposta antiga") };
+            conversation.LoadConversation(falas, memoria, sessionId: "ensaio-reabrir");
+
+            conversation.Chapters.Should().ContainSingle("os capitulos voltam com a conversa");
+
+            var relatorio = conversation.CurrentTokenReport;
+            relatorio.Total.Should().BeGreaterThan(relatorio.Contexto,
+                "os turnos que viraram capitulo continuam pesando no total");
+        }
+
+        [Fact]
+        public async Task ReabrirConversa_NaoRepeteOsTurnosJaResumidos()
+        {
+            // O outro lado: se os turnos crus voltassem AO LADO dos capitulos, o modelo
+            // receberia a mesma conversa duas vezes — uma resumida e outra inteira.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "resumo do capitulo";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            string longa = string.Concat(Enumerable.Repeat("uma frase qualquer para gastar tokens. ", 30));
+            for (int i = 0; i < 4; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"{longa} turno {i}")) { }
+
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+            string memoria = Path.GetFileName(conversation.SessionMemoryDir);
+
+            var falas = new List<ChatTurn>();
+            for (int i = 0; i < 4; i++)
+            {
+                falas.Add(new ChatTurn(true, $"{longa} turno {i}"));
+                falas.Add(new ChatTurn(false, "certo"));
+            }
+
+            conversation.LoadConversation(falas, memoria, sessionId: "ensaio-sem-repetir");
+
+            int doUsuario = conversation.SnapshotHistory().Count(m => m is UserChatMessage);
+
+            doUsuario.Should().BeLessThan(4, "os turnos ja resumidos nao voltam crus");
+        }
+
+        [Fact]
+        public void ReabrirSemPastaDeMemoria_CarregaAConversaInteira()
+        {
+            // Conversa gravada antes do campo existir: reabre do jeito antigo, com tudo cru.
+            // Recusar-se a abrir seria pior que abrir sem memoria.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, ProviderQueResponde("ok"), out _);
+
+            var falas = new List<ChatTurn>
+            {
+                new(true, "primeira"), new(false, "resposta"),
+                new(true, "segunda"), new(false, "resposta")
+            };
+
+            conversation.LoadConversation(falas, memorySessionId: "", sessionId: "ensaio-antigo");
+
+            conversation.SnapshotHistory().Count(m => m is UserChatMessage)
+                .Should().Be(2, "sem memoria, a conversa volta inteira");
+        }
+
         [Fact]
         public async Task SemCapitulo_OTotalEhOProprioContexto()
         {
