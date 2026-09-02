@@ -19,11 +19,18 @@ esse número.
 
 ## Cenário
 
-Duas contas, ambas Gmail:
+N caixas, todas Gmail. Começa com duas — uma pessoal e uma de Google Workspace — mas a
+distinção **não existe no produto**: a configuração é uma lista de caixas, e adicionar a
+terceira é preencher o mesmo formulário de novo.
 
-- pessoal
-- corporativa (Google Workspace, acessada só pelo navegador — **não há Outlook desktop**, então
-  o caminho por COM está descartado)
+A decisão é de 02/09/2026 e substitui um desenho anterior que pedia um rótulo por conta
+("pessoal", "corporativo"). O rótulo não alimentava regra nenhuma — nenhum degrau, nenhum
+limiar e nenhum texto do digest olhavam para ele. Era um campo a preencher, a validar como
+único e a manter coerente, em troca de nada. **O endereço já é a identidade da caixa**, e ele
+não pode estar errado nem repetido sem que o IMAP reclame primeiro.
+
+A caixa de Workspace é acessada só pelo navegador — **não há Outlook desktop**, então o
+caminho por COM está descartado. Vale para qualquer caixa que entre depois.
 
 ## Medições da máquina (01/09/2026)
 
@@ -201,16 +208,21 @@ envelhece para "provavelmente resolvido".
 ~/.AIB/email/
   regras.md      do usuário, editável, no espírito do facts.md
   vigias.json    escrito pelo 9B, lido por código
-  estado.json    por conta: uidValidity, lastUid, lista de abertos
+  estado.json    por caixa: uidValidity, lastUid, lista de abertos
 ```
 
 ```jsonc
-// estado.json
+// estado.json — um arquivo só, uma entrada por caixa, chaveada pelo ENDEREÇO.
+// Chavear por endereço e não por rótulo evita a classe de bug em que renomear a
+// caixa na tela faz o vigia perder o lastUid e retriar semanas de mensagem.
 {
-  "conta": "corporativo",
-  "uidValidity": 8271,     // mudou? o lastUid virou lixo: resemeia por data
-  "lastUid": 91043,
-  "abertos": [ { "thrid":"…", "de":"…", "pedido":"…", "desde":"…" } ]
+  "caixas": {
+    "nome@empresa.com.br": {
+      "uidValidity": 8271,   // mudou? o lastUid virou lixo: resemeia por data
+      "lastUid": 91043,
+      "abertos": [ { "thrid":"…", "de":"…", "pedido":"…", "desde":"…" } ]
+    }
+  }
 }
 ```
 
@@ -244,15 +256,16 @@ nobreak@empresa.com.br    → rajada a partir de 2 em 15 min
 | Serviço nativo em C#, **não skill** | tem agendador, aba própria e dependência de biblioteca; skill é para extensão do usuário |
 | **MailKit** (NuGet, MIT) | .NET não traz cliente IMAP, e o PowerShell também não |
 | Senha de app no `SettingsService` | ele **já** cifra com DPAPI `CurrentUser` — nenhuma criptografia nova a escrever |
-| Uma implementação, duas contas | as duas caixas são Gmail: mesmo código, mesma autenticação |
-| Dedup por `Message-ID` | encaminhamento entre as contas, ou cópia nas duas, duplicaria a mesma mensagem |
+| Uma implementação, N caixas | são todas Gmail: mesmo código, mesma autenticação, e a segunda caixa não custa mais que a primeira |
+| **Sem rótulo de conta** | nenhuma regra olhava para ele. O endereço é a identidade, e é o único campo que o IMAP valida por nós |
+| Dedup por `Message-ID` | encaminhamento entre as caixas, ou cópia em duas delas, duplicaria a mesma mensagem — e quanto mais caixas, mais provável |
 | Arranque com `newer_than:3d` | triar backlog é trabalho jogado fora; ninguém lê 300 pendências de três meses. Backlog vira comando manual explícito |
 
 ## Estágios
 
 | | Entrega | Vale sozinho? |
 |---|---|---|
-| **V1** | 2 contas, degraus 0/1/3, digest 3×/dia, rajada, aba "Atenção". **Sem 0.8b.** | Sim |
+| **V1** | N caixas, degraus 0/1/3, digest 3×/dia, rajada, aba "Atenção". **Sem 0.8b.** | Sim |
 | **V2** | degrau 2 (0.8b) + sondagem de 20 min + lista aberta que envelhece | Sim |
 | **V3** | `regras.md` completo + correção com um clique ("isso importava") | Sim |
 | **V4** | rascunho de resposta salvo no Gmail | Sim |
@@ -274,15 +287,56 @@ descartar de verdade** — tudo sobe para o 9B do mesmo jeito. No fim, comparar 
 Mesmo padrão da medição de raciocínio no histórico, em que a hipótese estava errada e o número
 disse. 0.8b em português, com e-mail corporativo, é território que ninguém mediu.
 
+## Configuração
+
+Seção `VIGIA DE E-MAIL` na tela de Configurações, no mesmo padrão das outras (`IDENTIDADE`,
+`CONEXÃO LLM`, `AVANÇADO`) — página única com cabeçalhos de seção, sem abas.
+
+**Por caixa**, numa lista com "adicionar" e "remover":
+
+| Campo | Tipo | Validação |
+|---|---|---|
+| Endereço | texto | contém `@`; é também o usuário do IMAP e a chave do `estado.json` |
+| Senha de app | PasswordBox | **16 caracteres depois de tirar os espaços** — o Google exibe em 4 grupos de 4, e colar com espaço é o erro mais comum |
+| Ativa | switch | desliga a caixa sem apagar a credencial |
+
+**Global:** vigia ligado/desligado (mesmo padrão do `ShadowAssistantEnabled`) e os horários do
+digest (`08:30, 12:55, 17:30`).
+
+**Não se pergunta:** `imap.gmail.com`, porta 993, SSL, pasta `INBOX`, janela de arranque
+`newer_than:3d`, intervalo da sondagem. São todos Gmail — perguntar host é convidar erro de
+digitação num campo que só tem uma resposta certa. Caixa não-Gmail, se um dia houver, vira
+campo avançado atrás de um expander.
+
+**Botão "Testar conexão" não é enfeite.** Os três modos de falha chegam como o mesmo erro de
+autenticação e são indistinguíveis sem um teste que os separe: IMAP desligado no Gmail, senha
+de app errada ou revogada, conta bloqueada pelo admin. O teste conecta, lista `INBOX`,
+desconecta e diz qual dos três.
+
+**Armazenamento:** `List<ContaDeEmail>` em `UserAppSettings` — o arquivo de settings inteiro já
+é cifrado com DPAPI `CurrentUser`, então não há criptografia nova a escrever. O `estado.json`
+**não** vai para settings: é estado de execução, e mora em `~/.AIB/email/`.
+
+### O que a senha de app é, de verdade
+
+Ela contorna a verificação em duas etapas e dá IMAP completo: leitura **e escrita**, incluindo
+apagar. O Google não oferece escopo somente-leitura para IMAP. A regra 2 daqui — V1 é
+estritamente somente leitura — é disciplina do código, não permissão do servidor. Se o código
+tiver defeito, a permissão não segura.
+
+Mitigação: DPAPI `CurrentUser` (só este usuário do Windows, nesta máquina, decifra) e nada sai
+da máquina, porque o Ollama é localhost.
+
 ## Bloqueios em Aberto
 
-1. **Pré-voo das senhas de app** (só o usuário pode fazer) — em cada conta:
-   `myaccount.google.com` → Segurança → Senhas de app; e Gmail → Configurações → POP/IMAP →
-   IMAP ativado. O admin do Workspace pode bloquear a conta corporativa.
-   - Funcionou nas duas → V1 com as duas caixas
-   - Só a pessoal → V1 com uma; a segunda entra depois atrás da mesma interface
-   - Nenhuma → plano B: OAuth com a Gmail API, projeto no Google Cloud, refresh token no mesmo
-     DPAPI. Mais trabalho, e o admin também pode barrar.
+1. **Pré-voo das senhas de app** (só o usuário pode fazer) — em **cada** caixa, na ordem:
+   verificação em duas etapas ligada (sem ela não existe senha de app); `myaccount.google.com`
+   → Segurança → Senhas de app; e Gmail → Configurações → POP/IMAP → IMAP ativado. O admin do
+   Workspace pode bloquear qualquer um dos três numa caixa gerenciada.
+   - Como a configuração é uma lista, isso deixou de ser um bloqueio tudo-ou-nada: entra a
+     caixa que passou no pré-voo, e a que não passou entra depois pelo mesmo formulário.
+   - Nenhuma passou → plano B: OAuth com a Gmail API, projeto no Google Cloud, refresh token no
+     mesmo DPAPI. Mais trabalho, e o admin também pode barrar.
 2. **`ollama pull qwen3.5:0.8b`** (~600 MB) — só para a V2.
 3. **Confirmar `MAX_LOADED=2` no processo do Ollama**, não só na variável de usuário.
 4. **Interface** — a discutir: onde o digest aparece, como é a aba "Atenção", como a rajada
