@@ -282,7 +282,7 @@ namespace AIB.Tests
                 deFora.Visibility.Should().Be(Visibility.Visible);
                 noGlyph.Visibility.Should().Be(Visibility.Collapsed);
 
-                deFora.Width.Should().Be(62, "56 do orbe mais 3 de folga de cada lado");
+                deFora.Width.Should().Be(65, "56 do orbe mais 4,5 de folga de cada lado");
 
                 janela.Close();
             });

@@ -401,17 +401,17 @@
                                  círculo em volta do que girar, e a spec resolve assim:
                                  "o anel continua girando no glyph pequeno da ponta
                                  esquerda". No estado orbe quem aparece é o AnelDoOrbe.
-                                 Margem de -13 (metade dos 26) zera a pegada de layout
+                                 Margem de -14,5 (metade dos 29) zera a pegada de layout
                                  dele: o anel envolve o símbolo sem alargar a célula,
                                  que continua tendo o tamanho do próprio símbolo. -->
                             <Path x:Name="AnelDeProgresso"
-                                  Data="M 13,1 A 12,12 0 0 1 25,13"
+                                  Data="M 14.5,1 A 13.5,13.5 0 0 1 28,14.5"
                                   Stroke="{StaticResource AccentLilacBrush}"
                                   StrokeThickness="2"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"
-                                  Width="26" Height="26"
-                                  Margin="-13"
+                                  Width="29" Height="29"
+                                  Margin="-14.5"
                                   HorizontalAlignment="Center"
                                   VerticalAlignment="Center"
                                   IsHitTestVisible="False"
@@ -522,7 +522,7 @@
                  Fica FORA da CascaInterna de propósito — ela tem ClipToBounds e
                  recortaria qualquer coisa que passasse da borda. E depois da casca
                  na ordem de declaração, para desenhar por cima dela.
-                 62 = 56 do orbe + 3 de folga de cada lado, e a MARGEM DE -3 é o
+                 65 = 56 do orbe + 4,5 de folga de cada lado, e a MARGEM DE -4,5 é o
                  inset:-3px do mock traduzido. Sem ela o anel MEDE 62 na linha Auto:
                  a linha cresce de 56 para 62 quando ele aparece, a janela cresce
                  junto (a altura é SizeToContent), o reposicionamento sobe o Top em
@@ -532,13 +532,13 @@
                  transborda só no DESENHO, que é o que se quer. -->
             <Path x:Name="AnelDoOrbe"
                   Grid.Row="1"
-                  Data="M 31,1 A 30,30 0 0 1 61,31"
+                  Data="M 32.5,1 A 31.5,31.5 0 0 1 64,32.5"
                   Stroke="{StaticResource AccentLilacBrush}"
                   StrokeThickness="2"
                   StrokeStartLineCap="Round"
                   StrokeEndLineCap="Round"
-                  Width="62" Height="62"
-                  Margin="-3"
+                  Width="65" Height="65"
+                  Margin="-4.5"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   IsHitTestVisible="False"
