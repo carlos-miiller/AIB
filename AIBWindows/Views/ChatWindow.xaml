@@ -29,15 +29,11 @@
     <Window.Resources>
 
         <!-- §3.5 — BOLHAS. Raio 18 UNIFORME nas duas: a geometria é de card,
-             herdada da tela de seleção. Não voltar ao canto "rabinho". O4. -->
-        <Style x:Key="UserBubble" TargetType="Border">
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusBubble}"/>
-            <Setter Property="Padding" Value="17,13"/>
-            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
-            <Setter Property="HorizontalAlignment" Value="Right"/>
-            <!-- SEM sombra e SEM glow. Só o degradê. O5. -->
-        </Style>
-
+             herdada da tela de seleção. Não voltar ao canto "rabinho". O4.
+             A do USUÁRIO mora no Controls.xaml: a barra do Shadow Assistant também
+             mostra o que o usuário mandou, e duas cópias do mesmo estilo acabariam
+             divergindo — o usuário veria duas bolhas levemente diferentes na mesma
+             sessão. Foi o que já aconteceu com o SendButton. -->
         <Style x:Key="AgentBubble" TargetType="Border">
             <Setter Property="CornerRadius" Value="{StaticResource RadiusBubble}"/>
             <Setter Property="Padding" Value="17,13"/>

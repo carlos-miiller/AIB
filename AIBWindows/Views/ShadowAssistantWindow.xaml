@@ -174,162 +174,245 @@
                 </VisualStateGroup>
             </VisualStateManager.VisualStateGroups>
 
-            <!-- §4.6 — BALÃO DE FALA. Só aparece DEPOIS do clique (§0 O3): nunca
-                 sozinho, nunca como toast. Fica ACIMA da barra, 10px de gap, alinhado
-                 pela esquerda dela. Um Border só, dentro da MESMA janela — abrir uma
-                 segunda Window para ele traria flicker de Topmost (§3). -->
-            <!-- FUNDO: GlassBrush (sólido a 90%), e NÃO o surfaceCard da §4.6.
-                 O token da spec é branco a 3,5% — funciona no mock porque o <body>
-                 dele tem um degradê escuro atrás. No desktop de verdade não há nada
-                 atrás: a janela é transparente, e o balão ficaria com o papel de
-                 parede aparecendo através dele, o texto disputando com a imagem.
-                 A janela de chat não sofre disso porque os cards dela ficam DENTRO
-                 do vidro da janela; este balão flutua sozinho e precisa ser o
-                 próprio vidro. É a §0 O6 aplicada onde ela faz falta. -->
-            <Border x:Name="Balao"
-                    Grid.Row="0"
-                    MaxWidth="440"
-                    HorizontalAlignment="Left"
-                    Margin="0,0,0,10"
-                    Padding="14,14,16,14"
-                    Background="{StaticResource GlassBrush}"
-                    BorderBrush="{StaticResource BorderCardBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource RadiusBubble}"
-                    Effect="{StaticResource OrbShadow}"
-                    Visibility="Collapsed">
-                <Border.RenderTransform>
-                    <TranslateTransform x:Name="DeslocamentoDoBalao" Y="8"/>
-                </Border.RenderTransform>
+            <!-- §4.6 — PILHA DE FALAS. Só aparece DEPOIS do clique (§0 O3): nunca
+                 sozinha, nunca como toast. Fica ACIMA da barra, 10px de gap,
+                 alinhada por ela. Tudo na MESMA janela — abrir uma segunda Window
+                 para o balão traria flicker de Topmost (§3).
 
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+                 Era UM balão só, e isso era o defeito: a mensagem que o usuário
+                 acabava de mandar não aparecia em lugar nenhum, e fechar a barra
+                 apagava a resposta. A §4.6 já previa empilhar até três, mais
+                 recente embaixo; agora a pilha guarda os DOIS lados da troca e
+                 SOBREVIVE ao fechar da barra — o que some é a pilha, não o conteúdo
+                 dela. Só o X descarta.
 
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="✦"
-                               FontSize="11" Margin="0,0,8,0"
-                               Foreground="{StaticResource AccentLilacBrush}"
-                               VerticalAlignment="Center"/>
+                 Duas DataTemplates implícitas, escolhidas pelo TIPO do item. As
+                 bolhas não são a mesma bolha com outra cor: lado, fundo, cabeçalho
+                 e lista de e-mails mudam, e um template só com metade colapsada
+                 seria mais difícil de ler que dois. -->
+            <!-- 2 aqui + 8 na margem inferior de cada bolha = os 10px de gap da
+                 §4.6. A margem da bolha é o que separa uma da outra; a da pilha é
+                 só o resto para fechar a conta com a barra. -->
+            <ItemsControl x:Name="PilhaDeFalas"
+                          Grid.Row="0"
+                          Margin="0,0,0,2"
+                          Visibility="Collapsed">
+                <ItemsControl.Resources>
 
-                    <TextBlock x:Name="NomeNoBalao" Grid.Row="0" Grid.Column="1"
-                               Text="AIB" FontSize="12" FontWeight="SemiBold"
-                               Foreground="{StaticResource TextStrongBrush}"
-                               VerticalAlignment="Center"/>
+                    <!-- A fala do USUÁRIO: a bolha da janela de chat (§3.5), estilo
+                         compartilhado no Controls.xaml. O degradê é opaco, então ela
+                         se sustenta sobre o desktop sem ajuste. -->
+                    <DataTemplate DataType="{x:Type ui:FalaDoUsuario}">
+                        <Border Style="{StaticResource UserBubble}"
+                                MaxWidth="380"
+                                Margin="0,0,0,8">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="EntradaDoUsuario" Y="8"/>
+                            </Border.RenderTransform>
+                            <Border.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="0" To="1" Duration="0:0:0.18"/>
+                                            <DoubleAnimation Storyboard.TargetName="EntradaDoUsuario"
+                                                             Storyboard.TargetProperty="Y"
+                                                             From="8" To="0" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Border.Triggers>
 
-                    <TextBlock x:Name="HoraNoBalao" Grid.Row="0" Grid.Column="2"
-                               FontSize="10.5" Margin="10,0,0,0"
-                               HorizontalAlignment="Right"
-                               Foreground="{StaticResource TextMutedBrush}"
-                               VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Texto}"
+                                       FontSize="13.5" LineHeight="20.25"
+                                       TextWrapping="Wrap"
+                                       Foreground="White"/>
+                        </Border>
+                    </DataTemplate>
 
-                    <Button x:Name="BotaoDispensar" Grid.Row="0" Grid.Column="3"
-                            Width="22" Height="22" Margin="6,-4,-6,0"
-                            Style="{StaticResource IconButton}"
-                            Click="BotaoDispensar_Click"
-                            ToolTip="Dispensar">
-                        <Path Data="M4,4 L12,12 M12,4 L4,12"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                              StrokeThickness="1.6" StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round" Width="16" Height="16" Stretch="None"/>
-                    </Button>
+                    <!-- A fala da IA.
+                         FUNDO: GlassBrush (sólido a 90%), e NÃO o surfaceCard da §4.6.
+                         O token da spec é branco a 3,5% — funciona no mock porque o
+                         <body> dele tem um degradê escuro atrás. No desktop de verdade
+                         não há nada atrás: a janela é transparente, e o balão ficava
+                         com o papel de parede aparecendo através dele, o texto
+                         disputando com a imagem. A janela de chat não sofre disso
+                         porque os cards dela ficam DENTRO do vidro da janela; este
+                         balão flutua sozinho e precisa ser o próprio vidro (§0 O6). -->
+                    <DataTemplate DataType="{x:Type ui:FalaDaIA}">
+                        <Border x:Name="Balao"
+                                MaxWidth="440"
+                                HorizontalAlignment="Left"
+                                Margin="0,0,0,8"
+                                Padding="14,14,16,14"
+                                Background="{StaticResource GlassBrush}"
+                                BorderBrush="{StaticResource BorderCardBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource RadiusBubble}"
+                                Effect="{StaticResource OrbShadow}">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="EntradaDaIA" Y="8"/>
+                            </Border.RenderTransform>
+                            <Border.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="0" To="1" Duration="0:0:0.18"/>
+                                            <DoubleAnimation Storyboard.TargetName="EntradaDaIA"
+                                                             Storyboard.TargetProperty="Y"
+                                                             From="8" To="0" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Border.Triggers>
 
-                    <StackPanel Grid.Row="1" Grid.ColumnSpan="4" Margin="0,7,0,0">
-                        <TextBlock x:Name="TextoDoBalao"
-                                   FontSize="13.5" LineHeight="20.25"
-                                   TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextBodyBrush}"/>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
 
-                        <!-- §4.8 — a lista de e-mails vive DENTRO do mesmo balão, abaixo
-                             do texto. Nunca um segundo balão. A11: no máximo 3 itens e
-                             SEM rolagem; o excedente é uma linha de texto. Uma caixa de
-                             entrada inteira flutuando sobre o desktop não é o produto. -->
-                        <ItemsControl x:Name="ListaDeEmails" Margin="0,6,0,0"
-                                      Visibility="Collapsed">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Margin="0,0,0,6"
-                                            Padding="9,9,11,10"
-                                            CornerRadius="{StaticResource RadiusCard}"
-                                            Background="{StaticResource ReadFill05Brush}"
-                                            BorderBrush="{StaticResource DividerBrush}"
-                                            BorderThickness="1"
-                                            Cursor="Hand"
-                                            MouseLeftButtonUp="ItemDeEmail_Click">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="3"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="✦"
+                                           FontSize="11" Margin="0,0,8,0"
+                                           Foreground="{StaticResource AccentLilacBrush}"
+                                           VerticalAlignment="Center"/>
 
-                                            <!-- A barra de urgência é o que se lê de
-                                                 relance, antes de qualquer texto. -->
-                                            <Border Grid.Column="0" Grid.RowSpan="2"
-                                                    Width="3" CornerRadius="2"
-                                                    Background="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+                                <TextBlock x:Name="NomeNoBalao" Grid.Row="0" Grid.Column="1"
+                                           Text="{Binding Nome}"
+                                           FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextStrongBrush}"
+                                           VerticalAlignment="Center"/>
 
-                                            <TextBlock Grid.Column="1" Grid.Row="0"
-                                                       Margin="10,0,0,0"
-                                                       Text="{Binding Name}"
-                                                       FontSize="12.5" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource TextStrongBrush}"
-                                                       TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Row="0" Grid.Column="2"
+                                           Text="{Binding Hora}"
+                                           FontSize="10.5" Margin="10,0,0,0"
+                                           HorizontalAlignment="Right"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           VerticalAlignment="Center"/>
 
-                                            <!-- A13 — o resumo vem da IA e pode vir longo.
-                                                 Duas linhas e ponto: sem o teto, o balão
-                                                 estica e cobre a tela do usuário. -->
-                                            <TextBlock Grid.Column="1" Grid.Row="1"
-                                                       Margin="10,3,0,0"
-                                                       Text="{Binding Description}"
-                                                       FontSize="11.5" LineHeight="16.7"
-                                                       MaxHeight="34"
-                                                       TextWrapping="Wrap"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <Button Grid.Row="0" Grid.Column="3"
+                                        Width="22" Height="22" Margin="6,-4,-6,0"
+                                        Style="{StaticResource IconButton}"
+                                        Click="BotaoDispensar_Click"
+                                        ToolTip="Dispensar">
+                                    <Path Data="M4,4 L12,12 M12,4 L4,12"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="1.6" StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round" Width="16" Height="16" Stretch="None"/>
+                                </Button>
 
-                                            <!-- A12 — a cor é o sinal de relance, mas o
-                                                 rótulo de texto fica junto: daltonismo e
-                                                 captura de tela em tons de cinza. -->
-                                            <Border Grid.Column="2" Grid.Row="0"
-                                                    Margin="10,0,0,0"
-                                                    Padding="6,3,8,3"
-                                                    CornerRadius="{StaticResource RadiusPill}"
-                                                    Background="{Binding Urgency, Converter={StaticResource FundoDaUrgencia}}">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <Ellipse Width="5" Height="5"
-                                                             VerticalAlignment="Center"
-                                                             Fill="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
-                                                    <TextBlock Margin="5,0,0,0"
-                                                               Text="{Binding Urgency, Converter={StaticResource RotuloDaUrgencia}}"
-                                                               FontSize="10" FontWeight="SemiBold"
-                                                               Foreground="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
-                                                </StackPanel>
-                                            </Border>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                <StackPanel Grid.Row="1" Grid.ColumnSpan="4" Margin="0,7,0,0">
+                                    <TextBlock x:Name="TextoDoBalao"
+                                               Text="{Binding Texto}"
+                                               FontSize="13.5" LineHeight="20.25"
+                                               TextWrapping="Wrap"
+                                               Foreground="{StaticResource TextBodyBrush}"/>
 
-                        <TextBlock x:Name="OutrosEmails"
-                                   FontSize="11.5"
-                                   Foreground="{StaticResource TextMutedBrush}"
-                                   Visibility="Collapsed"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
+                                    <!-- §4.8 — a lista de e-mails vive DENTRO do mesmo
+                                         balão, abaixo do texto. Nunca um segundo balão.
+                                         A11: no máximo 3 itens e SEM rolagem; o excedente
+                                         é uma linha de texto. Uma caixa de entrada inteira
+                                         flutuando sobre o desktop não é o produto. -->
+                                    <ItemsControl x:Name="ListaDeEmails" Margin="0,6,0,0"
+                                                  ItemsSource="{Binding Emails}"
+                                                  Visibility="{Binding VisibilidadeDaLista}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,0,0,6"
+                                                        Padding="9,9,11,10"
+                                                        CornerRadius="{StaticResource RadiusCard}"
+                                                        Background="{StaticResource ReadFill05Brush}"
+                                                        BorderBrush="{StaticResource DividerBrush}"
+                                                        BorderThickness="1"
+                                                        Cursor="Hand"
+                                                        MouseLeftButtonUp="ItemDeEmail_Click">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="3"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                        </Grid.RowDefinitions>
+
+                                                        <!-- A barra de urgência é o que se lê
+                                                             de relance, antes de qualquer texto. -->
+                                                        <Border Grid.Column="0" Grid.RowSpan="2"
+                                                                Width="3" CornerRadius="2"
+                                                                Background="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+
+                                                        <TextBlock Grid.Column="1" Grid.Row="0"
+                                                                   Margin="10,0,0,0"
+                                                                   Text="{Binding Name}"
+                                                                   FontSize="12.5" FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource TextStrongBrush}"
+                                                                   TextTrimming="CharacterEllipsis"/>
+
+                                                        <!-- A13 — o resumo vem da IA e pode vir
+                                                             longo. Duas linhas e ponto: sem o teto,
+                                                             o balão estica e cobre a tela. -->
+                                                        <TextBlock Grid.Column="1" Grid.Row="1"
+                                                                   Margin="10,3,0,0"
+                                                                   Text="{Binding Description}"
+                                                                   FontSize="11.5" LineHeight="16.7"
+                                                                   MaxHeight="34"
+                                                                   TextWrapping="Wrap"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+
+                                                        <!-- A12 — a cor é o sinal de relance, mas
+                                                             o rótulo de texto fica junto: daltonismo
+                                                             e captura de tela em tons de cinza. -->
+                                                        <Border Grid.Column="2" Grid.Row="0"
+                                                                Margin="10,0,0,0"
+                                                                Padding="6,3,8,3"
+                                                                CornerRadius="{StaticResource RadiusPill}"
+                                                                Background="{Binding Urgency, Converter={StaticResource FundoDaUrgencia}}">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <Ellipse Width="5" Height="5"
+                                                                         VerticalAlignment="Center"
+                                                                         Fill="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+                                                                <TextBlock Margin="5,0,0,0"
+                                                                           Text="{Binding Urgency, Converter={StaticResource RotuloDaUrgencia}}"
+                                                                           FontSize="10" FontWeight="SemiBold"
+                                                                           Foreground="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <TextBlock x:Name="OutrosEmails"
+                                               Text="{Binding Excedente}"
+                                               FontSize="11.5"
+                                               Foreground="{StaticResource TextMutedBrush}"
+                                               Visibility="{Binding VisibilidadeDoExcedente}"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+
+                </ItemsControl.Resources>
+            </ItemsControl>
 
             <!-- §5.2 — O PULSO. Um anel que expande a partir da borda: Scale 1 -> 1.8
                  com Opacity 0.55 -> 0, em laço de 2s.

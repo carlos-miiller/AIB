@@ -152,7 +152,9 @@ namespace AIB.Tests
             {
                 WpfHost.GarantirRecursos();
                 var janela = Nova();
-                var balao = (Border)janela.FindName("Balao");
+
+                janela.MostrarFala("qualquer coisa");
+                var balao = (Border)janela.ElementoDaFala(0, "Balao")!;
 
                 var fundo = (SolidColorBrush)balao.Background;
 
@@ -254,6 +256,113 @@ namespace AIB.Tests
 
                 janela.BalaoVisivel.Should().BeFalse();
                 janela.Pulsando.Should().BeTrue();
+
+                janela.Close();
+            });
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // §4.6  A pilha de falas
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void Enviar_CriaABolhaDoUsuario()
+        {
+            // O defeito: o texto sumia do campo e nao reaparecia em lugar nenhum. Quem mandava
+            // a mensagem ficava olhando uma barra vazia com um anel girando, sem confirmacao do
+            // que tinha sido enviado.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                janela.AbrirBarra();
+                ((TextBox)janela.FindName("Campo")).Text = "  qual o ramal do Fernando  ";
+                janela.Enviar();
+
+                janela.Falas.Should().HaveCount(1);
+                janela.Falas[0].Should().BeOfType<FalaDoUsuario>();
+                janela.Falas[0].Texto.Should().Be("qual o ramal do Fernando");
+                janela.BalaoVisivel.Should().BeTrue();
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void FecharEReabrirABarra_DEVOLVE_AConversa()
+        {
+            // O outro defeito: fechar a barra descartava as bolhas, e reabrir dava uma barra
+            // vazia. Fechar ESCONDE; so o X descarta. A pergunta e a resposta continuam la
+            // porque e a resposta que o usuario voltou para ler.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                janela.AbrirBarra();
+                ((TextBox)janela.FindName("Campo")).Text = "qual o ramal";
+                janela.Enviar();
+                janela.ResponderTurno("4275");
+
+                janela.Falas.Should().HaveCount(2);
+
+                janela.FecharBarra();
+                janela.BalaoVisivel.Should().BeFalse("sem barra, as bolhas apontariam para nada");
+                janela.Falas.Should().HaveCount(2, "escondido nao e descartado");
+
+                janela.AbrirBarra();
+                janela.BalaoVisivel.Should().BeTrue();
+                janela.Falas.Should().HaveCount(2);
+                janela.TextoDaFala.Should().Be("4275");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void AOrdemDaPilha_EhMaisRecenteEmbaixo()
+        {
+            // §4.6 — "mais recente embaixo". A pilha e a leitura de cima para baixo da ultima
+            // troca; inverter deixaria a resposta acima da pergunta que a gerou.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                janela.AbrirBarra();
+                ((TextBox)janela.FindName("Campo")).Text = "pergunta";
+                janela.Enviar();
+                janela.ResponderTurno("resposta");
+
+                janela.Falas[0].Texto.Should().Be("pergunta");
+                janela.Falas[1].Texto.Should().Be("resposta");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void APilha_NaoPassaDeTres()
+        {
+            // §4.6 poe o teto em tres visiveis. A pilha e a ultima troca, nao o historico — que
+            // e da janela de chat (§5.3). Sem teto ela cobriria a tela de quem esta trabalhando.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                janela.AbrirBarra();
+                for (int i = 1; i <= 3; i++)
+                {
+                    ((TextBox)janela.FindName("Campo")).Text = $"pergunta {i}";
+                    janela.Enviar();
+                    janela.ResponderTurno($"resposta {i}");
+                }
+
+                janela.Falas.Should().HaveCount(3);
+                janela.Falas[0].Texto.Should().Be("resposta 2", "a mais antiga cai fora");
+                janela.Falas[2].Texto.Should().Be("resposta 3");
 
                 janela.Close();
             });
@@ -567,19 +676,23 @@ namespace AIB.Tests
             {
                 WpfHost.GarantirRecursos();
                 var janela = Nova();
-                var lista = (ItemsControl)janela.FindName("ListaDeEmails");
 
                 janela.ComecarAProcessarEmail();
                 janela.TerminarDeProcessarEmail("Li 34 e-mails. Três precisam de você.", Caixa(3));
 
                 janela.Pulsando.Should().BeTrue();
-                lista.Visibility.Should().Be(Visibility.Collapsed, "nada aparece antes do clique");
+                janela.Falas.Should().BeEmpty("nada aparece antes do clique");
 
                 janela.AbrirBarra();
 
                 janela.TextoDaFala.Should().Contain("Três precisam de você");
-                lista.Visibility.Should().Be(Visibility.Visible);
-                lista.Items.Count.Should().Be(3);
+
+                var fala = (FalaDaIA)janela.Falas[^1];
+                fala.Emails.Count.Should().Be(3);
+                fala.VisibilidadeDaLista.Should().Be(Visibility.Visible);
+
+                var lista = (ItemsControl)janela.ElementoDaFala(0, "ListaDeEmails")!;
+                lista.Items.Count.Should().Be(3, "o que o modelo diz precisa chegar à tela");
 
                 janela.Close();
             });
@@ -598,11 +711,10 @@ namespace AIB.Tests
                 janela.TerminarDeProcessarEmail("relatório", Caixa(7));
                 janela.AbrirBarra();
 
-                ((ItemsControl)janela.FindName("ListaDeEmails")).Items.Count.Should().Be(3);
-
-                var sobra = (TextBlock)janela.FindName("OutrosEmails");
-                sobra.Visibility.Should().Be(Visibility.Visible);
-                sobra.Text.Should().Be("+4 outros");
+                var fala = (FalaDaIA)janela.Falas[^1];
+                fala.Emails.Count.Should().Be(3);
+                fala.Excedente.Should().Be("+4 outros");
+                fala.VisibilidadeDoExcedente.Should().Be(Visibility.Visible);
 
                 janela.Close();
             });
@@ -623,8 +735,7 @@ namespace AIB.Tests
                 janela.DispensarFala();
 
                 janela.BalaoVisivel.Should().BeFalse();
-                ((ItemsControl)janela.FindName("ListaDeEmails")).Visibility
-                    .Should().Be(Visibility.Collapsed);
+                janela.Falas.Should().BeEmpty("o X leva o balão inteiro, lista incluída");
                 janela.EmModoBarra.Should().BeTrue();
 
                 janela.Close();

@@ -113,6 +113,17 @@
          Chat §3.3 / Configurações §3.3.
          ══════════════════════════════════════════════════════════════════ -->
 
+    <!-- §3.5 do chat — BOLHA DO USUÁRIO. Raio 18 uniforme, degradê primary, sem
+         sombra e sem glow (O5). Morava no ChatWindow.xaml e passou para cá quando a
+         pilha de falas do orbe precisou dela: a fala do usuário é a mesma coisa nos
+         dois lugares, e duas cópias divergiriam. -->
+    <Style x:Key="UserBubble" TargetType="Border">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusBubble}"/>
+        <Setter Property="Padding" Value="17,13"/>
+        <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+        <Setter Property="HorizontalAlignment" Value="Right"/>
+    </Style>
+
     <!-- Botao primario circular. Morava no ChatWindow.xaml e passou para ca quando a
          barra do Shadow Assistant precisou dele: a spec do orbe diz, em §4.7 (d), que o
          botao e "igual ao da janela de chat". Duas copias acabariam divergindo, e o

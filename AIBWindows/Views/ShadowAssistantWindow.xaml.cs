@@ -17,6 +17,8 @@ using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using TextChangedEventArgs = System.Windows.Controls.TextChangedEventArgs;
 using Brush = System.Windows.Media.Brush;
 using AIB.Services;
+using AIB.Ui;
+using System.Collections.ObjectModel;
 using Microsoft.Win32;
 
 namespace AIB.Views;
@@ -78,7 +80,6 @@ public partial class ShadowAssistantWindow : Window
         {
             _nomeDoAgente = string.IsNullOrWhiteSpace(value) ? "AIB" : value.Trim();
             Dica.Text = $"Fale com o {_nomeDoAgente}...";
-            NomeNoBalao.Text = _nomeDoAgente;
         }
     }
 
@@ -93,11 +94,29 @@ public partial class ShadowAssistantWindow : Window
     /// <summary>Se há um turno em andamento disparado por esta barra.</summary>
     public bool Trabalhando { get; private set; }
 
-    /// <summary>Se o balão de fala está na tela. Diagnóstico e ensaio.</summary>
-    public bool BalaoVisivel => Balao.Visibility == Visibility.Visible;
+    /// <summary>Se há fala na tela. Diagnóstico e ensaio.</summary>
+    public bool BalaoVisivel => PilhaDeFalas.Visibility == Visibility.Visible && _falas.Count > 0;
 
-    /// <summary>Texto atualmente no balão. Diagnóstico e ensaio.</summary>
-    public string TextoDaFala => TextoDoBalao.Text;
+    /// <summary>Texto da ÚLTIMA fala da IA. Diagnóstico e ensaio.</summary>
+    public string TextoDaFala
+    {
+        get
+        {
+            for (int i = _falas.Count - 1; i >= 0; i--)
+                if (_falas[i] is FalaDaIA fala) return fala.Texto;
+            return "";
+        }
+    }
+
+    /// <summary>
+    /// As falas que estão na pilha, da mais antiga para a mais recente. Diagnóstico e ensaio.
+    /// </summary>
+    public IReadOnlyList<FalaDoOrbe> Falas => _falas;
+
+    /// <summary>§4.6 — no máximo três bolhas visíveis; a mais antiga cai fora.</summary>
+    private const int TetoDeBolhas = 3;
+
+    private readonly ObservableCollection<FalaDoOrbe> _falas = new();
 
     /// <summary>Se o orbe está pulsando — §5.2.</summary>
     public bool Pulsando { get; private set; }
@@ -120,6 +139,7 @@ public partial class ShadowAssistantWindow : Window
         InitializeComponent();
 
         IconeDeInbox.Data = Geometry.Parse(DesenhoDeInbox);
+        PilhaDeFalas.ItemsSource = _falas;
 
         // §1 — os quatro gatilhos de reposicionamento, todos obrigatórios.
         SystemEvents.DisplaySettingsChanged += AoMudarAsTelas;
@@ -219,8 +239,11 @@ public partial class ShadowAssistantWindow : Window
         EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         AnelDePulso.BeginAnimation(OpacityProperty, null);
-        Balao.BeginAnimation(OpacityProperty, null);
-        DeslocamentoDoBalao.BeginAnimation(TranslateTransform.YProperty, null);
+
+        // As bolhas animam por gatilho do próprio template, então não há relógio nomeado
+        // para desligar aqui. Esvaziar a fonte tira os elementos da árvore, que é o
+        // equivalente: uma animação de 0,18s sem alvo não tem o que segurar.
+        _falas.Clear();
 
         base.OnClosed(e);
     }
@@ -242,6 +265,11 @@ public partial class ShadowAssistantWindow : Window
         VisualStateManager.GoToElementState(Palco, "Barra", true);
         AnimarMargemDaCelula(MargemNaBarra, DuracaoDoMorph, EasingMode.EaseOut);
         AtualizarAnelDeProgresso();
+
+        // A pilha volta com o que já estava nela. Fechar a barra ESCONDE as bolhas; só o X
+        // descarta. Sem isto, sair da barra por um clique fora apagava a resposta que o
+        // usuário tinha acabado de pedir, e reabrir dava uma barra vazia.
+        if (_falas.Count > 0) PilhaDeFalas.Visibility = Visibility.Visible;
 
         // §5.4 — clicar num orbe que estava pulsando faz as duas coisas de uma vez: a barra
         // abre E a fala aparece acima dela. É o único caminho pelo qual uma fala proativa
@@ -281,9 +309,10 @@ public partial class ShadowAssistantWindow : Window
 
         AtualizarDica();
 
-        // O balão é ancorado na barra: sem ela, ele ficaria flutuando sozinho sobre o
-        // desktop, apontando para nada.
-        DispensarFala();
+        // As bolhas são ancoradas na barra: sem ela ficariam flutuando sozinhas sobre o
+        // desktop, apontando para nada. Some a PILHA, e não o conteúdo dela — reabrir a
+        // barra devolve a conversa onde estava.
+        PilhaDeFalas.Visibility = Visibility.Collapsed;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -324,7 +353,11 @@ public partial class ShadowAssistantWindow : Window
 
         Campo.Clear();
         AtualizarDica();
-        DispensarFala();
+
+        // A bolha do usuário entra na pilha. Antes o texto sumia do campo e não reaparecia
+        // em lugar nenhum: quem mandava a mensagem ficava olhando para uma barra vazia com um
+        // anel girando, sem confirmação do que tinha sido enviado.
+        AdicionarFala(new FalaDoUsuario(texto));
 
         // A barra CONTINUA aberta. §5.4: o usuário lê e pode responder no mesmo lugar,
         // sem abrir o chat — fechar aqui o obrigaria a clicar de novo para ver a resposta
@@ -442,32 +475,6 @@ public partial class ShadowAssistantWindow : Window
     }
 
     private IReadOnlyList<MailSummary>? _emailsPendentes;
-
-    /// <summary>
-    /// §4.8 — põe a lista no balão, no máximo três itens, sem rolagem. O excedente vira uma
-    /// linha de texto: A11, uma caixa de entrada inteira flutuando no desktop não é o produto.
-    /// </summary>
-    private void MostrarEmails(IReadOnlyList<MailSummary>? emails)
-    {
-        if (emails == null || emails.Count == 0)
-        {
-            ListaDeEmails.ItemsSource = null;
-            ListaDeEmails.Visibility = Visibility.Collapsed;
-            OutrosEmails.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        const int teto = 3;
-        var mostrados = new List<MailSummary>();
-        for (int i = 0; i < emails.Count && i < teto; i++) mostrados.Add(emails[i]);
-
-        ListaDeEmails.ItemsSource = mostrados;
-        ListaDeEmails.Visibility = Visibility.Visible;
-
-        int sobra = emails.Count - mostrados.Count;
-        OutrosEmails.Text = sobra == 1 ? "+1 outro" : $"+{sobra} outros";
-        OutrosEmails.Visibility = sobra > 0 ? Visibility.Visible : Visibility.Collapsed;
-    }
 
     /// <summary>
     /// Clique num item abre a mensagem. As duas caixas do usuário são webmail, então é uma URL
@@ -628,10 +635,9 @@ public partial class ShadowAssistantWindow : Window
         string texto = string.Join("\n\n", _falasPendentes.GetRange(primeira, _falasPendentes.Count - primeira));
 
         _falasPendentes.Clear();
-        MostrarFala(texto);
 
         // §5.7 — mesmo estado Speaking; o que muda é o balão levar a lista abaixo do texto.
-        MostrarEmails(_emailsPendentes);
+        AdicionarFala(new FalaDaIA(texto, _nomeDoAgente, _emailsPendentes));
         _emailsPendentes = null;
     }
 
@@ -660,7 +666,8 @@ public partial class ShadowAssistantWindow : Window
     }
 
     /// <summary>
-    /// §4.6 — mostra a fala acima da barra. Entrada por fade + deslocamento de 8px.
+    /// §4.6 — mostra a fala acima da barra. Entrada por fade + deslocamento de 8px, que
+    /// mora no gatilho Loaded do próprio template da bolha.
     /// </summary>
     public void MostrarFala(string texto)
     {
@@ -668,32 +675,59 @@ public partial class ShadowAssistantWindow : Window
 
         if (string.IsNullOrWhiteSpace(texto)) return;
 
-        TextoDoBalao.Text = texto.Trim();
-        HoraNoBalao.Text = DateTime.Now.ToString("HH:mm");
-        Balao.Visibility = Visibility.Visible;
-
-        Balao.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.18)));
-        DeslocamentoDoBalao.BeginAnimation(TranslateTransform.YProperty,
-            new DoubleAnimation(8, 0, TimeSpan.FromSeconds(0.18))
-            {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-            });
+        AdicionarFala(new FalaDaIA(texto, _nomeDoAgente));
     }
 
     /// <summary>
-    /// §5.4 — o X dispensa o balão e MANTÉM a barra aberta. Quem fechou a fala não
-    /// necessariamente terminou de falar.
+    /// Empilha mais uma bolha e mostra a pilha.
+    /// <para>
+    /// Acima de <see cref="TetoDeBolhas"/> a mais antiga cai fora — é o teto da §4.6. A
+    /// pilha é a ÚLTIMA troca, e não o histórico: o histórico é da janela de chat (§5.3),
+    /// e uma pilha que cresce sem limite acabaria cobrindo a tela de quem está trabalhando.
+    /// </para>
+    /// </summary>
+    private void AdicionarFala(FalaDoOrbe fala)
+    {
+        _falas.Add(fala);
+        while (_falas.Count > TetoDeBolhas) _falas.RemoveAt(0);
+
+        PilhaDeFalas.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// §5.4 — o X dispensa as falas e MANTÉM a barra aberta. Quem fechou a fala não
+    /// necessariamente terminou de falar. §5.7: leva o balão INTEIRO, lista incluída.
     /// </summary>
     public void DispensarFala()
     {
-        Balao.BeginAnimation(OpacityProperty, null);
-        DeslocamentoDoBalao.BeginAnimation(TranslateTransform.YProperty, null);
-        Balao.Visibility = Visibility.Collapsed;
-        TextoDoBalao.Text = "";
+        _falas.Clear();
+        PilhaDeFalas.Visibility = Visibility.Collapsed;
+    }
 
-        // §5.7 — o X dispensa o balão INTEIRO, lista incluída.
-        MostrarEmails(null);
+    /// <summary>
+    /// O Border da bolha de índice <paramref name="indice"/>, já materializado. Diagnóstico e
+    /// ensaio: o que a pilha desenha vem de DataTemplate, e só existe depois de uma medição.
+    /// </summary>
+    public FrameworkElement? ElementoDaFala(int indice, string nome)
+    {
+        PilhaDeFalas.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+
+        var recipiente = PilhaDeFalas.ItemContainerGenerator.ContainerFromIndex(indice);
+        return recipiente == null ? null : Procurar(recipiente, nome);
+    }
+
+    private static FrameworkElement? Procurar(DependencyObject raiz, string nome)
+    {
+        if (raiz is FrameworkElement elemento && elemento.Name == nome) return elemento;
+
+        int filhos = VisualTreeHelper.GetChildrenCount(raiz);
+        for (int i = 0; i < filhos; i++)
+        {
+            var achado = Procurar(VisualTreeHelper.GetChild(raiz, i), nome);
+            if (achado != null) return achado;
+        }
+
+        return null;
     }
 
     private void BotaoDispensar_Click(object sender, RoutedEventArgs e) => DispensarFala();

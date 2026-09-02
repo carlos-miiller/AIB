@@ -403,7 +403,10 @@ namespace AIB.Tests
                 WpfHost.GarantirRecursos();
                 var janela = new ShadowAssistantWindow { NomeDoAgente = "Ayano" };
 
-                ((TextBlock)janela.FindName("NomeNoBalao")).Text.Should().Be("Ayano");
+                janela.MostrarFala("pronto");
+
+                ((FalaDaIA)janela.Falas[^1]).Nome.Should().Be("Ayano");
+                ((TextBlock)janela.ElementoDaFala(0, "NomeNoBalao")!).Text.Should().Be("Ayano");
 
                 janela.Close();
             });
