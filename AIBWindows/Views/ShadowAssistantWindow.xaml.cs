@@ -4,6 +4,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
+
+// WinForms entra junto com o WPF em net8.0-windows e traz homonimos. Sem os aliases,
+// KeyEventArgs e TextChangedEventArgs sao ambiguos.
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using TextChangedEventArgs = System.Windows.Controls.TextChangedEventArgs;
 using AIB.Services;
 using Microsoft.Win32;
 
@@ -29,8 +35,34 @@ public partial class ShadowAssistantWindow : Window
     /// </summary>
     private const double MargemDaSombra = 40;
 
+    /// <summary>Duração do morph de ida — §6. O foco só vai para o campo no fim dela.</summary>
+    private static readonly TimeSpan DuracaoDoMorph = TimeSpan.FromSeconds(0.28);
+
     private bool _emModoBarra;
     private bool _fechando;
+
+    /// <summary>
+    /// Nome do personagem ativo, para o placeholder da barra (§4.7 b). Vem de fora: a janela
+    /// não conhece SettingsService, e não precisa — ela desenha, quem sabe quem está ativo é
+    /// quem a criou.
+    /// </summary>
+    public string NomeDoAgente
+    {
+        get => _nomeDoAgente;
+        set
+        {
+            _nomeDoAgente = string.IsNullOrWhiteSpace(value) ? "AIB" : value.Trim();
+            Dica.Text = $"Fale com o {_nomeDoAgente}...";
+        }
+    }
+
+    private string _nomeDoAgente = "AIB";
+
+    /// <summary>
+    /// Texto enviado pela barra. §5.3: a conversa continua na janela de chat, não aqui — a
+    /// barra é porta de entrada, não um segundo chat.
+    /// </summary>
+    public event Action<string>? MensagemEnviada;
 
     public ShadowAssistantWindow()
     {
@@ -47,6 +79,8 @@ public partial class ShadowAssistantWindow : Window
             VisualStateManager.GoToElementState(Palco, "Orbe", false);
             Reposicionar();
         };
+
+        Campo.LostFocus += (_, _) => AtualizarDica();
 
         Casca.MouseEnter += (_, _) => Escalar(1.06);
         Casca.MouseLeave += (_, _) => Escalar(1.00);
@@ -143,6 +177,16 @@ public partial class ShadowAssistantWindow : Window
         Escalar(1.00);
         VisualStateManager.GoToElementState(Palco, "Barra", true);
 
+        // §8 A7 — o foco vai para o campo no FIM da animação. Focar no início faz o cursor
+        // piscar dentro de um círculo de 56px enquanto ele ainda está virando barra.
+        var relogio = new DispatcherTimer { Interval = DuracaoDoMorph };
+        relogio.Tick += (s, _) =>
+        {
+            relogio.Stop();
+            if (_emModoBarra && !_fechando) Campo.Focus();
+        };
+        relogio.Start();
+
         // §8 A3 — o orbe só rouba foco quando é CLICADO, nunca ao aparecer ou pulsar.
         // E só se estiver na tela: ativar janela invisível não faz nada de útil e, na thread
         // STA compartilhada dos ensaios, mexe com a janela de outra classe.
@@ -156,6 +200,56 @@ public partial class ShadowAssistantWindow : Window
 
         _emModoBarra = false;
         VisualStateManager.GoToElementState(Palco, "Orbe", true);
+
+        // §6 — o rascunho curto é descartado ao fechar; o longo sobrevive para a próxima
+        // abertura, porque perder um parágrafo digitado por causa de um clique fora seria
+        // pior que a barra reabrir com texto velho.
+        if (Campo.Text.Trim().Length <= RascunhoPreservadoAcimaDe) Campo.Clear();
+
+        AtualizarDica();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // §4.7  Barra de input
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Acima disto o rascunho sobrevive ao fechamento — §6.</summary>
+    private const int RascunhoPreservadoAcimaDe = 40;
+
+    private void Campo_TextChanged(object sender, TextChangedEventArgs e) => AtualizarDica();
+
+    private void AtualizarDica() =>
+        Dica.Visibility = string.IsNullOrEmpty(Campo.Text) ? Visibility.Visible : Visibility.Collapsed;
+
+    private void Campo_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Shift+Enter quebraria linha, mas a barra é de uma linha só: o campo tem
+        // AcceptsReturn=False, então aqui só o Enter puro tem efeito. Quem quer escrever um
+        // parágrafo faz isso na janela de chat, que é onde a conversa acontece.
+        if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
+        {
+            Enviar();
+            e.Handled = true;
+        }
+    }
+
+    private void BotaoEnviar_Click(object sender, RoutedEventArgs e) => Enviar();
+
+    /// <summary>
+    /// §5.3 — manda o texto para a janela de chat e volta ao orbe. A barra não responde nada:
+    /// a conversa continua lá, e ter duas telas mostrando pedaços do mesmo diálogo seria a
+    /// pior das duas opções.
+    /// </summary>
+    public void Enviar()
+    {
+        string texto = Campo.Text.Trim();
+        if (texto.Length == 0) return;
+
+        Campo.Clear();
+        AtualizarDica();
+        FecharBarra();
+
+        MensagemEnviada?.Invoke(texto);
     }
 
     /// <summary>

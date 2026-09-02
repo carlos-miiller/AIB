@@ -45,13 +45,29 @@ public partial class App : System.Windows.Application
 
         if (ligado)
         {
-            _orbe ??= new ShadowAssistantWindow();
+            _orbe ??= CriarOrbe();
             _orbe.Show();
             return;
         }
 
         _orbe?.Close();
         _orbe = null;
+    }
+
+    /// <summary>
+    /// Monta o orbe ja ligado a janela de chat. O nome do personagem vem daqui porque a
+    /// janela do orbe nao conhece SettingsService — ela desenha, e quem sabe quem esta ativo
+    /// e quem a criou.
+    /// </summary>
+    private ShadowAssistantWindow CriarOrbe()
+    {
+        var orbe = new ShadowAssistantWindow
+        {
+            NomeDoAgente = _settingsService.LoadSettings().ActiveCharacter
+        };
+
+        orbe.MensagemEnviada += texto => _chatWindow?.AbrirComMensagem(texto);
+        return orbe;
     }
 
     public void ShowNotification(string title, string message)
@@ -134,7 +150,7 @@ public partial class App : System.Windows.Application
             // do orbe; por ora ele e lido uma vez, na abertura.
             if (settings.ShadowAssistantEnabled)
             {
-                _orbe = new ShadowAssistantWindow();
+                _orbe = CriarOrbe();
                 _orbe.Show();
             }
 

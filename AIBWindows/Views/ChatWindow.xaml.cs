@@ -200,6 +200,26 @@ public partial class ChatWindow : Window
         if (Visibility == Visibility.Visible) Hide();
     }
 
+    /// <summary>
+    /// Abre a conversa com uma mensagem ja enviada — e a porta que a barra do orbe usa (§5.3
+    /// da spec do Shadow Assistant).
+    /// <para>
+    /// Reaproveita o mesmo caminho do botao de enviar, e nao uma copia dele: um segundo lugar
+    /// que monta turno acabaria divergindo em qual dos dois grava historico, conta XP ou
+    /// dispara compactacao.
+    /// </para>
+    /// </summary>
+    public void AbrirComMensagem(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+
+        if (Visibility != Visibility.Visible) ToggleWindow();
+
+        InputBox.Text = texto.Trim();
+        InputBox.CaretIndex = InputBox.Text.Length;
+        SendButton_Click(this, new RoutedEventArgs());
+    }
+
     public void ToggleWindow()
     {
         if (this.Visibility == Visibility.Visible)

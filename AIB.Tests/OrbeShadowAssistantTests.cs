@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -127,6 +127,128 @@ namespace AIB.Tests
                 var interna = (Border)janela.FindName("CascaInterna");
                 interna.Background.Should().BeOfType<SolidColorBrush>(
                     "§0 O6 — o vidro é cor sólida a 90%, sem blur nativo");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void OGlyph_FicaSempreAEsquerda_ParaNaoSaltarNoMeioDoMorph()
+        {
+            // O defeito: o alinhamento do glyph era animado por keyframe discreto (Center ->
+            // Left). Alinhamento e LAYOUT, nao transformacao — ele nao interpola. O glyph
+            // ficava parado enquanto a casca crescia e so aparecia no lugar certo no fim.
+            // Agora o alinhamento e fixo e quem anima e a margem, que interpola.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+
+                var glyph = (TextBlock)janela.FindName("Glyph");
+                glyph.HorizontalAlignment.Should().Be(HorizontalAlignment.Left);
+                glyph.Margin.Left.Should().Be(20, "e o que centraliza o glyph nos 53px do orbe");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void ConteudoDaBarra_NasceColapsado_ENaoSoTransparente()
+        {
+            // Opacity zero nao basta: as colunas Auto do microfone (34) e do enviar (38) somam
+            // 72px e continuariam ocupando espaco dentro dos 53px internos do orbe, empurrando
+            // o glyph para fora da casca.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+
+                var conteudo = (Grid)janela.FindName("ConteudoDaBarra");
+                conteudo.Visibility.Should().Be(Visibility.Collapsed);
+                conteudo.Opacity.Should().Be(0);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void ABarra_TemCampoMicrofoneEEnviar()
+        {
+            // §4.7. O segundo defeito relatado era este: a barra abria vazia, porque o
+            // conteudo dela simplesmente nao existia ainda.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+
+                ((TextBox)janela.FindName("Campo")).Should().NotBeNull();
+                ((Button)janela.FindName("BotaoMic")).Width.Should().Be(34, "§2 iconButton");
+                ((Button)janela.FindName("BotaoEnviar")).Width.Should().Be(38, "§2 sendBtn");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void OPlaceholder_LevaONomeDoPersonagemESomeComTexto()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow { NomeDoAgente = "Ayano" };
+
+                var dica = (TextBlock)janela.FindName("Dica");
+                var campo = (TextBox)janela.FindName("Campo");
+
+                dica.Text.Should().Contain("Ayano");
+                dica.Visibility.Should().Be(Visibility.Visible);
+
+                campo.Text = "oi";
+                dica.Visibility.Should().Be(Visibility.Collapsed);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void Enviar_MandaOTextoParaForaEVoltaAoOrbe()
+        {
+            // §5.3 — a barra e porta de entrada, nao um segundo chat: ela entrega o texto e
+            // se fecha. A conversa continua na janela de chat.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+                string? recebido = null;
+                janela.MensagemEnviada += t => recebido = t;
+
+                janela.AbrirBarra();
+                ((TextBox)janela.FindName("Campo")).Text = "  procura o ramal do Fernando  ";
+                janela.Enviar();
+
+                recebido.Should().Be("procura o ramal do Fernando");
+                janela.EmModoBarra.Should().BeFalse();
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void EnviarVazio_NaoDisparaNada()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+                bool disparou = false;
+                janela.MensagemEnviada += _ => disparou = true;
+
+                janela.AbrirBarra();
+                ((TextBox)janela.FindName("Campo")).Text = "   ";
+                janela.Enviar();
+
+                disparou.Should().BeFalse();
+                janela.EmModoBarra.Should().BeTrue("nada foi enviado, a barra continua aberta");
 
                 janela.Close();
             });

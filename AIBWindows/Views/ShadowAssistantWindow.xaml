@@ -18,23 +18,22 @@
         TextOptions.TextRenderingMode="ClearType">
 
     <!--
-        Implementação de refactor-interface/shadow-assistant.html, passos P1–P4.
+        Implementação de refactor-interface/shadow-assistant.html, passos P1–P5.
         Presentes: a janela (§4.1), o posicionamento (§1), a casca (§4.2), o glyph
-        (§4.3), o hover (§4.4), o estado Idle (§5.1) e o morph (§6).
-        Ainda NÃO: pulso, trilha, balão de fala, lista de e-mails.
+        (§4.3), o hover (§4.4), a barra de input (§4.7), o estado Idle (§5.1), o
+        Composing (§5.3) e o morph (§6).
+        Ainda NÃO: pulso, trilha de ações, balão de fala, lista de e-mails.
 
         LARGURA — a spec fala em palco de 560 (§2 stage.width) para a barra de 520
         caber com folga. Aqui a Window tem 600 porque ela também precisa hospedar a
         SOMBRA: o WPF recorta Effect no limite da janela, e a barShadow tem 44 de
         blur com 16 de deslocamento. Os 40px de MargemDaSombra em volta são esse
-        espaço. O que a spec chama de palco é o conteúdo dentro dessa margem, e o
-        centro visual continua exatamente onde §1 manda — quem corrige é o
+        espaço. O centro visual continua onde §1 manda — quem corrige é o
         ScreenAnchorService, que desconta a margem inferior.
 
         A2 — a área transparente NÃO pode bloquear clique no desktop. O Grid raiz
         fica com Background="{x:Null}" (e não Transparent): nulo não participa do
-        hit-test, Transparent participa. Com Transparent aqui, o usuário não
-        conseguiria clicar em nada atrás dos 600x136 da janela.
+        hit-test, Transparent participa.
     -->
 
     <Window.Resources>
@@ -51,15 +50,6 @@
 
             <VisualStateManager.VisualStateGroups>
                 <VisualStateGroup x:Name="FormaDoOrbe">
-
-                    <!-- §6 — ida: 0,28s, CubicEase EaseOut. Só Width e Height são
-                         animados; o CornerRadius acompanha pela altura (ver o
-                         AlturaParaRaioConverter). O Effect troca por keyframe
-                         discreto, e não animando as propriedades dele: A6. -->
-                    <VisualStateGroup.Transitions>
-                        <VisualTransition To="Barra" GeneratedDuration="0:0:0.28"/>
-                        <VisualTransition To="Orbe"  GeneratedDuration="0:0:0.22"/>
-                    </VisualStateGroup.Transitions>
 
                     <!-- §5.1 IDLE — círculo de 56, glyph ✦, borda neon. Nada mais. -->
                     <VisualState x:Name="Orbe">
@@ -78,17 +68,33 @@
                                     <CubicEase EasingMode="EaseIn"/>
                                 </DoubleAnimation.EasingFunction>
                             </DoubleAnimation>
+
                             <DoubleAnimation Storyboard.TargetName="Glyph"
                                              Storyboard.TargetProperty="FontSize"
                                              To="20" Duration="0:0:0.18"/>
-                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Glyph"
-                                                           Storyboard.TargetProperty="HorizontalAlignment">
-                                <DiscreteObjectKeyFrame KeyTime="0:0:0.12"
-                                                        Value="{x:Static HorizontalAlignment.Center}"/>
-                            </ObjectAnimationUsingKeyFrames>
                             <ThicknessAnimation Storyboard.TargetName="Glyph"
                                                 Storyboard.TargetProperty="Margin"
-                                                To="0" Duration="0:0:0.22"/>
+                                                To="20,0,0,0" Duration="0:0:0.22">
+                                <ThicknessAnimation.EasingFunction>
+                                    <CubicEase EasingMode="EaseIn"/>
+                                </ThicknessAnimation.EasingFunction>
+                            </ThicknessAnimation>
+
+                            <!-- O conteúdo some ANTES de a casca encolher. Se ele
+                                 continuasse visível, as colunas Auto do microfone e do
+                                 enviar (34+38=72) não caberiam nos 53px internos do
+                                 orbe e empurrariam o glyph para fora. -->
+                            <DoubleAnimation Storyboard.TargetName="ConteudoDaBarra"
+                                             Storyboard.TargetProperty="Opacity"
+                                             To="0" Duration="0:0:0.08"/>
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ConteudoDaBarra"
+                                                           Storyboard.TargetProperty="Visibility">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0.08"
+                                                        Value="{x:Static Visibility.Collapsed}"/>
+                            </ObjectAnimationUsingKeyFrames>
+
+                            <!-- A6 — troca de Effect por keyframe. Animar BlurRadius ou
+                                 Opacity de um DropShadowEffect por quadro engasga. -->
                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Casca"
                                                            Storyboard.TargetProperty="Effect">
                                 <DiscreteObjectKeyFrame KeyTime="0:0:0.22"
@@ -114,22 +120,40 @@
                                     <CubicEase EasingMode="EaseOut"/>
                                 </DoubleAnimation.EasingFunction>
                             </DoubleAnimation>
+
+                            <!-- §4.3 — o glyph acompanha a casca crescendo, sem salto.
+                                 Ele fica SEMPRE alinhado à esquerda: a margem de 20 é o
+                                 que o centraliza nos 53px internos do orbe, e ela desce
+                                 para os 16 de padding da barra numa animação contínua. A
+                                 versão anterior animava HorizontalAlignment por keyframe
+                                 discreto — e alinhamento é layout, não transformação: o
+                                 glyph pulava no meio da expansão e só assentava no fim. -->
                             <DoubleAnimation Storyboard.TargetName="Glyph"
                                              Storyboard.TargetProperty="FontSize"
                                              To="13" Duration="0:0:0.12"
                                              BeginTime="0:0:0.10"/>
-                            <!-- §4.3 — o glyph migra para a ponta esquerda. A troca de
-                                 alinhamento e discreta (nao ha como interpolar um enum), entao
-                                 acontece no meio do morph, quando a casca ja cresceu o bastante
-                                 para o salto nao se ler como tranco. -->
-                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Glyph"
-                                                           Storyboard.TargetProperty="HorizontalAlignment">
-                                <DiscreteObjectKeyFrame KeyTime="0:0:0.10"
-                                                        Value="{x:Static HorizontalAlignment.Left}"/>
-                            </ObjectAnimationUsingKeyFrames>
                             <ThicknessAnimation Storyboard.TargetName="Glyph"
                                                 Storyboard.TargetProperty="Margin"
-                                                To="16,0,0,0" Duration="0:0:0.28"/>
+                                                To="16,0,0,0" Duration="0:0:0.28">
+                                <ThicknessAnimation.EasingFunction>
+                                    <CubicEase EasingMode="EaseOut"/>
+                                </ThicknessAnimation.EasingFunction>
+                            </ThicknessAnimation>
+
+                            <!-- §6 — cross-fade do conteúdo: 0,12s começando aos 0,10s.
+                                 A visibilidade volta no MESMO instante, e não em zero:
+                                 aos 0,10s de um EaseOut a casca já passou dos 400px, e há
+                                 espaço para as colunas Auto sem espremer o campo. -->
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ConteudoDaBarra"
+                                                           Storyboard.TargetProperty="Visibility">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0.10"
+                                                        Value="{x:Static Visibility.Visible}"/>
+                            </ObjectAnimationUsingKeyFrames>
+                            <DoubleAnimation Storyboard.TargetName="ConteudoDaBarra"
+                                             Storyboard.TargetProperty="Opacity"
+                                             To="1" Duration="0:0:0.12"
+                                             BeginTime="0:0:0.10"/>
+
                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Casca"
                                                            Storyboard.TargetProperty="Effect">
                                 <DiscreteObjectKeyFrame KeyTime="0:0:0"
@@ -169,16 +193,93 @@
                                                Path=ActualHeight,
                                                Converter={StaticResource AlturaParaRaio}}">
 
-                    <!-- §4.3 — o glyph é a âncora visual do morph: 20px no centro do
-                         orbe, 13px na ponta esquerda da barra. É o mesmo caractere se
-                         movendo, e é isso que faz a transição ler como continuidade em
-                         vez de troca de tela. -->
-                    <TextBlock x:Name="Glyph"
-                               Text="✦"
-                               FontSize="20"
-                               Foreground="{StaticResource AccentLilacBrush}"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- §4.3 — a âncora visual do morph. Sempre à esquerda; o que
+                             muda é a margem, e é isso que faz a transição ler como
+                             continuidade em vez de troca de tela. -->
+                        <TextBlock x:Name="Glyph"
+                                   Grid.Column="0"
+                                   Text="✦"
+                                   FontSize="20"
+                                   Margin="20,0,0,0"
+                                   Foreground="{StaticResource AccentLilacBrush}"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Center"/>
+
+                        <!-- §4.7 — só existe no estado barra. Colapsado, e não apenas
+                             transparente: as colunas Auto ocupariam espaço mesmo
+                             invisíveis. -->
+                        <Grid x:Name="ConteudoDaBarra"
+                              Grid.Column="1"
+                              Margin="8,0,7,0"
+                              Opacity="0"
+                              Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox x:Name="Campo" Grid.Column="0"
+                                     Background="Transparent" BorderThickness="0"
+                                     Foreground="{StaticResource TextNormalBrush}"
+                                     CaretBrush="{StaticResource AccentLilacBrush}"
+                                     SelectionBrush="{StaticResource AccentLilacBrush}"
+                                     FontSize="14"
+                                     VerticalContentAlignment="Center"
+                                     AcceptsReturn="False"
+                                     TextChanged="Campo_TextChanged"
+                                     PreviewKeyDown="Campo_PreviewKeyDown">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="TextBox">
+                                                    <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                                                  HorizontalScrollBarVisibility="Hidden"
+                                                                  VerticalScrollBarVisibility="Hidden"/>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+
+                            <!-- Mesmo padrão da janela de chat: o WPF não tem placeholder,
+                                 então é um TextBlock por baixo que some quando há texto. -->
+                            <TextBlock x:Name="Dica" Grid.Column="0"
+                                       Text="Fale com o AIB..."
+                                       FontSize="14"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False"/>
+
+                            <Button x:Name="BotaoMic" Grid.Column="1"
+                                    Style="{StaticResource IconButton}"
+                                    ToolTip="Microfone">
+                                <Path Data="M9,3.4 A2.4,2.4 0 0 1 11.4,5.8 V9.4 A2.4,2.4 0 0 1 6.6,9.4 V5.8 A2.4,2.4 0 0 1 9,3.4 Z M4.6,9 A4.4,4.4 0 0 0 13.4,9 M9,13.4 V15.6"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.4" StrokeLineJoin="Round" StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" Width="18" Height="18" Stretch="None"/>
+                            </Button>
+
+                            <Button x:Name="BotaoEnviar" Grid.Column="2"
+                                    Style="{StaticResource SendButton}"
+                                    Margin="4,0,0,0"
+                                    Click="BotaoEnviar_Click"
+                                    ToolTip="Enviar">
+                                <Path Data="M2,9 L16,2.5 L10.4,15.5 L8.6,10.4 Z"
+                                      Stroke="White" StrokeThickness="1.6"
+                                      StrokeLineJoin="Round" StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" Width="18" Height="18" Stretch="None"/>
+                            </Button>
+                        </Grid>
+                    </Grid>
                 </Border>
             </Border>
 
