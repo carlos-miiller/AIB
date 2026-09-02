@@ -148,19 +148,22 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void OGlyph_FicaSempreAEsquerda_ParaNaoSaltarNoMeioDoMorph()
+        public void ACelulaDoGlyph_FicaSempreAEsquerda_ParaNaoSaltarNoMeioDoMorph()
         {
             // O defeito: o alinhamento do glyph era animado por keyframe discreto (Center ->
             // Left). Alinhamento e LAYOUT, nao transformacao — ele nao interpola. O glyph
             // ficava parado enquanto a casca crescia e so aparecia no lugar certo no fim.
             // Agora o alinhamento e fixo e quem anima e a margem, que interpola.
+            //
+            // Quem carrega esse alinhamento passou a ser a CELULA: o glyph, o icone de inbox
+            // e o anel sao centrados dentro dela, e e ela que anda.
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
                 var janela = new ShadowAssistantWindow();
 
-                var glyph = (TextBlock)janela.FindName("Glyph");
-                glyph.HorizontalAlignment.Should().Be(HorizontalAlignment.Left,
+                var celula = (Grid)janela.FindName("CelulaDoGlyph");
+                celula.HorizontalAlignment.Should().Be(HorizontalAlignment.Left,
                     "alinhamento e layout e nao interpola: quem anima e a margem");
 
                 janela.Close();

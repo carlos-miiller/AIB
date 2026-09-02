@@ -119,7 +119,7 @@ public partial class ShadowAssistantWindow : Window
             VisualStateManager.GoToElementState(Palco, "Orbe", false);
 
             // Sem animação: é a posição de partida, não uma transição.
-            Glyph.Margin = new Thickness(MargemQueCentraliza(MedirGlyph(20)), 0, 0, 0);
+            AjustarCelulaAoConteudo();
 
             Reposicionar();
         };
@@ -200,7 +200,7 @@ public partial class ShadowAssistantWindow : Window
         Casca.BeginAnimation(WidthProperty, null);
         Casca.BeginAnimation(HeightProperty, null);
         Glyph.BeginAnimation(TextBlock.FontSizeProperty, null);
-        Glyph.BeginAnimation(MarginProperty, null);
+        CelulaDoGlyph.BeginAnimation(MarginProperty, null);
         GiroDoAnel.BeginAnimation(RotateTransform.AngleProperty, null);
         GiroDoAnelDoOrbe.BeginAnimation(RotateTransform.AngleProperty, null);
         EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleXProperty, null);
@@ -227,7 +227,7 @@ public partial class ShadowAssistantWindow : Window
         _emModoBarra = true;
         Escalar(1.00);
         VisualStateManager.GoToElementState(Palco, "Barra", true);
-        AnimarMargemDoGlyph(MargemNaBarra, DuracaoDoMorph, EasingMode.EaseOut);
+        AnimarMargemDaCelula(MargemNaBarra, DuracaoDoMorph, EasingMode.EaseOut);
         AtualizarAnelDeProgresso();
 
         // §5.4 — clicar num orbe que estava pulsando faz as duas coisas de uma vez: a barra
@@ -258,7 +258,7 @@ public partial class ShadowAssistantWindow : Window
 
         _emModoBarra = false;
         VisualStateManager.GoToElementState(Palco, "Orbe", true);
-        AnimarMargemDoGlyph(MargemQueCentraliza(MedirGlyph(20)), TimeSpan.FromSeconds(0.22), EasingMode.EaseIn);
+        AnimarMargemDaCelula(MargemQueCentraliza(LarguraDaCelula()), TimeSpan.FromSeconds(0.22), EasingMode.EaseIn);
         AtualizarAnelDeProgresso();
 
         // §6 — o rascunho curto é descartado ao fechar; o longo sobrevive para a próxima
@@ -353,14 +353,31 @@ public partial class ShadowAssistantWindow : Window
         return texto.Width;
     }
 
-    private void AnimarMargemDoGlyph(double para, TimeSpan duracao, EasingMode modo)
+    /// <summary>Largura do que está ocupando a célula agora: o ícone de inbox ou o símbolo.</summary>
+    private double LarguraDaCelula() =>
+        IconeDeInbox.Visibility == Visibility.Visible ? IconeDeInbox.Width : MedirGlyph(20);
+
+    private void AnimarMargemDaCelula(double para, TimeSpan duracao, EasingMode modo)
     {
         var animacao = new ThicknessAnimation(new Thickness(para, 0, 0, 0), duracao)
         {
             EasingFunction = new CubicEase { EasingMode = modo }
         };
 
-        Glyph.BeginAnimation(MarginProperty, animacao);
+        CelulaDoGlyph.BeginAnimation(MarginProperty, animacao);
+    }
+
+    /// <summary>
+    /// Recoloca a célula sem animação. Usado quando o CONTEÚDO dela muda de tamanho — o
+    /// símbolo de 20px vira um ícone de 23 — e a margem que centralizava um não centraliza
+    /// mais o outro.
+    /// </summary>
+    private void AjustarCelulaAoConteudo()
+    {
+        if (_emModoBarra) return;
+
+        CelulaDoGlyph.BeginAnimation(MarginProperty, null);
+        CelulaDoGlyph.Margin = new Thickness(MargemQueCentraliza(LarguraDaCelula()), 0, 0, 0);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -385,6 +402,7 @@ public partial class ShadowAssistantWindow : Window
         ProcessandoEmail = true;
         Glyph.Visibility = Visibility.Collapsed;
         IconeDeInbox.Visibility = Visibility.Visible;
+        AjustarCelulaAoConteudo();
         Casca.ToolTip = "Processando e-mails";
         ComecarATrabalhar();
     }
@@ -399,6 +417,7 @@ public partial class ShadowAssistantWindow : Window
         ProcessandoEmail = false;
         Glyph.Visibility = Visibility.Visible;
         IconeDeInbox.Visibility = Visibility.Collapsed;
+        AjustarCelulaAoConteudo();
         Casca.ToolTip = null;
         PararDeTrabalhar();
 

@@ -384,55 +384,64 @@
                         <!-- §4.3 — a âncora visual do morph. Sempre à esquerda; o que
                              muda é a margem, e é isso que faz a transição ler como
                              continuidade em vez de troca de tela. -->
-                        <!-- §5.6 — o anel da BARRA. Com o orbe expandido não há
-                             círculo em volta do que girar, e a spec resolve assim: "o
-                             anel continua girando no glyph pequeno da ponta esquerda".
-                             Fica na mesma célula do glyph, então acompanha a migração
-                             dele sem cálculo de posição.
-                             No estado orbe quem aparece é o AnelDoOrbe, por fora. -->
-                        <Path x:Name="AnelDeProgresso"
+                        <!-- UMA CÉLULA para os três: o símbolo, o ícone que o
+                             substitui durante a varredura, e o anel que gira em volta.
+                             Antes cada um tinha a própria margem à esquerda — 20, 15 e
+                             13, todas chutadas — e por isso nenhum coincidia com os
+                             outros: o anel aparecia deslocado do glyph.
+                             Agora os três são CENTRADOS na mesma célula, e o que se
+                             posiciona é a célula. Coincidir deixa de ser cálculo e
+                             passa a ser estrutura. -->
+                        <Grid x:Name="CelulaDoGlyph"
                               Grid.Column="0"
-                              Data="M 13,1 A 12,12 0 0 1 25,13"
-                              Stroke="{StaticResource AccentLilacBrush}"
-                              StrokeThickness="2"
-                              StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round"
-                              Width="26" Height="26"
-                              Margin="13,0,0,0"
                               HorizontalAlignment="Left"
-                              VerticalAlignment="Center"
-                              RenderTransformOrigin="0.5,0.5"
-                              Visibility="Collapsed">
-                            <Path.RenderTransform>
-                                <RotateTransform x:Name="GiroDoAnel"/>
-                            </Path.RenderTransform>
-                        </Path>
+                              VerticalAlignment="Center">
 
-                        <!-- §5.6 — no lugar do glyph durante a varredura de e-mails.
-                             Mesma célula e mesma margem, então ele herda a migração do
-                             glyph no morph sem cálculo próprio. -->
-                        <Path x:Name="IconeDeInbox"
-                              Grid.Column="0"
-                              Stroke="{StaticResource AccentLilacBrush}"
-                              StrokeThickness="1.5"
-                              StrokeLineJoin="Round"
-                              StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round"
-                              Width="23" Height="23"
-                              Margin="15,0,0,0"
-                              Stretch="Uniform"
-                              HorizontalAlignment="Left"
-                              VerticalAlignment="Center"
-                              Visibility="Collapsed"/>
+                            <!-- §5.6 — o anel da BARRA. Com o orbe expandido não há
+                                 círculo em volta do que girar, e a spec resolve assim:
+                                 "o anel continua girando no glyph pequeno da ponta
+                                 esquerda". No estado orbe quem aparece é o AnelDoOrbe.
+                                 Margem de -13 (metade dos 26) zera a pegada de layout
+                                 dele: o anel envolve o símbolo sem alargar a célula,
+                                 que continua tendo o tamanho do próprio símbolo. -->
+                            <Path x:Name="AnelDeProgresso"
+                                  Data="M 13,1 A 12,12 0 0 1 25,13"
+                                  Stroke="{StaticResource AccentLilacBrush}"
+                                  StrokeThickness="2"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Width="26" Height="26"
+                                  Margin="-13"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  IsHitTestVisible="False"
+                                  RenderTransformOrigin="0.5,0.5"
+                                  Visibility="Collapsed">
+                                <Path.RenderTransform>
+                                    <RotateTransform x:Name="GiroDoAnel"/>
+                                </Path.RenderTransform>
+                            </Path>
 
-                        <TextBlock x:Name="Glyph"
-                                   Grid.Column="0"
-                                   Text="✦"
-                                   FontSize="20"
-                                   Margin="20,0,0,0"
-                                   Foreground="{StaticResource AccentLilacBrush}"
-                                   HorizontalAlignment="Left"
-                                   VerticalAlignment="Center"/>
+                            <!-- §5.6 — no lugar do glyph durante a varredura. -->
+                            <Path x:Name="IconeDeInbox"
+                                  Stroke="{StaticResource AccentLilacBrush}"
+                                  StrokeThickness="1.5"
+                                  StrokeLineJoin="Round"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Width="23" Height="23"
+                                  Stretch="Uniform"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Visibility="Collapsed"/>
+
+                            <TextBlock x:Name="Glyph"
+                                       Text="✦"
+                                       FontSize="20"
+                                       Foreground="{StaticResource AccentLilacBrush}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
 
                         <!-- §4.7 — só existe no estado barra. Colapsado, e não apenas
                              transparente: as colunas Auto ocupariam espaço mesmo

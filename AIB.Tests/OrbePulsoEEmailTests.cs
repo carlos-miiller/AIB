@@ -320,6 +320,62 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void OAnelDaBarra_EstaCENTRADO_NoSimbolo()
+        {
+            // O defeito: glyph, icone de inbox e anel tinham cada um a propria margem
+            // esquerda — 20, 15 e 13, todas chutadas — e por isso nenhum coincidia com os
+            // outros. O anel aparecia deslocado do simbolo que ele deveria envolver.
+            // Agora os tres sao centrados na MESMA celula, e coincidir deixa de ser calculo
+            // para virar estrutura.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                var anel = (Path)janela.FindName("AnelDeProgresso");
+                var glyph = (TextBlock)janela.FindName("Glyph");
+                var inbox = (Path)janela.FindName("IconeDeInbox");
+
+                anel.HorizontalAlignment.Should().Be(HorizontalAlignment.Center);
+                glyph.HorizontalAlignment.Should().Be(HorizontalAlignment.Center);
+                inbox.HorizontalAlignment.Should().Be(HorizontalAlignment.Center);
+
+                anel.Parent.Should().BeSameAs(glyph.Parent, "tem de ser a mesma celula");
+                inbox.Parent.Should().BeSameAs(glyph.Parent);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void OAnelDaBarra_NaoAlargaACelula()
+        {
+            // O anel tem 26 e o simbolo uns 13. Sem a margem de -13 a celula passaria a ter a
+            // largura do ANEL, e tanto o simbolo quanto tudo o que vem a direita dele na barra
+            // andariam quando o trabalho comecasse.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+                var celula = (Grid)janela.FindName("CelulaDoGlyph");
+
+                var infinito = new Size(double.PositiveInfinity, double.PositiveInfinity);
+
+                celula.Measure(infinito);
+                double parado = celula.DesiredSize.Width;
+
+                janela.AbrirBarra();
+                janela.ComecarATrabalhar();
+                celula.Measure(infinito);
+
+                celula.DesiredSize.Width.Should().Be(parado,
+                    "o anel envolve o simbolo, nao empurra o que esta ao lado");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void ComABarraAberta_OAnelVaiParaOGlyph()
         {
             // §5.6 — com o orbe expandido nao ha circulo em volta do que girar, e a spec
