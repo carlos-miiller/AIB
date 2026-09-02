@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using MouseButtonEventArgs = System.Windows.Input.MouseButtonEventArgs;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
@@ -12,6 +14,7 @@ using System.Windows.Threading;
 // KeyEventArgs e TextChangedEventArgs sao ambiguos.
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using TextChangedEventArgs = System.Windows.Controls.TextChangedEventArgs;
+using Brush = System.Windows.Media.Brush;
 using AIB.Services;
 using Microsoft.Win32;
 
@@ -76,9 +79,27 @@ public partial class ShadowAssistantWindow : Window
     /// <summary>Texto atualmente no balão. Diagnóstico e ensaio.</summary>
     public string TextoDaFala => TextoDoBalao.Text;
 
+    /// <summary>Se o orbe está pulsando — §5.2.</summary>
+    public bool Pulsando { get; private set; }
+
+    /// <summary>
+    /// Falas que a IA quer dizer e que ainda não foram lidas.
+    /// <para>
+    /// Elas NÃO viram balão sozinhas (§0 O3, §8 A5). Ficam aqui, o orbe pulsa, e o texto só
+    /// aparece quando o usuário clica. É o desenho inteiro do aviso que não interrompe: quem
+    /// está trabalhando vê o pulso pelo canto do olho e decide quando parar.
+    /// </para>
+    /// </summary>
+    private readonly List<string> _falasPendentes = new();
+
+    /// <summary>Quantas falas esperam ser lidas. Diagnóstico e ensaio.</summary>
+    public int FalasPendentes => _falasPendentes.Count;
+
     public ShadowAssistantWindow()
     {
         InitializeComponent();
+
+        IconeDeInbox.Data = Geometry.Parse(DesenhoDeInbox);
 
         // §1 — os quatro gatilhos de reposicionamento, todos obrigatórios.
         SystemEvents.DisplaySettingsChanged += AoMudarAsTelas;
@@ -170,6 +191,9 @@ public partial class ShadowAssistantWindow : Window
         Glyph.BeginAnimation(TextBlock.FontSizeProperty, null);
         Glyph.BeginAnimation(MarginProperty, null);
         GiroDoAnel.BeginAnimation(RotateTransform.AngleProperty, null);
+        EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        AnelDePulso.BeginAnimation(OpacityProperty, null);
         Balao.BeginAnimation(OpacityProperty, null);
         DeslocamentoDoBalao.BeginAnimation(TranslateTransform.YProperty, null);
 
@@ -191,6 +215,11 @@ public partial class ShadowAssistantWindow : Window
         _emModoBarra = true;
         Escalar(1.00);
         VisualStateManager.GoToElementState(Palco, "Barra", true);
+
+        // §5.4 — clicar num orbe que estava pulsando faz as duas coisas de uma vez: a barra
+        // abre E a fala aparece acima dela. É o único caminho pelo qual uma fala proativa
+        // chega à tela.
+        if (Pulsando) RevelarFalasPendentes();
 
         // §8 A7 — o foco vai para o campo no FIM da animação. Focar no início faz o cursor
         // piscar dentro de um círculo de 56px enquanto ele ainda está virando barra.
@@ -276,6 +305,163 @@ public partial class ShadowAssistantWindow : Window
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // §5.6 / §5.7  E-mail
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Ícone de caixa de entrada, 23px, no lugar do glyph durante a varredura.</summary>
+    private const string DesenhoDeInbox =
+        "M14.1,8 H10.6 L9.5,9.9 H6.5 L5.4,8 H1.9 M4.1,2.9 H11.9 L14.1,8 V11.8 " +
+        "A1.3,1.3 0 0 1 12.8,13.1 H3.2 A1.3,1.3 0 0 1 1.9,11.8 V8 Z";
+
+    /// <summary>Se a varredura de e-mails está em curso. Diagnóstico e ensaio.</summary>
+    public bool ProcessandoEmail { get; private set; }
+
+    /// <summary>
+    /// §5.6 — a IA está varrendo a caixa de entrada. Visualmente é o Working, com UMA
+    /// diferença: NÃO há cápsula de trilha à direita. Nenhuma ação de arquivo aconteceu, então
+    /// não há o que listar, e o orbe fica sozinho.
+    /// </summary>
+    public void ComecarAProcessarEmail()
+    {
+        ProcessandoEmail = true;
+        Glyph.Visibility = Visibility.Collapsed;
+        IconeDeInbox.Visibility = Visibility.Visible;
+        Casca.ToolTip = "Processando e-mails";
+        ComecarATrabalhar();
+    }
+
+    /// <summary>
+    /// Fim da varredura. Sem nada a relatar, volta a Idle; com algo, ENFILEIRA e pulsa — nunca
+    /// abre o balão sozinho (§0 O3).
+    /// </summary>
+    public void TerminarDeProcessarEmail(string? relatorio = null, IReadOnlyList<MailSummary>? emails = null,
+                                         bool urgente = false)
+    {
+        ProcessandoEmail = false;
+        Glyph.Visibility = Visibility.Visible;
+        IconeDeInbox.Visibility = Visibility.Collapsed;
+        Casca.ToolTip = null;
+        PararDeTrabalhar();
+
+        _emailsPendentes = emails;
+
+        if (!string.IsNullOrWhiteSpace(relatorio)) EnfileirarFala(relatorio!, urgente);
+    }
+
+    private IReadOnlyList<MailSummary>? _emailsPendentes;
+
+    /// <summary>
+    /// §4.8 — põe a lista no balão, no máximo três itens, sem rolagem. O excedente vira uma
+    /// linha de texto: A11, uma caixa de entrada inteira flutuando no desktop não é o produto.
+    /// </summary>
+    private void MostrarEmails(IReadOnlyList<MailSummary>? emails)
+    {
+        if (emails == null || emails.Count == 0)
+        {
+            ListaDeEmails.ItemsSource = null;
+            ListaDeEmails.Visibility = Visibility.Collapsed;
+            OutrosEmails.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        const int teto = 3;
+        var mostrados = new List<MailSummary>();
+        for (int i = 0; i < emails.Count && i < teto; i++) mostrados.Add(emails[i]);
+
+        ListaDeEmails.ItemsSource = mostrados;
+        ListaDeEmails.Visibility = Visibility.Visible;
+
+        int sobra = emails.Count - mostrados.Count;
+        OutrosEmails.Text = sobra == 1 ? "+1 outro" : $"+{sobra} outros";
+        OutrosEmails.Visibility = sobra > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Clique num item abre a mensagem. As duas caixas do usuário são webmail, então é uma URL
+    /// no navegador padrão — não há cliente de e-mail para invocar.
+    /// </summary>
+    private void ItemDeEmail_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement item || item.DataContext is not MailSummary email) return;
+        if (string.IsNullOrWhiteSpace(email.Url)) return;
+
+        try
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(email.Url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            // Abrir o navegador é conveniência. Falhar aqui não pode derrubar o orbe, que
+            // continua sendo a única coisa entre o usuário e a lista que ele acabou de ler.
+            Console.WriteLine($"[ORBE] Não abriu '{email.Url}': {ex.Message}");
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // §5.2  Pulso
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Guarda uma fala e faz o orbe pulsar. É por aqui que qualquer coisa proativa entra —
+    /// o digest de e-mail, o resultado de uma tarefa longa, um aviso.
+    /// </summary>
+    /// <param name="urgente">
+    /// Pinta o pulso de vermelho em vez de lilás. NÃO é toast, NÃO abre balão: continua sendo
+    /// só o pulso, como manda a §0 O3. O que muda é a cor, para um incidente aberto — vários
+    /// alertas do mesmo monitor em poucos minutos — se distinguir de uma fala comum sem
+    /// precisar interromper ninguém. Extensão à spec, que só prevê o pulso lilás.
+    /// </param>
+    public void EnfileirarFala(string texto, bool urgente = false)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+
+        _falasPendentes.Add(texto.Trim());
+        Pulsar(urgente);
+    }
+
+    /// <summary>
+    /// §5.2 — o anel expande em laço até alguém clicar. A10: ele NÃO expira sozinho; se
+    /// sumisse por conta própria, a mensagem se perderia sem ninguém saber que existiu.
+    /// </summary>
+    public void Pulsar(bool urgente = false)
+    {
+        AnelDePulso.BorderBrush = urgente
+            ? (Brush)FindResource("DangerBrush")
+            : (Brush)FindResource("AccentLilacBrush");
+
+        if (Pulsando) return;
+        Pulsando = true;
+
+        var duracao = new Duration(TimeSpan.FromSeconds(2));
+
+        var escala = new DoubleAnimation(1.0, 1.8, duracao) { RepeatBehavior = RepeatBehavior.Forever };
+        EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleXProperty, escala);
+        EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleYProperty, escala);
+
+        // A opacidade cai antes do fim da expansão e fica em zero no resto do ciclo: é o que
+        // dá o intervalo entre uma onda e a seguinte, em vez de um anel piscando sem pausa.
+        var sumico = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever };
+        sumico.KeyFrames.Add(new LinearDoubleKeyFrame(0.55, KeyTime.FromPercent(0.0)));
+        sumico.KeyFrames.Add(new LinearDoubleKeyFrame(0.00, KeyTime.FromPercent(0.7)));
+        sumico.KeyFrames.Add(new LinearDoubleKeyFrame(0.00, KeyTime.FromPercent(1.0)));
+        sumico.Duration = duracao;
+        AnelDePulso.BeginAnimation(OpacityProperty, sumico);
+    }
+
+    /// <summary>Para o pulso. Chamado quando o usuário clica, nunca por tempo.</summary>
+    public void PararDePulsar()
+    {
+        if (!Pulsando) return;
+        Pulsando = false;
+
+        EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        AnelDePulso.BeginAnimation(OpacityProperty, null);
+        AnelDePulso.Opacity = 0;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // §4.6 / §5.4  Balão de fala
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -305,6 +491,31 @@ public partial class ShadowAssistantWindow : Window
         Trabalhando = false;
         GiroDoAnel.BeginAnimation(RotateTransform.AngleProperty, null);
         AnelDeProgresso.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Mostra o que estava esperando e encerra o pulso.
+    /// <para>
+    /// Mais de uma fala pendente entra num balão só, separadas por linha em branco, no
+    /// máximo as três mais recentes — a §4.6 prevê empilhar até três balões, e um só com o
+    /// texto junto entrega a mesma informação sem construir uma pilha que pode cobrir meia
+    /// tela do usuário.
+    /// </para>
+    /// </summary>
+    private void RevelarFalasPendentes()
+    {
+        PararDePulsar();
+        if (_falasPendentes.Count == 0) return;
+
+        int primeira = Math.Max(0, _falasPendentes.Count - 3);
+        string texto = string.Join("\n\n", _falasPendentes.GetRange(primeira, _falasPendentes.Count - primeira));
+
+        _falasPendentes.Clear();
+        MostrarFala(texto);
+
+        // §5.7 — mesmo estado Speaking; o que muda é o balão levar a lista abaixo do texto.
+        MostrarEmails(_emailsPendentes);
+        _emailsPendentes = null;
     }
 
     /// <summary>
@@ -339,6 +550,9 @@ public partial class ShadowAssistantWindow : Window
         DeslocamentoDoBalao.BeginAnimation(TranslateTransform.YProperty, null);
         Balao.Visibility = Visibility.Collapsed;
         TextoDoBalao.Text = "";
+
+        // §5.7 — o X dispensa o balão INTEIRO, lista incluída.
+        MostrarEmails(null);
     }
 
     private void BotaoDispensar_Click(object sender, RoutedEventArgs e) => DispensarFala();

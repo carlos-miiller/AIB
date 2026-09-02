@@ -38,6 +38,9 @@
 
     <Window.Resources>
         <ui:AlturaParaRaioConverter x:Key="AlturaParaRaio"/>
+        <ui:UrgenciaConverter x:Key="CorDaUrgencia"    Modo="Cor"/>
+        <ui:UrgenciaConverter x:Key="FundoDaUrgencia"  Modo="Fundo"/>
+        <ui:UrgenciaConverter x:Key="RotuloDaUrgencia" Modo="Rotulo"/>
     </Window.Resources>
 
     <Grid x:Name="Raiz" Background="{x:Null}">
@@ -234,12 +237,119 @@
                               StrokeEndLineCap="Round" Width="16" Height="16" Stretch="None"/>
                     </Button>
 
-                    <TextBlock x:Name="TextoDoBalao" Grid.Row="1" Grid.ColumnSpan="4"
-                               Margin="0,7,0,0"
-                               FontSize="13.5" LineHeight="20.25"
-                               TextWrapping="Wrap"
-                               Foreground="{StaticResource TextBodyBrush}"/>
+                    <StackPanel Grid.Row="1" Grid.ColumnSpan="4" Margin="0,7,0,0">
+                        <TextBlock x:Name="TextoDoBalao"
+                                   FontSize="13.5" LineHeight="20.25"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextBodyBrush}"/>
+
+                        <!-- §4.8 — a lista de e-mails vive DENTRO do mesmo balão, abaixo
+                             do texto. Nunca um segundo balão. A11: no máximo 3 itens e
+                             SEM rolagem; o excedente é uma linha de texto. Uma caixa de
+                             entrada inteira flutuando sobre o desktop não é o produto. -->
+                        <ItemsControl x:Name="ListaDeEmails" Margin="0,6,0,0"
+                                      Visibility="Collapsed">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,6"
+                                            Padding="9,9,11,10"
+                                            CornerRadius="{StaticResource RadiusCard}"
+                                            Background="{StaticResource ReadFill05Brush}"
+                                            BorderBrush="{StaticResource DividerBrush}"
+                                            BorderThickness="1"
+                                            Cursor="Hand"
+                                            MouseLeftButtonUp="ItemDeEmail_Click">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="3"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+
+                                            <!-- A barra de urgência é o que se lê de
+                                                 relance, antes de qualquer texto. -->
+                                            <Border Grid.Column="0" Grid.RowSpan="2"
+                                                    Width="3" CornerRadius="2"
+                                                    Background="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+
+                                            <TextBlock Grid.Column="1" Grid.Row="0"
+                                                       Margin="10,0,0,0"
+                                                       Text="{Binding Name}"
+                                                       FontSize="12.5" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextStrongBrush}"
+                                                       TextTrimming="CharacterEllipsis"/>
+
+                                            <!-- A13 — o resumo vem da IA e pode vir longo.
+                                                 Duas linhas e ponto: sem o teto, o balão
+                                                 estica e cobre a tela do usuário. -->
+                                            <TextBlock Grid.Column="1" Grid.Row="1"
+                                                       Margin="10,3,0,0"
+                                                       Text="{Binding Description}"
+                                                       FontSize="11.5" LineHeight="16.7"
+                                                       MaxHeight="34"
+                                                       TextWrapping="Wrap"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+
+                                            <!-- A12 — a cor é o sinal de relance, mas o
+                                                 rótulo de texto fica junto: daltonismo e
+                                                 captura de tela em tons de cinza. -->
+                                            <Border Grid.Column="2" Grid.Row="0"
+                                                    Margin="10,0,0,0"
+                                                    Padding="6,3,8,3"
+                                                    CornerRadius="{StaticResource RadiusPill}"
+                                                    Background="{Binding Urgency, Converter={StaticResource FundoDaUrgencia}}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="5" Height="5"
+                                                             VerticalAlignment="Center"
+                                                             Fill="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+                                                    <TextBlock Margin="5,0,0,0"
+                                                               Text="{Binding Urgency, Converter={StaticResource RotuloDaUrgencia}}"
+                                                               FontSize="10" FontWeight="SemiBold"
+                                                               Foreground="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock x:Name="OutrosEmails"
+                                   FontSize="11.5"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Visibility="Collapsed"/>
+                    </StackPanel>
                 </Grid>
+            </Border>
+
+            <!-- §5.2 — O PULSO. Um anel que expande a partir da borda: Scale 1 -> 1.8
+                 com Opacity 0.55 -> 0, em laço de 2s.
+                 A6 — é um Border com Scale e Opacity, e NÃO um DropShadowEffect animado:
+                 animar BlurRadius por quadro engasga a interface inteira.
+                 Fica ATRÁS da casca (mesma célula, declarado antes) e não recebe mouse,
+                 senão ele roubaria o clique que deveria ir para o orbe. -->
+            <Border x:Name="AnelDePulso"
+                    Grid.Row="1"
+                    Width="56" Height="56"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    BorderThickness="1.5"
+                    BorderBrush="{StaticResource AccentLilacBrush}"
+                    Background="{x:Null}"
+                    IsHitTestVisible="False"
+                    Opacity="0"
+                    RenderTransformOrigin="0.5,0.5"
+                    CornerRadius="{Binding RelativeSource={RelativeSource Self},
+                                           Path=ActualHeight,
+                                           Converter={StaticResource AlturaParaRaio}}">
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="EscalaDoPulso" ScaleX="1" ScaleY="1"/>
+                </Border.RenderTransform>
             </Border>
 
             <!-- §4.2 — A CASCA QUE MORFA. É o MESMO Border em todos os estados;
@@ -302,6 +412,23 @@
                                 <RotateTransform x:Name="GiroDoAnel"/>
                             </Path.RenderTransform>
                         </Path>
+
+                        <!-- §5.6 — no lugar do glyph durante a varredura de e-mails.
+                             Mesma célula e mesma margem, então ele herda a migração do
+                             glyph no morph sem cálculo próprio. -->
+                        <Path x:Name="IconeDeInbox"
+                              Grid.Column="0"
+                              Stroke="{StaticResource AccentLilacBrush}"
+                              StrokeThickness="1.5"
+                              StrokeLineJoin="Round"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              Width="23" Height="23"
+                              Margin="15,0,0,0"
+                              Stretch="Uniform"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Center"
+                              Visibility="Collapsed"/>
 
                         <TextBlock x:Name="Glyph"
                                    Grid.Column="0"

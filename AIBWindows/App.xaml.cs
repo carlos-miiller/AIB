@@ -78,6 +78,55 @@ public partial class App : System.Windows.Application
         return orbe;
     }
 
+    /// <summary>
+    /// ANDAIME de demonstracao: enfileira um digest falso para o orbe. Some quando o
+    /// MailDigestService existir.
+    /// </summary>
+    private void SimularDigest()
+    {
+        if (_orbe == null)
+        {
+            ShowNotification("AIB", "Ligue o orbe primeiro (menu da bandeja).");
+            return;
+        }
+
+        _orbe.ComecarAProcessarEmail();
+
+        var relogio = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3)
+        };
+
+        relogio.Tick += (s, e) =>
+        {
+            relogio.Stop();
+            _orbe?.TerminarDeProcessarEmail(
+                "Li os 38 e-mails da manha. Tres precisam de voce hoje; o resto nao pede nada.",
+                new[]
+                {
+                    new MailSummary(
+                        "Juridico - contrato Vertex",
+                        "Pedem sua assinatura no aditivo ate as 18h de hoje, senao a renovacao volta para a fila do trimestre que vem.",
+                        MailUrgency.Maxima,
+                        Url: "https://mail.google.com/mail/u/0/#inbox",
+                        Account: "corporativo"),
+                    new MailSummary(
+                        "Marina Costa - revisao do orcamento",
+                        "Enviou a planilha com os cortes de infra e quer sua confirmacao antes da reuniao de quinta.",
+                        MailUrgency.Media,
+                        Account: "corporativo"),
+                    new MailSummary(
+                        "Notion - resumo semanal",
+                        "Relatorio automatico de atividade do workspace. Nada pendente, so numeros da semana.",
+                        MailUrgency.Baixa,
+                        Account: "pessoal"),
+                    new MailSummary("Quarto e-mail", "para exercitar a linha de excedente", MailUrgency.Baixa)
+                });
+        };
+
+        relogio.Start();
+    }
+
     public void ShowNotification(string title, string message)
     {
         if (_notifyIcon != null)
@@ -181,11 +230,18 @@ public partial class App : System.Windows.Application
             };
             orbeItem.Click += (s, ev) => AlternarOrbe(orbeItem.IsChecked);
 
+            // ANDAIME — sai quando o vigia de e-mail existir de verdade. Ate la e o unico
+            // jeito de ver o pulso, o anel de varredura e a lista do balao na tela, e a §-1 da
+            // spec pede que cada passo seja verificavel isolado.
+            var exemploItem = new System.Windows.Controls.MenuItem { Header = "Ver exemplo de aviso" };
+            exemploItem.Click += (s, ev) => SimularDigest();
+
             var exitItem = new System.Windows.Controls.MenuItem { Header = "Sair" };
             exitItem.Click += (s, ev) => Current.Shutdown();
 
             contextMenu.Items.Add(openItem);
             contextMenu.Items.Add(orbeItem);
+            contextMenu.Items.Add(exemploItem);
             contextMenu.Items.Add(new System.Windows.Controls.Separator());
             contextMenu.Items.Add(exitItem);
 
