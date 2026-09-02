@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -300,7 +300,7 @@ public partial class SettingsWindow : Window
         // FirstRunWindow, pelo botão "Alterar".
 
         if (KeepAliveComboBox.SelectedItem is ComboBoxItem ka && ka.Tag != null)
-            _currentSettings.KeepAlive = ka.Tag.ToString();
+            _currentSettings.KeepAlive = ka.Tag.ToString() ?? _currentSettings.KeepAlive;
 
         // O máximo de tokens vem do nível do usuário: é leitura, não preferência.
 

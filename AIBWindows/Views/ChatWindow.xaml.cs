@@ -1178,7 +1178,7 @@ public partial class ChatWindow : Window
         {
             await Task.Run(async () => await _voiceService.InitializeAsync());
             _voiceReady = true;
-            Dispatcher.BeginInvoke(() =>
+            _ = Dispatcher.BeginInvoke(() =>
             {
                 AplicarEstadoDeGravacao(false);
                 VoiceButton.IsEnabled = true;
@@ -1188,7 +1188,7 @@ public partial class ChatWindow : Window
         catch (Exception ex)
         {
             Console.WriteLine($"[VOICE] Erro ao inicializar: {ex.Message}");
-            Dispatcher.BeginInvoke(() =>
+            _ = Dispatcher.BeginInvoke(() =>
             {
                 VoiceButton.IsEnabled = false;
                 VoiceButton.ToolTip = "Voz indisponível";

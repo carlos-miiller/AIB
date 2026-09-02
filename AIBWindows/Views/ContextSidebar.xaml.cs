@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -28,8 +28,8 @@ namespace AIB.Views
     /// </summary>
     public partial class ContextSidebar : System.Windows.Controls.UserControl
     {
-        public event Action<ChatSession> OnRecoverChat;
-        private System.Windows.Threading.DispatcherTimer _pulseTimer;
+        public event Action<ChatSession>? OnRecoverChat;
+        private System.Windows.Threading.DispatcherTimer? _pulseTimer;
 
         public ContextSidebar()
         {
@@ -75,7 +75,7 @@ namespace AIB.Views
             }
         }
 
-        private System.Windows.Media.Animation.Storyboard _tabPulseStoryboard;
+        private System.Windows.Media.Animation.Storyboard? _tabPulseStoryboard;
 
         private void StartTabPulse()
         {
