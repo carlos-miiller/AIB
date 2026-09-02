@@ -289,6 +289,37 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void OAnelNaoMEXE_NaAlturaDoPalco()
+        {
+            // O defeito: o anel tem 62px e divide a celula com a casca de 56. A linha e Auto,
+            // entao ela crescia para 62 quando ele aparecia; a janela cresce junto porque a
+            // altura e SizeToContent, o reposicionamento subia o Top em 6, e a casca descia 3
+            // dentro da linha maior. Liquido, o orbe pulava 3px para cima ao comecar a
+            // trabalhar e voltava ao terminar.
+            // A margem de -3 e o inset:-3px do mock: a pegada de LAYOUT volta a 56x56 e o
+            // anel transborda so no desenho.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+                var palco = (Grid)janela.FindName("Palco");
+
+                var infinito = new Size(double.PositiveInfinity, double.PositiveInfinity);
+
+                palco.Measure(infinito);
+                double parado = palco.DesiredSize.Height;
+
+                janela.ComecarATrabalhar();
+                palco.Measure(infinito);
+                double trabalhando = palco.DesiredSize.Height;
+
+                trabalhando.Should().Be(parado, "o anel nao pode empurrar o orbe na tela");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void ComABarraAberta_OAnelVaiParaOGlyph()
         {
             // §5.6 — com o orbe expandido nao ha circulo em volta do que girar, e a spec

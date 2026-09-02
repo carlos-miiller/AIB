@@ -513,7 +513,14 @@
                  Fica FORA da CascaInterna de propósito — ela tem ClipToBounds e
                  recortaria qualquer coisa que passasse da borda. E depois da casca
                  na ordem de declaração, para desenhar por cima dela.
-                 62 = 56 do orbe + 3 de folga de cada lado. -->
+                 62 = 56 do orbe + 3 de folga de cada lado, e a MARGEM DE -3 é o
+                 inset:-3px do mock traduzido. Sem ela o anel MEDE 62 na linha Auto:
+                 a linha cresce de 56 para 62 quando ele aparece, a janela cresce
+                 junto (a altura é SizeToContent), o reposicionamento sobe o Top em
+                 6 e a casca desce 3 dentro da linha maior — líquido, o orbe pulava
+                 3px para cima ao começar a trabalhar e voltava ao terminar. Com -3
+                 de cada lado a pegada de LAYOUT volta a ser 56x56 e o anel
+                 transborda só no DESENHO, que é o que se quer. -->
             <Path x:Name="AnelDoOrbe"
                   Grid.Row="1"
                   Data="M 31,1 A 30,30 0 0 1 61,31"
@@ -522,6 +529,7 @@
                   StrokeStartLineCap="Round"
                   StrokeEndLineCap="Round"
                   Width="62" Height="62"
+                  Margin="-3"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   IsHitTestVisible="False"
