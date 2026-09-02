@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:AIB.Ui"
         Title="AIB"
-        Width="600"
+        Width="640"
         SizeToContent="Height"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -25,10 +25,20 @@
         Ainda NÃO: pulso, trilha de ações, balão de fala, lista de e-mails.
 
         LARGURA — a spec fala em palco de 560 (§2 stage.width) para a barra de 520
-        caber com folga. Aqui a Window tem 600 porque ela também precisa hospedar a
-        SOMBRA: o WPF recorta Effect no limite da janela, e a barShadow tem 44 de
-        blur com 16 de deslocamento. Os 40px de MargemDaSombra em volta são esse
-        espaço. O centro visual continua onde §1 manda — quem corrige é o
+        caber com folga. Aqui a Window é maior porque ela também precisa hospedar o
+        que TRANSBORDA do palco: o WPF recorta no limite da janela.
+
+        Três coisas transbordam, e a janela tem de caber a maior de cada eixo:
+          barShadow  44 de blur + 16 de deslocamento  -> ~60 abaixo da barra
+          orbShadow  28 de blur                       -> ~28 em volta do orbe
+          onda do pulso  61/2 x 2,34                  -> ~71 do centro do orbe
+
+        Daí MargemDaSombra = 56 e Width = 640: 520 + 56 + 56 = 632, com folga.
+        A LARGURA DA JANELA PRECISA ACOMPANHAR A MARGEM. Mexer numa e esquecer a
+        outra corta a sombra e a onda em linha reta nas laterais — foi exatamente o
+        que aconteceu quando a margem subiu para 48 e a largura ficou em 600.
+
+        O centro visual continua onde §1 manda — quem corrige é o
         ScreenAnchorService, que desconta a margem inferior.
 
         A2 — a área transparente NÃO pode bloquear clique no desktop. O Grid raiz
@@ -51,7 +61,7 @@
              eixo do conteúdo em vez do da janela. -->
         <Grid x:Name="Palco"
               Width="520"
-              Margin="48"
+              Margin="56"
               HorizontalAlignment="Center"
               VerticalAlignment="Bottom"
               Background="{x:Null}">

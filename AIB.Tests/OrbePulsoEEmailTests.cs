@@ -314,6 +314,28 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void AJanela_CabeOPalcoInteiro()
+        {
+            // O defeito: a margem do palco subiu de 40 para 48 e a largura da janela ficou em
+            // 600. O palco passou a precisar de 520+48+48 = 616, e os 8px que sobravam de cada
+            // lado eram recortados — a sombra e a onda do pulso terminavam num corte reto.
+            // A largura da janela PRECISA acompanhar a margem; este ensaio e o que avisa.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+                var palco = (Grid)janela.FindName("Palco");
+
+                double precisa = palco.Width + palco.Margin.Left + palco.Margin.Right;
+
+                janela.Width.Should().BeGreaterThanOrEqualTo(precisa,
+                    "o que passar da janela e recortado, nao desenhado");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void AOndaDoPulso_CabeDentroDaJanela()
         {
             // A onda cresce por RenderTransform, que nao mexe no layout — mas a janela

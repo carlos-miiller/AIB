@@ -45,7 +45,7 @@ public partial class ShadowAssistantWindow : Window
     /// cortaria a borda da onda nos últimos quadros.
     /// </para>
     /// </summary>
-    private const double MargemDaSombra = 48;
+    private const double MargemDaSombra = 56;
 
     /// <summary>Duração do morph de ida — §6. O foco só vai para o campo no fim dela.</summary>
     private static readonly TimeSpan DuracaoDoMorph = TimeSpan.FromSeconds(0.28);
