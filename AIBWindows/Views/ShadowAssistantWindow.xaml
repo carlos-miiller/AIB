@@ -31,7 +31,7 @@
         Três coisas transbordam, e a janela tem de caber a maior de cada eixo:
           barShadow  44 de blur + 16 de deslocamento  -> ~60 abaixo da barra
           orbShadow  28 de blur                       -> ~28 em volta do orbe
-          onda do pulso  61/2 x 2,34                  -> ~71 do centro do orbe
+          onda do pulso  64/2 x 2,34                  -> ~75 do centro do orbe
 
         Daí MargemDaSombra = 56 e Width = 640: 520 + 56 + 56 = 632, com folga.
         A LARGURA DA JANELA PRECISA ACOMPANHAR A MARGEM. Mexer numa e esquecer a
@@ -337,14 +337,14 @@
                  animar BlurRadius por quadro engasga a interface inteira.
                  Fica ATRÁS da casca (mesma célula, declarado antes) e não recebe mouse,
                  senão ele roubaria o clique que deveria ir para o orbe.
-                 61 = os 56 do orbe mais 5, e a margem de -2,5 devolve a pegada de
+                 64 = os 56 do orbe mais 8, e a margem de -4 devolve a pegada de
                  LAYOUT para 56 — sem ela a linha Auto cresceria e o orbe pularia na
                  tela toda vez que uma fala chegasse, que é o mesmo defeito que o
                  anel de progresso já teve. -->
             <Border x:Name="AnelDePulso"
                     Grid.Row="1"
-                    Width="61" Height="61"
-                    Margin="-2.5"
+                    Width="64" Height="64"
+                    Margin="-4"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     BorderThickness="1.5"
@@ -537,7 +537,7 @@
                  Fica FORA da CascaInterna de propósito — ela tem ClipToBounds e
                  recortaria qualquer coisa que passasse da borda. E depois da casca
                  na ordem de declaração, para desenhar por cima dela.
-                 68 = 56 do orbe + 6 de folga de cada lado, e a MARGEM DE -6 é o
+                 71 = 56 do orbe + 7,5 de folga de cada lado, e a MARGEM DE -7,5 é o
                  inset:-3px do mock traduzido. Sem ela o anel MEDE 62 na linha Auto:
                  a linha cresce de 56 para 62 quando ele aparece, a janela cresce
                  junto (a altura é SizeToContent), o reposicionamento sobe o Top em
@@ -547,13 +547,13 @@
                  transborda só no DESENHO, que é o que se quer. -->
             <Path x:Name="AnelDoOrbe"
                   Grid.Row="1"
-                  Data="M 34,1 A 33,33 0 0 1 67,34"
+                  Data="M 35.5,1 A 34.5,34.5 0 0 1 70,35.5"
                   Stroke="{StaticResource AccentLilacBrush}"
                   StrokeThickness="2"
                   StrokeStartLineCap="Round"
                   StrokeEndLineCap="Round"
-                  Width="68" Height="68"
-                  Margin="-6"
+                  Width="71" Height="71"
+                  Margin="-7.5"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   IsHitTestVisible="False"
