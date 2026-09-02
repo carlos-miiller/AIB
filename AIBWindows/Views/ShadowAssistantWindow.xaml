@@ -1,0 +1,187 @@
+﻿<Window x:Class="AIB.Views.ShadowAssistantWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:AIB.Ui"
+        Title="AIB"
+        Width="600"
+        SizeToContent="Height"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
+
+    <!--
+        Implementação de refactor-interface/shadow-assistant.html, passos P1–P4.
+        Presentes: a janela (§4.1), o posicionamento (§1), a casca (§4.2), o glyph
+        (§4.3), o hover (§4.4), o estado Idle (§5.1) e o morph (§6).
+        Ainda NÃO: pulso, trilha, balão de fala, lista de e-mails.
+
+        LARGURA — a spec fala em palco de 560 (§2 stage.width) para a barra de 520
+        caber com folga. Aqui a Window tem 600 porque ela também precisa hospedar a
+        SOMBRA: o WPF recorta Effect no limite da janela, e a barShadow tem 44 de
+        blur com 16 de deslocamento. Os 40px de MargemDaSombra em volta são esse
+        espaço. O que a spec chama de palco é o conteúdo dentro dessa margem, e o
+        centro visual continua exatamente onde §1 manda — quem corrige é o
+        ScreenAnchorService, que desconta a margem inferior.
+
+        A2 — a área transparente NÃO pode bloquear clique no desktop. O Grid raiz
+        fica com Background="{x:Null}" (e não Transparent): nulo não participa do
+        hit-test, Transparent participa. Com Transparent aqui, o usuário não
+        conseguiria clicar em nada atrás dos 600x136 da janela.
+    -->
+
+    <Window.Resources>
+        <ui:AlturaParaRaioConverter x:Key="AlturaParaRaio"/>
+    </Window.Resources>
+
+    <Grid x:Name="Raiz" Background="{x:Null}">
+
+        <Grid x:Name="Palco"
+              Margin="40"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Bottom"
+              Background="{x:Null}">
+
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="FormaDoOrbe">
+
+                    <!-- §6 — ida: 0,28s, CubicEase EaseOut. Só Width e Height são
+                         animados; o CornerRadius acompanha pela altura (ver o
+                         AlturaParaRaioConverter). O Effect troca por keyframe
+                         discreto, e não animando as propriedades dele: A6. -->
+                    <VisualStateGroup.Transitions>
+                        <VisualTransition To="Barra" GeneratedDuration="0:0:0.28"/>
+                        <VisualTransition To="Orbe"  GeneratedDuration="0:0:0.22"/>
+                    </VisualStateGroup.Transitions>
+
+                    <!-- §5.1 IDLE — círculo de 56, glyph ✦, borda neon. Nada mais. -->
+                    <VisualState x:Name="Orbe">
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetName="Casca"
+                                             Storyboard.TargetProperty="Width"
+                                             To="56" Duration="0:0:0.22">
+                                <DoubleAnimation.EasingFunction>
+                                    <CubicEase EasingMode="EaseIn"/>
+                                </DoubleAnimation.EasingFunction>
+                            </DoubleAnimation>
+                            <DoubleAnimation Storyboard.TargetName="Casca"
+                                             Storyboard.TargetProperty="Height"
+                                             To="56" Duration="0:0:0.22">
+                                <DoubleAnimation.EasingFunction>
+                                    <CubicEase EasingMode="EaseIn"/>
+                                </DoubleAnimation.EasingFunction>
+                            </DoubleAnimation>
+                            <DoubleAnimation Storyboard.TargetName="Glyph"
+                                             Storyboard.TargetProperty="FontSize"
+                                             To="20" Duration="0:0:0.18"/>
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Glyph"
+                                                           Storyboard.TargetProperty="HorizontalAlignment">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0.12"
+                                                        Value="{x:Static HorizontalAlignment.Center}"/>
+                            </ObjectAnimationUsingKeyFrames>
+                            <ThicknessAnimation Storyboard.TargetName="Glyph"
+                                                Storyboard.TargetProperty="Margin"
+                                                To="0" Duration="0:0:0.22"/>
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Casca"
+                                                           Storyboard.TargetProperty="Effect">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0.22"
+                                                        Value="{StaticResource OrbShadow}"/>
+                            </ObjectAnimationUsingKeyFrames>
+                        </Storyboard>
+                    </VisualState>
+
+                    <!-- §5.3 COMPOSING — a mesma casca, agora pílula de 520x52. -->
+                    <VisualState x:Name="Barra">
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetName="Casca"
+                                             Storyboard.TargetProperty="Width"
+                                             To="520" Duration="0:0:0.28">
+                                <DoubleAnimation.EasingFunction>
+                                    <CubicEase EasingMode="EaseOut"/>
+                                </DoubleAnimation.EasingFunction>
+                            </DoubleAnimation>
+                            <DoubleAnimation Storyboard.TargetName="Casca"
+                                             Storyboard.TargetProperty="Height"
+                                             To="52" Duration="0:0:0.28">
+                                <DoubleAnimation.EasingFunction>
+                                    <CubicEase EasingMode="EaseOut"/>
+                                </DoubleAnimation.EasingFunction>
+                            </DoubleAnimation>
+                            <DoubleAnimation Storyboard.TargetName="Glyph"
+                                             Storyboard.TargetProperty="FontSize"
+                                             To="13" Duration="0:0:0.12"
+                                             BeginTime="0:0:0.10"/>
+                            <!-- §4.3 — o glyph migra para a ponta esquerda. A troca de
+                                 alinhamento e discreta (nao ha como interpolar um enum), entao
+                                 acontece no meio do morph, quando a casca ja cresceu o bastante
+                                 para o salto nao se ler como tranco. -->
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Glyph"
+                                                           Storyboard.TargetProperty="HorizontalAlignment">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0.10"
+                                                        Value="{x:Static HorizontalAlignment.Left}"/>
+                            </ObjectAnimationUsingKeyFrames>
+                            <ThicknessAnimation Storyboard.TargetName="Glyph"
+                                                Storyboard.TargetProperty="Margin"
+                                                To="16,0,0,0" Duration="0:0:0.28"/>
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Casca"
+                                                           Storyboard.TargetProperty="Effect">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0"
+                                                        Value="{StaticResource BarShadow}"/>
+                            </ObjectAnimationUsingKeyFrames>
+                        </Storyboard>
+                    </VisualState>
+
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+
+            <!-- §4.2 — A CASCA QUE MORFA. É o MESMO Border em todos os estados;
+                 mudam Width, Height e o conteúdo. Dois Borders aninhados por causa
+                 de A4: gradiente em BorderBrush com CornerRadius renderiza canto
+                 sujo no WPF, então o gradiente é o FUNDO do externo e o Padding de
+                 1,5 faz o papel da borda. -->
+            <Border x:Name="Casca"
+                    Width="56" Height="56"
+                    Background="{StaticResource NeonBrush}"
+                    Padding="1.5"
+                    Cursor="Hand"
+                    Effect="{StaticResource OrbShadow}"
+                    RenderTransformOrigin="0.5,0.5"
+                    CornerRadius="{Binding RelativeSource={RelativeSource Self},
+                                           Path=ActualHeight,
+                                           Converter={StaticResource AlturaParaRaio}}">
+
+                <!-- §4.4 — hover cresce 6%. Sem mudança de cor. -->
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="EscalaDaCasca" ScaleX="1" ScaleY="1"/>
+                </Border.RenderTransform>
+
+                <Border x:Name="CascaInterna"
+                        Background="{StaticResource GlassBrush}"
+                        ClipToBounds="True"
+                        CornerRadius="{Binding RelativeSource={RelativeSource Self},
+                                               Path=ActualHeight,
+                                               Converter={StaticResource AlturaParaRaio}}">
+
+                    <!-- §4.3 — o glyph é a âncora visual do morph: 20px no centro do
+                         orbe, 13px na ponta esquerda da barra. É o mesmo caractere se
+                         movendo, e é isso que faz a transição ler como continuidade em
+                         vez de troca de tela. -->
+                    <TextBlock x:Name="Glyph"
+                               Text="✦"
+                               FontSize="20"
+                               Foreground="{StaticResource AccentLilacBrush}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+                </Border>
+            </Border>
+
+        </Grid>
+    </Grid>
+</Window>

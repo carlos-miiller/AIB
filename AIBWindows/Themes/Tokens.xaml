@@ -1,4 +1,4 @@
-<!--
+﻿<!--
     ============================================================================
      DESIGN TOKENS — §1 de refactor-interface/tela-chat-v3.html
                      §1 de refactor-interface/tela-configuracoes.html
@@ -153,6 +153,16 @@
     <DropShadowEffect x:Key="SendGlow"      BlurRadius="16" ShadowDepth="4"
                       Direction="270" Opacity="0.35" Color="#9B51E0"/>
 
+    <!-- Shadow Assistant §2. O orbe flutua sobre o desktop, sem janela por tras
+         para o separar do papel de parede, entao a sombra dele e mais fechada e
+         mais escura que a das janelas. -->
+    <DropShadowEffect x:Key="OrbShadow"      BlurRadius="28" ShadowDepth="8"
+                      Direction="270" Opacity="0.55" Color="Black"/>
+    <DropShadowEffect x:Key="OrbShadowHover" BlurRadius="32" ShadowDepth="10"
+                      Direction="270" Opacity="0.60" Color="Black"/>
+    <DropShadowEffect x:Key="BarShadow"      BlurRadius="44" ShadowDepth="16"
+                      Direction="270" Opacity="0.58" Color="Black"/>
+
     <!-- ══════════════════════════════════════════════════════════════════
          RAIOS
          ══════════════════════════════════════════════════════════════════ -->
@@ -175,6 +185,16 @@
     <CornerRadius x:Key="RadiusCodeInline">5</CornerRadius>
     <CornerRadius x:Key="RadiusPill">20</CornerRadius>
     <CornerRadius x:Key="RadiusSwitch">20</CornerRadius>
+
+    <!-- Shadow Assistant §4.2. Nao ha CornerRadiusAnimation em WPF puro, e animar
+         por keyframes discretos daria um morph aos saltos. Nao precisa: TODO raio
+         da spec e exatamente metade da altura do elemento (56/2=28, 52/2=26, e os
+         internos 53/2=26,5 e 49/2=24,5). O raio e ligado a altura pelo
+         AlturaParaRaioConverter e acompanha sozinho a animacao de Height.
+         Estes valores ficam aqui como referencia do desenho; quem manda em tempo
+         de execucao e o conversor. -->
+    <CornerRadius x:Key="RadiusOrb">28</CornerRadius>
+    <CornerRadius x:Key="RadiusBar">26</CornerRadius>
 
     <!-- ══════════════════════════════════════════════════════════════════
          TIPOGRAFIA

@@ -17,6 +17,7 @@ public partial class App : System.Windows.Application
 {
     private TaskbarIcon? _notifyIcon;
     private ChatWindow? _chatWindow;
+    private ShadowAssistantWindow? _orbe;
 
     // Composition root: os serviços são construídos aqui, uma única vez, e injetados.
     // O SettingsService precisa nascer DEPOIS de EnsureDirectories para enxergar o caminho certo.
@@ -30,6 +31,28 @@ public partial class App : System.Windows.Application
     private IChatProviderFactory _providerFactory = null!;
     private AgentLoop _agentLoop = null!;
     private ConversationService _conversation = null!;
+
+    /// <summary>
+    /// Liga e desliga o orbe, gravando a escolha. Existe para o orbe poder ser visto sem
+    /// passar pela tela de configuracoes — enquanto ele nao tem funcao nenhuma, a bandeja e o
+    /// unico lugar de onde da para experimenta-lo.
+    /// </summary>
+    private void AlternarOrbe(bool ligado)
+    {
+        var settings = _settingsService.LoadSettings();
+        settings.ShadowAssistantEnabled = ligado;
+        _settingsService.SaveSettings(settings);
+
+        if (ligado)
+        {
+            _orbe ??= new ShadowAssistantWindow();
+            _orbe.Show();
+            return;
+        }
+
+        _orbe?.Close();
+        _orbe = null;
+    }
 
     public void ShowNotification(string title, string message)
     {
@@ -105,6 +128,16 @@ public partial class App : System.Windows.Application
             // FirstRunWindow já fechada, e definir Owner como janela fechada lança.
             MainWindow = _chatWindow;
 
+            // O orbe do Shadow Assistant. Opt-in: a setting ja nascia false, e ela continua
+            // mandando — quem nao ligou nao ganha uma bola nova sobre o desktop depois de
+            // atualizar. Ligar/desligar em tempo de execucao vem junto com o resto do estado
+            // do orbe; por ora ele e lido uma vez, na abertura.
+            if (settings.ShadowAssistantEnabled)
+            {
+                _orbe = new ShadowAssistantWindow();
+                _orbe.Show();
+            }
+
             _notifyIcon = new TaskbarIcon
             {
                 Icon = System.Drawing.SystemIcons.Information,
@@ -116,10 +149,19 @@ public partial class App : System.Windows.Application
             var openItem = new System.Windows.Controls.MenuItem { Header = "✦ Abrir Chat" };
             openItem.Click += (s, ev) => _chatWindow.ToggleWindow();
 
+            var orbeItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "✦ Orbe no desktop",
+                IsCheckable = true,
+                IsChecked = _orbe != null
+            };
+            orbeItem.Click += (s, ev) => AlternarOrbe(orbeItem.IsChecked);
+
             var exitItem = new System.Windows.Controls.MenuItem { Header = "Sair" };
             exitItem.Click += (s, ev) => Current.Shutdown();
 
             contextMenu.Items.Add(openItem);
+            contextMenu.Items.Add(orbeItem);
             contextMenu.Items.Add(new System.Windows.Controls.Separator());
             contextMenu.Items.Add(exitItem);
 
