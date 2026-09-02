@@ -376,11 +376,12 @@
                         <!-- §4.3 — a âncora visual do morph. Sempre à esquerda; o que
                              muda é a margem, e é isso que faz a transição ler como
                              continuidade em vez de troca de tela. -->
-                        <!-- §5.6 — enquanto o turno roda, um arco gira em volta do
-                             glyph. A spec descreve isso para o orbe e diz que, com a
-                             barra aberta, "o anel continua girando no glyph pequeno da
-                             ponta esquerda". Fica na mesma célula do glyph, então
-                             acompanha a migração dele sem cálculo de posição. -->
+                        <!-- §5.6 — o anel da BARRA. Com o orbe expandido não há
+                             círculo em volta do que girar, e a spec resolve assim: "o
+                             anel continua girando no glyph pequeno da ponta esquerda".
+                             Fica na mesma célula do glyph, então acompanha a migração
+                             dele sem cálculo de posição.
+                             No estado orbe quem aparece é o AnelDoOrbe, por fora. -->
                         <Path x:Name="AnelDeProgresso"
                               Grid.Column="0"
                               Data="M 13,1 A 12,12 0 0 1 25,13"
@@ -496,6 +497,32 @@
                     </Grid>
                 </Border>
             </Border>
+
+            <!-- §5.5 — ANEL DE PROGRESSO AO REDOR DA BORDA. O CSS do mock usa
+                 inset:-3px: é um anel MAIOR que o orbe, por fora dele. A primeira
+                 versão o pôs dentro da casca, na célula do glyph, e ele girava
+                 espremido no meio do círculo.
+                 Fica FORA da CascaInterna de propósito — ela tem ClipToBounds e
+                 recortaria qualquer coisa que passasse da borda. E depois da casca
+                 na ordem de declaração, para desenhar por cima dela.
+                 62 = 56 do orbe + 3 de folga de cada lado. -->
+            <Path x:Name="AnelDoOrbe"
+                  Grid.Row="1"
+                  Data="M 31,1 A 30,30 0 0 1 61,31"
+                  Stroke="{StaticResource AccentLilacBrush}"
+                  StrokeThickness="2"
+                  StrokeStartLineCap="Round"
+                  StrokeEndLineCap="Round"
+                  Width="62" Height="62"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  IsHitTestVisible="False"
+                  RenderTransformOrigin="0.5,0.5"
+                  Visibility="Collapsed">
+                <Path.RenderTransform>
+                    <RotateTransform x:Name="GiroDoAnelDoOrbe"/>
+                </Path.RenderTransform>
+            </Path>
 
         </Grid>
     </Grid>

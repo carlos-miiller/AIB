@@ -218,6 +218,93 @@ namespace AIB.Tests
         // ─────────────────────────────────────────────────────────────────────
 
         [Fact]
+        public void OAnelDeProgresso_FicaPOR_FORA_DoOrbe()
+        {
+            // §5.5 — "anel de progresso indeterminado ao redor da borda". O CSS do mock usa
+            // inset:-3px: um anel MAIOR que o circulo, contornando-o. A primeira versao pos o
+            // arco na celula do glyph, e ele girava espremido DENTRO do orbe.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                janela.ComecarATrabalhar();
+
+                var deFora = (Path)janela.FindName("AnelDoOrbe");
+                var noGlyph = (Path)janela.FindName("AnelDeProgresso");
+
+                deFora.Visibility.Should().Be(Visibility.Visible);
+                noGlyph.Visibility.Should().Be(Visibility.Collapsed);
+
+                deFora.Width.Should().Be(62, "56 do orbe mais 3 de folga de cada lado");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void ComABarraAberta_OAnelVaiParaOGlyph()
+        {
+            // §5.6 — com o orbe expandido nao ha circulo em volta do que girar, e a spec
+            // resolve assim: "o anel continua girando no glyph pequeno da ponta esquerda".
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                janela.AbrirBarra();
+                janela.ComecarATrabalhar();
+
+                ((Path)janela.FindName("AnelDoOrbe")).Visibility.Should().Be(Visibility.Collapsed);
+                ((Path)janela.FindName("AnelDeProgresso")).Visibility.Should().Be(Visibility.Visible);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void OMorph_TrocaOAnelDeLugar()
+        {
+            // Abrir a barra no meio de um turno tem de mover o anel, nao apaga-lo: o trabalho
+            // continua, e o unico sinal de que ele continua e esse arco girando.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                janela.ComecarATrabalhar();
+                ((Path)janela.FindName("AnelDoOrbe")).Visibility.Should().Be(Visibility.Visible);
+
+                janela.AbrirBarra();
+                ((Path)janela.FindName("AnelDoOrbe")).Visibility.Should().Be(Visibility.Collapsed);
+                ((Path)janela.FindName("AnelDeProgresso")).Visibility.Should().Be(Visibility.Visible);
+
+                janela.FecharBarra();
+                ((Path)janela.FindName("AnelDoOrbe")).Visibility.Should().Be(Visibility.Visible);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void SemTrabalho_NenhumDosDoisAneisAparece()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                janela.ComecarATrabalhar();
+                janela.ResponderTurno("pronto");
+
+                ((Path)janela.FindName("AnelDoOrbe")).Visibility.Should().Be(Visibility.Collapsed);
+                ((Path)janela.FindName("AnelDeProgresso")).Visibility.Should().Be(Visibility.Collapsed);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void ProcessandoEmail_TrocaOGlyphPeloIconeDeCaixaDeEntrada()
         {
             WpfHost.EmSta(() =>
@@ -229,7 +316,8 @@ namespace AIB.Tests
 
                 ((TextBlock)janela.FindName("Glyph")).Visibility.Should().Be(Visibility.Collapsed);
                 ((Path)janela.FindName("IconeDeInbox")).Visibility.Should().Be(Visibility.Visible);
-                ((Path)janela.FindName("AnelDeProgresso")).Visibility.Should().Be(Visibility.Visible);
+                ((Path)janela.FindName("AnelDoOrbe")).Visibility.Should().Be(Visibility.Visible,
+                    "no estado orbe o anel contorna a borda, nao fica dentro");
                 janela.ProcessandoEmail.Should().BeTrue();
 
                 janela.Close();

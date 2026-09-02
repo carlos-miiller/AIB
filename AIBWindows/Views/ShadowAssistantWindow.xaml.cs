@@ -202,6 +202,7 @@ public partial class ShadowAssistantWindow : Window
         Glyph.BeginAnimation(TextBlock.FontSizeProperty, null);
         Glyph.BeginAnimation(MarginProperty, null);
         GiroDoAnel.BeginAnimation(RotateTransform.AngleProperty, null);
+        GiroDoAnelDoOrbe.BeginAnimation(RotateTransform.AngleProperty, null);
         EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         AnelDePulso.BeginAnimation(OpacityProperty, null);
@@ -227,6 +228,7 @@ public partial class ShadowAssistantWindow : Window
         Escalar(1.00);
         VisualStateManager.GoToElementState(Palco, "Barra", true);
         AnimarMargemDoGlyph(MargemNaBarra, DuracaoDoMorph, EasingMode.EaseOut);
+        AtualizarAnelDeProgresso();
 
         // §5.4 — clicar num orbe que estava pulsando faz as duas coisas de uma vez: a barra
         // abre E a fala aparece acima dela. É o único caminho pelo qual uma fala proativa
@@ -257,6 +259,7 @@ public partial class ShadowAssistantWindow : Window
         _emModoBarra = false;
         VisualStateManager.GoToElementState(Palco, "Orbe", true);
         AnimarMargemDoGlyph(MargemQueCentraliza(MedirGlyph(20)), TimeSpan.FromSeconds(0.22), EasingMode.EaseIn);
+        AtualizarAnelDeProgresso();
 
         // §6 — o rascunho curto é descartado ao fechar; o longo sobrevive para a próxima
         // abertura, porque perder um parágrafo digitado por causa de um clique fora seria
@@ -535,20 +538,44 @@ public partial class ShadowAssistantWindow : Window
     public void ComecarATrabalhar()
     {
         Trabalhando = true;
-        AnelDeProgresso.Visibility = Visibility.Visible;
 
         var giro = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(0.9))
         {
             RepeatBehavior = RepeatBehavior.Forever
         };
+
+        // Os dois giram; quem decide qual se vê é o AtualizarAnelDeProgresso. Animar só o
+        // visível pouparia nada — é uma rotação de dois Paths — e obrigaria a religar a
+        // animação no meio do morph, que é justamente quando ela não pode piscar.
         GiroDoAnel.BeginAnimation(RotateTransform.AngleProperty, giro);
+        GiroDoAnelDoOrbe.BeginAnimation(RotateTransform.AngleProperty, giro);
+
+        AtualizarAnelDeProgresso();
     }
 
     private void PararDeTrabalhar()
     {
         Trabalhando = false;
         GiroDoAnel.BeginAnimation(RotateTransform.AngleProperty, null);
-        AnelDeProgresso.Visibility = Visibility.Collapsed;
+        GiroDoAnelDoOrbe.BeginAnimation(RotateTransform.AngleProperty, null);
+        AtualizarAnelDeProgresso();
+    }
+
+    /// <summary>
+    /// Escolhe o anel pela forma da casca — §5.5 e §5.6.
+    /// <para>
+    /// Círculo: o anel fica POR FORA da borda, envolvendo o orbe. Barra: não há círculo em
+    /// volta do que girar, e a spec manda o anel para o glyph pequeno da ponta esquerda. São
+    /// duas posições, e a versão anterior tinha só a segunda — o arco girava espremido dentro
+    /// do círculo em vez de contorná-lo.
+    /// </para>
+    /// </summary>
+    private void AtualizarAnelDeProgresso()
+    {
+        bool naBarra = _emModoBarra;
+
+        AnelDoOrbe.Visibility = Trabalhando && !naBarra ? Visibility.Visible : Visibility.Collapsed;
+        AnelDeProgresso.Visibility = Trabalhando && naBarra ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>
