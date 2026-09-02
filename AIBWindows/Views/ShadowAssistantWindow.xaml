@@ -168,17 +168,25 @@
                  sozinho, nunca como toast. Fica ACIMA da barra, 10px de gap, alinhado
                  pela esquerda dela. Um Border só, dentro da MESMA janela — abrir uma
                  segunda Window para ele traria flicker de Topmost (§3). -->
+            <!-- FUNDO: GlassBrush (sólido a 90%), e NÃO o surfaceCard da §4.6.
+                 O token da spec é branco a 3,5% — funciona no mock porque o <body>
+                 dele tem um degradê escuro atrás. No desktop de verdade não há nada
+                 atrás: a janela é transparente, e o balão ficaria com o papel de
+                 parede aparecendo através dele, o texto disputando com a imagem.
+                 A janela de chat não sofre disso porque os cards dela ficam DENTRO
+                 do vidro da janela; este balão flutua sozinho e precisa ser o
+                 próprio vidro. É a §0 O6 aplicada onde ela faz falta. -->
             <Border x:Name="Balao"
                     Grid.Row="0"
                     MaxWidth="440"
                     HorizontalAlignment="Left"
                     Margin="0,0,0,10"
                     Padding="14,14,16,14"
-                    Background="{StaticResource SurfaceCardBrush}"
+                    Background="{StaticResource GlassBrush}"
                     BorderBrush="{StaticResource BorderCardBrush}"
                     BorderThickness="1"
                     CornerRadius="{StaticResource RadiusBubble}"
-                    Effect="{StaticResource CardShadow}"
+                    Effect="{StaticResource OrbShadow}"
                     Visibility="Collapsed">
                 <Border.RenderTransform>
                     <TranslateTransform x:Name="DeslocamentoDoBalao" Y="8"/>

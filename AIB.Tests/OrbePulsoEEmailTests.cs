@@ -137,6 +137,52 @@ namespace AIB.Tests
         }
 
         // ─────────────────────────────────────────────────────────────────────
+        // Legibilidade sobre o desktop
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void OBalaoEhOPACO_NaoTranslucido()
+        {
+            // A §4.6 manda surfaceCard, que e branco a 3,5%. Funciona no mock porque o <body>
+            // dele tem um degrade escuro atras. No desktop nao ha nada atras: a janela e
+            // transparente, e o balao ficava com o papel de parede aparecendo atraves dele.
+            // A janela de chat nao sofre disso porque os cards dela ficam DENTRO do vidro da
+            // janela; este balao flutua sozinho e precisa ser o proprio vidro (§0 O6).
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+                var balao = (Border)janela.FindName("Balao");
+
+                var fundo = (SolidColorBrush)balao.Background;
+
+                fundo.Color.A.Should().BeGreaterThan(0xC8,
+                    "sobre o desktop, qualquer coisa abaixo de ~90% deixa o texto disputar com o papel de parede");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void OsItensDeEmail_SaoTranslucidosSOBRE_OBalao()
+        {
+            // Aqui a transparencia esta certa e e o contrario do caso acima: o item de e-mail
+            // nao flutua sobre o desktop, ele fica sobre o balao, que ja e opaco. O branco a
+            // 5% vira a separacao sutil entre um item e outro.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                var fundoDoItem = (SolidColorBrush)janela.FindResource("ReadFill05Brush");
+
+                fundoDoItem.Color.A.Should().BeLessThan(0x40);
+
+                janela.Close();
+            });
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
         // Chegada da resposta de um turno
         // ─────────────────────────────────────────────────────────────────────
 
