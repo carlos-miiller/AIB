@@ -51,6 +51,20 @@
         <ui:UrgenciaConverter x:Key="CorDaUrgencia"    Modo="Cor"/>
         <ui:UrgenciaConverter x:Key="FundoDaUrgencia"  Modo="Fundo"/>
         <ui:UrgenciaConverter x:Key="RotuloDaUrgencia" Modo="Rotulo"/>
+
+        <!-- O topo da pilha ROLADA termina em desvanecimento, e não em corte reto.
+             MappingMode absoluto porque os 32px têm de ser 32px sempre: com
+             coordenadas relativas o desvanecimento encolheria junto com a pilha e
+             sumiria justamente quando ela está curta.
+             É aplicada como OpacityMask SÓ quando há conteúdo acima da vista — ver
+             AtualizarDesvanecimento. Deixar fixa lavaria o topo da primeira bolha
+             mesmo sem nada cortado atrás dela. -->
+        <LinearGradientBrush x:Key="DesvanecimentoDoTopo"
+                             StartPoint="0,0" EndPoint="0,32"
+                             MappingMode="Absolute">
+            <GradientStop Color="#00000000" Offset="0"/>
+            <GradientStop Color="#FF000000" Offset="1"/>
+        </LinearGradientBrush>
     </Window.Resources>
 
     <Grid x:Name="Raiz" Background="{x:Null}">
@@ -190,13 +204,27 @@
                  bolhas não são a mesma bolha com outra cor: lado, fundo, cabeçalho
                  e lista de e-mails mudam, e um template só com metade colapsada
                  seria mais difícil de ler que dois. -->
-            <!-- 2 aqui + 8 na margem inferior de cada bolha = os 10px de gap da
+            <!-- A pilha não tem mais teto de bolhas: ela ROLA. O que limita é a
+                 ALTURA, e não a contagem — um teto de três apagava a pergunta que
+                 explicava a resposta ainda visível logo abaixo dela.
+
+                 A barra de rolagem fica escondida: a roda do mouse e o
+                 ScrollToEnd de cada bolha nova dão conta, e uma barra cinza no
+                 canto de uma janela sem chrome flutuando no desktop seria o
+                 único elemento da interface com cara de caixa de diálogo.
+
+                 2 aqui + 8 na margem inferior de cada bolha = os 10px de gap da
                  §4.6. A margem da bolha é o que separa uma da outra; a da pilha é
                  só o resto para fechar a conta com a barra. -->
-            <ItemsControl x:Name="PilhaDeFalas"
+            <ScrollViewer x:Name="RoloDasFalas"
                           Grid.Row="0"
+                          MaxHeight="300"
                           Margin="0,0,0,2"
-                          Visibility="Collapsed">
+                          VerticalScrollBarVisibility="Hidden"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Visibility="Collapsed"
+                          ScrollChanged="RoloDasFalas_ScrollChanged">
+            <ItemsControl x:Name="PilhaDeFalas">
                 <ItemsControl.Resources>
 
                     <!-- A fala do USUÁRIO: a bolha da janela de chat (§3.5), estilo
@@ -275,144 +303,103 @@
                                 </EventTrigger>
                             </Border.Triggers>
 
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock x:Name="TextoDoBalao"
+                                           Text="{Binding Texto}"
+                                           FontSize="13.5" LineHeight="20.25"
+                                           TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextBodyBrush}"/>
 
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="✦"
-                                           FontSize="11" Margin="0,0,8,0"
-                                           Foreground="{StaticResource AccentLilacBrush}"
-                                           VerticalAlignment="Center"/>
+                                <!-- §4.8 — a lista de e-mails vive DENTRO do mesmo
+                                     balão, abaixo do texto. Nunca um segundo balão.
+                                     A11: no máximo 3 itens e SEM rolagem; o excedente
+                                     é uma linha de texto. Uma caixa de entrada inteira
+                                     flutuando sobre o desktop não é o produto. -->
+                                <ItemsControl x:Name="ListaDeEmails" Margin="0,6,0,0"
+                                              ItemsSource="{Binding Emails}"
+                                              Visibility="{Binding VisibilidadeDaLista}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Margin="0,0,0,6"
+                                                    Padding="9,9,11,10"
+                                                    CornerRadius="{StaticResource RadiusCard}"
+                                                    Background="{StaticResource ReadFill05Brush}"
+                                                    BorderBrush="{StaticResource DividerBrush}"
+                                                    BorderThickness="1"
+                                                    Cursor="Hand"
+                                                    MouseLeftButtonUp="ItemDeEmail_Click">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="3"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                    </Grid.RowDefinitions>
 
-                                <TextBlock x:Name="NomeNoBalao" Grid.Row="0" Grid.Column="1"
-                                           Text="{Binding Nome}"
-                                           FontSize="12" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextStrongBrush}"
-                                           VerticalAlignment="Center"/>
+                                                    <!-- A barra de urgência é o que se lê
+                                                         de relance, antes de qualquer texto. -->
+                                                    <Border Grid.Column="0" Grid.RowSpan="2"
+                                                            Width="3" CornerRadius="2"
+                                                            Background="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
 
-                                <TextBlock Grid.Row="0" Grid.Column="2"
-                                           Text="{Binding Hora}"
-                                           FontSize="10.5" Margin="10,0,0,0"
-                                           HorizontalAlignment="Right"
+                                                    <TextBlock Grid.Column="1" Grid.Row="0"
+                                                               Margin="10,0,0,0"
+                                                               Text="{Binding Name}"
+                                                               FontSize="12.5" FontWeight="SemiBold"
+                                                               Foreground="{StaticResource TextStrongBrush}"
+                                                               TextTrimming="CharacterEllipsis"/>
+
+                                                    <!-- A13 — o resumo vem da IA e pode vir
+                                                         longo. Duas linhas e ponto: sem o teto,
+                                                         o balão estica e cobre a tela. -->
+                                                    <TextBlock Grid.Column="1" Grid.Row="1"
+                                                               Margin="10,3,0,0"
+                                                               Text="{Binding Description}"
+                                                               FontSize="11.5" LineHeight="16.7"
+                                                               MaxHeight="34"
+                                                               TextWrapping="Wrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+
+                                                    <!-- A12 — a cor é o sinal de relance, mas
+                                                         o rótulo de texto fica junto: daltonismo
+                                                         e captura de tela em tons de cinza. -->
+                                                    <Border Grid.Column="2" Grid.Row="0"
+                                                            Margin="10,0,0,0"
+                                                            Padding="6,3,8,3"
+                                                            CornerRadius="{StaticResource RadiusPill}"
+                                                            Background="{Binding Urgency, Converter={StaticResource FundoDaUrgencia}}">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Ellipse Width="5" Height="5"
+                                                                     VerticalAlignment="Center"
+                                                                     Fill="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+                                                            <TextBlock Margin="5,0,0,0"
+                                                                       Text="{Binding Urgency, Converter={StaticResource RotuloDaUrgencia}}"
+                                                                       FontSize="10" FontWeight="SemiBold"
+                                                                       Foreground="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock x:Name="OutrosEmails"
+                                           Text="{Binding Excedente}"
+                                           FontSize="11.5"
                                            Foreground="{StaticResource TextMutedBrush}"
-                                           VerticalAlignment="Center"/>
-
-                                <Button Grid.Row="0" Grid.Column="3"
-                                        Width="22" Height="22" Margin="6,-4,-6,0"
-                                        Style="{StaticResource IconButton}"
-                                        Click="BotaoDispensar_Click"
-                                        ToolTip="Dispensar">
-                                    <Path Data="M4,4 L12,12 M12,4 L4,12"
-                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                          StrokeThickness="1.6" StrokeStartLineCap="Round"
-                                          StrokeEndLineCap="Round" Width="16" Height="16" Stretch="None"/>
-                                </Button>
-
-                                <StackPanel Grid.Row="1" Grid.ColumnSpan="4" Margin="0,7,0,0">
-                                    <TextBlock x:Name="TextoDoBalao"
-                                               Text="{Binding Texto}"
-                                               FontSize="13.5" LineHeight="20.25"
-                                               TextWrapping="Wrap"
-                                               Foreground="{StaticResource TextBodyBrush}"/>
-
-                                    <!-- §4.8 — a lista de e-mails vive DENTRO do mesmo
-                                         balão, abaixo do texto. Nunca um segundo balão.
-                                         A11: no máximo 3 itens e SEM rolagem; o excedente
-                                         é uma linha de texto. Uma caixa de entrada inteira
-                                         flutuando sobre o desktop não é o produto. -->
-                                    <ItemsControl x:Name="ListaDeEmails" Margin="0,6,0,0"
-                                                  ItemsSource="{Binding Emails}"
-                                                  Visibility="{Binding VisibilidadeDaLista}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border Margin="0,0,0,6"
-                                                        Padding="9,9,11,10"
-                                                        CornerRadius="{StaticResource RadiusCard}"
-                                                        Background="{StaticResource ReadFill05Brush}"
-                                                        BorderBrush="{StaticResource DividerBrush}"
-                                                        BorderThickness="1"
-                                                        Cursor="Hand"
-                                                        MouseLeftButtonUp="ItemDeEmail_Click">
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="3"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <Grid.RowDefinitions>
-                                                            <RowDefinition Height="Auto"/>
-                                                            <RowDefinition Height="Auto"/>
-                                                        </Grid.RowDefinitions>
-
-                                                        <!-- A barra de urgência é o que se lê
-                                                             de relance, antes de qualquer texto. -->
-                                                        <Border Grid.Column="0" Grid.RowSpan="2"
-                                                                Width="3" CornerRadius="2"
-                                                                Background="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
-
-                                                        <TextBlock Grid.Column="1" Grid.Row="0"
-                                                                   Margin="10,0,0,0"
-                                                                   Text="{Binding Name}"
-                                                                   FontSize="12.5" FontWeight="SemiBold"
-                                                                   Foreground="{StaticResource TextStrongBrush}"
-                                                                   TextTrimming="CharacterEllipsis"/>
-
-                                                        <!-- A13 — o resumo vem da IA e pode vir
-                                                             longo. Duas linhas e ponto: sem o teto,
-                                                             o balão estica e cobre a tela. -->
-                                                        <TextBlock Grid.Column="1" Grid.Row="1"
-                                                                   Margin="10,3,0,0"
-                                                                   Text="{Binding Description}"
-                                                                   FontSize="11.5" LineHeight="16.7"
-                                                                   MaxHeight="34"
-                                                                   TextWrapping="Wrap"
-                                                                   TextTrimming="CharacterEllipsis"
-                                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
-
-                                                        <!-- A12 — a cor é o sinal de relance, mas
-                                                             o rótulo de texto fica junto: daltonismo
-                                                             e captura de tela em tons de cinza. -->
-                                                        <Border Grid.Column="2" Grid.Row="0"
-                                                                Margin="10,0,0,0"
-                                                                Padding="6,3,8,3"
-                                                                CornerRadius="{StaticResource RadiusPill}"
-                                                                Background="{Binding Urgency, Converter={StaticResource FundoDaUrgencia}}">
-                                                            <StackPanel Orientation="Horizontal">
-                                                                <Ellipse Width="5" Height="5"
-                                                                         VerticalAlignment="Center"
-                                                                         Fill="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
-                                                                <TextBlock Margin="5,0,0,0"
-                                                                           Text="{Binding Urgency, Converter={StaticResource RotuloDaUrgencia}}"
-                                                                           FontSize="10" FontWeight="SemiBold"
-                                                                           Foreground="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </Grid>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-
-                                    <TextBlock x:Name="OutrosEmails"
-                                               Text="{Binding Excedente}"
-                                               FontSize="11.5"
-                                               Foreground="{StaticResource TextMutedBrush}"
-                                               Visibility="{Binding VisibilidadeDoExcedente}"/>
-                                </StackPanel>
-                            </Grid>
+                                           Visibility="{Binding VisibilidadeDoExcedente}"/>
+                            </StackPanel>
                         </Border>
                     </DataTemplate>
 
                 </ItemsControl.Resources>
             </ItemsControl>
+            </ScrollViewer>
 
             <!-- §5.2 — O PULSO. Um anel que expande a partir da borda: Scale 1 -> 1.8
                  com Opacity 0.55 -> 0, em laço de 2s.

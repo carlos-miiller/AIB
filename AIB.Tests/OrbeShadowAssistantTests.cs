@@ -396,23 +396,6 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void ONomeDoAgente_ApareceNoCabecalhoDoBalao()
-        {
-            WpfHost.EmSta(() =>
-            {
-                WpfHost.GarantirRecursos();
-                var janela = new ShadowAssistantWindow { NomeDoAgente = "Ayano" };
-
-                janela.MostrarFala("pronto");
-
-                ((FalaDaIA)janela.Falas[^1]).Nome.Should().Be("Ayano");
-                ((TextBlock)janela.ElementoDaFala(0, "NomeNoBalao")!).Text.Should().Be("Ayano");
-
-                janela.Close();
-            });
-        }
-
-        [Fact]
         public void Morph_LevaACascaDeCirculoAPilulaEDeVolta()
         {
             // §6. O ensaio afirma o ESTADO, não os quadros: o VisualStateManager anima, e

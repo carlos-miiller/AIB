@@ -343,26 +343,79 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void APilha_NaoPassaDeTres()
+        public void APilha_NaoTemTeto_ELA_ROLA()
         {
-            // §4.6 poe o teto em tres visiveis. A pilha e a ultima troca, nao o historico — que
-            // e da janela de chat (§5.3). Sem teto ela cobriria a tela de quem esta trabalhando.
+            // Nao ha mais teto de bolhas. O que limita e a ALTURA do rolo: um teto de contagem
+            // apagava a pergunta que explicava a resposta ainda visivel logo abaixo dela, e o
+            // que precisa nao crescer sem fim e o espaco que a janela ocupa na tela.
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
                 var janela = Nova();
+                var rolo = (ScrollViewer)janela.FindName("RoloDasFalas");
 
                 janela.AbrirBarra();
-                for (int i = 1; i <= 3; i++)
+                for (int i = 1; i <= 6; i++)
                 {
                     ((TextBox)janela.FindName("Campo")).Text = $"pergunta {i}";
                     janela.Enviar();
                     janela.ResponderTurno($"resposta {i}");
                 }
 
-                janela.Falas.Should().HaveCount(3);
-                janela.Falas[0].Texto.Should().Be("resposta 2", "a mais antiga cai fora");
-                janela.Falas[2].Texto.Should().Be("resposta 3");
+                janela.Falas.Should().HaveCount(12, "nada e descartado");
+                janela.Falas[0].Texto.Should().Be("pergunta 1", "a mais antiga continua la");
+
+                rolo.MaxHeight.Should().Be(300, "o limite e de altura, nao de contagem");
+                rolo.VerticalScrollBarVisibility.Should().Be(ScrollBarVisibility.Hidden,
+                    "a rolagem e invisivel: a roda do mouse basta");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void OTopoDaPilhaRolada_TerminaEmDesvanecimento()
+        {
+            // Sem a mascara, a pilha cheia termina em corte reto no meio de uma bolha, o que
+            // sobre o desktop le como defeito de desenho. Com ela FIXA, o topo da primeira
+            // bolha ficaria lavado mesmo sem nada cortado atras — entao ela entra e sai
+            // conforme a posicao do rolo.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+                var rolo = (ScrollViewer)janela.FindName("RoloDasFalas");
+
+                janela.AbrirBarra();
+                janela.MostrarFala("uma linha so");
+
+                janela.AtualizarDesvanecimento(0);
+                rolo.OpacityMask.Should().BeNull("nada acima da vista, nada a desvanecer");
+
+                janela.AtualizarDesvanecimento(120);
+                rolo.OpacityMask.Should().NotBeNull("o que ficou acima termina em fade");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void ODesvanecimento_Tem32pxFIXOS()
+        {
+            // Coordenada absoluta, e nao relativa: com mapeamento relativo os 32px encolheriam
+            // junto com a pilha e o fade sumiria justamente quando ela esta curta.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                var fade = (LinearGradientBrush)janela.FindResource("DesvanecimentoDoTopo");
+
+                fade.MappingMode.Should().Be(BrushMappingMode.Absolute);
+                fade.StartPoint.Should().Be(new Point(0, 0));
+                fade.EndPoint.Should().Be(new Point(0, 32));
+                fade.GradientStops[0].Color.A.Should().Be(0x00, "o topo e transparente");
+                fade.GradientStops[1].Color.A.Should().Be(0xFF, "e 32px abaixo ja e opaco");
 
                 janela.Close();
             });

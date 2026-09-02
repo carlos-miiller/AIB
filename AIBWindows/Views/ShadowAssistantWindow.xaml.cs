@@ -95,7 +95,7 @@ public partial class ShadowAssistantWindow : Window
     public bool Trabalhando { get; private set; }
 
     /// <summary>Se há fala na tela. Diagnóstico e ensaio.</summary>
-    public bool BalaoVisivel => PilhaDeFalas.Visibility == Visibility.Visible && _falas.Count > 0;
+    public bool BalaoVisivel => RoloDasFalas.Visibility == Visibility.Visible && _falas.Count > 0;
 
     /// <summary>Texto da ÚLTIMA fala da IA. Diagnóstico e ensaio.</summary>
     public string TextoDaFala
@@ -112,9 +112,6 @@ public partial class ShadowAssistantWindow : Window
     /// As falas que estão na pilha, da mais antiga para a mais recente. Diagnóstico e ensaio.
     /// </summary>
     public IReadOnlyList<FalaDoOrbe> Falas => _falas;
-
-    /// <summary>§4.6 — no máximo três bolhas visíveis; a mais antiga cai fora.</summary>
-    private const int TetoDeBolhas = 3;
 
     private readonly ObservableCollection<FalaDoOrbe> _falas = new();
 
@@ -269,7 +266,7 @@ public partial class ShadowAssistantWindow : Window
         // A pilha volta com o que já estava nela. Fechar a barra ESCONDE as bolhas; só o X
         // descarta. Sem isto, sair da barra por um clique fora apagava a resposta que o
         // usuário tinha acabado de pedir, e reabrir dava uma barra vazia.
-        if (_falas.Count > 0) PilhaDeFalas.Visibility = Visibility.Visible;
+        if (_falas.Count > 0) RoloDasFalas.Visibility = Visibility.Visible;
 
         // §5.4 — clicar num orbe que estava pulsando faz as duas coisas de uma vez: a barra
         // abre E a fala aparece acima dela. É o único caminho pelo qual uma fala proativa
@@ -312,7 +309,7 @@ public partial class ShadowAssistantWindow : Window
         // As bolhas são ancoradas na barra: sem ela ficariam flutuando sozinhas sobre o
         // desktop, apontando para nada. Some a PILHA, e não o conteúdo dela — reabrir a
         // barra devolve a conversa onde estava.
-        PilhaDeFalas.Visibility = Visibility.Collapsed;
+        RoloDasFalas.Visibility = Visibility.Collapsed;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -637,7 +634,7 @@ public partial class ShadowAssistantWindow : Window
         _falasPendentes.Clear();
 
         // §5.7 — mesmo estado Speaking; o que muda é o balão levar a lista abaixo do texto.
-        AdicionarFala(new FalaDaIA(texto, _nomeDoAgente, _emailsPendentes));
+        AdicionarFala(new FalaDaIA(texto, _emailsPendentes));
         _emailsPendentes = null;
     }
 
@@ -675,33 +672,70 @@ public partial class ShadowAssistantWindow : Window
 
         if (string.IsNullOrWhiteSpace(texto)) return;
 
-        AdicionarFala(new FalaDaIA(texto, _nomeDoAgente));
+        AdicionarFala(new FalaDaIA(texto));
     }
 
     /// <summary>
-    /// Empilha mais uma bolha e mostra a pilha.
+    /// Empilha mais uma bolha, mostra a pilha e desce para o fim dela.
     /// <para>
-    /// Acima de <see cref="TetoDeBolhas"/> a mais antiga cai fora — é o teto da §4.6. A
-    /// pilha é a ÚLTIMA troca, e não o histórico: o histórico é da janela de chat (§5.3),
-    /// e uma pilha que cresce sem limite acabaria cobrindo a tela de quem está trabalhando.
+    /// A pilha NÃO tem teto de bolhas: o que a limita é a ALTURA do rolo. Um teto de
+    /// contagem apagava a pergunta que explicava a resposta ainda visível logo abaixo dela —
+    /// e o que precisa não crescer sem fim é o espaço que a janela ocupa na tela, que a
+    /// MaxHeight do rolo já resolve.
     /// </para>
     /// </summary>
     private void AdicionarFala(FalaDoOrbe fala)
     {
         _falas.Add(fala);
-        while (_falas.Count > TetoDeBolhas) _falas.RemoveAt(0);
+        RoloDasFalas.Visibility = Visibility.Visible;
 
-        PilhaDeFalas.Visibility = Visibility.Visible;
+        // O layout precisa acontecer ANTES do ScrollToEnd: sem ele o rolo ainda não sabe que
+        // ficou mais alto e desce para o fim ANTIGO, deixando a bolha recém-chegada fora da
+        // vista — que é exatamente a que interessa.
+        RoloDasFalas.UpdateLayout();
+        RoloDasFalas.ScrollToEnd();
+        AtualizarDesvanecimento();
+    }
+
+    private void RoloDasFalas_ScrollChanged(object sender, ScrollChangedEventArgs e) =>
+        AtualizarDesvanecimento(RoloDasFalas.VerticalOffset);
+
+    private void AtualizarDesvanecimento() => AtualizarDesvanecimento(RoloDasFalas.VerticalOffset);
+
+    /// <summary>
+    /// Põe o desvanecimento no topo do rolo, e só quando há conteúdo escondido acima.
+    /// <para>
+    /// Sem a máscara, a pilha cheia termina em corte reto no meio de uma bolha, que sobre o
+    /// desktop lê como defeito de desenho. Com a máscara FIXA, o topo da primeira bolha
+    /// ficaria lavado mesmo sem nada cortado atrás dela. Então ela entra e sai conforme a
+    /// posição do rolo.
+    /// </para>
+    /// </summary>
+    /// <param name="deslocamento">
+    /// Quanto da pilha ficou acima da vista. É parâmetro, e não leitura direta do rolo, porque
+    /// o VerticalOffset só existe depois de uma passada de layout de verdade — e uma janela que
+    /// nunca foi mostrada não tem nenhuma. Sem a costura, a regra ficaria sem ensaio.
+    /// </param>
+    public void AtualizarDesvanecimento(double deslocamento)
+    {
+        RoloDasFalas.OpacityMask = deslocamento > 0.5
+            ? (Brush)FindResource("DesvanecimentoDoTopo")
+            : null;
     }
 
     /// <summary>
-    /// §5.4 — o X dispensa as falas e MANTÉM a barra aberta. Quem fechou a fala não
-    /// necessariamente terminou de falar. §5.7: leva o balão INTEIRO, lista incluída.
+    /// Descarta a conversa da barra e MANTÉM a barra aberta. §5.7: leva o balão INTEIRO,
+    /// lista incluída.
+    /// <para>
+    /// Não há mais X em cada bolha: o cabeçalho saiu, e com ele o nome, a hora e o botão de
+    /// dispensar. Quatro elementos de moldura em volta de uma frase de dez palavras pesavam
+    /// mais que a frase. O método continua sendo o caminho programático para zerar a pilha.
+    /// </para>
     /// </summary>
     public void DispensarFala()
     {
         _falas.Clear();
-        PilhaDeFalas.Visibility = Visibility.Collapsed;
+        RoloDasFalas.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>
@@ -729,8 +763,6 @@ public partial class ShadowAssistantWindow : Window
 
         return null;
     }
-
-    private void BotaoDispensar_Click(object sender, RoutedEventArgs e) => DispensarFala();
 
     /// <summary>
     /// §4.4 — hover. ScaleTransform, e não mudança de tamanho: alterar Width dispararia
