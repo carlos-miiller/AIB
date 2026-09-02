@@ -3,7 +3,9 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 
 // WinForms entra junto com o WPF em net8.0-windows e traz homonimos. Sem os aliases,
@@ -53,6 +55,7 @@ public partial class ShadowAssistantWindow : Window
         {
             _nomeDoAgente = string.IsNullOrWhiteSpace(value) ? "AIB" : value.Trim();
             Dica.Text = $"Fale com o {_nomeDoAgente}...";
+            NomeNoBalao.Text = _nomeDoAgente;
         }
     }
 
@@ -63,6 +66,15 @@ public partial class ShadowAssistantWindow : Window
     /// barra é porta de entrada, não um segundo chat.
     /// </summary>
     public event Action<string>? MensagemEnviada;
+
+    /// <summary>Se há um turno em andamento disparado por esta barra.</summary>
+    public bool Trabalhando { get; private set; }
+
+    /// <summary>Se o balão de fala está na tela. Diagnóstico e ensaio.</summary>
+    public bool BalaoVisivel => Balao.Visibility == Visibility.Visible;
+
+    /// <summary>Texto atualmente no balão. Diagnóstico e ensaio.</summary>
+    public string TextoDaFala => TextoDoBalao.Text;
 
     public ShadowAssistantWindow()
     {
@@ -157,6 +169,9 @@ public partial class ShadowAssistantWindow : Window
         Casca.BeginAnimation(HeightProperty, null);
         Glyph.BeginAnimation(TextBlock.FontSizeProperty, null);
         Glyph.BeginAnimation(MarginProperty, null);
+        GiroDoAnel.BeginAnimation(RotateTransform.AngleProperty, null);
+        Balao.BeginAnimation(OpacityProperty, null);
+        DeslocamentoDoBalao.BeginAnimation(TranslateTransform.YProperty, null);
 
         base.OnClosed(e);
     }
@@ -207,6 +222,10 @@ public partial class ShadowAssistantWindow : Window
         if (Campo.Text.Trim().Length <= RascunhoPreservadoAcimaDe) Campo.Clear();
 
         AtualizarDica();
+
+        // O balão é ancorado na barra: sem ela, ele ficaria flutuando sozinho sobre o
+        // desktop, apontando para nada.
+        DispensarFala();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -247,10 +266,82 @@ public partial class ShadowAssistantWindow : Window
 
         Campo.Clear();
         AtualizarDica();
-        FecharBarra();
+        DispensarFala();
 
+        // A barra CONTINUA aberta. §5.4: o usuário lê e pode responder no mesmo lugar,
+        // sem abrir o chat — fechar aqui o obrigaria a clicar de novo para ver a resposta
+        // que ele acabou de pedir.
+        ComecarATrabalhar();
         MensagemEnviada?.Invoke(texto);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // §4.6 / §5.4  Balão de fala
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Liga o anel de progresso — §5.6. Enquanto o turno roda, ele gira em volta do glyph.
+    /// <para>
+    /// O balão NÃO aparece agora, de propósito: ele só entra quando a resposta está pronta.
+    /// É a mesma regra que a janela de chat já segue, e o motivo é o mesmo — texto brotando
+    /// palavra a palavra num balão que muda de tamanho a cada quadro sobre o desktop do
+    /// usuário chama mais atenção que a resposta em si.
+    /// </para>
+    /// </summary>
+    public void ComecarATrabalhar()
+    {
+        Trabalhando = true;
+        AnelDeProgresso.Visibility = Visibility.Visible;
+
+        var giro = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(0.9))
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        GiroDoAnel.BeginAnimation(RotateTransform.AngleProperty, giro);
+    }
+
+    private void PararDeTrabalhar()
+    {
+        Trabalhando = false;
+        GiroDoAnel.BeginAnimation(RotateTransform.AngleProperty, null);
+        AnelDeProgresso.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// §4.6 — mostra a fala acima da barra. Entrada por fade + deslocamento de 8px.
+    /// </summary>
+    public void MostrarFala(string texto)
+    {
+        PararDeTrabalhar();
+
+        if (string.IsNullOrWhiteSpace(texto)) return;
+
+        TextoDoBalao.Text = texto.Trim();
+        HoraNoBalao.Text = DateTime.Now.ToString("HH:mm");
+        Balao.Visibility = Visibility.Visible;
+
+        Balao.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.18)));
+        DeslocamentoDoBalao.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(8, 0, TimeSpan.FromSeconds(0.18))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            });
+    }
+
+    /// <summary>
+    /// §5.4 — o X dispensa o balão e MANTÉM a barra aberta. Quem fechou a fala não
+    /// necessariamente terminou de falar.
+    /// </summary>
+    public void DispensarFala()
+    {
+        Balao.BeginAnimation(OpacityProperty, null);
+        DeslocamentoDoBalao.BeginAnimation(TranslateTransform.YProperty, null);
+        Balao.Visibility = Visibility.Collapsed;
+        TextoDoBalao.Text = "";
+    }
+
+    private void BotaoDispensar_Click(object sender, RoutedEventArgs e) => DispensarFala();
 
     /// <summary>
     /// §4.4 — hover. ScaleTransform, e não mudança de tamanho: alterar Width dispararia

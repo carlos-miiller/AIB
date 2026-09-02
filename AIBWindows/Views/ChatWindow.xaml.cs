@@ -209,11 +209,19 @@ public partial class ChatWindow : Window
     /// dispara compactacao.
     /// </para>
     /// </summary>
-    public void AbrirComMensagem(string texto)
+    /// <summary>
+    /// Turno terminado: o texto inteiro da resposta. Existe para o orbe poder mostrar a
+    /// resposta no balao dele sem reimplementar o laco de stream, as ferramentas, o portao de
+    /// confirmacao e a gravacao de historico — tudo isso ja acontece aqui, mesmo com a janela
+    /// escondida, e as bolhas ficam prontas para quando o usuario abrir a conversa.
+    /// </summary>
+    public event Action<string>? TurnoConcluido;
+
+    public void AbrirComMensagem(string texto, bool mostrarJanela = true)
     {
         if (string.IsNullOrWhiteSpace(texto)) return;
 
-        if (Visibility != Visibility.Visible) ToggleWindow();
+        if (mostrarJanela && Visibility != Visibility.Visible) ToggleWindow();
 
         InputBox.Text = texto.Trim();
         InputBox.CaretIndex = InputBox.Text.Length;
@@ -1136,10 +1144,13 @@ public partial class ChatWindow : Window
                 RefreshLevelUI(true);
             }
 
+            string textoDoTurno = (allText + fullText).Trim();
+            TurnoConcluido?.Invoke(errorText ?? textoDoTurno);
+
             // Se a janela estiver invisível ou sem foco (usuário fazendo outra coisa), emite notificação
             if (!this.IsActive || this.Visibility != Visibility.Visible)
             {
-                string turnText = (allText + fullText).Trim();
+                string turnText = textoDoTurno;
                 string notifyText = errorText ?? (string.IsNullOrWhiteSpace(turnText) ? "*Ação executada com sucesso.*" : turnText);
                 if (notifyText.Length > 200) notifyText = notifyText.Substring(0, 197) + "...";
                 

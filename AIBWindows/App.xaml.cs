@@ -66,7 +66,15 @@ public partial class App : System.Windows.Application
             NomeDoAgente = _settingsService.LoadSettings().ActiveCharacter
         };
 
-        orbe.MensagemEnviada += texto => _chatWindow?.AbrirComMensagem(texto);
+        // O orbe manda a mensagem e a janela de chat roda o turno inteiro ESCONDIDA: laco de
+        // stream, ferramentas, portao de confirmacao, historico e XP acontecem la, como sempre.
+        // O orbe so exibe o texto final. Duas implementacoes de turno divergiriam em qual delas
+        // grava o que, e o usuario acabaria com metade da conversa em cada lugar.
+        orbe.MensagemEnviada += texto => _chatWindow?.AbrirComMensagem(texto, mostrarJanela: false);
+
+        if (_chatWindow != null)
+            _chatWindow.TurnoConcluido += texto => orbe.MostrarFala(texto);
+
         return orbe;
     }
 

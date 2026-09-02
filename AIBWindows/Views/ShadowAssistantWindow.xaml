@@ -42,11 +42,21 @@
 
     <Grid x:Name="Raiz" Background="{x:Null}">
 
+        <!-- LARGURA FIXA de 520 (a da barra, a maior das duas formas). Sem isto o
+             balão de fala, que pode ter 440, mudaria a largura do palco e deslocaria
+             o orbe do centro toda vez que aparecesse — a armadilha A8, agora pelo
+             eixo do conteúdo em vez do da janela. -->
         <Grid x:Name="Palco"
+              Width="520"
               Margin="40"
               HorizontalAlignment="Center"
               VerticalAlignment="Bottom"
               Background="{x:Null}">
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
             <VisualStateManager.VisualStateGroups>
                 <VisualStateGroup x:Name="FormaDoOrbe">
@@ -165,12 +175,80 @@
                 </VisualStateGroup>
             </VisualStateManager.VisualStateGroups>
 
+            <!-- §4.6 — BALÃO DE FALA. Só aparece DEPOIS do clique (§0 O3): nunca
+                 sozinho, nunca como toast. Fica ACIMA da barra, 10px de gap, alinhado
+                 pela esquerda dela. Um Border só, dentro da MESMA janela — abrir uma
+                 segunda Window para ele traria flicker de Topmost (§3). -->
+            <Border x:Name="Balao"
+                    Grid.Row="0"
+                    MaxWidth="440"
+                    HorizontalAlignment="Left"
+                    Margin="0,0,0,10"
+                    Padding="14,14,16,14"
+                    Background="{StaticResource SurfaceCardBrush}"
+                    BorderBrush="{StaticResource BorderCardBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource RadiusBubble}"
+                    Effect="{StaticResource CardShadow}"
+                    Visibility="Collapsed">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="DeslocamentoDoBalao" Y="8"/>
+                </Border.RenderTransform>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="✦"
+                               FontSize="11" Margin="0,0,8,0"
+                               Foreground="{StaticResource AccentLilacBrush}"
+                               VerticalAlignment="Center"/>
+
+                    <TextBlock x:Name="NomeNoBalao" Grid.Row="0" Grid.Column="1"
+                               Text="AIB" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextStrongBrush}"
+                               VerticalAlignment="Center"/>
+
+                    <TextBlock x:Name="HoraNoBalao" Grid.Row="0" Grid.Column="2"
+                               FontSize="10.5" Margin="10,0,0,0"
+                               HorizontalAlignment="Right"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               VerticalAlignment="Center"/>
+
+                    <Button x:Name="BotaoDispensar" Grid.Row="0" Grid.Column="3"
+                            Width="22" Height="22" Margin="6,-4,-6,0"
+                            Style="{StaticResource IconButton}"
+                            Click="BotaoDispensar_Click"
+                            ToolTip="Dispensar">
+                        <Path Data="M4,4 L12,12 M12,4 L4,12"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.6" StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round" Width="16" Height="16" Stretch="None"/>
+                    </Button>
+
+                    <TextBlock x:Name="TextoDoBalao" Grid.Row="1" Grid.ColumnSpan="4"
+                               Margin="0,7,0,0"
+                               FontSize="13.5" LineHeight="20.25"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource TextBodyBrush}"/>
+                </Grid>
+            </Border>
+
             <!-- §4.2 — A CASCA QUE MORFA. É o MESMO Border em todos os estados;
                  mudam Width, Height e o conteúdo. Dois Borders aninhados por causa
                  de A4: gradiente em BorderBrush com CornerRadius renderiza canto
                  sujo no WPF, então o gradiente é o FUNDO do externo e o Padding de
                  1,5 faz o papel da borda. -->
             <Border x:Name="Casca"
+                    Grid.Row="1"
                     Width="56" Height="56"
                     Background="{StaticResource NeonBrush}"
                     Padding="1.5"
@@ -202,6 +280,29 @@
                         <!-- §4.3 — a âncora visual do morph. Sempre à esquerda; o que
                              muda é a margem, e é isso que faz a transição ler como
                              continuidade em vez de troca de tela. -->
+                        <!-- §5.6 — enquanto o turno roda, um arco gira em volta do
+                             glyph. A spec descreve isso para o orbe e diz que, com a
+                             barra aberta, "o anel continua girando no glyph pequeno da
+                             ponta esquerda". Fica na mesma célula do glyph, então
+                             acompanha a migração dele sem cálculo de posição. -->
+                        <Path x:Name="AnelDeProgresso"
+                              Grid.Column="0"
+                              Data="M 13,1 A 12,12 0 0 1 25,13"
+                              Stroke="{StaticResource AccentLilacBrush}"
+                              StrokeThickness="2"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              Width="26" Height="26"
+                              Margin="13,0,0,0"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Center"
+                              RenderTransformOrigin="0.5,0.5"
+                              Visibility="Collapsed">
+                            <Path.RenderTransform>
+                                <RotateTransform x:Name="GiroDoAnel"/>
+                            </Path.RenderTransform>
+                        </Path>
+
                         <TextBlock x:Name="Glyph"
                                    Grid.Column="0"
                                    Text="✦"

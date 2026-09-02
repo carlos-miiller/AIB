@@ -2,6 +2,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using AIB.Ui;
 using AIB.Views;
 using FluentAssertions;
@@ -227,7 +228,7 @@ namespace AIB.Tests
                 janela.Enviar();
 
                 recebido.Should().Be("procura o ramal do Fernando");
-                janela.EmModoBarra.Should().BeFalse();
+                janela.EmModoBarra.Should().BeTrue("a barra fica aberta esperando a resposta");
 
                 janela.Close();
             });
@@ -249,6 +250,143 @@ namespace AIB.Tests
 
                 disparou.Should().BeFalse();
                 janela.EmModoBarra.Should().BeTrue("nada foi enviado, a barra continua aberta");
+
+                janela.Close();
+            });
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // §4.6 / §5.4  Balao de fala
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void OBalaoNaoApareceSozinho()
+        {
+            // §0 O3 e §8 A5: a fala NUNCA aparece por conta propria. So o pulso sinaliza, e o
+            // balao entra quando ha o que mostrar.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+
+                janela.BalaoVisivel.Should().BeFalse();
+                janela.AbrirBarra();
+                janela.BalaoVisivel.Should().BeFalse("abrir a barra nao e ter algo a dizer");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void MostrarFala_PoeOTextoNoBalao()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+
+                janela.MostrarFala("  o ramal do Fernando e 4275  ");
+
+                janela.BalaoVisivel.Should().BeTrue();
+                janela.TextoDaFala.Should().Be("o ramal do Fernando e 4275");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void MostrarFalaVazia_NaoAbreBalaoOco()
+        {
+            // Turno que so executou ferramenta pode terminar sem texto. Um balao vazio sobre o
+            // desktop nao diz nada e ainda cobre o que esta atras.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+
+                janela.ComecarATrabalhar();
+                janela.MostrarFala("   ");
+
+                janela.BalaoVisivel.Should().BeFalse();
+                janela.Trabalhando.Should().BeFalse("a resposta chegou, mesmo sem texto");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void Dispensar_TiraOBalaoEDeixaABarraAberta()
+        {
+            // §5.4 — quem fechou a fala nao necessariamente terminou de falar.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+
+                janela.AbrirBarra();
+                janela.MostrarFala("pronto");
+                janela.DispensarFala();
+
+                janela.BalaoVisivel.Should().BeFalse();
+                janela.EmModoBarra.Should().BeTrue();
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void FecharABarra_LevaOBalaoJunto()
+        {
+            // O balao e ancorado na barra: sem ela ficaria flutuando sozinho, apontando para
+            // nada.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+
+                janela.AbrirBarra();
+                janela.MostrarFala("pronto");
+                janela.FecharBarra();
+
+                janela.BalaoVisivel.Should().BeFalse();
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void Enviar_MantemABarraAbertaEMostraQueEstaTrabalhando()
+        {
+            // Antes a barra fechava ao enviar. Isso obrigava o usuario a clicar de novo para
+            // ver a resposta que ele mesmo acabou de pedir — e §5.4 diz que ele le e responde
+            // no mesmo lugar.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+
+                janela.AbrirBarra();
+                ((TextBox)janela.FindName("Campo")).Text = "oi";
+                janela.Enviar();
+
+                janela.EmModoBarra.Should().BeTrue();
+                janela.Trabalhando.Should().BeTrue();
+                ((Path)janela.FindName("AnelDeProgresso")).Visibility
+                    .Should().Be(Visibility.Visible, "§5.6 — o anel gira enquanto o turno roda");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void ONomeDoAgente_ApareceNoCabecalhoDoBalao()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow { NomeDoAgente = "Ayano" };
+
+                ((TextBlock)janela.FindName("NomeNoBalao")).Text.Should().Be("Ayano");
 
                 janela.Close();
             });
