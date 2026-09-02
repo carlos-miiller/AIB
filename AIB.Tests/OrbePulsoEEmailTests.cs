@@ -282,7 +282,55 @@ namespace AIB.Tests
                 deFora.Visibility.Should().Be(Visibility.Visible);
                 noGlyph.Visibility.Should().Be(Visibility.Collapsed);
 
-                deFora.Width.Should().Be(65, "56 do orbe mais 4,5 de folga de cada lado");
+                deFora.Width.Should().Be(68, "56 do orbe mais 6 de folga de cada lado");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void OAnelDoPulso_TambemNaoMEXE_NaAlturaDoPalco()
+        {
+            // O anel do pulso tem 61 e divide a celula com a casca de 56. Mesma armadilha do
+            // anel de progresso: sem a margem de -2,5 a linha Auto cresceria e o orbe pularia
+            // na tela toda vez que uma fala chegasse — justo quando ele deve so pulsar.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+                var palco = (Grid)janela.FindName("Palco");
+                var infinito = new Size(double.PositiveInfinity, double.PositiveInfinity);
+
+                palco.Measure(infinito);
+                double parado = palco.DesiredSize.Height;
+
+                janela.EnfileirarFala("chegou algo");
+                palco.Measure(infinito);
+
+                palco.DesiredSize.Height.Should().Be(parado);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void AOndaDoPulso_CabeDentroDaJanela()
+        {
+            // A onda cresce por RenderTransform, que nao mexe no layout — mas a janela
+            // RECORTA o que passar dela. Se a expansao crescer sem a margem crescer junto, a
+            // borda da onda sai cortada em linha reta nos ultimos quadros.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+                var anel = (Border)janela.FindName("AnelDePulso");
+                var palco = (Grid)janela.FindName("Palco");
+
+                double raioMaximo = anel.Width / 2 * 2.34;
+                double meiaJanela = 56 / 2.0 + palco.Margin.Top;
+
+                raioMaximo.Should().BeLessThan(meiaJanela,
+                    "a margem da janela precisa acompanhar a expansao do pulso");
 
                 janela.Close();
             });

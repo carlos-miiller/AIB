@@ -38,8 +38,14 @@ public partial class ShadowAssistantWindow : Window
     /// deslocamento para baixo, então sem esta margem a sombra sairia cortada em linha reta —
     /// o defeito clássico de janela sem chrome. Precisa casar com o Margin do Palco no XAML.
     /// </para>
+    /// <para>
+    /// É também o teto da onda do pulso: ela cresce por RenderTransform, que não mexe no
+    /// layout, mas a janela recorta o que passar dela. Com a onda indo a
+    /// <see cref="ExpansaoDoPulso"/> vezes 61px, o raio máximo passa de 71px — 40 de margem
+    /// cortaria a borda da onda nos últimos quadros.
+    /// </para>
     /// </summary>
-    private const double MargemDaSombra = 40;
+    private const double MargemDaSombra = 48;
 
     /// <summary>Duração do morph de ida — §6. O foco só vai para o campo no fim dela.</summary>
     private static readonly TimeSpan DuracaoDoMorph = TimeSpan.FromSeconds(0.28);
@@ -49,6 +55,13 @@ public partial class ShadowAssistantWindow : Window
 
     /// <summary>Recuo do glyph na barra — §4.7, o padding esquerdo do conteúdo.</summary>
     private const double MargemNaBarra = 16;
+
+    /// <summary>
+    /// Até onde a onda do pulso cresce. A §5.2 pede 1,8; este valor é 30% maior, a pedido.
+    /// Quem mexer aqui precisa conferir a <see cref="MargemDaSombra"/> junto: a onda é
+    /// recortada pelo limite da janela.
+    /// </summary>
+    private const double ExpansaoDoPulso = 2.34;
 
     private bool _emModoBarra;
     private bool _fechando;
@@ -515,7 +528,7 @@ public partial class ShadowAssistantWindow : Window
 
         var duracao = new Duration(TimeSpan.FromSeconds(2));
 
-        var escala = new DoubleAnimation(1.0, 1.8, duracao) { RepeatBehavior = RepeatBehavior.Forever };
+        var escala = new DoubleAnimation(1.0, ExpansaoDoPulso, duracao) { RepeatBehavior = RepeatBehavior.Forever };
         EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleXProperty, escala);
         EscalaDoPulso.BeginAnimation(ScaleTransform.ScaleYProperty, escala);
 

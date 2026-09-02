@@ -51,7 +51,7 @@
              eixo do conteúdo em vez do da janela. -->
         <Grid x:Name="Palco"
               Width="520"
-              Margin="40"
+              Margin="48"
               HorizontalAlignment="Center"
               VerticalAlignment="Bottom"
               Background="{x:Null}">
@@ -326,10 +326,15 @@
                  A6 — é um Border com Scale e Opacity, e NÃO um DropShadowEffect animado:
                  animar BlurRadius por quadro engasga a interface inteira.
                  Fica ATRÁS da casca (mesma célula, declarado antes) e não recebe mouse,
-                 senão ele roubaria o clique que deveria ir para o orbe. -->
+                 senão ele roubaria o clique que deveria ir para o orbe.
+                 61 = os 56 do orbe mais 5, e a margem de -2,5 devolve a pegada de
+                 LAYOUT para 56 — sem ela a linha Auto cresceria e o orbe pularia na
+                 tela toda vez que uma fala chegasse, que é o mesmo defeito que o
+                 anel de progresso já teve. -->
             <Border x:Name="AnelDePulso"
                     Grid.Row="1"
-                    Width="56" Height="56"
+                    Width="61" Height="61"
+                    Margin="-2.5"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     BorderThickness="1.5"
@@ -401,17 +406,17 @@
                                  círculo em volta do que girar, e a spec resolve assim:
                                  "o anel continua girando no glyph pequeno da ponta
                                  esquerda". No estado orbe quem aparece é o AnelDoOrbe.
-                                 Margem de -14,5 (metade dos 29) zera a pegada de layout
+                                 Margem de -16 (metade dos 32) zera a pegada de layout
                                  dele: o anel envolve o símbolo sem alargar a célula,
                                  que continua tendo o tamanho do próprio símbolo. -->
                             <Path x:Name="AnelDeProgresso"
-                                  Data="M 14.5,1 A 13.5,13.5 0 0 1 28,14.5"
+                                  Data="M 16,1 A 15,15 0 0 1 31,16"
                                   Stroke="{StaticResource AccentLilacBrush}"
                                   StrokeThickness="2"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"
-                                  Width="29" Height="29"
-                                  Margin="-14.5"
+                                  Width="32" Height="32"
+                                  Margin="-16"
                                   HorizontalAlignment="Center"
                                   VerticalAlignment="Center"
                                   IsHitTestVisible="False"
@@ -522,7 +527,7 @@
                  Fica FORA da CascaInterna de propósito — ela tem ClipToBounds e
                  recortaria qualquer coisa que passasse da borda. E depois da casca
                  na ordem de declaração, para desenhar por cima dela.
-                 65 = 56 do orbe + 4,5 de folga de cada lado, e a MARGEM DE -4,5 é o
+                 68 = 56 do orbe + 6 de folga de cada lado, e a MARGEM DE -6 é o
                  inset:-3px do mock traduzido. Sem ela o anel MEDE 62 na linha Auto:
                  a linha cresce de 56 para 62 quando ele aparece, a janela cresce
                  junto (a altura é SizeToContent), o reposicionamento sobe o Top em
@@ -532,13 +537,13 @@
                  transborda só no DESENHO, que é o que se quer. -->
             <Path x:Name="AnelDoOrbe"
                   Grid.Row="1"
-                  Data="M 32.5,1 A 31.5,31.5 0 0 1 64,32.5"
+                  Data="M 34,1 A 33,33 0 0 1 67,34"
                   Stroke="{StaticResource AccentLilacBrush}"
                   StrokeThickness="2"
                   StrokeStartLineCap="Round"
                   StrokeEndLineCap="Round"
-                  Width="65" Height="65"
-                  Margin="-4.5"
+                  Width="68" Height="68"
+                  Margin="-6"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   IsHitTestVisible="False"
