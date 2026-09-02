@@ -365,7 +365,7 @@ namespace AIB.Tests
                 janela.Falas.Should().HaveCount(12, "nada e descartado");
                 janela.Falas[0].Texto.Should().Be("pergunta 1", "a mais antiga continua la");
 
-                rolo.MaxHeight.Should().Be(300, "o limite e de altura, nao de contagem");
+                rolo.MaxHeight.Should().Be(450, "o limite e de altura, nao de contagem");
                 rolo.VerticalScrollBarVisibility.Should().Be(ScrollBarVisibility.Hidden,
                     "a rolagem e invisivel: a roda do mouse basta");
 

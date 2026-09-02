@@ -218,7 +218,7 @@
                  só o resto para fechar a conta com a barra. -->
             <ScrollViewer x:Name="RoloDasFalas"
                           Grid.Row="0"
-                          MaxHeight="300"
+                          MaxHeight="450"
                           Margin="0,0,0,2"
                           VerticalScrollBarVisibility="Hidden"
                           HorizontalScrollBarVisibility="Disabled"
