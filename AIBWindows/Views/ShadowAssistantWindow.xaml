@@ -85,13 +85,6 @@
                             <DoubleAnimation Storyboard.TargetName="Glyph"
                                              Storyboard.TargetProperty="FontSize"
                                              To="20" Duration="0:0:0.18"/>
-                            <ThicknessAnimation Storyboard.TargetName="Glyph"
-                                                Storyboard.TargetProperty="Margin"
-                                                To="20,0,0,0" Duration="0:0:0.22">
-                                <ThicknessAnimation.EasingFunction>
-                                    <CubicEase EasingMode="EaseIn"/>
-                                </ThicknessAnimation.EasingFunction>
-                            </ThicknessAnimation>
 
                             <!-- O conteúdo some ANTES de a casca encolher. Se ele
                                  continuasse visível, as colunas Auto do microfone e do
@@ -137,21 +130,14 @@
                             <!-- §4.3 — o glyph acompanha a casca crescendo, sem salto.
                                  Ele fica SEMPRE alinhado à esquerda: a margem de 20 é o
                                  que o centraliza nos 53px internos do orbe, e ela desce
-                                 para os 16 de padding da barra numa animação contínua. A
-                                 versão anterior animava HorizontalAlignment por keyframe
-                                 discreto — e alinhamento é layout, não transformação: o
-                                 glyph pulava no meio da expansão e só assentava no fim. -->
+                                 para os 16 de padding da barra numa animação contínua.
+                                 A margem é animada em CÓDIGO, e não aqui: a do orbe depende
+                                 da largura REAL do ✦ na fonte do sistema, que só se sabe
+                                 medindo. Ver GlyphCentragem. -->
                             <DoubleAnimation Storyboard.TargetName="Glyph"
                                              Storyboard.TargetProperty="FontSize"
                                              To="13" Duration="0:0:0.12"
                                              BeginTime="0:0:0.10"/>
-                            <ThicknessAnimation Storyboard.TargetName="Glyph"
-                                                Storyboard.TargetProperty="Margin"
-                                                To="16,0,0,0" Duration="0:0:0.28">
-                                <ThicknessAnimation.EasingFunction>
-                                    <CubicEase EasingMode="EaseOut"/>
-                                </ThicknessAnimation.EasingFunction>
-                            </ThicknessAnimation>
 
                             <!-- §6 — cross-fade do conteúdo: 0,12s começando aos 0,10s.
                                  A visibilidade volta no MESMO instante, e não em zero:

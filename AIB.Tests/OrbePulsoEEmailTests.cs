@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -131,6 +131,83 @@ namespace AIB.Tests
 
                 janela.BalaoVisivel.Should().BeFalse("urgente não é motivo para interromper");
                 anel.BorderBrush.Should().BeSameAs(janela.FindResource("DangerBrush"));
+
+                janela.Close();
+            });
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Chegada da resposta de um turno
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void RespostaComABarraAberta_ApareceDireto()
+        {
+            // O usuario esta olhando para a barra, esperando o que ele mesmo pediu. Faze-lo
+            // clicar de novo para ver a propria resposta seria pedir um gesto que nao informa
+            // nada.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                janela.AbrirBarra();
+                janela.ComecarATrabalhar();
+                janela.ResponderTurno("o ramal e 4275");
+
+                janela.BalaoVisivel.Should().BeTrue();
+                janela.Pulsando.Should().BeFalse();
+                janela.Trabalhando.Should().BeFalse();
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void RespostaComABarraFECHADA_EnfileiraEPulsa()
+        {
+            // Este era o defeito escondido: a resposta abria um balao sozinho, ancorado numa
+            // barra que nao estava mais na tela — uma caixa de texto flutuando sobre o desktop
+            // apontando para nada. Quem perguntou e foi fazer outra coisa recebe o mesmo
+            // tratamento de qualquer fala proativa: o pulso espera.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                janela.AbrirBarra();
+                janela.ComecarATrabalhar();
+                janela.FecharBarra();
+
+                janela.ResponderTurno("demorei, mas achei");
+
+                janela.BalaoVisivel.Should().BeFalse("nao ha barra para ancorar o balao");
+                janela.Pulsando.Should().BeTrue();
+                janela.FalasPendentes.Should().Be(1);
+
+                janela.AbrirBarra();
+                janela.TextoDaFala.Should().Be("demorei, mas achei");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void ADiferencaEntrePedidoEProativo()
+        {
+            // A varredura de e-mail e proativa por definicao: SEMPRE enfileira e pulsa, mesmo
+            // com a barra aberta. Ninguem pediu por ela, entao ela nao tem direito de ocupar a
+            // tela — e a §0 O3 em duas linhas de codigo.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                janela.AbrirBarra();
+                janela.TerminarDeProcessarEmail("38 triados, 3 para voce", Caixa(3));
+
+                janela.BalaoVisivel.Should().BeFalse();
+                janela.Pulsando.Should().BeTrue();
 
                 janela.Close();
             });

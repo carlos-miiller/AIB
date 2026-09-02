@@ -133,6 +133,20 @@ namespace AIB.Tests
             });
         }
 
+        [Theory]
+        [InlineData(13, 20)]      // um "✦" estreito
+        [InlineData(19, 17)]      // um mais largo: a margem encolhe junto
+        [InlineData(53, 0)]       // do tamanho do orbe: encosta na borda
+        [InlineData(80, 0)]       // maior que o orbe: nunca margem negativa
+        public void AMargemDoGlyph_SaiDaLarguraMedida(double largura, double esperada)
+        {
+            // O defeito: a margem era 20 fixo, chutada a partir de uma estimativa da largura
+            // do "✦". O chute errou e o simbolo ficava alguns pixels a direita do centro.
+            // Largura de glyph depende da fonte, do tamanho e do DPI — nao e constante, e nao
+            // deve estar escrita a mao em lugar nenhum.
+            ShadowAssistantWindow.MargemQueCentraliza(largura).Should().Be(esperada);
+        }
+
         [Fact]
         public void OGlyph_FicaSempreAEsquerda_ParaNaoSaltarNoMeioDoMorph()
         {
@@ -146,8 +160,8 @@ namespace AIB.Tests
                 var janela = new ShadowAssistantWindow();
 
                 var glyph = (TextBlock)janela.FindName("Glyph");
-                glyph.HorizontalAlignment.Should().Be(HorizontalAlignment.Left);
-                glyph.Margin.Left.Should().Be(20, "e o que centraliza o glyph nos 53px do orbe");
+                glyph.HorizontalAlignment.Should().Be(HorizontalAlignment.Left,
+                    "alinhamento e layout e nao interpola: quem anima e a margem");
 
                 janela.Close();
             });

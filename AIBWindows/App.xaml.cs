@@ -73,7 +73,7 @@ public partial class App : System.Windows.Application
         orbe.MensagemEnviada += texto => _chatWindow?.AbrirComMensagem(texto, mostrarJanela: false);
 
         if (_chatWindow != null)
-            _chatWindow.TurnoConcluido += texto => orbe.MostrarFala(texto);
+            _chatWindow.TurnoConcluido += texto => orbe.ResponderTurno(texto);
 
         return orbe;
     }

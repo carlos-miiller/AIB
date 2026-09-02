@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -42,6 +43,12 @@ public partial class ShadowAssistantWindow : Window
 
     /// <summary>Duração do morph de ida — §6. O foco só vai para o campo no fim dela.</summary>
     private static readonly TimeSpan DuracaoDoMorph = TimeSpan.FromSeconds(0.28);
+
+    /// <summary>Largura interna do orbe: 56 menos os 1,5 de borda de cada lado.</summary>
+    private const double LarguraInternaDoOrbe = 53;
+
+    /// <summary>Recuo do glyph na barra — §4.7, o padding esquerdo do conteúdo.</summary>
+    private const double MargemNaBarra = 16;
 
     private bool _emModoBarra;
     private bool _fechando;
@@ -110,6 +117,10 @@ public partial class ShadowAssistantWindow : Window
         Loaded += (_, _) =>
         {
             VisualStateManager.GoToElementState(Palco, "Orbe", false);
+
+            // Sem animação: é a posição de partida, não uma transição.
+            Glyph.Margin = new Thickness(MargemQueCentraliza(MedirGlyph(20)), 0, 0, 0);
+
             Reposicionar();
         };
 
@@ -215,6 +226,7 @@ public partial class ShadowAssistantWindow : Window
         _emModoBarra = true;
         Escalar(1.00);
         VisualStateManager.GoToElementState(Palco, "Barra", true);
+        AnimarMargemDoGlyph(MargemNaBarra, DuracaoDoMorph, EasingMode.EaseOut);
 
         // §5.4 — clicar num orbe que estava pulsando faz as duas coisas de uma vez: a barra
         // abre E a fala aparece acima dela. É o único caminho pelo qual uma fala proativa
@@ -244,6 +256,7 @@ public partial class ShadowAssistantWindow : Window
 
         _emModoBarra = false;
         VisualStateManager.GoToElementState(Palco, "Orbe", true);
+        AnimarMargemDoGlyph(MargemQueCentraliza(MedirGlyph(20)), TimeSpan.FromSeconds(0.22), EasingMode.EaseIn);
 
         // §6 — o rascunho curto é descartado ao fechar; o longo sobrevive para a próxima
         // abertura, porque perder um parágrafo digitado por causa de um clique fora seria
@@ -305,6 +318,49 @@ public partial class ShadowAssistantWindow : Window
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // §4.3  Centragem do glyph
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Margem esquerda que deixa o glyph EXATAMENTE no centro do orbe.
+    /// <para>
+    /// A versão anterior usava 20 fixo, chutado a partir de uma estimativa da largura do "✦".
+    /// O chute errou e o símbolo ficava alguns pixels à direita do centro. A largura de um
+    /// glyph depende da fonte instalada, do tamanho e do DPI — não é constante e não deve ser
+    /// escrita à mão.
+    /// </para>
+    /// </summary>
+    public static double MargemQueCentraliza(double larguraDoGlyph, double larguraInterna = LarguraInternaDoOrbe) =>
+        Math.Max(0, (larguraInterna - larguraDoGlyph) / 2);
+
+    /// <summary>Largura real do glyph no tamanho pedido, medida na fonte de verdade.</summary>
+    private double MedirGlyph(double tamanhoDaFonte)
+    {
+        var tipo = new Typeface(Glyph.FontFamily, Glyph.FontStyle, Glyph.FontWeight, Glyph.FontStretch);
+
+        var texto = new FormattedText(
+            Glyph.Text,
+            CultureInfo.CurrentUICulture,
+            System.Windows.FlowDirection.LeftToRight,
+            tipo,
+            tamanhoDaFonte,
+            System.Windows.Media.Brushes.Black,
+            VisualTreeHelper.GetDpi(this).PixelsPerDip);
+
+        return texto.Width;
+    }
+
+    private void AnimarMargemDoGlyph(double para, TimeSpan duracao, EasingMode modo)
+    {
+        var animacao = new ThicknessAnimation(new Thickness(para, 0, 0, 0), duracao)
+        {
+            EasingFunction = new CubicEase { EasingMode = modo }
+        };
+
+        Glyph.BeginAnimation(MarginProperty, animacao);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // §5.6 / §5.7  E-mail
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -345,6 +401,8 @@ public partial class ShadowAssistantWindow : Window
 
         _emailsPendentes = emails;
 
+        // A varredura é proativa por definição: SEMPRE enfileira e pulsa, mesmo com a barra
+        // aberta. Ninguém pediu por ela, então ela não tem direito de ocupar a tela.
         if (!string.IsNullOrWhiteSpace(relatorio)) EnfileirarFala(relatorio!, urgente);
     }
 
@@ -516,6 +574,30 @@ public partial class ShadowAssistantWindow : Window
         // §5.7 — mesmo estado Speaking; o que muda é o balão levar a lista abaixo do texto.
         MostrarEmails(_emailsPendentes);
         _emailsPendentes = null;
+    }
+
+    /// <summary>
+    /// A resposta de um turno chegou.
+    /// <para>
+    /// Com a barra ABERTA, o texto entra direto: o usuário está olhando para ela, esperando o
+    /// que ele mesmo pediu, e fazê-lo clicar de novo para ver a própria resposta seria pedir um
+    /// gesto que não informa nada.
+    /// </para>
+    /// <para>
+    /// Com a barra FECHADA, enfileira e PULSA. Este era o defeito: a resposta abria um balão
+    /// sozinho, e pior — um balão ancorado numa barra que não estava mais na tela, flutuando
+    /// sobre o desktop apontando para nada. Quem perguntou e foi fazer outra coisa merece o
+    /// mesmo tratamento de qualquer fala proativa: o pulso espera, sem interromper.
+    /// </para>
+    /// </summary>
+    public void ResponderTurno(string texto)
+    {
+        PararDeTrabalhar();
+
+        if (string.IsNullOrWhiteSpace(texto)) return;
+
+        if (_emModoBarra) MostrarFala(texto);
+        else EnfileirarFala(texto);
     }
 
     /// <summary>
