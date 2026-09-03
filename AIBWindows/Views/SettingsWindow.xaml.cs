@@ -285,14 +285,38 @@ public partial class SettingsWindow : Window
             // Status NÃO é gravado (§9 passo 2): dizer "Conectada" na abertura seria afirmar
             // algo que ninguém verificou desde a sessão passada.
             conta.Status = MailAccountStatus.Checking;
-            conta.StatusText = conta.HasPassword
-                ? $"{gravada.ImapHost}:{gravada.ImapPort} · ainda não lida nesta sessão"
-                : "senha de app ausente — use “alterar senha de app”";
+            conta.StatusText = TextoDeEstadoEmRepouso(conta.HasPassword, gravada.ImapHost, gravada.ImapPort);
 
             vindas.Add(conta);
         }
 
         _contas.Repovoar(vindas);
+
+        Console.WriteLine($"[EMAIL] {_contas.Count} caixa(s) configurada(s), "
+                          + $"{_contas.Contas.Count(c => c.HasPassword)} com senha no cofre. "
+                          + $"Leitura por IMAP: {(_servicoDeEmail.Disponivel ? "disponível" : "INDISPONÍVEL — " + _servicoDeEmail.MotivoDaIndisponibilidade)}.");
+    }
+
+    /// <summary>
+    /// O que a segunda linha da conta diz quando nada está acontecendo com ela.
+    /// <para>
+    /// "Ainda não lida nesta sessão" PROMETE uma leitura que vem. Enquanto não existe serviço
+    /// de IMAP, a frase certa é outra: não há ciclo de leitura para rodar. Dizer a primeira nos
+    /// dois casos faz o usuário esperar por algo que nunca vai acontecer e, pior, desconfiar da
+    /// própria senha — foi exatamente o que aconteceu.
+    /// </para>
+    /// <para>
+    /// A escolha vem da CAPACIDADE do serviço, e não de uma constante: quando o MailKit entrar,
+    /// a frase muda sozinha, sem ninguém ter de lembrar de trocar a string.
+    /// </para>
+    /// </summary>
+    private string TextoDeEstadoEmRepouso(bool temSenha, string host, int porta)
+    {
+        if (!temSenha) return "senha de app ausente — use “alterar senha de app”";
+
+        return _servicoDeEmail.Disponivel
+            ? $"{host}:{porta} · ainda não lida nesta sessão"
+            : $"{host}:{porta} · {_servicoDeEmail.MotivoDaIndisponibilidade}";
     }
 
     /// <summary>
@@ -420,6 +444,13 @@ public partial class SettingsWindow : Window
         BotaoConectarConta.IsEnabled = false;
         BotaoConectarConta.Content = "Conectando…";
 
+        // Rastro no terminal pelo mesmo motivo do pulso do turno: sem ele, "Conectando…" e um
+        // ponto âmbar são tudo que se vê, e não dá para saber qual servidor foi tentado nem por
+        // que o resultado foi o que foi. A SENHA nunca entra aqui.
+        var candidatos = ImapHostGuesser.Candidatos(endereco);
+        Console.WriteLine($"[EMAIL] Conectando {endereco} — candidatos: "
+                          + string.Join(", ", candidatos.Select(c => $"{c.Host}:{c.Port}")));
+
         MailLoginResult resultado;
         try
         {
@@ -430,7 +461,7 @@ public partial class SettingsWindow : Window
         {
             // Exceção do cliente NÃO vai para a tela (§3.12): o usuário lê o que pode fazer,
             // não o stack. O detalhe fica no console.
-            Console.WriteLine($"[EMAIL] Falha ao testar login: {ex.Message}");
+            Console.WriteLine($"[EMAIL] {endereco}: exceção ao testar login — {ex.Message}");
             resultado = new MailLoginResult(
                 false, default, "não foi possível entrar. Verifique o e-mail e a senha de app.", false);
         }
@@ -442,9 +473,12 @@ public partial class SettingsWindow : Window
         {
             // O formulário FICA aberto e a senha continua no campo — §9 passo 6. Nada é
             // gravado: nem conta, nem senha.
-            MostrarErroDaConta(resultado.Erro.Length > 0
+            string motivo = resultado.Erro.Length > 0
                 ? resultado.Erro
-                : "não foi possível entrar. Verifique o e-mail e a senha de app.");
+                : "não foi possível entrar. Verifique o e-mail e a senha de app.";
+
+            Console.WriteLine($"[EMAIL] {endereco}: RECUSADO — {motivo}. Nada gravado.");
+            MostrarErroDaConta(motivo);
             return;
         }
 
@@ -473,7 +507,11 @@ public partial class SettingsWindow : Window
         alvo.Status = resultado.Verificado ? MailAccountStatus.Ok : MailAccountStatus.Checking;
         alvo.StatusText = resultado.Verificado
             ? $"{alvo.ImapHost}:{alvo.ImapPort} · conectada agora"
-            : $"{alvo.ImapHost}:{alvo.ImapPort} · {MailServiceStub.TextoPendente}";
+            : TextoDeEstadoEmRepouso(true, alvo.ImapHost, alvo.ImapPort);
+
+        Console.WriteLine($"[EMAIL] {alvo.Address}: senha guardada no cofre, "
+                          + $"servidor {alvo.ImapHost}:{alvo.ImapPort} "
+                          + $"({(resultado.Verificado ? "login CONFIRMADO" : "login NÃO verificado")}).");
 
         PersistirContas();
         FecharFormularioDeConta();
@@ -517,6 +555,7 @@ public partial class SettingsWindow : Window
         // A senha sai no MESMO comando: conta removida com senha para trás seria credencial
         // órfã em disco, sem nada na interface que a mencionasse.
         _cofre.Remover(conta.Address);
+        Console.WriteLine($"[EMAIL] {conta.Address}: conta removida e senha apagada do cofre.");
         PersistirContas();
 
         if (ReferenceEquals(_contaEmTrocaDeSenha, conta)) FecharFormularioDeConta();

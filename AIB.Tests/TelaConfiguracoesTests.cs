@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -492,6 +492,107 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void SemIMAP_ALinhaDIZ_QueNaoHaLeituraAImplementar()
+        {
+            // O defeito: a linha dizia "ainda não lida nesta sessão", que PROMETE uma leitura
+            // que vem. Enquanto não existe serviço de IMAP nenhuma leitura vem, e a frase fazia
+            // o usuário esperar por algo que não ia acontecer — e desconfiar da própria senha.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                string pasta = PastaTemporaria();
+                string caminho = System.IO.Path.Combine(pasta, "settings.json");
+                var cofre = new MailVault(pasta);
+
+                var primeira = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new MailServiceStub(), cofre);
+                Clicar(primeira, "BotaoAdicionarConta");
+                Digitar(primeira, "ana@gmail.com", "abcdefghijklmnop");
+                Clicar(primeira, "BotaoConectarConta");
+                Bombear();
+                primeira.Close();
+
+                var segunda = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new MailServiceStub(), cofre);
+
+                string texto = segunda.Contas.Contas[0].StatusText;
+
+                texto.Should().NotContain("ainda não lida",
+                    "essa frase promete uma leitura que, sem IMAP, nunca acontece");
+                texto.Should().Contain(MailServiceStub.TextoPendente);
+
+                segunda.Close();
+            });
+        }
+
+        [Fact]
+        public void ComIMAP_ALinhaVOLTA_ADizerQueAindaNaoLeu()
+        {
+            // A frase sai da CAPACIDADE do serviço, e não de uma constante: quando o MailKit
+            // entrar, ela muda sozinha, sem ninguém ter de lembrar de trocar a string.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                string pasta = PastaTemporaria();
+                string caminho = System.IO.Path.Combine(pasta, "settings.json");
+                var cofre = new MailVault(pasta);
+
+                var primeira = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new MailServiceStub(), cofre);
+                Clicar(primeira, "BotaoAdicionarConta");
+                Digitar(primeira, "ana@gmail.com", "abcdefghijklmnop");
+                Clicar(primeira, "BotaoConectarConta");
+                Bombear();
+                primeira.Close();
+
+                var segunda = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new ServicoQueRecusa(), cofre);
+
+                segunda.Contas.Contas[0].StatusText.Should().Contain("ainda não lida nesta sessão");
+
+                segunda.Close();
+            });
+        }
+
+        [Fact]
+        public void ContaSemSenhaNoCofre_DIZ_OQueFazer()
+        {
+            // Blob de outra máquina não decifra, e a conta volta do disco sem senha. "Ainda não
+            // lida" seria enganoso aqui também: não falta leitura, falta credencial.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                string pasta = PastaTemporaria();
+                string caminho = System.IO.Path.Combine(pasta, "settings.json");
+
+                var servicoDeSettings = new SettingsService(caminho);
+                var gravado = servicoDeSettings.LoadSettings();
+                gravado.MailAccounts.Add(new MailAccountSettings
+                {
+                    Address = "ana@gmail.com",
+                    ImapHost = "imap.gmail.com",
+                    ImapPort = 993,
+                    IsPrimary = true
+                });
+                servicoDeSettings.SaveSettings(gravado);
+
+                var janela = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new MailServiceStub(), new MailVault(pasta));
+
+                var conta = janela.Contas.Contas[0];
+                conta.HasPassword.Should().BeFalse();
+                conta.StatusText.Should().Contain("senha de app ausente");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void AsContasSobrevivemAoFechaEAbre_ComASenhaNoCofre()
         {
             // §9 passo 8, último item da lista de testes mínimos.
@@ -590,6 +691,9 @@ namespace AIB.Tests
         /// <summary>Serviço que recusa qualquer login, para o caminho de erro do formulário.</summary>
         private sealed class ServicoQueRecusa : IMailService
         {
+            public bool Disponivel => true;
+            public string MotivoDaIndisponibilidade => "";
+
             public System.Threading.Tasks.Task<MailLoginResult> TestLoginAsync(
                 string endereco, string senhaDeApp, System.Threading.CancellationToken ct) =>
                 System.Threading.Tasks.Task.FromResult(new MailLoginResult(

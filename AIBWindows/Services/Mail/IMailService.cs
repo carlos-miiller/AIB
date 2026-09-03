@@ -1,4 +1,4 @@
-using System.Threading;
+﻿using System.Threading;
 using System.Threading.Tasks;
 
 namespace AIB.Services.Mail;
@@ -28,6 +28,24 @@ public readonly record struct MailLoginResult(
 /// </summary>
 public interface IMailService
 {
+    /// <summary>
+    /// O serviço fala IMAP de verdade.
+    /// <para>
+    /// Existe porque a TELA precisa saber. Uma conta guardada e nunca lida tem duas causas
+    /// completamente diferentes — o ciclo de leitura ainda não rodou, ou não existe ciclo de
+    /// leitura nenhum — e a linha da conta ficava dizendo "ainda não lida nesta sessão" nos
+    /// dois casos. A primeira frase promete uma leitura que vem; a segunda descreve um
+    /// programa que não faz isso ainda. Confundir as duas faz o usuário esperar por algo que
+    /// nunca vai acontecer e desconfiar da própria senha.
+    /// </para>
+    /// </summary>
+    bool Disponivel { get; }
+
+    /// <summary>
+    /// Por que não está disponível, em linguagem de usuário. Vazio quando <see cref="Disponivel"/>.
+    /// </summary>
+    string MotivoDaIndisponibilidade { get; }
+
     Task<MailLoginResult> TestLoginAsync(string endereco, string senhaDeApp, CancellationToken ct);
 }
 
@@ -46,7 +64,11 @@ public interface IMailService
 /// </summary>
 public sealed class MailServiceStub : IMailService
 {
-    public const string TextoPendente = "verificação pendente — IMAP ainda não implementado";
+    public const string TextoPendente = "IMAP ainda não implementado — a leitura da caixa entra numa versão futura";
+
+    public bool Disponivel => false;
+
+    public string MotivoDaIndisponibilidade => TextoPendente;
 
     public Task<MailLoginResult> TestLoginAsync(string endereco, string senhaDeApp, CancellationToken ct)
     {
