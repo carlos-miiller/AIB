@@ -47,7 +47,34 @@ public interface IMailService
     string MotivoDaIndisponibilidade { get; }
 
     Task<MailLoginResult> TestLoginAsync(string endereco, string senhaDeApp, CancellationToken ct);
+
+    /// <summary>
+    /// Primeira olhada na caixa: quantas mensagens há na janela de arranque e quantas estão
+    /// por ler. NÃO baixa corpo de mensagem e NÃO marca nada como lido.
+    /// </summary>
+    Task<MailScanResult> VarrerAsync(
+        string endereco,
+        string senhaDeApp,
+        ImapEndpoint endpoint,
+        DateTime desdeUtc,
+        uint uidDePartida,
+        CancellationToken ct);
 }
+
+/// <summary>Resultado de uma varredura. Só números: nenhum assunto, nenhum remetente.</summary>
+/// <param name="Mensagens">Quantas mensagens caíram na janela pedida.</param>
+/// <param name="NaoLidas">Quantas dessas ainda não foram lidas pelo usuário.</param>
+/// <param name="Novas">Quantas têm UID acima do <c>uidDePartida</c>, ou seja, chegaram depois.</param>
+/// <param name="UidValidity">Selo de validade dos UIDs. Mudou? o último UID guardado virou lixo.</param>
+/// <param name="UltimoUid">Maior UID visto, para a próxima varredura partir dele.</param>
+public readonly record struct MailScanResult(
+    bool Ok,
+    int Mensagens,
+    int NaoLidas,
+    int Novas,
+    uint UidValidity,
+    uint UltimoUid,
+    string Erro);
 
 /// <summary>
 /// ESQUELETO. Não fala IMAP com ninguém — aceita a conta e a marca como NÃO verificada.
@@ -69,6 +96,11 @@ public sealed class MailServiceStub : IMailService
     public bool Disponivel => false;
 
     public string MotivoDaIndisponibilidade => TextoPendente;
+
+    public Task<MailScanResult> VarrerAsync(
+        string endereco, string senhaDeApp, ImapEndpoint endpoint,
+        DateTime desdeUtc, uint uidDePartida, CancellationToken ct)
+        => Task.FromResult(new MailScanResult(false, 0, 0, 0, 0, 0, TextoPendente));
 
     public Task<MailLoginResult> TestLoginAsync(string endereco, string senhaDeApp, CancellationToken ct)
     {

@@ -44,7 +44,8 @@ namespace AIB.Tests
                 servicoDeSettings,
                 PaginaDeConfiguracoes.Identidade,
                 servico ?? new MailServiceStub(),
-                cofre);
+                cofre,
+                new EstadoDasCaixas(pasta));
 
             return (janela, cofre, pasta);
         }
@@ -506,7 +507,7 @@ namespace AIB.Tests
 
                 var primeira = new SettingsWindow(
                     new SettingsService(caminho), PaginaDeConfiguracoes.Email,
-                    new MailServiceStub(), cofre);
+                    new MailServiceStub(), cofre, new EstadoDasCaixas(pasta));
                 Clicar(primeira, "BotaoAdicionarConta");
                 Digitar(primeira, "ana@gmail.com", "abcdefghijklmnop");
                 Clicar(primeira, "BotaoConectarConta");
@@ -515,7 +516,7 @@ namespace AIB.Tests
 
                 var segunda = new SettingsWindow(
                     new SettingsService(caminho), PaginaDeConfiguracoes.Email,
-                    new MailServiceStub(), cofre);
+                    new MailServiceStub(), cofre, new EstadoDasCaixas(pasta));
 
                 string texto = segunda.Contas.Contas[0].StatusText;
 
@@ -528,10 +529,12 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void ComIMAP_ALinhaVOLTA_ADizerQueAindaNaoLeu()
+        public void ComIMAP_AVarreduraRODA_AoAbrirATela()
         {
-            // A frase sai da CAPACIDADE do serviço, e não de uma constante: quando o MailKit
-            // entrar, ela muda sozinha, sem ninguém ter de lembrar de trocar a string.
+            // O ponto ambar diz "Verificando...", e isso tem de significar que alguem esta
+            // verificando. Sem varrer na abertura, a conta guardada ficava parada em ambar para
+            // sempre e o usuario nao tinha nenhum gesto para tirar ela de la — o mesmo beco sem
+            // saida de antes, agora com outra frase.
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
@@ -541,7 +544,7 @@ namespace AIB.Tests
 
                 var primeira = new SettingsWindow(
                     new SettingsService(caminho), PaginaDeConfiguracoes.Email,
-                    new MailServiceStub(), cofre);
+                    new MailServiceStub(), cofre, new EstadoDasCaixas(pasta));
                 Clicar(primeira, "BotaoAdicionarConta");
                 Digitar(primeira, "ana@gmail.com", "abcdefghijklmnop");
                 Clicar(primeira, "BotaoConectarConta");
@@ -550,9 +553,77 @@ namespace AIB.Tests
 
                 var segunda = new SettingsWindow(
                     new SettingsService(caminho), PaginaDeConfiguracoes.Email,
-                    new ServicoQueRecusa(), cofre);
+                    new ServicoQueVarre(mensagens: 34, naoLidas: 5), cofre, new EstadoDasCaixas(pasta));
+                Bombear();
 
-                segunda.Contas.Contas[0].StatusText.Should().Contain("ainda não lida nesta sessão");
+                var conta = segunda.Contas.Contas[0];
+                conta.Status.Should().Be(MailAccountStatus.Ok, "a varredura passou");
+                conta.StatusText.Should().Contain("34 em 3d").And.Contain("5 por ler");
+
+                segunda.Close();
+            });
+        }
+
+        [Fact]
+        public void AVarreduraGRAVA_OEstadoParaAProximaVez()
+        {
+            // Sem o uidValidity e o lastUid guardados, toda varredura recomeca pela data e
+            // retria as mesmas mensagens — o oposto do que o vigia precisa fazer.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                string pasta = PastaTemporaria();
+                string caminho = System.IO.Path.Combine(pasta, "settings.json");
+                var cofre = new MailVault(pasta);
+                var estado = new EstadoDasCaixas(pasta);
+
+                var janela = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new ServicoQueVarre(mensagens: 12, naoLidas: 2, uidValidity: 8271, ultimoUid: 91043),
+                    cofre, estado);
+
+                Clicar(janela, "BotaoAdicionarConta");
+                Digitar(janela, "ana@gmail.com", "abcdefghijklmnop");
+                Clicar(janela, "BotaoConectarConta");
+                Bombear();
+
+                var guardado = estado.Ler("ana@gmail.com");
+                guardado.Should().NotBeNull();
+                guardado!.UidValidity.Should().Be(8271);
+                guardado.LastUid.Should().Be(91043);
+                guardado.LastReadUtc.Should().NotBeNull();
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void VarreduraQueFALHA_PintaALinhaDeVERMELHO()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                string pasta = PastaTemporaria();
+                string caminho = System.IO.Path.Combine(pasta, "settings.json");
+                var cofre = new MailVault(pasta);
+
+                var primeira = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new MailServiceStub(), cofre, new EstadoDasCaixas(pasta));
+                Clicar(primeira, "BotaoAdicionarConta");
+                Digitar(primeira, "ana@gmail.com", "abcdefghijklmnop");
+                Clicar(primeira, "BotaoConectarConta");
+                Bombear();
+                primeira.Close();
+
+                var segunda = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new ServicoQueRecusa(), cofre, new EstadoDasCaixas(pasta));
+                Bombear();
+
+                var conta = segunda.Contas.Contas[0];
+                conta.Status.Should().Be(MailAccountStatus.Error);
+                conta.StatusText.Should().Contain("não consegui ler a caixa");
 
                 segunda.Close();
             });
@@ -582,7 +653,7 @@ namespace AIB.Tests
 
                 var janela = new SettingsWindow(
                     new SettingsService(caminho), PaginaDeConfiguracoes.Email,
-                    new MailServiceStub(), new MailVault(pasta));
+                    new MailServiceStub(), new MailVault(pasta), new EstadoDasCaixas(pasta));
 
                 var conta = janela.Contas.Contas[0];
                 conta.HasPassword.Should().BeFalse();
@@ -605,7 +676,7 @@ namespace AIB.Tests
 
                 var primeira = new SettingsWindow(
                     new SettingsService(caminho), PaginaDeConfiguracoes.Email,
-                    new MailServiceStub(), cofre);
+                    new MailServiceStub(), cofre, new EstadoDasCaixas(pasta));
 
                 Clicar(primeira, "BotaoAdicionarConta");
                 Digitar(primeira, "ana@gmail.com", "abcdefghijklmnop");
@@ -615,7 +686,7 @@ namespace AIB.Tests
 
                 var segunda = new SettingsWindow(
                     new SettingsService(caminho), PaginaDeConfiguracoes.Email,
-                    new MailServiceStub(), cofre);
+                    new MailServiceStub(), cofre, new EstadoDasCaixas(pasta));
 
                 segunda.Contas.Count.Should().Be(1, "a conta volta do disco");
                 segunda.Contas.Contas[0].Address.Should().Be("ana@gmail.com");
@@ -642,7 +713,7 @@ namespace AIB.Tests
 
                 var janela = new SettingsWindow(
                     servicoDeSettings, PaginaDeConfiguracoes.Identidade,
-                    new MailServiceStub(), new MailVault(pasta));
+                    new MailServiceStub(), new MailVault(pasta), new EstadoDasCaixas(pasta));
 
                 string urlOriginal = ((TextBox)janela.FindName("UrlTextBox")).Text;
                 ((TextBox)janela.FindName("UrlTextBox")).Text = "http://nao-salvar.example/v1";
@@ -688,11 +759,48 @@ namespace AIB.Tests
             });
         }
 
+        /// <summary>Serviço que conecta e devolve uma varredura com números fixos.</summary>
+        private sealed class ServicoQueVarre : IMailService
+        {
+            private readonly int _mensagens;
+            private readonly int _naoLidas;
+            private readonly uint _uidValidity;
+            private readonly uint _ultimoUid;
+
+            public ServicoQueVarre(int mensagens, int naoLidas, uint uidValidity = 1, uint ultimoUid = 100)
+            {
+                _mensagens = mensagens;
+                _naoLidas = naoLidas;
+                _uidValidity = uidValidity;
+                _ultimoUid = ultimoUid;
+            }
+
+            public bool Disponivel => true;
+            public string MotivoDaIndisponibilidade => "";
+
+            public System.Threading.Tasks.Task<MailLoginResult> TestLoginAsync(
+                string endereco, string senhaDeApp, System.Threading.CancellationToken ct) =>
+                System.Threading.Tasks.Task.FromResult(new MailLoginResult(
+                    true, ImapHostGuesser.Primeiro(endereco)!.Value, "", Verificado: true));
+
+            public System.Threading.Tasks.Task<MailScanResult> VarrerAsync(
+                string endereco, string senhaDeApp, ImapEndpoint endpoint,
+                DateTime desdeUtc, uint uidDePartida, System.Threading.CancellationToken ct)
+                => System.Threading.Tasks.Task.FromResult(new MailScanResult(
+                    true, _mensagens, _naoLidas, _mensagens, _uidValidity, _ultimoUid, ""));
+        }
+
         /// <summary>Serviço que recusa qualquer login, para o caminho de erro do formulário.</summary>
         private sealed class ServicoQueRecusa : IMailService
         {
             public bool Disponivel => true;
             public string MotivoDaIndisponibilidade => "";
+
+            public System.Threading.Tasks.Task<MailScanResult> VarrerAsync(
+                string endereco, string senhaDeApp, ImapEndpoint endpoint,
+                DateTime desdeUtc, uint uidDePartida, System.Threading.CancellationToken ct)
+                => System.Threading.Tasks.Task.FromResult(
+                    new MailScanResult(false, 0, 0, 0, 0, 0, "não consegui ler a caixa agora"));
 
             public System.Threading.Tasks.Task<MailLoginResult> TestLoginAsync(
                 string endereco, string senhaDeApp, System.Threading.CancellationToken ct) =>

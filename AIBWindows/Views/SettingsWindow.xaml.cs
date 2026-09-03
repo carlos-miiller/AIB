@@ -59,6 +59,23 @@ public partial class SettingsWindow : Window
 
     private readonly MailVault _cofre;
     private readonly IMailService _servicoDeEmail;
+    private readonly EstadoDasCaixas _estado;
+
+    /// <summary>
+    /// Cancela as varreduras em andamento quando a janela fecha. Sem isto, fechar a tela no
+    /// meio de uma leitura deixaria sockets abertos esperando o teto de 15s de um servidor
+    /// mudo.
+    /// </summary>
+    private readonly System.Threading.CancellationTokenSource _cancelamento = new();
+
+    /// <summary>
+    /// Janela de arranque, em dias — §Decisões do vigia: triar backlog é trabalho jogado fora,
+    /// ninguém lê 300 pendências de três meses. Backlog vira comando manual explícito.
+    /// </summary>
+    private const int JanelaDeArranqueEmDias = 3;
+
+    /// <summary>§9 passo 4: no máximo três caixas lidas ao mesmo tempo.</summary>
+    private const int CaixasEmParalelo = 3;
 
     /// <summary>
     /// Conta cuja senha está sendo trocada. <c>null</c> = o formulário está criando uma conta
@@ -79,7 +96,8 @@ public partial class SettingsWindow : Window
     public SettingsWindow(SettingsService settingsService,
                           PaginaDeConfiguracoes pagina = PaginaDeConfiguracoes.Identidade,
                           IMailService? servicoDeEmail = null,
-                          MailVault? cofre = null)
+                          MailVault? cofre = null,
+                          EstadoDasCaixas? estado = null)
     {
         InitializeComponent();
         _settingsService = settingsService;
@@ -87,13 +105,19 @@ public partial class SettingsWindow : Window
 
         // Injetáveis para os ensaios. O cofre real fica em ~/.AIB/credentials/mail, e um
         // ensaio que escrevesse lá mexeria nas senhas de verdade do usuário.
-        _servicoDeEmail = servicoDeEmail ?? new MailServiceStub();
+        _servicoDeEmail = servicoDeEmail ?? new MailKitMailService();
         _cofre = cofre ?? new MailVault();
+        _estado = estado ?? new EstadoDasCaixas();
 
         ListaDeContas.ItemsSource = _contas.Contas;
 
         LoadUiValues();
         IrPara(pagina);
+
+        // A varredura de abertura roda SOLTA, em segundo plano. É o que dá sentido ao ponto
+        // âmbar: "Verificando…" tem de significar que alguém está verificando, e não um estado
+        // parado esperando o usuário adivinhar o que fazer.
+        _ = VarrerTodasAsync();
 
         // Não bloqueia o UI Thread.
         Dispatcher.BeginInvoke(new Action(async () => await RefreshModelsAsync()));
@@ -515,6 +539,10 @@ public partial class SettingsWindow : Window
 
         PersistirContas();
         FecharFormularioDeConta();
+
+        // §6.2.1 de tela-chat: "sucesso -> fecha o modal, a aba passa a mostrar a lista e a
+        // PRIMEIRA VARREDURA começa". A senha já está em mão aqui, então não volta ao cofre.
+        await VarrerAsync(alvo, senha);
     }
 
     private void TornarPrincipal_Click(object sender, RoutedEventArgs e)
@@ -555,10 +583,111 @@ public partial class SettingsWindow : Window
         // A senha sai no MESMO comando: conta removida com senha para trás seria credencial
         // órfã em disco, sem nada na interface que a mencionasse.
         _cofre.Remover(conta.Address);
-        Console.WriteLine($"[EMAIL] {conta.Address}: conta removida e senha apagada do cofre.");
+
+        // O estado sai junto: deixar uidValidity e lastUid para trás faria a mesma caixa,
+        // reconectada depois, começar de um UID que ela não tem mais motivo para confiar.
+        _estado.Remover(conta.Address);
+
+        Console.WriteLine($"[EMAIL] {conta.Address}: conta removida, senha apagada do cofre e estado descartado.");
         PersistirContas();
 
         if (ReferenceEquals(_contaEmTrocaDeSenha, conta)) FecharFormularioDeConta();
+    }
+
+    /// <summary>
+    /// Lê todas as caixas que têm senha no cofre, no máximo três ao mesmo tempo.
+    /// </summary>
+    private async System.Threading.Tasks.Task VarrerTodasAsync()
+    {
+        if (!_servicoDeEmail.Disponivel) return;
+
+        var comSenha = _contas.Contas.Where(c => c.HasPassword).ToList();
+        if (comSenha.Count == 0) return;
+
+        using var vaga = new System.Threading.SemaphoreSlim(CaixasEmParalelo);
+
+        await System.Threading.Tasks.Task.WhenAll(comSenha.Select(async conta =>
+        {
+            await vaga.WaitAsync(_cancelamento.Token).ConfigureAwait(true);
+            try { await VarrerAsync(conta, senha: null).ConfigureAwait(true); }
+            finally { vaga.Release(); }
+        })).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Uma varredura. <paramref name="senha"/> nula manda buscar no cofre — o caminho de
+    /// abertura não tem a senha em mão, o de conexão recém-feita tem.
+    /// </summary>
+    private async System.Threading.Tasks.Task VarrerAsync(MailAccount conta, string? senha)
+    {
+        if (!_servicoDeEmail.Disponivel) return;
+
+        senha ??= _cofre.Ler(conta.Address);
+        if (string.IsNullOrEmpty(senha))
+        {
+            conta.Status = MailAccountStatus.Error;
+            conta.StatusText = "senha de app ausente — use “alterar senha de app”";
+            return;
+        }
+
+        conta.Status = MailAccountStatus.Checking;
+        conta.StatusText = $"{conta.ImapHost}:{conta.ImapPort} · lendo a caixa…";
+
+        var guardado = _estado.Ler(conta.Address);
+        uint partida = guardado?.LastUid ?? 0;
+
+        Console.WriteLine($"[EMAIL] {conta.Address}: varrendo {conta.ImapHost}:{conta.ImapPort}, "
+                          + $"últimos {JanelaDeArranqueEmDias} dia(s), a partir do UID {partida}.");
+
+        MailScanResult r;
+        try
+        {
+            r = await _servicoDeEmail.VarrerAsync(
+                conta.Address, senha,
+                new ImapEndpoint(conta.ImapHost, conta.ImapPort, conta.UseSsl),
+                DateTime.UtcNow.AddDays(-JanelaDeArranqueEmDias),
+                partida,
+                _cancelamento.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;   // janela fechou no meio
+        }
+
+        if (!r.Ok)
+        {
+            conta.Status = MailAccountStatus.Error;
+            conta.StatusText = r.Erro;
+            Console.WriteLine($"[EMAIL] {conta.Address}: varredura sem resultado — {r.Erro}");
+            return;
+        }
+
+        // Selo de validade trocado significa que o servidor RENUMEROU a caixa: todo UID
+        // guardado é de outra numeração, e comparar com ele seria ficção. Nesse caso tudo o que
+        // se vê conta como novo.
+        bool renumerou = guardado != null && guardado.UidValidity != r.UidValidity;
+        int novas = renumerou ? r.Mensagens : r.Novas;
+
+        if (renumerou)
+            Console.WriteLine($"[EMAIL] {conta.Address}: uidValidity mudou "
+                              + $"({guardado!.UidValidity} -> {r.UidValidity}); recomeçando pela data.");
+
+        _estado.Gravar(conta.Address, new EstadoDaCaixa
+        {
+            UidValidity = r.UidValidity,
+            LastUid = r.UltimoUid,
+            LastReadUtc = DateTime.UtcNow
+        });
+
+        conta.Status = MailAccountStatus.Ok;
+        conta.LastReadUtc = DateTime.UtcNow;
+        conta.StatusText = $"{conta.ImapHost}:{conta.ImapPort} · "
+                           + $"{r.Mensagens} em {JanelaDeArranqueEmDias}d, {r.NaoLidas} por ler "
+                           + $"· leitura {DateTime.Now:HH:mm}";
+
+        Console.WriteLine($"[EMAIL] {conta.Address}: {r.Mensagens} mensagem(ns) na janela, "
+                          + $"{r.NaoLidas} por ler, {novas} nova(s) desde a última varredura. "
+                          + $"uidValidity={r.UidValidity} últimoUid={r.UltimoUid}");
     }
 
     /// <summary>A conta da linha em que o botão clicado vive.</summary>
@@ -603,6 +732,13 @@ public partial class SettingsWindow : Window
     // ─────────────────────────────────────────────────────────────────────
     // Interações
     // ─────────────────────────────────────────────────────────────────────
+
+    protected override void OnClosed(EventArgs e)
+    {
+        try { _cancelamento.Cancel(); } catch { }
+        _cancelamento.Dispose();
+        base.OnClosed(e);
+    }
 
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -372,6 +372,145 @@ namespace AIB.Tests
             {
                 "Address", "ImapHost", "ImapPort", "UseSsl", "IsPrimary"
             });
+        }
+    }
+
+    /// <summary>
+    /// O estado.json — §Arquivos do vigia de e-mail.
+    /// </summary>
+    public class EstadoDasCaixasTests : IDisposable
+    {
+        private readonly string _raiz;
+
+        public EstadoDasCaixasTests()
+        {
+            _raiz = Path.Combine(Path.GetTempPath(), "aib-estado-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(_raiz);
+        }
+
+        public void Dispose()
+        {
+            try { Directory.Delete(_raiz, true); } catch { }
+        }
+
+        private EstadoDasCaixas Novo() => new(_raiz);
+
+        [Fact]
+        public void OEstadoMoraEmEmailEstadoJson_DentroDaPastaDoUsuario()
+        {
+            Novo().Caminho.Should().Be(Path.Combine(_raiz, "email", "estado.json"));
+        }
+
+        [Fact]
+        public void GravarELer_DevolveOMesmoEstado()
+        {
+            var estado = Novo();
+
+            estado.Gravar("ana@empresa.com.br", new EstadoDaCaixa
+            {
+                UidValidity = 8271,
+                LastUid = 91043,
+                LastReadUtc = new DateTime(2026, 9, 3, 12, 4, 0, DateTimeKind.Utc)
+            });
+
+            var lido = Novo().Ler("ana@empresa.com.br");
+
+            lido.Should().NotBeNull();
+            lido!.UidValidity.Should().Be(8271);
+            lido.LastUid.Should().Be(91043);
+        }
+
+        [Fact]
+        public void DuasCaixas_NaoSeMISTURAM()
+        {
+            var estado = Novo();
+            estado.Gravar("a@x.com", new EstadoDaCaixa { UidValidity = 1, LastUid = 10 });
+            estado.Gravar("b@x.com", new EstadoDaCaixa { UidValidity = 2, LastUid = 20 });
+
+            estado.Ler("a@x.com")!.LastUid.Should().Be(10);
+            estado.Ler("b@x.com")!.LastUid.Should().Be(20);
+        }
+
+        [Fact]
+        public void AChaveEhOENDERECO_EmMinusculas()
+        {
+            // Chavear por rotulo abriria a classe de bug em que renomear a caixa na tela faz o
+            // vigia perder o lastUid e retriar semanas de mensagem.
+            var estado = Novo();
+            estado.Gravar("Ana@Empresa.com.BR", new EstadoDaCaixa { UidValidity = 1, LastUid = 5 });
+
+            estado.Ler("ana@empresa.com.br")!.LastUid.Should().Be(5);
+        }
+
+        [Fact]
+        public void ValidadeIGUAL_PARTE_DoUltimoUid()
+        {
+            var estado = Novo();
+            estado.Gravar("a@x.com", new EstadoDaCaixa { UidValidity = 8271, LastUid = 91043 });
+
+            estado.UidDePartida("a@x.com", uidValidityAtual: 8271).Should().Be(91043);
+        }
+
+        [Fact]
+        public void ValidadeDIFERENTE_RECOMECA_DoZero()
+        {
+            // O servidor renumerou a caixa: todo UID guardado e de outra numeracao. Confiar
+            // nele seria pular mensagens achando que ja foram lidas.
+            var estado = Novo();
+            estado.Gravar("a@x.com", new EstadoDaCaixa { UidValidity = 8271, LastUid = 91043 });
+
+            estado.UidDePartida("a@x.com", uidValidityAtual: 9999).Should().Be(0);
+        }
+
+        [Fact]
+        public void CaixaNuncaLida_PARTE_DoZero()
+        {
+            Novo().UidDePartida("ninguem@lugar.com", 1).Should().Be(0);
+        }
+
+        [Fact]
+        public void Remover_TiraSoAQuePediram()
+        {
+            var estado = Novo();
+            estado.Gravar("a@x.com", new EstadoDaCaixa { UidValidity = 1, LastUid = 10 });
+            estado.Gravar("b@x.com", new EstadoDaCaixa { UidValidity = 2, LastUid = 20 });
+
+            estado.Remover("a@x.com");
+
+            estado.Ler("a@x.com").Should().BeNull();
+            estado.Ler("b@x.com").Should().NotBeNull();
+        }
+
+        [Fact]
+        public void ArquivoCORROMPIDO_NaoDerrubaAVarredura()
+        {
+            // Perder o estado custa uma releitura. Derrubar a varredura custaria a varredura.
+            var estado = Novo();
+            Directory.CreateDirectory(Path.GetDirectoryName(estado.Caminho)!);
+            File.WriteAllText(estado.Caminho, "{ isto nao e json");
+
+            estado.Ler("a@x.com").Should().BeNull();
+            estado.UidDePartida("a@x.com", 1).Should().Be(0);
+        }
+    }
+
+    /// <summary>
+    /// A tradução do erro do servidor para uma frase acionável.
+    /// </summary>
+    public class MensagemDeAutenticacaoTests
+    {
+        [Theory]
+        [InlineData("[ALERT] IMAP access is disabled for your domain.", "IMAP está desligado")]
+        [InlineData("Application-specific password required", "exige senha de app")]
+        [InlineData("Your account has been disabled by administrator", "bloqueada pelo administrador")]
+        [InlineData("Invalid credentials (Failure)", "senha de app recusada")]
+        [InlineData("", "senha de app recusada")]
+        public void CadaCausa_LEVA_AUmConsertoDiferente(string doServidor, string esperado)
+        {
+            // Os tres modos de falha chegam como o mesmo tipo de excecao. Mandar "senha
+            // recusada" nos tres manda o usuario gerar senha nova quando o problema era o IMAP
+            // desligado — e ele nunca vai descobrir isso sozinho.
+            MailKitMailService.MensagemDeAutenticacao(doServidor).Should().Contain(esperado);
         }
     }
 
