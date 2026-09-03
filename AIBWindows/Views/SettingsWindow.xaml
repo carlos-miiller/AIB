@@ -1,4 +1,4 @@
-<Window x:Class="AIB.Views.SettingsWindow"
+﻿<Window x:Class="AIB.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:AIB.Ui"
@@ -76,11 +76,20 @@
 
         <!-- O ícone do item selecionado vira lilás; o rótulo segue o Foreground
              do item. Por isso o Path lê o Foreground do RadioButton pai e o
-             TextBlock também: uma fonte de verdade para os dois. -->
+             TextBlock também: uma fonte de verdade para os dois.
+
+             STRETCH UNIFORME, e não None. Os desenhos vêm de um viewBox de
+             20x20 (a engrenagem chega a x=18,1; o envelope a y=15,6) e a caixa
+             tem 16: com Stretch="None" o Path desenha em coordenada nativa e o
+             que passa de 16 é RECORTADO — daí os ícones cortados à direita e
+             embaixo. É também o que faz o SVG do mock: ele declara
+             width="16" viewBox="0 0 20 20", ou seja, escala 20 para 16. A
+             espessura acompanha a escala nos dois casos (1,5 vira 1,2), então
+             não há compensação a fazer. -->
         <Style x:Key="NavIcon" TargetType="Path">
             <Setter Property="Width" Value="16"/>
             <Setter Property="Height" Value="16"/>
-            <Setter Property="Stretch" Value="None"/>
+            <Setter Property="Stretch" Value="Uniform"/>
             <Setter Property="StrokeThickness" Value="1.5"/>
             <Setter Property="StrokeLineJoin" Value="Round"/>
             <Setter Property="StrokeStartLineCap" Value="Round"/>
@@ -296,22 +305,43 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- O glyph acompanha a primeira linha do título, não o centro do bloco. -->
-                    <TextBlock Grid.Column="0" Text="✦" FontSize="15"
-                               Foreground="{StaticResource AccentLilacBrush}"
-                               VerticalAlignment="Top" Margin="24,20,10,0" LineHeight="22"/>
+                    <!-- O glyph acompanha a LINHA DO TÍTULO, e o subtítulo continua alinhado
+                         com o título, não com o glyph. Por isso as duas coisas vivem numa
+                         grade de duas linhas por duas colunas em vez de um glyph solto ao
+                         lado de um StackPanel: assim o glyph é CENTRALIZADO na altura da
+                         linha do título, sem margem calculada à mão.
+                         A versão anterior o alinhava ao topo com Margin="24,20,10,0" e
+                         LineHeight="22" — dois números escolhidos a olho para o glyph de 15
+                         cair na altura de um título de outro tamanho. Errou, e o símbolo
+                         ficava alto demais. -->
+                    <Grid Grid.Column="0" Grid.ColumnSpan="2" Margin="24,20,0,16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="1" Margin="0,20,0,16">
-                        <TextBlock Text="Configurações"
+                        <TextBlock x:Name="GlyphDoCabecalho"
+                                   Grid.Row="0" Grid.Column="0" Text="✦" FontSize="15"
+                                   Foreground="{StaticResource AccentLilacBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                        <TextBlock x:Name="TituloDoCabecalho"
+                                   Grid.Row="0" Grid.Column="1" Text="Configurações"
                                    FontSize="{StaticResource FontSizeHeaderTitle}"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource TextStrongBrush}"/>
+
                         <!-- TEXTO VERBATIM — §3.3. -->
-                        <TextBlock Text="Personalize a identidade, conexão e comportamento do AIB."
+                        <TextBlock Grid.Row="1" Grid.Column="1"
+                                   Text="Personalize a identidade, conexão e comportamento do AIB."
                                    FontSize="{StaticResource FontSizeHeaderSub}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    Margin="0,4,0,0"/>
-                    </StackPanel>
+                    </Grid>
 
                     <Button Grid.Column="2" Style="{StaticResource CloseIconButton}"
                             VerticalAlignment="Top" Margin="0,16,16,0"
@@ -344,7 +374,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <Path Style="{StaticResource NavIcon}"
                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                      Data="M10,7.2 A3.1,3.1 0 1 1 9.99,7.2 Z
+                                      Data="M6.9,7.2 A3.1,3.1 0 0 1 13.1,7.2 A3.1,3.1 0 0 1 6.9,7.2 Z
                                             M3.9,16.6 C3.9,13.7 6.6,12 10,12 C13.4,12 16.1,13.7 16.1,16.6"/>
                                 <TextBlock Text="Identidade" FontSize="12.5" FontWeight="Medium"
                                            Margin="9,0,0,0" VerticalAlignment="Center"
@@ -394,7 +424,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <Path Style="{StaticResource NavIcon}"
                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                      Data="M10,7.4 A2.6,2.6 0 1 1 9.99,7.4 Z
+                                      Data="M7.4,10 A2.6,2.6 0 0 1 12.6,10 A2.6,2.6 0 0 1 7.4,10 Z
                                             M10,1.9 L10,4.2 M10,15.8 L10,18.1
                                             M3.9,3.9 L5.5,5.5 M14.5,14.5 L16.1,16.1
                                             M1.9,10 L4.2,10 M15.8,10 L18.1,10

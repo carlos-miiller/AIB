@@ -95,6 +95,89 @@ namespace AIB.Tests
         }
 
         // ─────────────────────────────────────────────────────────────────────
+        // Ícones: o desenho não pode ser recortado pela própria caixa
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void NenhumIcone_DESENHA_ForaDaPropriaCaixa()
+        {
+            // O defeito: os desenhos vêm de um viewBox de 20x20 e a caixa tem 16. Com
+            // Stretch="None" o Path desenha em coordenada nativa e o que passa de 16 é
+            // RECORTADO — os ícones apareciam cortados à direita e embaixo, e o da pessoa
+            // parecia achatado porque o corpo dele vai até y=16,6.
+            //
+            // O ensaio verifica a CLASSE do defeito, e não o caso: qualquer Path com
+            // Stretch=None precisa caber; quem estica é livre porque o WPF encaixa sozinho.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var (janela, _, _) = Nova();
+
+                var raiz = (FrameworkElement)janela.Content;
+                raiz.Measure(new Size(janela.Width, janela.Height));
+                raiz.Arrange(new Rect(0, 0, janela.Width, janela.Height));
+
+                foreach (var caminho in TodosOsPaths(raiz))
+                {
+                    if (caminho.Stretch != System.Windows.Media.Stretch.None) continue;
+                    if (caminho.Data == null) continue;
+                    if (double.IsNaN(caminho.Width) || double.IsNaN(caminho.Height)) continue;
+
+                    var limites = caminho.Data.Bounds;
+
+                    limites.Right.Should().BeLessThanOrEqualTo(caminho.Width,
+                        "um Path com Stretch=None desenha em coordenada nativa e é recortado pela caixa");
+                    limites.Bottom.Should().BeLessThanOrEqualTo(caminho.Height,
+                        "um Path com Stretch=None desenha em coordenada nativa e é recortado pela caixa");
+                }
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void OGlyphDoCabecalho_FicaNaAlturaDoTitulo()
+        {
+            // Ele estava alinhado ao topo com margem escolhida a olho para um glyph de 15
+            // cair na altura de um título de outro tamanho. Errou, e o símbolo ficava alto.
+            // Agora os dois dividem a mesma linha de uma grade, e a centragem é do layout.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var (janela, _, _) = Nova();
+
+                var raiz = (FrameworkElement)janela.Content;
+                raiz.Measure(new Size(janela.Width, janela.Height));
+                raiz.Arrange(new Rect(0, 0, janela.Width, janela.Height));
+                raiz.UpdateLayout();
+
+                var glyph = (TextBlock)janela.FindName("GlyphDoCabecalho");
+                var titulo = (TextBlock)janela.FindName("TituloDoCabecalho");
+
+                double centroDoGlyph = glyph.TranslatePoint(
+                    new Point(0, glyph.ActualHeight / 2), raiz).Y;
+                double centroDoTitulo = titulo.TranslatePoint(
+                    new Point(0, titulo.ActualHeight / 2), raiz).Y;
+
+                Math.Abs(centroDoGlyph - centroDoTitulo).Should().BeLessThan(1.0,
+                    "o glyph acompanha a linha do título, não o topo do bloco");
+
+                janela.Close();
+            });
+        }
+
+        private static System.Collections.Generic.IEnumerable<System.Windows.Shapes.Path> TodosOsPaths(
+            DependencyObject raiz)
+        {
+            if (raiz is System.Windows.Shapes.Path p) yield return p;
+
+            int filhos = System.Windows.Media.VisualTreeHelper.GetChildrenCount(raiz);
+            for (int i = 0; i < filhos; i++)
+                foreach (var achado in TodosOsPaths(System.Windows.Media.VisualTreeHelper.GetChild(raiz, i)))
+                    yield return achado;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
         // §3.10  Menu lateral
         // ─────────────────────────────────────────────────────────────────────
 
