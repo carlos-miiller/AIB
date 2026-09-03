@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Security.Cryptography;
+using System.Linq;
 using System.Text;
 
 namespace AIB.Services;
@@ -54,8 +55,50 @@ public sealed class UserAppSettings
     // Gamificação / Sistema de Níveis
     public int MessageCount { get; set; } = 0;
 
-    /// <summary>Cópia rasa. Todos os campos são string ou tipo de valor, então é cópia real.</summary>
-    public UserAppSettings Clone() => (UserAppSettings)MemberwiseClone();
+    /// <summary>
+    /// Caixas de e-mail configuradas — tela-configuracoes §3.12, uma linha da lista por item.
+    /// <para>
+    /// SEM SENHA. A senha de app de cada caixa vive no <c>MailVault</c>, indexada pelo
+    /// endereço, e nunca passa por aqui: este objeto é serializado em JSON e clonado a cada
+    /// <c>LoadSettings</c>, dois caminhos por onde uma senha não deve trafegar.
+    /// </para>
+    /// </summary>
+    public List<MailAccountSettings> MailAccounts { get; set; } = new();
+
+    /// <summary>
+    /// Cópia para entregar a quem pediu as configurações.
+    /// <para>
+    /// Era cópia rasa, e a justificativa era "todos os campos são string ou tipo de valor".
+    /// Deixou de valer com <see cref="MailAccounts"/>: o <c>MemberwiseClone</c> copia a
+    /// REFERÊNCIA da lista, e como o <c>LoadSettings</c> devolve um clone do cache, quem
+    /// mexesse na lista recebida estaria mexendo na lista do cache — e na das outras janelas.
+    /// </para>
+    /// </summary>
+    public UserAppSettings Clone()
+    {
+        var copia = (UserAppSettings)MemberwiseClone();
+        copia.MailAccounts = MailAccounts.Select(c => c.Clone()).ToList();
+        return copia;
+    }
+}
+
+/// <summary>
+/// O que de uma caixa de e-mail vai para o disco — §9 passo 2 de tela-configuracoes.
+/// <para>
+/// <c>Status</c> e <c>StatusText</c> NÃO estão aqui de propósito: são de tempo de execução.
+/// Gravar "Conectada" e reler isso na abertura seguinte seria afirmar na tela algo que
+/// ninguém verificou desde a sessão passada.
+/// </para>
+/// </summary>
+public sealed class MailAccountSettings
+{
+    public string Address { get; set; } = "";
+    public string ImapHost { get; set; } = "";
+    public int ImapPort { get; set; } = 993;
+    public bool UseSsl { get; set; } = true;
+    public bool IsPrimary { get; set; }
+
+    public MailAccountSettings Clone() => (MailAccountSettings)MemberwiseClone();
 }
 
 public sealed class SettingsService

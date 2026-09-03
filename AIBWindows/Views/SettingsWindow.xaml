@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:AIB.Ui"
         Title="Configurações AIB"
-        Width="700" Height="650"
+        Width="960" Height="650"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -12,11 +12,257 @@
         WindowStartupLocation="CenterOwner">
 
     <!--
-        Implementação de refactor-interface/tela-configuracoes.html.
-        A janela do WPF é maior que os 620x560 do desenho porque a DropShadow
-        precisa de área para desenhar e não pode ser recortada (§3.1). A margem
-        do Border faz a conta: 700-40-40 = 620 e 650-30-60 = 560.
+        Implementação de refactor-interface/tela-configuracoes (3).html.
+
+        TAMANHO — §7 A5: 880x560 é o desenho de referência (era 620 antes do menu
+        lateral). A janela do WPF é maior porque a DropShadow precisa de área e
+        não pode ser recortada (§3.1). A margem do Border faz a conta:
+        960-40-40 = 880 e 650-30-60 = 560. Mexer numa e esquecer a outra corta a
+        sombra em linha reta — o mesmo defeito que a janela do orbe já pagou.
+
+        A13 — o menu NÃO é ListBox. A própria armadilha explica por quê: o
+        ListBox pinta o item selecionado com o azul do sistema e o hover com
+        cinza claro, e reescrever o ItemContainerStyle para apagar as duas coisas
+        é mais código que o problema pede. RadioButton com GroupName dá
+        exatamente a semântica ("uma das quatro"), já é o padrão das abas do
+        painel de chat, e não traz realce nenhum para desfazer.
     -->
+
+    <Window.Resources>
+        <ui:ContaDeEmailConverter x:Key="CorDoPonto"           Modo="CorDoPonto"/>
+        <ui:ContaDeEmailConverter x:Key="RotuloDoPonto"         Modo="RotuloDoPonto"/>
+        <ui:ContaDeEmailConverter x:Key="CorDoTextoDeEstado"    Modo="CorDoTexto"/>
+        <ui:ContaDeEmailConverter x:Key="VisibilidadeDoSelo"    Modo="VisibilidadeDoSelo"/>
+        <ui:ContaDeEmailConverter x:Key="VisibilidadeDaEstrela" Modo="VisibilidadeDaEstrela"/>
+
+        <!-- §3.10 — ITEM DO MENU. ~34px de altura, r10, ícone 16 + rótulo 12.5.
+             O selecionado é o único com fundo, e é o MESMO tratamento do item
+             ativo das listas do painel de chat: lilás a 12% com borda de acento.
+             Não inventar realce novo. -->
+        <Style x:Key="NavItem" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,0,0,2"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Casca"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Padding="11,9">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource SurfaceHoverSoftBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource AccentFill12Brush}"/>
+                                <Setter TargetName="Casca" Property="BorderBrush"
+                                        Value="{StaticResource AccentBorderBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- O ícone do item selecionado vira lilás; o rótulo segue o Foreground
+             do item. Por isso o Path lê o Foreground do RadioButton pai e o
+             TextBlock também: uma fonte de verdade para os dois. -->
+        <Style x:Key="NavIcon" TargetType="Path">
+            <Setter Property="Width" Value="16"/>
+            <Setter Property="Height" Value="16"/>
+            <Setter Property="Stretch" Value="None"/>
+            <Setter Property="StrokeThickness" Value="1.5"/>
+            <Setter Property="StrokeLineJoin" Value="Round"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- §3.4 — TÍTULO DA PÁGINA. Substitui o cabeçalho maiúsculo com régua,
+             que virou redundante com o menu (§7 A14): cada página tem UM título. -->
+        <Style x:Key="PageTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource TextStrongBrush}"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
+        </Style>
+
+        <Style x:Key="PageSubtitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="LineHeight" Value="16.7"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+
+        <!-- §3.12 — botão de ação da linha de conta. 28x28, r7, ícone 15.
+             SEMPRE visível: uma lista curta com ações escondidas no hover gera
+             clique exploratório. -->
+        <Style x:Key="AcctButton" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Casca" Background="{TemplateBinding Background}"
+                                CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource SurfaceHoverSoftBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Variante destrutiva: a lixeira. Hover vermelho. -->
+        <Style x:Key="AcctDangerButton" TargetType="Button" BasedOn="{StaticResource AcctButton}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Casca" Background="Transparent" CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource DangerFill16Brush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AcctIcon" TargetType="Path">
+            <Setter Property="Width" Value="15"/>
+            <Setter Property="Height" Value="15"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="StrokeThickness" Value="1.6"/>
+            <Setter Property="StrokeLineJoin" Value="Round"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+        </Style>
+
+        <!-- §3.12 — "Adicionar conta". A borda é TRACEJADA, e é isso que
+             distingue "acrescentar" de "confirmar". O WPF não tem borda
+             tracejada em Border: é um Rectangle com StrokeDashArray por baixo
+             do conteúdo. -->
+        <Style x:Key="AddAccountButton" TargetType="Button">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#CBC8D1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Fundo" Background="Transparent" CornerRadius="10"/>
+                            <Rectangle x:Name="Tracejado"
+                                       RadiusX="10" RadiusY="10"
+                                       Stroke="#2EFFFFFF"
+                                       StrokeThickness="1"
+                                       StrokeDashArray="3 2"/>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fundo" Property="Background"
+                                        Value="{StaticResource AccentFill10Brush}"/>
+                                <Setter TargetName="Tracejado" Property="Stroke"
+                                        Value="{StaticResource AccentFocusBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Rodapé do formulário: 32px, sem borda. -->
+        <Style x:Key="QuietButton" TargetType="Button">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Casca" Background="{TemplateBinding Background}"
+                                CornerRadius="9" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource SurfaceHoverSoftBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SolidSmallButton" TargetType="Button">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Casca" Background="{TemplateBinding Background}"
+                                CornerRadius="9" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Opacity" Value="0.88"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Casca" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <Border Margin="40,30,40,60"
             Background="{StaticResource NeonBrush}"
             CornerRadius="{StaticResource RadiusWindowOuter}"
@@ -27,7 +273,7 @@
                 CornerRadius="{StaticResource RadiusWindowInner}"
                 ClipToBounds="True">
 
-            <!-- O `*` na linha do meio é o que impede o rodapé de sair da tela. A7. -->
+            <!-- O `*` na linha do meio é o que impede o rodapé de sair da tela. §7 A4. -->
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -81,250 +327,576 @@
                 </Grid>
 
                 <!-- ══════════════════════════════════════════════════════════
-                     §3.4/§3.5  SEÇÕES — única área elástica
+                     §3.10  CORPO EM DUAS COLUNAS — menu de 200px + página
                      ══════════════════════════════════════════════════════════ -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled"
-                              Padding="24,20,24,22">
-                    <StackPanel>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="200"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-                        <!-- ─────────────── SEÇÃO 1 — Identidade (Soul) ─────────────── -->
-                        <Grid Margin="0,0,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="IDENTIDADE (SOUL)" Style="{StaticResource SectionHeadText}"
-                                       ui:LetterSpacing.Em="0.10"/>
-                            <Rectangle Grid.Column="1" Height="1" Margin="10,0,0,0"
-                                       Fill="{StaticResource DividerBrush}" VerticalAlignment="Center"/>
-                        </Grid>
-
-                        <Border Background="{StaticResource SurfaceCardBrush}"
-                                BorderBrush="{StaticResource BorderCardBrush}" BorderThickness="1"
-                                CornerRadius="{StaticResource RadiusCardLarge}" Padding="16,4">
-                            <StackPanel>
-                                <!-- CAMPO 1 — último do card: sem divisória. -->
-                                <Grid Margin="0,13">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                        <TextBlock Text="Personagem Ativo" Style="{StaticResource FieldLabelText}"/>
-                                        <TextBlock Text="A Inteligência escolhida na tela de seleção."
-                                                   Style="{StaticResource FieldHelpText}"/>
-                                    </StackPanel>
-                                    <ComboBox x:Name="CharacterComboBox" Grid.Column="1"
-                                              Style="{StaticResource ControlComboBox}"
-                                              SelectionChanged="Campo_Mudou"/>
-                                </Grid>
+                    <!-- MENU. Não rola: a lista é curta e fixa (§3.10). -->
+                    <StackPanel Grid.Column="0" Margin="10,14">
+                        <RadioButton x:Name="NavIdentidade" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}"
+                                     IsChecked="True" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M10,7.2 A3.1,3.1 0 1 1 9.99,7.2 Z
+                                            M3.9,16.6 C3.9,13.7 6.6,12 10,12 C13.4,12 16.1,13.7 16.1,16.6"/>
+                                <TextBlock Text="Identidade" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
                             </StackPanel>
-                        </Border>
+                        </RadioButton>
 
-                        <!-- ─────────────── SEÇÃO 2 — Conexão LLM ─────────────── -->
-                        <Grid Margin="0,18,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="CONEXÃO LLM" Style="{StaticResource SectionHeadText}"
-                                       ui:LetterSpacing.Em="0.10"/>
-                            <Rectangle Grid.Column="1" Height="1" Margin="10,0,0,0"
-                                       Fill="{StaticResource DividerBrush}" VerticalAlignment="Center"/>
-                        </Grid>
+                        <RadioButton x:Name="NavConexao" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M7.6,5.4 L12.4,5.4 A2.2,2.2 0 0 1 14.6,7.6 L14.6,12.4
+                                            A2.2,2.2 0 0 1 12.4,14.6 L7.6,14.6 A2.2,2.2 0 0 1 5.4,12.4
+                                            L5.4,7.6 A2.2,2.2 0 0 1 7.6,5.4 Z
+                                            M8.2,2.6 L8.2,5.4 M11.8,2.6 L11.8,5.4
+                                            M8.2,14.6 L8.2,17.4 M11.8,14.6 L11.8,17.4
+                                            M2.6,8.2 L5.4,8.2 M2.6,11.8 L5.4,11.8
+                                            M14.6,8.2 L17.4,8.2 M14.6,11.8 L17.4,11.8"/>
+                                <TextBlock Text="Conexão LLM" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
 
-                        <Border Background="{StaticResource SurfaceCardBrush}"
-                                BorderBrush="{StaticResource BorderCardBrush}" BorderThickness="1"
-                                CornerRadius="{StaticResource RadiusCardLarge}" Padding="16,4">
-                            <StackPanel>
+                        <RadioButton x:Name="NavEmail" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <!-- O MESMO envelope da aba de e-mails do painel de chat. -->
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M4.2,4.4 L15.8,4.4 A1.8,1.8 0 0 1 17.6,6.2 L17.6,13.8
+                                            A1.8,1.8 0 0 1 15.8,15.6 L4.2,15.6 A1.8,1.8 0 0 1 2.4,13.8
+                                            L2.4,6.2 A1.8,1.8 0 0 1 4.2,4.4 Z
+                                            M3.1,5.6 L10,10.8 L16.9,5.6"/>
+                                <TextBlock Text="E-mail" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
 
-                                <!-- CAMPO 2 — Provedor de IA -->
-                                <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
-                                    <Grid Margin="0,13">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Provedor de IA" Style="{StaticResource FieldLabelText}"
-                                                   VerticalAlignment="Center" Margin="0,0,16,0"/>
-                                        <ComboBox x:Name="ProviderComboBox" Grid.Column="1"
-                                                  Style="{StaticResource ControlComboBox}"
-                                                  SelectionChanged="ProviderComboBox_SelectionChanged"/>
-                                    </Grid>
-                                </Border>
+                        <RadioButton x:Name="NavAvancado" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M10,7.4 A2.6,2.6 0 1 1 9.99,7.4 Z
+                                            M10,1.9 L10,4.2 M10,15.8 L10,18.1
+                                            M3.9,3.9 L5.5,5.5 M14.5,14.5 L16.1,16.1
+                                            M1.9,10 L4.2,10 M15.8,10 L18.1,10
+                                            M3.9,16.1 L5.5,14.5 M14.5,5.5 L16.1,3.9"/>
+                                <TextBlock Text="Avançado" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
+                    </StackPanel>
 
-                                <!-- CAMPO 3 — Base URL -->
-                                <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
-                                    <Grid Margin="0,13">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Base URL" Style="{StaticResource FieldLabelText}"
-                                                   VerticalAlignment="Center" Margin="0,0,16,0"/>
-                                        <TextBox x:Name="UrlTextBox" Grid.Column="1"
-                                                 Style="{StaticResource ControlTextBoxMono}"
-                                                 TextChanged="Campo_Mudou"
-                                                 LostFocus="UrlTextBox_LostFocus"/>
-                                    </Grid>
-                                </Border>
+                    <Rectangle Grid.Column="1" Width="1" Fill="{StaticResource DividerBrush}"/>
 
-                                <!-- CAMPO 4 — API Key. Somente leitura: a escrita é do fluxo
-                                     "Alterar", que não exibe a chave atual (§5 campo 4). -->
-                                <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                    <!-- ══════════════════════════════════════════════════════
+                         §3.4  PÁGINAS. Só a ativa está visível.
+                         A área NÃO tem padding: a faixa de título encosta nas
+                         laterais. O respiro é do grupo de campos, 40 à esquerda
+                         para separar as opções da faixa.
+                         ══════════════════════════════════════════════════════ -->
+                    <Grid Grid.Column="2">
+
+                        <!-- ─────────── PÁGINA 1 — Identidade (Soul) ─────────── -->
+                        <Grid x:Name="PaginaIdentidade">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Identidade (Soul)" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="Quem responde, e com que personalidade."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+                                    <!-- CAMPO 1 — último da página: sem divisória. -->
                                     <Grid Margin="0,13">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                            <TextBlock Text="API Key" Style="{StaticResource FieldLabelText}"/>
-                                            <!-- Linha de ajuda, não placeholder: placeholder some
-                                                 ao digitar e leva a informação junto. A6. -->
-                                            <TextBlock Text="Não necessário para Ollama."
+                                            <TextBlock Text="Personagem Ativo" Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock Text="A Inteligência escolhida na tela de seleção."
                                                        Style="{StaticResource FieldHelpText}"/>
                                         </StackPanel>
-                                        <Grid Grid.Column="1">
+                                        <ComboBox x:Name="CharacterComboBox" Grid.Column="1"
+                                                  Style="{StaticResource ControlComboBox}"
+                                                  SelectionChanged="Campo_Mudou"/>
+                                    </Grid>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- ─────────── PÁGINA 2 — Conexão LLM ─────────── -->
+                        <Grid x:Name="PaginaConexao" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Conexão LLM" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="Onde o modelo roda e com qual chave."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+
+                                    <!-- CAMPO 2 — Provedor de IA -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBox x:Name="KeyTextBox"
+                                            <TextBlock Text="Provedor de IA" Style="{StaticResource FieldLabelText}"
+                                                       VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                            <ComboBox x:Name="ProviderComboBox" Grid.Column="1"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="ProviderComboBox_SelectionChanged"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- CAMPO 3 — Base URL -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Base URL" Style="{StaticResource FieldLabelText}"
+                                                       VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                            <TextBox x:Name="UrlTextBox" Grid.Column="1"
                                                      Style="{StaticResource ControlTextBoxMono}"
-                                                     IsReadOnly="True" Margin="0,0,8,0"/>
-                                            <Button Grid.Column="1" Content="Alterar"
-                                                    Style="{StaticResource InlineButton}"
-                                                    Click="AlterarChave_Click"/>
+                                                     TextChanged="Campo_Mudou"
+                                                     LostFocus="UrlTextBox_LostFocus"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- CAMPO 4 — API Key. Somente leitura: a escrita é do fluxo
+                                         "Alterar", que não exibe a chave atual (§5 campo 4). -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="API Key" Style="{StaticResource FieldLabelText}"/>
+                                                <!-- Linha de ajuda, não placeholder: placeholder some
+                                                     ao digitar e leva a informação junto. §7 A6. -->
+                                                <TextBlock Text="Não necessário para Ollama."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <Grid Grid.Column="1">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="KeyTextBox"
+                                                         Style="{StaticResource ControlTextBoxMono}"
+                                                         IsReadOnly="True" Margin="0,0,8,0"/>
+                                                <Button Grid.Column="1" Content="Alterar"
+                                                        Style="{StaticResource InlineButton}"
+                                                        Click="AlterarChave_Click"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- CAMPO 5 — Modelo LLM (Principal). Último: sem divisória. -->
+                                    <Grid Margin="0,13">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Modelo LLM (Principal)" Style="{StaticResource FieldLabelText}"
+                                                   VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                        <Grid Grid.Column="1">
+                                            <ComboBox x:Name="ModelComboBox" IsEditable="True"
+                                                      Style="{StaticResource ControlComboBoxMono}"
+                                                      SelectionChanged="Campo_Mudou"/>
+                                            <!-- Aviso de carga da lista de modelos. Não é campo:
+                                                 mora sobre o controle e some sozinho. -->
+                                            <TextBlock x:Name="LoadingProgress" Text="carregando…"
+                                                       FontSize="{StaticResource FontSizeHelp}"
+                                                       FontFamily="{StaticResource MonoFontFamily}"
+                                                       Foreground="{StaticResource TextMutedBrush}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Margin="0,0,34,0" Visibility="Collapsed"
+                                                       IsHitTestVisible="False"/>
                                         </Grid>
                                     </Grid>
-                                </Border>
-
-                                <!-- CAMPO 5 — Modelo LLM (Principal). Último: sem divisória. -->
-                                <Grid Margin="0,13">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Modelo LLM (Principal)" Style="{StaticResource FieldLabelText}"
-                                               VerticalAlignment="Center" Margin="0,0,16,0"/>
-                                    <Grid Grid.Column="1">
-                                        <ComboBox x:Name="ModelComboBox" IsEditable="True"
-                                                  Style="{StaticResource ControlComboBoxMono}"
-                                                  SelectionChanged="Campo_Mudou"/>
-                                        <!-- Aviso de carga da lista de modelos. Não é campo:
-                                             mora sobre o controle e some sozinho. -->
-                                        <TextBlock x:Name="LoadingProgress" Text="carregando…"
-                                                   FontSize="{StaticResource FontSizeHelp}"
-                                                   FontFamily="{StaticResource MonoFontFamily}"
-                                                   Foreground="{StaticResource TextMutedBrush}"
-                                                   HorizontalAlignment="Right" VerticalAlignment="Center"
-                                                   Margin="0,0,34,0" Visibility="Collapsed"
-                                                   IsHitTestVisible="False"/>
-                                    </Grid>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-
-                        <!-- ─────────────── SEÇÃO 3 — Avançado ─────────────── -->
-                        <Grid Margin="0,18,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="AVANÇADO" Style="{StaticResource SectionHeadText}"
-                                       ui:LetterSpacing.Em="0.10"/>
-                            <Rectangle Grid.Column="1" Height="1" Margin="10,0,0,0"
-                                       Fill="{StaticResource DividerBrush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </ScrollViewer>
                         </Grid>
 
-                        <Border Background="{StaticResource SurfaceCardBrush}"
-                                BorderBrush="{StaticResource BorderCardBrush}" BorderThickness="1"
-                                CornerRadius="{StaticResource RadiusCardLarge}" Padding="16,4">
-                            <StackPanel>
+                        <!-- ─────────── PÁGINA 3 — E-mail (multi-conta) ─────────── -->
+                        <Grid x:Name="PaginaEmail" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
 
-                                <!-- CAMPO 6 — Máximo de Tokens de Contexto. SOMENTE LEITURA:
-                                     vem do nível do usuário, não é preferência. -->
-                                <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
-                                    <Grid Margin="0,13">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                            <TextBlock Text="Máximo de Tokens de Contexto" Style="{StaticResource FieldLabelText}"/>
-                                            <TextBlock Text="Definido pelo modelo carregado."
-                                                       Style="{StaticResource FieldHelpText}"/>
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="E-mail" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Style="{StaticResource PageSubtitle}"
+                                               Text="A IA lê a caixa de entrada por IMAP, resume e prioriza. Nada é enviado sem sua confirmação."/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,16,24,20">
+
+                                    <!-- §3.12 — LISTA DE CONTAS. ItemsControl, e não ListBox
+                                         nem DataGrid: não existe seleção aqui, cada linha
+                                         carrega as próprias ações. ListBox traria realce,
+                                         foco de item e navegação por setas sem significado. -->
+                                    <ItemsControl x:Name="ListaDeContas">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,0,0,6"
+                                                        Padding="12,11"
+                                                        Background="{StaticResource SurfaceCardBrush}"
+                                                        BorderBrush="{StaticResource BorderCardBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="10">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- Ponto de estado. Sem pulso: §3.12
+                                                             manda não animar. -->
+                                                        <Ellipse Grid.Column="0"
+                                                                 Width="7" Height="7"
+                                                                 Margin="0,0,10,0"
+                                                                 VerticalAlignment="Center"
+                                                                 Fill="{Binding Status, Converter={StaticResource CorDoPonto}}"
+                                                                 ToolTip="{Binding Status, Converter={StaticResource RotuloDoPonto}}"/>
+
+                                                        <StackPanel Grid.Column="1" MinWidth="0"
+                                                                    VerticalAlignment="Center">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <!-- Endereço longo CORTA, nunca
+                                                                     quebra em duas linhas. -->
+                                                                <TextBlock Text="{Binding Address}"
+                                                                           FontFamily="{StaticResource MonoFontFamily}"
+                                                                           FontSize="12"
+                                                                           Foreground="{StaticResource TextStrongBrush}"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           VerticalAlignment="Center"/>
+
+                                                                <!-- Selo "Principal": o MESMO
+                                                                     tratamento do item ativo do
+                                                                     menu. Não inventar outra cor. -->
+                                                                <Border Margin="8,0,0,0"
+                                                                        Padding="6,2"
+                                                                        CornerRadius="5"
+                                                                        Background="{StaticResource AccentFill12Brush}"
+                                                                        BorderBrush="{StaticResource AccentBorderBrush}"
+                                                                        BorderThickness="1"
+                                                                        VerticalAlignment="Center"
+                                                                        Visibility="{Binding IsPrimary, Converter={StaticResource VisibilidadeDoSelo}}">
+                                                                    <TextBlock Text="PRINCIPAL"
+                                                                               FontSize="9.5" FontWeight="SemiBold"
+                                                                               Foreground="#C79EF0"
+                                                                               ui:LetterSpacing.Em="0.08"/>
+                                                                </Border>
+                                                            </StackPanel>
+
+                                                            <!-- Uma linha só, com ellipsis. O erro
+                                                                 completo vai no ToolTip. -->
+                                                            <TextBlock Text="{Binding StatusText}"
+                                                                       ToolTip="{Binding StatusText}"
+                                                                       FontSize="10.5"
+                                                                       Margin="0,3,0,0"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Foreground="{Binding Status, Converter={StaticResource CorDoTextoDeEstado}}"/>
+                                                        </StackPanel>
+
+                                                        <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                                                    VerticalAlignment="Center">
+                                                            <!-- A estrela é COLAPSADA na conta que já
+                                                                 é principal, não desabilitada e
+                                                                 visível: a linha da principal tem 2
+                                                                 botões, as outras 3. -->
+                                                            <Button Style="{StaticResource AcctButton}"
+                                                                    Margin="0,0,4,0"
+                                                                    Click="TornarPrincipal_Click"
+                                                                    ToolTip="Tornar principal"
+                                                                    Visibility="{Binding IsPrimary, Converter={StaticResource VisibilidadeDaEstrela}}">
+                                                                <Path Style="{StaticResource AcctIcon}"
+                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                      Data="M10,3.5 L12,7.7 L16.5,8.3 L13.2,11.5 L14,16 L10,13.9 L6,16 L6.8,11.5 L3.5,8.3 L8,7.7 Z"/>
+                                                            </Button>
+
+                                                            <Button Style="{StaticResource AcctButton}"
+                                                                    Margin="0,0,4,0"
+                                                                    Click="AlterarSenhaDaConta_Click"
+                                                                    ToolTip="Alterar senha de app">
+                                                                <Path Style="{StaticResource AcctIcon}"
+                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                      Data="M6,9 L14,9 A2,2 0 0 1 16,11 L16,15 A2,2 0 0 1 14,17
+                                                                            L6,17 A2,2 0 0 1 4,15 L4,11 A2,2 0 0 1 6,9 Z
+                                                                            M7,9 L7,6.5 A3,3 0 0 1 13,6.5 L13,9"/>
+                                                            </Button>
+
+                                                            <Button x:Name="BotaoRemoverConta"
+                                                                    Style="{StaticResource AcctDangerButton}"
+                                                                    Click="RemoverConta_Click"
+                                                                    ToolTip="Remover conta">
+                                                                <Path Style="{StaticResource AcctIcon}"
+                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                      Data="M4.5,6.5 L15.5,6.5 M8,6.5 L8,5 L12,5 L12,6.5
+                                                                            M6.5,6.5 L7.1,15.5 L12.9,15.5 L13.5,6.5"/>
+                                                            </Button>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- "Adicionar conta". Vira Collapsed enquanto o formulário
+                                         está aberto: uma conta por vez (§3.12). -->
+                                    <Button x:Name="BotaoAdicionarConta"
+                                            Style="{StaticResource AddAccountButton}"
+                                            Click="AdicionarConta_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Width="14" Height="14" Stretch="None"
+                                                  StrokeThickness="1.6"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                  Data="M7,2.5 L7,11.5 M2.5,7 L11.5,7"
+                                                  VerticalAlignment="Center"/>
+                                            <TextBlock Text="Adicionar conta" FontSize="12" FontWeight="SemiBold"
+                                                       Margin="7,0,0,0" VerticalAlignment="Center"
+                                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                                         </StackPanel>
-                                        <TextBox x:Name="MaxHistoryTextBox" Grid.Column="1"
-                                                 Style="{StaticResource ControlTextBoxMono}"
-                                                 IsReadOnly="True"/>
-                                    </Grid>
-                                </Border>
+                                    </Button>
 
-                                <!-- CAMPO 7 — Keep-Alive -->
-                                <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
-                                    <Grid Margin="0,13">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Tempo de Memória da IA (Keep-Alive)"
-                                                   Style="{StaticResource FieldLabelText}"
-                                                   VerticalAlignment="Center" Margin="0,0,16,0"/>
-                                        <ComboBox x:Name="KeepAliveComboBox" Grid.Column="1"
-                                                  Style="{StaticResource ControlComboBox}"
-                                                  SelectionChanged="Campo_Mudou">
-                                            <ComboBoxItem Content="1 Minuto" Tag="1m"/>
-                                            <ComboBoxItem Content="5 Minutos (Recomendado)" Tag="5m"/>
-                                            <ComboBoxItem Content="30 Minutos" Tag="30m"/>
-                                            <ComboBoxItem Content="Sempre carregado" Tag="-1"/>
-                                        </ComboBox>
-                                    </Grid>
-                                </Border>
+                                    <!-- FORMULÁRIO DE NOVA CONTA. Aparece NO LUGAR do botão,
+                                         dentro da mesma lista, para o usuário não perder a
+                                         referência das contas já conectadas. Borda lilás =
+                                         "em edição". -->
+                                    <Border x:Name="FormularioDeConta"
+                                            Visibility="Collapsed"
+                                            CornerRadius="10"
+                                            Padding="12,4,12,12"
+                                            Background="{StaticResource SurfaceCardBrush}"
+                                            BorderBrush="{StaticResource AccentEdge28Brush}"
+                                            BorderThickness="1">
+                                        <StackPanel>
+                                            <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                                <Grid Margin="0,13">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                        <TextBlock Text="E-mail" Style="{StaticResource FieldLabelText}"/>
+                                                        <TextBlock Text="O endereço é a identidade da caixa."
+                                                                   Style="{StaticResource FieldHelpText}"/>
+                                                    </StackPanel>
+                                                    <TextBox x:Name="NovaContaEndereco" Grid.Column="1"
+                                                             Style="{StaticResource ControlTextBoxMono}"
+                                                             TextChanged="NovaConta_Mudou"
+                                                             LostFocus="NovaContaEndereco_LostFocus"/>
+                                                </Grid>
+                                            </Border>
 
-                                <!-- CAMPO 8 — Enviar System Prompt a cada requisição -->
-                                <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                            <Grid Margin="0,13">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                    <TextBlock Text="Senha de app" Style="{StaticResource FieldLabelText}"/>
+                                                    <TextBlock Text="Não use a senha da sua conta. Gere uma senha de app no seu provedor."
+                                                               Style="{StaticResource FieldHelpText}"/>
+                                                </StackPanel>
+                                                <PasswordBox x:Name="NovaContaSenha" Grid.Column="1"
+                                                             Style="{StaticResource ControlPasswordBox}"
+                                                             PasswordChanged="NovaConta_Mudou"/>
+                                            </Grid>
+
+                                            <!-- Faixa de erro do formulário. Fica ACIMA dos
+                                                 botões e só aparece quando há erro. -->
+                                            <Border x:Name="ErroDaConta"
+                                                    Visibility="Collapsed"
+                                                    Margin="0,0,0,10"
+                                                    Padding="10,7"
+                                                    CornerRadius="8"
+                                                    Background="{StaticResource DangerFill12Brush}"
+                                                    BorderBrush="{StaticResource DangerBorderBrush}"
+                                                    BorderThickness="1">
+                                                <TextBlock x:Name="ErroDaContaTexto"
+                                                           FontSize="11.5" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource DangerTextBrush}"/>
+                                            </Border>
+
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                <Button Content="Cancelar"
+                                                        Style="{StaticResource QuietButton}"
+                                                        Margin="0,0,8,0"
+                                                        Click="CancelarNovaConta_Click"/>
+                                                <Button x:Name="BotaoConectarConta"
+                                                        Content="Conectar conta"
+                                                        Style="{StaticResource SolidSmallButton}"
+                                                        IsEnabled="False"
+                                                        Click="ConectarConta_Click"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- ─────────── PÁGINA 4 — Avançado ─────────── -->
+                        <Grid x:Name="PaginaAvancado" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Avançado" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="Contexto, memória do modelo e diagnóstico."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+
+                                    <!-- CAMPO 8 — Máximo de Tokens de Contexto. SOMENTE LEITURA:
+                                         vem do nível do usuário, não é preferência. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Máximo de Tokens de Contexto" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Definido pelo modelo carregado."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MaxHistoryTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     IsReadOnly="True"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- CAMPO 9 — Keep-Alive -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Tempo de Memória da IA (Keep-Alive)"
+                                                       Style="{StaticResource FieldLabelText}"
+                                                       VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                            <ComboBox x:Name="KeepAliveComboBox" Grid.Column="1"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="Campo_Mudou">
+                                                <ComboBoxItem Content="1 Minuto" Tag="1m"/>
+                                                <ComboBoxItem Content="5 Minutos (Recomendado)" Tag="5m"/>
+                                                <ComboBoxItem Content="30 Minutos" Tag="30m"/>
+                                                <ComboBoxItem Content="Sempre carregado" Tag="-1"/>
+                                            </ComboBox>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- CAMPO 10 — Enviar System Prompt a cada requisição -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Enviar System Prompt a cada requisição"
+                                                           Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="KV Caching." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="SendSystemPromptSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- CAMPO 11 — Logs detalhados. Último: sem divisória. -->
                                     <Grid Margin="0,13">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                            <TextBlock Text="Enviar System Prompt a cada requisição"
+                                            <TextBlock Text="Logs detalhados no console"
                                                        Style="{StaticResource FieldLabelText}"/>
-                                            <TextBlock Text="KV Caching." Style="{StaticResource FieldHelpText}"/>
+                                            <TextBlock Style="{StaticResource FieldHelpText}">
+                                                <Run Text="Modo "/><Hyperlink x:Name="DebugLink"
+                                                           Foreground="{StaticResource AccentLilacBrush}"
+                                                           TextDecorations="{x:Null}"
+                                                           Click="DebugLink_Click"><Run Text="debug"/></Hyperlink><Run Text="."/>
+                                            </TextBlock>
                                         </StackPanel>
-                                        <ToggleButton x:Name="SendSystemPromptSwitch" Grid.Column="1"
+                                        <ToggleButton x:Name="VerboseLoggingSwitch" Grid.Column="1"
                                                       Style="{StaticResource Switch}"
                                                       Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
                                     </Grid>
-                                </Border>
-
-                                <!-- CAMPO 9 — Logs detalhados. Último: sem divisória. -->
-                                <Grid Margin="0,13">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                        <TextBlock Text="Logs detalhados no console"
-                                                   Style="{StaticResource FieldLabelText}"/>
-                                        <TextBlock Style="{StaticResource FieldHelpText}">
-                                            <Run Text="Modo "/><Hyperlink x:Name="DebugLink"
-                                                       Foreground="{StaticResource AccentLilacBrush}"
-                                                       TextDecorations="{x:Null}"
-                                                       Click="DebugLink_Click"><Run Text="debug"/></Hyperlink><Run Text="."/>
-                                        </TextBlock>
-                                    </StackPanel>
-                                    <ToggleButton x:Name="VerboseLoggingSwitch" Grid.Column="1"
-                                                  Style="{StaticResource Switch}"
-                                                  Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Grid>
+                </Grid>
 
                 <!-- ══════════════════════════════════════════════════════════
                      §3.9  RODAPÉ
@@ -353,7 +925,7 @@
                                 Click="Cancel_Click" Margin="0,0,10,0"/>
 
                         <!-- Nasce desabilitado. Sem isso o usuário não sabe se mexeu
-                             em algo. O7 / A8. -->
+                             em algo. §7 A8. -->
                         <Button x:Name="SaveButton" Grid.Column="3" Content="Salvar"
                                 Style="{StaticResource PrimaryButton}"
                                 Click="Save_Click" IsEnabled="False"/>

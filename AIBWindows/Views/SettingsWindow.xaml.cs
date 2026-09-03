@@ -5,15 +5,30 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using AIB.Services;
+using AIB.Services.Mail;
 
 namespace AIB.Views;
 
+/// <summary>Qual página abrir — §3.10, "rota direta".</summary>
+public enum PaginaDeConfiguracoes
+{
+    Identidade,
+    Conexao,
+    Email,
+    Avancado
+}
+
 /// <summary>
-/// Tela de Configurações — implementação de refactor-interface/tela-configuracoes.html.
+/// Tela de Configurações — implementação de refactor-interface/tela-configuracoes (3).html.
 /// <para>
 /// A lista de campos é normativa (§5, contrato O1): nada é acrescentado, removido, renomeado
 /// ou reordenado, e os rótulos são copiados verbatim. O que muda de tela para tela é só o
 /// visual; o caminho de persistência continua sendo o <see cref="SettingsService"/>.
+/// </para>
+/// <para>
+/// A revisão com menu lateral trocou a página rolável única por quatro páginas. O ViewModel
+/// continua sendo UM (§7 A11): trocar de página só troca Visibility, e o estado sujo é global —
+/// mexer em "E-mail", voltar em "Avançado" e salvar grava as duas coisas.
 /// </para>
 /// </summary>
 public partial class SettingsWindow : Window
@@ -38,6 +53,21 @@ public partial class SettingsWindow : Window
     private UserAppSettings _currentSettings;
 
     /// <summary>
+    /// As caixas de e-mail, com as invariantes de §7 A15/A16 aplicadas na própria coleção.
+    /// </summary>
+    private readonly MailAccountList _contas = new();
+
+    private readonly MailVault _cofre;
+    private readonly IMailService _servicoDeEmail;
+
+    /// <summary>
+    /// Conta cuja senha está sendo trocada. <c>null</c> = o formulário está criando uma conta
+    /// nova. O formulário é o MESMO nos dois casos: são os mesmos dois campos, e uma segunda
+    /// tela para trocar senha teria de repetir a validação e o fluxo de conexão inteiros.
+    /// </summary>
+    private MailAccount? _contaEmTrocaDeSenha;
+
+    /// <summary>
     /// Enquanto os valores estão sendo carregados nos controles, os eventos de mudança
     /// disparam sozinhos. Sem esta trava, "Salvar" nasceria habilitado — que é justamente o
     /// que A8 proíbe.
@@ -46,13 +76,24 @@ public partial class SettingsWindow : Window
 
     private bool _sujo;
 
-    public SettingsWindow(SettingsService settingsService)
+    public SettingsWindow(SettingsService settingsService,
+                          PaginaDeConfiguracoes pagina = PaginaDeConfiguracoes.Identidade,
+                          IMailService? servicoDeEmail = null,
+                          MailVault? cofre = null)
     {
         InitializeComponent();
         _settingsService = settingsService;
         _currentSettings = _settingsService.LoadSettings();
 
+        // Injetáveis para os ensaios. O cofre real fica em ~/.AIB/credentials/mail, e um
+        // ensaio que escrevesse lá mexeria nas senhas de verdade do usuário.
+        _servicoDeEmail = servicoDeEmail ?? new MailServiceStub();
+        _cofre = cofre ?? new MailVault();
+
+        ListaDeContas.ItemsSource = _contas.Contas;
+
         LoadUiValues();
+        IrPara(pagina);
 
         // Não bloqueia o UI Thread.
         Dispatcher.BeginInvoke(new Action(async () => await RefreshModelsAsync()));
@@ -81,6 +122,7 @@ public partial class SettingsWindow : Window
 
             SelecionarKeepAlive(_currentSettings.KeepAlive);
             RefreshKeyTextBoxLabel();
+            CarregarContas();
         }
         finally
         {
@@ -173,6 +215,333 @@ public partial class SettingsWindow : Window
     // Estado sujo — §4 "GATILHOS DE IsDirty"
     // ─────────────────────────────────────────────────────────────────────
 
+    // ─────────────────────────────────────────────────────────────────────
+    // §3.10  Menu lateral
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>Abre uma página específica — §3.10, "rota direta".</summary>
+    public void IrPara(PaginaDeConfiguracoes pagina)
+    {
+        var botao = pagina switch
+        {
+            PaginaDeConfiguracoes.Conexao => NavConexao,
+            PaginaDeConfiguracoes.Email => NavEmail,
+            PaginaDeConfiguracoes.Avancado => NavAvancado,
+            _ => NavIdentidade
+        };
+
+        botao.IsChecked = true;
+    }
+
+    /// <summary>Página visível agora. Diagnóstico e ensaio.</summary>
+    public PaginaDeConfiguracoes PaginaAtiva =>
+        NavConexao.IsChecked == true ? PaginaDeConfiguracoes.Conexao :
+        NavEmail.IsChecked == true ? PaginaDeConfiguracoes.Email :
+        NavAvancado.IsChecked == true ? PaginaDeConfiguracoes.Avancado :
+        PaginaDeConfiguracoes.Identidade;
+
+    /// <summary>
+    /// Troca de página. Só mexe em Visibility — §7 A11: não instanciar um ViewModel por
+    /// página e não resetar campo nenhum ao navegar. Trocar de página NÃO suja e NÃO descarta.
+    /// </summary>
+    private void Nav_Checked(object sender, RoutedEventArgs e)
+    {
+        // Durante o InitializeComponent o IsChecked="True" do primeiro item dispara antes de
+        // as páginas existirem.
+        if (PaginaIdentidade == null) return;
+
+        PaginaIdentidade.Visibility = Visibilidade(NavIdentidade);
+        PaginaConexao.Visibility = Visibilidade(NavConexao);
+        PaginaEmail.Visibility = Visibilidade(NavEmail);
+        PaginaAvancado.Visibility = Visibilidade(NavAvancado);
+    }
+
+    private static Visibility Visibilidade(System.Windows.Controls.Primitives.ToggleButton botao) =>
+        botao.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // §3.12  Lista de contas de e-mail
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>As contas na tela. Diagnóstico e ensaio.</summary>
+    public MailAccountList Contas => _contas;
+
+    private void CarregarContas()
+    {
+        var vindas = new List<MailAccount>();
+
+        foreach (var gravada in _currentSettings.MailAccounts ?? new List<MailAccountSettings>())
+        {
+            var conta = new MailAccount
+            {
+                Address = gravada.Address,
+                ImapHost = gravada.ImapHost,
+                ImapPort = gravada.ImapPort,
+                UseSsl = gravada.UseSsl,
+                IsPrimary = gravada.IsPrimary,
+                HasPassword = _cofre.Existe(gravada.Address)
+            };
+
+            // Status NÃO é gravado (§9 passo 2): dizer "Conectada" na abertura seria afirmar
+            // algo que ninguém verificou desde a sessão passada.
+            conta.Status = MailAccountStatus.Checking;
+            conta.StatusText = conta.HasPassword
+                ? $"{gravada.ImapHost}:{gravada.ImapPort} · ainda não lida nesta sessão"
+                : "senha de app ausente — use “alterar senha de app”";
+
+            vindas.Add(conta);
+        }
+
+        _contas.Repovoar(vindas);
+    }
+
+    /// <summary>
+    /// Grava a lista de contas AGORA — §7 A15: adicionar, remover e promover não esperam o
+    /// "Salvar" do rodapé.
+    /// <para>
+    /// Grava a partir do que está EM DISCO, e não do objeto em edição. Se usasse o objeto em
+    /// edição, acrescentar uma conta persistiria de carona qualquer alteração pendente nas
+    /// outras páginas — exatamente o que o "Salvar" desabilitado promete que não aconteceu.
+    /// </para>
+    /// </summary>
+    private void PersistirContas()
+    {
+        var doDisco = _settingsService.LoadSettings();
+        doDisco.MailAccounts = _contas.Contas.Select(ParaGravacao).ToList();
+        _settingsService.SaveSettings(doDisco);
+
+        // O objeto em edição acompanha, senão um "Salvar" posterior gravaria a lista antiga.
+        _currentSettings.MailAccounts = doDisco.MailAccounts.Select(c => c.Clone()).ToList();
+    }
+
+    private static MailAccountSettings ParaGravacao(MailAccount conta) => new()
+    {
+        Address = conta.Address,
+        ImapHost = conta.ImapHost,
+        ImapPort = conta.ImapPort,
+        UseSsl = conta.UseSsl,
+        IsPrimary = conta.IsPrimary
+    };
+
+    private void AdicionarConta_Click(object sender, RoutedEventArgs e)
+    {
+        _contaEmTrocaDeSenha = null;
+        AbrirFormularioDeConta(enderecoFixo: null);
+    }
+
+    private void AlterarSenhaDaConta_Click(object sender, RoutedEventArgs e)
+    {
+        if (ContaDoBotao(sender) is not MailAccount conta) return;
+
+        _contaEmTrocaDeSenha = conta;
+        AbrirFormularioDeConta(enderecoFixo: conta.Address);
+    }
+
+    private void AbrirFormularioDeConta(string? enderecoFixo)
+    {
+        NovaContaEndereco.Text = enderecoFixo ?? "";
+
+        // Trocando a senha, o endereço é a CHAVE da conta: editável, ele viraria "renomear a
+        // conta", que é outra operação e deixaria o blob antigo órfão no cofre.
+        NovaContaEndereco.IsReadOnly = enderecoFixo != null;
+
+        NovaContaSenha.Clear();
+        EsconderErroDaConta();
+
+        BotaoAdicionarConta.Visibility = Visibility.Collapsed;
+        FormularioDeConta.Visibility = Visibility.Visible;
+
+        AtualizarBotaoConectar();
+        (enderecoFixo == null ? (System.Windows.Controls.Control)NovaContaEndereco : NovaContaSenha).Focus();
+    }
+
+    private void CancelarNovaConta_Click(object sender, RoutedEventArgs e) => FecharFormularioDeConta();
+
+    private void FecharFormularioDeConta()
+    {
+        NovaContaEndereco.Clear();
+        NovaContaEndereco.IsReadOnly = false;
+        NovaContaSenha.Clear();
+        EsconderErroDaConta();
+
+        _contaEmTrocaDeSenha = null;
+        FormularioDeConta.Visibility = Visibility.Collapsed;
+        BotaoAdicionarConta.Visibility = Visibility.Visible;
+    }
+
+    private void NovaConta_Mudou(object sender, RoutedEventArgs e) => AtualizarBotaoConectar();
+
+    /// <summary>
+    /// §3.12 campo 1: a validação de formato é em LostFocus, não a cada tecla — acusar
+    /// "inválido" no terceiro caractere de um endereço que ainda está sendo digitado é ruído.
+    /// </summary>
+    private void NovaContaEndereco_LostFocus(object sender, RoutedEventArgs e)
+    {
+        string endereco = NovaContaEndereco.Text.Trim();
+        if (endereco.Length == 0) { EsconderErroDaConta(); return; }
+
+        if (!ImapHostGuesser.EnderecoParecevalido(endereco))
+            MostrarErroDaConta("endereço de e-mail inválido");
+        else if (_contaEmTrocaDeSenha == null && _contas.Contem(endereco))
+            MostrarErroDaConta("esta conta já está na lista");
+        else
+            EsconderErroDaConta();
+    }
+
+    private void AtualizarBotaoConectar()
+    {
+        if (BotaoConectarConta == null) return;
+
+        BotaoConectarConta.IsEnabled =
+            NovaContaEndereco.Text.Trim().Length > 0 &&
+            NovaContaSenha.Password.Length > 0;
+    }
+
+    private async void ConectarConta_Click(object sender, RoutedEventArgs e)
+    {
+        string endereco = NovaContaEndereco.Text.Trim();
+        string senha = NovaContaSenha.Password;
+
+        if (endereco.Length == 0 || senha.Length == 0) return;
+
+        if (!ImapHostGuesser.EnderecoParecevalido(endereco))
+        {
+            MostrarErroDaConta("endereço de e-mail inválido");
+            return;
+        }
+
+        if (_contaEmTrocaDeSenha == null && _contas.Contem(endereco))
+        {
+            MostrarErroDaConta("esta conta já está na lista");
+            return;
+        }
+
+        EsconderErroDaConta();
+        BotaoConectarConta.IsEnabled = false;
+        BotaoConectarConta.Content = "Conectando…";
+
+        MailLoginResult resultado;
+        try
+        {
+            resultado = await _servicoDeEmail.TestLoginAsync(
+                endereco, senha, System.Threading.CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            // Exceção do cliente NÃO vai para a tela (§3.12): o usuário lê o que pode fazer,
+            // não o stack. O detalhe fica no console.
+            Console.WriteLine($"[EMAIL] Falha ao testar login: {ex.Message}");
+            resultado = new MailLoginResult(
+                false, default, "não foi possível entrar. Verifique o e-mail e a senha de app.", false);
+        }
+
+        BotaoConectarConta.Content = "Conectar conta";
+        AtualizarBotaoConectar();
+
+        if (!resultado.Ok)
+        {
+            // O formulário FICA aberto e a senha continua no campo — §9 passo 6. Nada é
+            // gravado: nem conta, nem senha.
+            MostrarErroDaConta(resultado.Erro.Length > 0
+                ? resultado.Erro
+                : "não foi possível entrar. Verifique o e-mail e a senha de app.");
+            return;
+        }
+
+        _cofre.Guardar(endereco, senha);
+
+        var alvo = _contaEmTrocaDeSenha;
+        if (alvo == null)
+        {
+            alvo = new MailAccount { Address = endereco };
+            var entrada = _contas.Adicionar(alvo);
+            if (!entrada.Ok)
+            {
+                MostrarErroDaConta(entrada.Erro);
+                return;
+            }
+        }
+
+        alvo.ImapHost = resultado.Endpoint.Host;
+        alvo.ImapPort = resultado.Endpoint.Port;
+        alvo.UseSsl = resultado.Endpoint.UseSsl;
+        alvo.HasPassword = true;
+
+        // Verificado = false é o caminho do esqueleto: a conta entra, mas a linha nasce âmbar
+        // com "verificação pendente" — nunca verde. §7 A15 pede que só entre conta cujo login
+        // passou; enquanto não há IMAP, o desvio fica VISÍVEL na tela em vez de escondido.
+        alvo.Status = resultado.Verificado ? MailAccountStatus.Ok : MailAccountStatus.Checking;
+        alvo.StatusText = resultado.Verificado
+            ? $"{alvo.ImapHost}:{alvo.ImapPort} · conectada agora"
+            : $"{alvo.ImapHost}:{alvo.ImapPort} · {MailServiceStub.TextoPendente}";
+
+        PersistirContas();
+        FecharFormularioDeConta();
+    }
+
+    private void TornarPrincipal_Click(object sender, RoutedEventArgs e)
+    {
+        if (ContaDoBotao(sender) is not MailAccount conta) return;
+
+        _contas.TornarPrincipal(conta);
+        PersistirContas();
+    }
+
+    private void RemoverConta_Click(object sender, RoutedEventArgs e)
+    {
+        if (ContaDoBotao(sender) is not MailAccount conta) return;
+
+        if (!_contas.PodeRemover(conta))
+        {
+            System.Windows.MessageBox.Show(
+                "Promova outra conta a principal antes de remover esta.",
+                "Conta principal",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        // Apaga uma credencial do disco: confirmação ANTES de executar.
+        bool permitido = ConfirmDialog.Perguntar(
+            this,
+            "Remover esta conta de e-mail?",
+            $"A caixa {conta.Address} sai da lista e a senha de app dela é apagada do cofre. "
+                + "A conta de e-mail em si não é afetada.",
+            dica: "apaga a senha guardada");
+
+        if (!permitido) return;
+
+        var saida = _contas.Remover(conta);
+        if (!saida.Ok) return;
+
+        // A senha sai no MESMO comando: conta removida com senha para trás seria credencial
+        // órfã em disco, sem nada na interface que a mencionasse.
+        _cofre.Remover(conta.Address);
+        PersistirContas();
+
+        if (ReferenceEquals(_contaEmTrocaDeSenha, conta)) FecharFormularioDeConta();
+    }
+
+    /// <summary>A conta da linha em que o botão clicado vive.</summary>
+    private static MailAccount? ContaDoBotao(object sender) =>
+        (sender as FrameworkElement)?.DataContext as MailAccount;
+
+    private void MostrarErroDaConta(string mensagem)
+    {
+        ErroDaContaTexto.Text = mensagem;
+        ErroDaConta.Visibility = Visibility.Visible;
+    }
+
+    private void EsconderErroDaConta()
+    {
+        ErroDaContaTexto.Text = "";
+        ErroDaConta.Visibility = Visibility.Collapsed;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Estado sujo — §4 "GATILHOS DE IsDirty"
+    // ─────────────────────────────────────────────────────────────────────
+
     /// <summary>
     /// Mudança de seleção, de texto ou de switch sujam. Foco, hover e rolagem não.
     /// </summary>
@@ -203,6 +572,26 @@ public partial class SettingsWindow : Window
 
     protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e)
     {
+        // §3.12 — Esc DENTRO do formulário de conta cancela o formulário, e não a janela;
+        // Enter conecta, quando o botão está habilitado. Sem isto, quem desiste de acrescentar
+        // uma conta fecha a tela de configurações inteira por engano.
+        if (FormularioDeConta.Visibility == Visibility.Visible)
+        {
+            if (e.Key == Key.Escape)
+            {
+                FecharFormularioDeConta();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Enter && BotaoConectarConta.IsEnabled)
+            {
+                ConectarConta_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            }
+        }
+
         // §4 TECLADO: Esc cancela; Enter salva, se houver alteração.
         if (e.Key == Key.Escape)
         {

@@ -1,0 +1,3543 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Tela de Chat + Painel Lateral — Especificação de Implementação (C# / WPF)</title>
+<style>
+  /*
+    ============================================================================
+     TELA DE CHAT / INTERAÇÃO — ESPECIFICAÇÃO DE IMPLEMENTAÇÃO (C# / WPF)
+    ============================================================================
+     ARQUIVO: tela-chat-v3.html
+     PAPEL:   Especificação executável da janela de conversa do AIB + do
+              painel lateral (4 abas).
+     DESTINO: Reimplementação 1:1 em C# / WPF (.NET, XAML + MVVM).
+
+     SUPERSEDE: tela-chat.html (v1) e tela-chat-v2.html. Esses dois arquivos
+     ficaram no repositório apenas como histórico — NÃO implementar a partir
+     deles. Este é o único válido para a tela de chat.
+
+     COMO LER ESTE ARQUIVO
+     ---------------------------------------------------------------------------
+     Este arquivo é a FONTE DE VERDADE do visual. Ele é ao mesmo tempo:
+       (a) um protótipo que renderiza no navegador,
+       (b) uma especificação anotada, e
+       (c) um mapa de conversão para XAML.
+
+     Ordem recomendada de leitura:
+       1. §0  CONTRATO DE IMPLEMENTAÇÃO   — obrigatório vs. livre.
+       2. §1  DESIGN TOKENS               — cole em App.xaml antes de tudo.
+       3. §2  ÁRVORE VISUAL               — hierarquia de containers.
+       4. §3  ESPECIFICAÇÃO POR COMPONENTE — medidas exatas, por elemento.
+       5. §4  CADEIA DE AÇÕES (tool calls) — o componente mais complexo.
+       6. §5  ESTADOS DA CONVERSA         — os 7 cenários do seletor.
+       7. §6  PAINEL LATERAL (4 abas) — §6.5 modal de e-mail, §6.6 plano de
+              implementação das adições de e-mail.
+       8. §7  MODELO DE DADOS (ViewModels).
+       9. §8  MAPA HTML -> XAML, ARMADILHAS e CHECKLIST DE ACEITE.
+      10. O markup, onde cada elemento tem `data-spec` e comentários `IMPL:`.
+
+     No fim do <body> há um <script type="application/json" id="design-spec">
+     com todos os tokens e medidas em JSON — use-o quando precisar dos valores
+     de forma programática, em vez de reler os comentários.
+
+     O SELETOR DE CENÁRIOS abaixo da janela (.scenarios) NÃO faz parte do
+     produto: é um atalho deste mock para percorrer os estados. Ignore-o.
+
+    ============================================================================
+     §0  CONTRATO DE IMPLEMENTAÇÃO
+    ============================================================================
+     OBRIGATÓRIO (decisões já validadas com o usuário; não desviar):
+       O1. NADA de Blur nativo (Gaussian/Acrylic/DWM). O "vidro fumê" é uma
+           cor sólida quase preta a 90%. Ver §1 `glass` e §8 A1.
+       O2. A borda neon de 4 paradas é a ÚNICA cor saturada da moldura.
+           Ordem e offsets exatos em §1 `neon`.
+       O3. DropShadowEffect na moldura externa é obrigatório — sem ela a
+           janela não lê como flutuante sobre o desktop.
+       O4. Bolhas com raio 18px UNIFORME. Não voltar ao canto "rabinho" de
+           balão; a geometria é de card, herdada da tela de seleção.
+       O5. A bolha do usuário NÃO tem sombra nem glow. Só o degradê.
+       O6. Ações concluídas COLAPSAM em ícones dentro de um único chip; no
+           máximo 5 visíveis por vez, com rolagem horizontal. §4.
+       O7. Ações destrutivas exigem card de confirmação ANTES de executar,
+           e a fila fica bloqueada enquanto ele está visível. §5.3.
+       O8. O tooltip das ações NUNCA é filho de área rolável — ver §8 A6.
+       O9. Chip concluído e chip em execução compartilham a MESMA altura.
+      O10. Botão primário do input = ENVIAR (aviãozinho). O microfone é um
+           botão separado. Ver §8 A7.
+
+     LIVRE (escolha da implementação):
+       L1. Organização dos ResourceDictionaries.
+       L2. Framework MVVM (CommunityToolkit.Mvvm, Prism, manual).
+       L3. Nomes de classes C#; os de §7 são sugestão.
+       L4. Persistência do histórico (JSON, SQLite, etc.).
+       L5. Curvas de animação (durações sugeridas, não obrigatórias).
+
+    ============================================================================
+     §1  DESIGN TOKENS  (App.xaml — compartilhados com TODAS as telas)
+    ============================================================================
+     Se estes tokens já existirem no projeto (vindos da tela de seleção ou de
+     configurações), NÃO duplicar.
+
+     --- SUPERFÍCIES -----------------------------------------------------------
+     id                | CSS                        | WPF
+     ------------------|----------------------------|----------------------------
+     glass             | rgba(18,18,22,0.90)        | Color.FromArgb(230,18,18,22)
+     surfaceCard       | rgba(255,255,255,0.035)    | Color.FromArgb(9,255,255,255)
+     surfaceCode       | rgba(0,0,0,0.30)           | Color.FromArgb(77,0,0,0)
+     surfaceCodeBlock  | rgba(0,0,0,0.34)           | Color.FromArgb(87,0,0,0)
+     surfaceHoverSoft  | rgba(255,255,255,0.07)     | Color.FromArgb(18,255,255,255)
+     surfaceInputBar   | #16151C                    | (sólido)
+     surfaceTooltip    | #1D1C24                    | (sólido)
+
+     --- BORDAS ----------------------------------------------------------------
+     borderCard        | rgba(255,255,255,0.08)
+     borderCardHover   | rgba(255,255,255,0.16)
+     divider           | rgba(255,255,255,0.06)
+     dividerTooltip    | rgba(255,255,255,0.10)
+     accentBorder      | rgba(155,81,224,0.30)   (ação em curso, pill, tooltip)
+     accentBorderStrong| rgba(155,81,224,0.40)   (hover de item clicável)
+     dangerBorder      | rgba(229,72,77,0.35)
+     warnBorder        | rgba(226,135,67,0.32)
+     magentaBorder     | rgba(213,63,140,0.34)
+
+     --- TEXTO -----------------------------------------------------------------
+     textStrong        | #F5F4F7   nome da IA, títulos, nome de ferramenta
+     textNormal        | #E8E6EC   texto digitado no input
+     textBody          | #CBC8D1   corpo das bolhas da IA
+     textSecondary     | #8B8794   rótulos, caminhos, ícones inativos
+     textMuted         | #6F6A7A   placeholder, hora, argumentos
+     accentLilac       | #C79EF0   glyph ✦, pill de nível, spinner, code inline
+     accentLilacHover  | #D9BCFF
+     success           | #4ADE80   check de conclusão, contador saudável
+     danger            | #E5484D   erro, gravando, fechar
+     dangerText        | #FF8A8D   texto de botão destrutivo
+     warn              | #E28743   aviso de contexto, contador em alerta
+     magenta           | #D53F8C   reconexão, contador crítico
+
+     --- GRADIENTES ------------------------------------------------------------
+     neon (moldura da janela e do painel) — StartPoint="0,0" EndPoint="1,1"
+       #9B51E0 @ 0.00 (roxo) / #3182CE @ 0.35 (azul) /
+       #D53F8C @ 0.65 (magenta) / #E28743 @ 1.00 (laranja)
+
+     primary (bolha do usuário, botão enviar) — StartPoint="0,0" EndPoint="1,1"
+       #9B51E0 @ 0.00 / #3182CE @ 1.00
+
+     inputFrame (moldura da barra de input) — StartPoint="0,0" EndPoint="1,1"
+       #9B51E0 @ 0.00 / #3182CE @ 0.55 / #D53F8C @ 1.00
+
+     --- SOMBRAS ---------------------------------------------------------------
+     windowShadow  | 0 25px 60px rgba(0,0,0,0.55)
+                   | <DropShadowEffect BlurRadius="60" ShadowDepth="15"
+                   |                   Direction="270" Opacity="0.55" Color="Black"/>
+     cardShadow    | 0 2px 8px rgba(0,0,0,0.20)   (bolha da IA, chips, itens)
+     tooltipShadow | 0 6px 18px rgba(0,0,0,0.45)
+     ATENÇÃO: a bolha do USUÁRIO não tem sombra (§0 O5).
+
+     --- RAIOS -----------------------------------------------------------------
+     radiusWindowOuter 20    | radiusWindowInner 18.5
+     radiusBubble      18    | radiusChip        18
+     radiusInputFrame  18    | radiusInputInner  16.5
+     radiusCard        12..16| radiusTooltip      8
+     radiusCodeBlock   12    | radiusCodeInline   5
+     radiusIconBtn      8    | radiusPill        20
+
+     --- TIPOGRAFIA ------------------------------------------------------------
+     Família UI:   Segoe UI (default do WPF; não declarar fonte custom)
+     Família mono: Cascadia Code -> Consolas
+
+     uso                      | size   | weight | color         | extra
+     -------------------------|--------|--------|---------------|--------------
+     header.name              | 16px   | 600    | textStrong    |
+     header.pill (nível)      | 11px   | 600    | accentLilac   | pill lilás
+     bubble.text              | 14px   | 400    | ver §3.5      | lh 1.5
+     tool.name                | 12px   | 600    | accentLilac   | mono
+     tool.label               | 12px   | 400    | textSecondary |
+     tool.arg                 | 11px   | 400    | textMuted     | mono, ellipsis
+     input.field              | 14px   | 400    | textNormal    |
+     footer.chatTitle         | 12px   | 400    | textSecondary | ellipsis
+     footer.tokenCounter      | 12px   | 400    | ver §3.8      | mono
+     stamp (hora)             | 10.5px | 400    | textMuted     | só no hover
+     panel.tabTitle           | 12px   | 600    | textSecondary | UPPER, 0.08em
+     panel.itemTitle          | 12.5px | 600    | textStrong    |
+     panel.itemMeta           | 10.5px | 400    | textMuted     | mono
+     log.tool                 | 12px   | 600    | textStrong    | mono
+     code.inline              | 12.5px | 400    | accentLilac   | mono
+     code.block               | 12.5px | 400    | textBody      | mono, pre
+
+     --- GEOMETRIA -------------------------------------------------------------
+     window            770 x 520 px   (largura FIXA; ver §8 A2)
+     panel             300 x 520 px   (mesma altura da janela)
+     header.height     52px
+     messages.padding  24px 26px, gap 14px
+     bubble.maxWidth   74% da lista
+     chip.minHeight    41px           (compartilhado — §0 O9)
+     iconTrack.maxW    142px          (= 5 × 22 + 4 × 8)
+     actionIcon        22 x 22px
+     input.height      49px + moldura 1.5px
+     input.padding     0 20px 10px
+     footer.height     ~26px, padding 0 26px 14px
+     recordBtn         38px circular
+     iconBtn           34 x 34px (ícone 18–19px)
+     scrollbar         6px vertical / 4px na trilha de ícones
+     tooltip.width     340px na variante em bloco; auto na simples
+
+    ============================================================================
+     §2  ÁRVORE VISUAL
+    ============================================================================
+     Stage (só do mock: janela + painel lado a lado, align=flex-end)
+     │
+     ├── Window de CHAT (770x520)
+     │   └── Border .window-border   neon + padding 1.5 + shadow + r20
+     │       └── Border .window      glass + r18.5 + ClipToBounds
+     │           ├── Grid .header            Row 0 = Auto (52px), arrastável
+     │           ├── ScrollViewer .messages  Row 1 = "*"  <- ÚNICA elástica
+     │           ├── Grid .input-wrap        Row 2 = Auto
+     │           └── Grid .chat-footer       Row 3 = Auto
+     │
+     └── Window do PAINEL LATERAL (300x520)
+         └── Border .panel-border    neon + padding 1.5 + shadow + r20
+             └── Border .panel       glass + r18.5
+                 ├── Grid .panel-head   título + botão fechar
+                 ├── .panel-tabs        4 botões de aba
+                 └── ContentControl     aba ativa (uma de 4 .tab-pane)
+
+     Grid da janela de chat: RowDefinitions="Auto,*,Auto,Auto".
+     min-height:0 (CSS) equivale a deixar a Row 1 como "*": sem isso a lista
+     cresce com o conteúdo e empurra o input fora do frame. §8 A3.
+
+    ============================================================================
+     §3  ESPECIFICAÇÃO POR COMPONENTE
+    ============================================================================
+
+     §3.1  JANELA  (data-spec="window")
+     ---------------------------------------------------------------------------
+     WindowStyle=None, AllowsTransparency=True, Background=Transparent,
+     ShowInTaskbar conforme o app, Width=770, Height=520.
+     A moldura externa recebe o DropShadowEffect (§1 windowShadow) e precisa de
+     área livre para desenhá-la — não recortar.
+     Largura FIXA: quando o painel lateral abre, a janela de chat NÃO encolhe;
+     o painel aparece ao lado. §8 A2.
+
+     §3.2  BORDA NEON  (data-spec="window.border")
+     ---------------------------------------------------------------------------
+     Border externo com Background = LinearGradientBrush `neon`,
+     CornerRadius=20, Padding=1.5; Border interno com Background = `glass`,
+     CornerRadius=18.5. O gradiente só aparece como contorno.
+     NÃO usar BorderBrush em degradê com CornerRadius: cantos sujos. §8 A4.
+
+     §3.3  HEADER  (data-spec="header")
+     ---------------------------------------------------------------------------
+     Altura fixa 52px, padding 0 12px 0 20px, gap 10px, divisória inferior 1px
+     `divider`. Toda a faixa arrasta a janela (DragMove()); os botões consomem
+     o clique.
+     Conteúdo, esquerda -> direita:
+       (a) glyph "✦" 13px accentLilac, line-height 1 (para centralizar).
+       (b) nome da Inteligência — "KAI", 16px/600, textStrong, line-height 1.
+           Mesma tipografia do nome no card da tela de seleção.
+       (c) PILL de nível — "Nível 2", 11px/600, accentLilac, fundo
+           rgba(155,81,224,0.14), borda accentBorder, r20, padding 3px 10px.
+           É EXATAMENTE a pill de personalidade da tela de seleção.
+       (d) espaçador "*".
+       (e) 4 botões de ícone 34x34, r8, transparentes, Foreground
+           textSecondary, hover surfaceHoverSoft + textBody, align-self center:
+             1. PAINEL LATERAL — abre/fecha a segunda janela (§6).
+             2. ENGRENAGEM     — abre a tela de Configurações
+                                 (handoff/tela-configuracoes.html).
+             3. LIMPAR CONVERSA.
+             4. FECHAR (X)     — hover rgba(229,72,77,0.16) + danger.
+     O contador de tokens NÃO fica aqui: foi movido para o rodapé (§3.8).
+
+     §3.4  LISTA DE MENSAGENS  (data-spec="messages")
+     ---------------------------------------------------------------------------
+     ScrollViewer + ItemsControl, Row 1 = "*", padding 24px 26px, gap 14px,
+     overflow-x hidden, scrollbar 6px thumb rgba(255,255,255,0.15) r3.
+     Rola para o fim ao inserir mensagem (ScrollToEnd()).
+     Cada item é uma LINHA (.row) que define o alinhamento pelo autor:
+       .row.user   -> HorizontalAlignment=Right
+       .row.ai     -> HorizontalAlignment=Left
+       .row.system -> Center (avisos de sistema, §5.4 e §5.7)
+     align-items: flex-end — a hora alinha com a base da bolha.
+
+     §3.5  BOLHAS  (data-spec="bubble")
+     ---------------------------------------------------------------------------
+     Comuns: padding 13px 17px, 14px, line-height 1.5, r18 UNIFORME (§0 O4),
+     MaxWidth 74% da lista, Width=Auto (encolhe ao conteúdo).
+
+     (A) USUÁRIO — Background = gradiente `primary`, Foreground #FFFFFF.
+         SEM sombra, SEM glow (§0 O5).
+     (B) IA      — Background surfaceCard, borda 1px borderCard,
+                   cardShadow, Foreground textBody.
+                   É a casca do card NÃO selecionado da tela de seleção.
+
+     §3.6  INDICADOR "DIGITANDO"  (data-spec="typing")
+     ---------------------------------------------------------------------------
+     Mesma casca da bolha da IA (surfaceCard + borderCard + cardShadow + r18),
+     padding 15px 18px, com 3 pontos de 6px em accentLilac.
+     Animação: opacity 0.25 -> 1 e translateY 0 -> -2px, 1.2s, loop infinito,
+     delays 0 / 160 / 320ms.
+     WPF: Storyboard com RepeatBehavior="Forever" e BeginTime escalonado;
+     Visibility bound a IsThinking.
+
+     §3.7  BARRA DE INPUT  (data-spec="input")
+     ---------------------------------------------------------------------------
+     Moldura própria em degradê `inputFrame`, 1.5px, r18 (geometria de card,
+     NÃO pílula). Interior: #16151C, r16.5, altura 49px, padding 0 6px 0 16px,
+     gap 8px. Wrapper com padding 0 20px 10px (o input subiu 10px para abrir
+     espaço ao rodapé de contexto).
+     Conteúdo, esquerda -> direita:
+       (a) glyph "✦" 13px accentLilac.
+       (b) TextBox transparente, sem borda, 14px, Foreground textNormal,
+           placeholder "Fale com a KAI..." em textMuted.
+           Enter envia; Shift+Enter quebra linha.
+           WPF: PreviewKeyDown checando Keyboard.Modifiers.
+       (c) botão CÂMERA (captura de imagem) — icon-btn 34x34.
+       (d) botão MICROFONE (ditado) — icon-btn 34x34.
+       (e) BOTÃO PRIMÁRIO circular 38px, Background = gradiente `primary`,
+           glow 0 4px 16px rgba(155,81,224,0.35). DOIS estados:
+             idle     -> ícone de ENVIAR (aviãozinho). §0 O10.
+             gravando -> quadrado vermelho 13px, r3, danger (stop).
+           WPF: bool IsRecording no ViewModel trocando o conteúdo do botão.
+
+     §3.8  RODAPÉ DE CONTEXTO  (data-spec="chat-footer")
+     ---------------------------------------------------------------------------
+     Linha de ~26px, padding 0 26px 14px, sem divisória (a moldura do input já
+     separa). Grid de 3 colunas (Auto | * | Auto):
+       ESQUERDA: título do chat atual, 12px textSecondary, ellipsis. É o mesmo
+                 título exibido na lista do painel lateral (§6.1).
+       DIREITA:  contador de tokens, mono 12px, formato "909/8704 tokens (-91%)".
+                 O valor entre parênteses é a ECONOMIA de contexto obtida pelo
+                 cache (negativo = economia).
+                 COR POR ESTADO (fazer no converter do binding):
+                   economia >= 50%  -> success  #4ADE80
+                   economia 20-49%  -> warn     #E28743
+                   economia < 20%   -> magenta  #D53F8C
+                 O total (8704) é o mesmo campo "Máximo de Tokens de Contexto"
+                 da tela de Configurações — somente leitura, vem do modelo.
+
+     §3.9  HORA DA MENSAGEM  (data-spec="stamp")
+     ---------------------------------------------------------------------------
+     TextBlock 10.5px textMuted ao lado da bolha, FORA dela, com padding
+     0 4px 3px. Opacity 0 -> 1 apenas no hover da linha.
+     POSIÇÃO: nas linhas do USUÁRIO vai à ESQUERDA da bolha (order:-1); nas da
+     IA, à direita. Sempre do lado de fora, para a bolha continuar encostada na
+     sua borda — ver §8 A5.
+     WPF: TextBlock na coluna oposta ao alinhamento, dentro da mesma Grid da
+     bolha, Opacity ligada a IsMouseOver do container da linha.
+
+    ============================================================================
+     §4  CADEIA DE AÇÕES (tool calls) — o componente mais complexo
+    ============================================================================
+     Quando o modelo executa ferramentas, elas aparecem na coluna da IA, ACIMA
+     do indicador "digitando", TODAS na MESMA linha (.tool-chain: flex,
+     align-items center, gap 8px, MaxWidth 90%).
+
+     §4.1  CASCA COMUM DO CHIP  (data-spec="tool-call")
+     ---------------------------------------------------------------------------
+     display flex, align center, gap 8px, padding 7px 14px, r18,
+     Background surfaceCard, cardShadow, MaxWidth 74%.
+     min-height 41px COMPARTILHADO pelas duas variantes (§0 O9): a trilha de
+     ícones (22px + 4px de barra) é a caixa mais alta, então as duas usam a
+     mesma medida para não desalinhar na mesma linha.
+
+     §4.2  CHIP EM EXECUÇÃO  (data-spec="tool-call.running")
+     ---------------------------------------------------------------------------
+     Borda accentBorder (lilás = ação em curso). Conteúdo:
+       (a) SPINNER 12px — anel r50%, borda 1.6px rgba(155,81,224,0.25) com
+           border-top-color accentLilac, girando 360° em 0.9s linear infinito.
+           WPF: RotateTransform + DoubleAnimation RepeatBehavior=Forever.
+       (b) rótulo de estado, 12px textSecondary: "Executando" ou "Aguardando"
+           (este último quando está esperando confirmação do usuário, §5.3).
+       (c) nome da ferramenta, mono 12px/600 accentLilac.
+       (d) argumento resumido, mono 11px textMuted, com ellipsis.
+
+     §4.3  CHIP CONCLUÍDO  (data-spec="tool-call.done")
+     ---------------------------------------------------------------------------
+     COLAPSA (§0 O6): borda volta a borderCard e o conteúdo passa a ser apenas
+       (a) CHECK verde 12px (success), e
+       (b) a TRILHA de ícones das ações já executadas.
+     width: fit-content e flex: 0 0 auto — cresce a cada ação concluída e nunca
+     é comprimido dentro da .tool-chain. max-width: none (o cap de 74% é da
+     cadeia, não do chip).
+
+     §4.4  TRILHA DE ÍCONES  (data-spec="icon-track")
+     ---------------------------------------------------------------------------
+     No máximo 5 ícones visíveis por vez:
+       MaxWidth = 142px = 5 × 22px (ícone) + 4 × 8px (gap)
+     overflow-x auto / overflow-y hidden, barra horizontal de 4px, thumb
+     rgba(255,255,255,0.18) r2. A própria barra sinaliza que há mais ações fora
+     de vista (não há contador "+N" — foi removido deliberadamente).
+     A roda vertical do mouse sobre a trilha ROLA NA HORIZONTAL.
+     WPF: ScrollViewer HorizontalScrollBarVisibility=Auto,
+     VerticalScrollBarVisibility=Disabled, MaxWidth=142, dentro do mesmo Border
+     do chip; PreviewMouseWheel somando delta ao HorizontalOffset.
+
+     §4.5  ÍCONE DE AÇÃO CONCLUÍDA  (data-spec="tool-action-icon")
+     ---------------------------------------------------------------------------
+     22x22, Foreground textSecondary, hover textBody, cursor default,
+     flex 0 0 22px, scroll-snap-align start.
+     Aqui o ícone reflete a OPERAÇÃO (write_file, copy_file, move_file,
+     create_dir, rename_file, list_dir, delete_file...) — ao contrário da aba
+     de arquivos do painel, onde reflete o TIPO de arquivo (§6.3).
+     Em falha: variante .failed, Foreground danger, hover #FF7A7E.
+
+     §4.6  TOOLTIP DAS AÇÕES  (data-spec="action-tooltip")
+     ---------------------------------------------------------------------------
+     REGRA CRÍTICA (§0 O8, §8 A6): é UM ÚNICO elemento em position:fixed, fora
+     de qualquer container de rolagem, posicionado por JS no hover. Não pode ser
+     ::after nem filho da trilha — a trilha recorta nos dois eixos e o tooltip
+     nunca escaparia.
+     Casca: Background surfaceTooltip (#1D1C24), borda 1px accentBorder, r8,
+     tooltipShadow, mono 11px textBody, z-index acima de tudo.
+     Reposicionamento: abre 10px ACIMA do alvo; se não couber, abre 10px abaixo;
+     sempre preso dentro da viewport (mínimo 8px de margem).
+     DUAS VARIANTES:
+       (i)  SIMPLES — uma linha: "write_file • C:\caminho\arquivo.txt".
+            Usada nos ícones colapsados do chat.
+       (ii) EM BLOCO — largura FIXA 340px, seções empilhadas separadas por
+            divisórias 1px dividerTooltip. Usada no painel de histórico de
+            ações (§6.4). Cada seção tem um rótulo 9px/600 UPPER textMuted
+            (tracking 0.10em) e o conteúdo abaixo:
+              • "CAMINHO COMPLETO" -> o caminho inteiro, sem abreviação,
+                mono 11px textBody, word-break break-all.
+              • "COMANDO"          -> a linha de comando completa, mono 11px
+                textBody, white-space pre-wrap.
+              • "RESULTADO"        -> resumo estruturado, mono 11px accentLilac
+                ("12 arquivos • 38 KB"). Seção OMITIDA se não houver resumo.
+              • "SAÍDA BRUTA"      -> o texto do console como saiu, em caixa
+                própria surfaceCode + borda borderCard-ish + r7, mono 10.5px
+                textSecondary, white-space pre, MaxHeight 118px com rolagem.
+     WPF: ToolTip nativo (já abre em popup fora do ScrollViewer) com
+     StackPanel de seções + Separator; PlacementMode Top com fallback Bottom.
+
+     §4.7  CHIP COM ERRO  (data-spec="tool-call.failed")
+     ---------------------------------------------------------------------------
+     Borda dangerBorder, ícone de alerta 13px danger no lugar do spinner,
+     rótulo "Falhou", nome da ferramenta em danger e o argumento trazendo a
+     mensagem do erro. WPF: Status=Failed no DataTemplateSelector.
+
+    ============================================================================
+     §5  ESTADOS DA CONVERSA  (os 7 cenários do seletor do mock)
+    ============================================================================
+     §5.1  EXECUTANDO AÇÕES — cadeia com concluídas colapsadas + uma em curso
+           + indicador "digitando". É o estado normal de trabalho.
+     §5.2  ERRO NA EXECUÇÃO — §4.7, seguido de uma bolha da IA explicando a
+           falha e propondo o próximo passo.
+     §5.3  CONFIRMAR AÇÃO DESTRUTIVA  (data-spec="confirm-card")
+           Card na coluna da IA com a MESMA casca das bolhas da IA (borda
+           NEUTRA borderCard) — o alerta vem do conteúdo, não da borda.
+           MaxWidth 78%, padding 16px 18px, r18, gap 12px. De cima para baixo:
+             (a) PILL "Ação destrutiva" — geometria idêntica à pill de nível,
+                 em vermelho: texto dangerText, fundo rgba(229,72,77,0.14),
+                 borda rgba(229,72,77,0.32), + ícone de triângulo 11px.
+             (b) TÍTULO 14px/600 textStrong, em forma de PERGUNTA
+                 ("Excluir o arquivo original?").
+             (c) SUBTÍTULO 12.5px textSecondary com a consequência real
+                 ("Não é possível desfazer...").
+             (d) CAIXA DO ALVO — surfaceCode, r12, padding 10px 12px, gap 10px:
+                 ícone da ação 15px textSecondary + nome da ferramenta mono
+                 12px/600 danger + caminho mono 12px textBody com ellipsis.
+             (e) RODAPÉ separado por divisória 1px `divider`:
+                 "Permitir" (cheio danger, hover #F05257, sem glow) +
+                 "Recusar" (outline neutro, igual ao "Voltar" da seleção) +
+                 hint 11px textMuted alinhado à direita ("execução pausada").
+           Enquanto visível, a fila de execução fica BLOQUEADA (§0 O7) e o chip
+           correspondente mostra o rótulo "Aguardando".
+           WPF: UserControl com ApproveCommand / DenyCommand.
+     §5.4  CONTEXTO CHEIO  (data-spec="system-notice")
+           Faixa CENTRALIZADA (.row.system) — nem usuário nem IA. Fundo
+           rgba(226,135,67,0.10), borda warnBorder, r14, padding 9px 14px,
+           gap 10px: ícone de alerta 14px warn + texto 12px textBody + botão
+           "Compactar" outline (borda rgba(226,135,67,0.45), texto warn).
+           Dispara pelo mesmo gatilho que pinta o contador de âmbar/magenta.
+     §5.5  RESPOSTA COM CÓDIGO  (data-spec="code")
+           INLINE: <code> mono 12.5px accentLilac sobre surfaceCode, borda
+           1px rgba(255,255,255,0.06), r5, padding 1px 5px.
+           BLOCO: cabeçalho (surfaceCodeBlock, r10 no topo, mono 11px textMuted)
+           com a linguagem à esquerda e botão "Copiar" à direita; corpo
+           surfaceCodeBlock, r12 embaixo, mono 12.5px textBody, line-height 1.55,
+           white-space pre, rolagem horizontal própria (scrollbar 6px).
+           WPF: FlowDocument ou RichTextBox somente-leitura com Runs estilizados.
+     §5.6  CONVERSA VAZIA  (data-spec="empty-state")
+           Ocupa a lista inteira, centralizado: glifo ✦ 18px accentLilac em
+           círculo de 46px (fundo rgba(155,81,224,0.12), borda
+           rgba(155,81,224,0.28)), título 17px/600 textStrong e subtítulo 13px
+           textSecondary com MaxWidth ~300px. Sem botões — o convite é o input.
+     §5.7  RECONECTANDO  (data-spec="system-notice.reconnect")
+           Mesma faixa de sistema, em magenta: fundo rgba(213,63,140,0.10),
+           borda magentaBorder, spinner 12px magenta e botão "Tentar agora"
+           (outline magenta). Enquanto ativa, o input deve ficar DESABILITADO.
+
+    ============================================================================
+     §6  PAINEL LATERAL  (segunda janela flutuante, 300 x 520)
+    ============================================================================
+     Abre/fecha pelo 1º botão do header. Mesma moldura neon, mesmo vidro, mesma
+     sombra da janela de chat, alinhado pela BASE (align-items: flex-end).
+     A janela de chat NÃO encolhe quando ele abre (§8 A2).
+     Estrutura: cabeçalho (título + fechar) | barra de 4 abas | pane ativa.
+     BARRA DE ABAS: botões de ícone; a ativa recebe Foreground accentLilac e
+     fundo rgba(155,81,224,0.12); as inativas textSecondary.
+     Toda pane usa a MESMA linha de título (.panel-title-row, min-height 27px)
+     para o título não pular de altura ao trocar de aba — §8 A8.
+     A lista de cada pane é flex:1 + min-height:0 + overflow-y auto, ocupando a
+     altura restante (o rodapé da pane fica fixo embaixo).
+
+     §6.1  ABA 1 — HISTÓRICO DE CHATS  (data-spec="pane.history")
+     ---------------------------------------------------------------------------
+     Lista de conversas salvas, mais recente no topo. Item (casca de card, r12):
+       título 12.5px/600 textStrong | data relativa 10.5px textMuted à direita |
+       trecho da última mensagem 11.5px textSecondary, uma linha com ellipsis.
+     CLICAR RESTAURA A CONVERSA na janela principal. Em ordem:
+       1. Se a conversa atual tiver mensagens não salvas, PERSISTIR antes de
+          trocar (o histórico não pode perder nada).
+       2. Carregar a conversa do disco e repovoar a coleção de mensagens, na
+          ordem original, com autor, timestamp e as cadeias de tool call.
+       3. Restaurar o estado DERIVADO daquela conversa:
+            - título do chat no rodapé (§3.8);
+            - contador de tokens, com a cor recalculada pela regra de estado;
+            - a aba "Arquivos no Contexto" (§6.3) — os arquivos DAQUELA
+              conversa, não os da anterior;
+            - a aba "Histórico de Ações" (§6.4) — idem.
+       4. Rolar a lista de mensagens para o fim.
+       5. Marcar o item clicado como ativo (borda lilás persistente).
+     O painel permanece ABERTO após a troca.
+     WPF: SelectedItem -> LoadConversation(id); SUBSTITUIR a
+     ObservableCollection<Message> inteira em vez de mesclar, para não misturar
+     turnos de conversas diferentes.
+     ESTADO VAZIO: "Nenhum chat salvo."
+
+     RODAPÉ (.panel-foot): "N chats • N MB em disco", uma linha, mesma altura
+     das outras abas. O PESO é a soma, por chat salvo, do arquivo do CHAT mais
+     os arquivos de CAPÍTULOS e de ATOS gerados pela compressão de contexto
+     (chat + capítulos + atos) — não apenas o arquivo de mensagens. Desaparece
+     junto com a lista quando não há chat salvo.
+
+     §6.2  ABA 2 — E-MAILS  (data-spec="pane.mail")
+     ---------------------------------------------------------------------------
+     Caixa de entrada já triada e resumida pela IA. Mesma casca das outras panes
+     (.panel-title-row com o título "E-mails" + .panel-list rolável); o que muda
+     é só o ITEM, que é o MESMO da lista de e-mails do Shadow Assistant —
+     shadow-assistant.html §4.8. Reaproveite aquele UserControl; a única
+     diferença é o raio (14px aqui, para casar com os outros itens do painel) e
+     o hover, que segue o lilás do painel.
+     ITEM (.mail-item) — Grid de 3 colunas: [3px barra] [conteúdo *] [selo Auto]
+       • BARRA de urgência 3px, altura total do item, r2, cor do nível.
+       • NOME 12.5px/600 textStrong, UMA linha, TextTrimming CharacterEllipsis.
+         É o assunto ou o remetente, como vier — não montar prefixo.
+       • RESUMO 11.5px textSecondary, lh 1.45, MÁXIMO 2 LINHAS.
+         Gerado pela IA a partir do corpo do e-mail, de tamanho livre: quem
+         corta é a View, com
+           TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis".
+         NO MOCK os textos já vêm curtos (o CSS não desenha as reticências de
+         forma confiável) e o primeiro item traz um "…" literal só para
+         ilustrar o corte. Não portar os textos abreviados: no C# entra o
+         resumo inteiro e o TextTrimming faz o resto.
+       • SELO (.mail-urg): pílula r999, 10px/600, ponto de 5px + rótulo.
+         Máxima #E5484D | Média #E8A33D | Baixa #8B8794; fundo = a mesma cor a
+         13% (Baixa usa branco a 5%). O rótulo textual NÃO sai: é o reforço
+         para daltonismo e captura em tons de cinza.
+     Ordenação: urgência decrescente e, dentro do mesmo nível, mais recente no
+     topo. Aqui a lista ROLA (ao contrário do balão do orbe, que corta em 3).
+     CLIQUE no item: abre o e-mail no cliente padrão.
+     RODAPÉ (.panel-foot, o mesmo das abas 3 e 4): três medidas separadas por
+     "•" — "N e-mails" (total na lista), "N urgentes" (urgência Máxima +
+     Média, em #E8A33D; cai para textMuted quando é zero) e "N tokens" (peso
+     dos resumos no prompt atual, mesma fonte do contador do rodapé do chat,
+     §3.2). Some junto com a lista no estado §6.2.1.
+     OS RÓTULOS SÃO CURTOS DE PROPÓSITO: o painel dá 269px úteis e três
+     métricas escritas por extenso não cabem em uma linha. NoWrap nos três e
+     MinHeight 25 no rodapé; não reescrever para "importantes" nem para
+     "tokens em contexto" — ver §8 A16.
+
+     §6.2.1  SEM CONTA CONFIGURADA  (data-spec="pane.mail.empty")
+     ---------------------------------------------------------------------------
+     Primeiro uso da aba: não existe conta de e-mail conectada. Não é lista
+     vazia — é um convite à configuração, e por isso reusa a composição da
+     CONVERSA VAZIA (§5.6) em escala de painel, no lugar da .panel-list:
+       • CÍRCULO 42px, fundo rgba(155,81,224,0.12), borda accentBorder, com o
+         ícone de envelope 19px accentLilac (o mesmo da aba).
+       • TÍTULO 13.5px/600 textStrong: "Nenhum e-mail conectado".
+       • SUBTÍTULO 11.5px textSecondary, lh 1.5, máx 232px: "Conecte uma conta
+         para a KAI ler, resumir e priorizar sua caixa de entrada."
+       • BOTÃO outline (.btn-empty-action) 12px/600 accentLilac, borda
+         rgba(155,81,224,0.40), r9, padding 7/13, ícone de engrenagem 13px:
+         "Configurar e-mail". Hover = fundo rgba(155,81,224,0.12).
+     Tudo centralizado nos dois eixos, gap 4 e 10px acima do botão. A linha de
+     título ("E-mails") CONTINUA visível — §8 A8 vale aqui também.
+     O RODAPÉ DE CONTAGENS (.panel-foot de §6.2) FICA Collapsed neste estado,
+     junto com a lista: sem conta conectada não há e-mails para contar nem
+     tokens em contexto. Um único DataTrigger em MailAccountConfigured deve
+     controlar os três (lista, rodapé e convite) — ver §8 A17.
+     AÇÃO DO BOTÃO: abre o MODAL de §6.5 sobre a janela de chat. Não abre a
+     tela de configurações inteira: aqui só faltam a conta e a senha de app.
+     DISTINGUIR DOS DOIS CASOS VAZIOS:
+       (a) sem conta conectada        -> este estado, com botão;
+       (b) conta conectada, 0 e-mails -> .panel-empty "Nenhum e-mail novo."
+     Binding sugerido: MailAccountConfigured (bool) escolhe entre (a) e a
+     lista/(b); ver §7.
+     NO MOCK: a troca entre os dois está no último botão do rodapé de cenários
+     ("e-mails: sem conta configurada"), tracejado. É chave de protótipo.
+     PROVISÓRIO: este layout de item vai ser revisto. Deixe-o em um UserControl
+     próprio (MailListItem) e não espalhe os estilos pelas panes.
+
+     §6.3  ABA 3 — ARQUIVOS NO CONTEXTO  (data-spec="pane.files")
+     ---------------------------------------------------------------------------
+     Todos os arquivos encostados de alguma forma pela IA nesta sessão (lidos,
+     criados, copiados, movidos) mais os que o usuário anexou manualmente.
+     CABEÇALHO: título à esquerda + botão "+ Adicionar" à direita (outline
+     lilás 11.5px/600, borda accentBorderStrong, hover fundo
+     rgba(155,81,224,0.12)). O botão abre OpenFileDialog com multiselect.
+     ITEM (casca de card r12, hover borda accentBorderStrong + fundo
+     rgba(155,81,224,0.08)):
+       (a) ÍCONE DO TIPO DE ARQUIVO em caixa 26x26 r8 lilás (fundo
+           rgba(155,81,224,0.12), borda rgba(155,81,224,0.24)). O glifo reflete
+           a EXTENSÃO, NUNCA a operação:
+             .txt / .log      -> folha com linhas de texto
+             .md              -> folha com o "M↓" do Markdown
+             .png/.jpg/.webp  -> moldura de imagem com montanha
+             .pdf/.docx/.xlsx -> folha com a sigla do formato
+             sem extensão     -> folha lisa
+           WPF: converter Extensão -> Geometry.
+       (b) NOME do arquivo, 12.5px/600 textStrong, ellipsis.
+       (c) PASTA, mono 10.5px textMuted. Usa direction:rtl para cortar o INÍCIO
+           do caminho e preservar a parte final, que é a informativa.
+           WPF: TextTrimming CharacterEllipsis com o caminho já encurtado no VM.
+       (d) PILL de ORIGEM: "criado" / "copiado" / "lido" em lilás quando a ação
+           foi da IA (.by-ai); "anexado" em cinza quando foi o usuário. É AQUI
+           que a operação aparece — não no ícone.
+       (e) BOTÃO X de remover, 22x22, opacity 0 -> 1 só no hover do ITEM, hover
+           em danger. Remove do CONTEXTO — NUNCA apaga o arquivo do disco.
+     CLICAR NO ITEM abre o Explorer na pasta do arquivo com ele selecionado:
+       Process.Start("explorer.exe", "/select,\"" + fullPath + "\"");
+     O clique no X precisa de e.Handled = true, senão abre o Explorer junto.
+     RODAPÉ: divisória 1px `divider` + linha 11px textMuted com a contagem de
+     arquivos e o peso somado no contexto.
+     RODAPÉ (.panel-foot): "N arquivos • N KB • N tokens", uma linha, mesma
+     altura das outras abas. O KB é o tamanho somado em disco; os tokens são o
+     custo real no prompt — uma medida não deriva da outra e as duas ficam.
+     Rótulos curtos e NoWrap, como em §6.2 (§8 A16).
+     ESTADO VAZIO: "Nenhum arquivo no contexto."
+
+     §6.4  ABA 4 — HISTÓRICO DE AÇÕES  (data-spec="pane.log")
+     ---------------------------------------------------------------------------
+     Registro cronológico de TUDO que a IA fez na conversa inteira: criar,
+     editar e excluir arquivos e pastas, listar diretórios e executar comandos.
+     Mais recente no TOPO.
+     SEPARADOR DE DIA: rótulo 10px UPPER textMuted (tracking 0.08em) seguido de
+     uma régua 1px `divider` que ocupa o resto da linha ("HOJE", "ONTEM",
+     "21/08"). WPF: Grid { TextBlock | Rectangle Height=1 Width=* }.
+     ENTRADA — linha com TRILHA VERTICAL:
+       • MARCADOR redondo 25px; a linha da trilha (1px borderCard) desce de
+         top:26px até o fim do item, ligando ao próximo. O ÚLTIMO item não tem.
+       • Aqui o ícone reflete a OPERAÇÃO. Três variantes de cor:
+           escrita          -> lilás    (fundo rgba(155,81,224,0.12))
+           destrutiva/falha -> vermelho (fundo rgba(229,72,77,0.12))
+           somente leitura  -> cinza    (fundo rgba(255,255,255,0.05))
+         Leitura (read_file, list_dir) NÃO deve competir visualmente com
+         escrita — daí o cinza.
+       • CORPO:
+           (a) nome da ferramenta, mono 12px/600 textStrong;
+           (b) hora 10.5px textMuted alinhada à direita;
+           (c) ALVO: caminho, diretório ou origem → destino, mono 10.5px
+               textSecondary com ellipsis;
+           (d) COMANDO (run_command): caixa própria surfaceCode, r7,
+               padding 5px 8px, mono 10.5px textBody, ellipsis;
+           (e) RESULTADO resumido 10.5px textMuted — "12 arquivos, 2 pastas",
+               "+8 linhas, −2 linhas", "saída: 12 itens". Em FALHA o mesmo
+               campo vira danger com a mensagem do erro.
+     HOVER no ALVO ou no COMANDO abre o tooltip EM BLOCO de §4.6 (ii).
+     Clicar numa entrada que tenha caminho abre o Explorer nele, igual à §6.3.
+     RODAPÉ: total de ações e quantas falharam.
+     ESTADO VAZIO: "Nenhuma ação registrada."
+     WPF: ItemsControl bound a ObservableCollection<ActionLogEntry>, um
+     DataTemplate único e converters Kind->Geometry e Status->Brush; a trilha é
+     uma Border de 1px na coluna do marcador, colapsada no último item.
+
+     §6.5  MODAL "CONFIGURAR E-MAIL"  (data-spec="modal.mail")
+     ---------------------------------------------------------------------------
+     Aberto pelo botão de §6.2.1. Pede DUAS coisas e nada mais: o endereço de
+     e-mail e a SENHA DE APP. Servidor, porta e SSL são deduzidos do domínio;
+     só se a dedução falhar é que a tela de configurações completa entra em
+     cena (fora do escopo deste arquivo).
+     ONDE VIVE: overlay DENTRO da janela de chat (último filho do Grid raiz,
+     ZIndex alto). NÃO abrir uma Window nova — §8 A14.
+     VÉU (.modal-veil): rgba(8,6,12,0.62), r18.5 para acompanhar o vidro da
+     janela, cobre só a janela de chat. Clique no véu = Cancelar.
+     CARTÃO (.modal-card): 384px de largura, fundo SÓLIDO #17141C (não vidro:
+     ele flutua sobre texto), borda rgba(255,255,255,0.10), r16, padding 20,
+     sombra 0 18 48 rgba(0,0,0,0.55), gap 14 entre blocos.
+     CABEÇALHO: círculo 34px com o envelope 17px accentLilac (o mesmo ícone da
+     aba e do estado vazio) + título 15px/600 "Conectar e-mail" + subtítulo
+     11.5px textSecondary "A KAI usa IMAP para ler sua caixa de entrada. Nada
+     é enviado sem sua confirmação."
+     CAMPOS: rótulo ACIMA do controle (11.5px/600 #CBC8D1, gap 6), gap 12
+     entre campos. O modal é estreito; a coluna fixa de 210px da tela de
+     configurações NÃO se aplica aqui. Os controles reusam o Style .control
+     daquela tela (h36, r10, fundo rgba(0,0,0,0.28)), variante .mono com
+     letter-spacing 0.06em.
+       1) E-MAIL — TextBox, placeholder "voce@exemplo.com". Validação de
+          formato em LostFocus, não a cada tecla.
+       2) SENHA DE APP — PasswordBox + botão de olho 36x36 ao lado (alterna
+          para TextBox espelhado). Abaixo, ajuda 10.5px textMuted: "Não use a
+          senha da sua conta. Gere uma senha de app no seu provedor — como
+          gerar." — "como gerar" é link accentLilac e abre a documentação do
+          provedor no navegador.
+          SEGURANÇA: gravar com DPAPI/ProtectedData. Nunca em texto puro, nem
+          em log, nem no arquivo de configurações. Nunca exibir depois de
+          salva (o campo volta vazio com placeholder "senha salva").
+     RODAPÉ: Cancelar (outline) + Conectar (degradê primário), alinhados à
+     direita, gap 8. "Conectar" tem IsEnabled = os dois campos preenchidos.
+     FLUXO DO "CONECTAR": rótulo vira "Conectando…" com spinner e o botão fica
+     desabilitado enquanto o IMAP é testado. Sucesso -> fecha o modal, a aba
+     passa a mostrar a lista (§6.2) e a primeira varredura começa. Falha ->
+     o modal PERMANECE aberto e a faixa .m-error aparece acima do rodapé
+     (fundo rgba(229,72,77,0.10), borda rgba(229,72,77,0.30), texto #F2A0A2):
+     "Não foi possível entrar. Verifique o e-mail e a senha de app."
+     FECHAR: Cancelar, Esc ou clique no véu — os três descartam sem salvar.
+     Sem "X" no canto: o cartão é pequeno e já tem Cancelar.
+
+    ============================================================================
+     §7  MODELO DE DADOS (ViewModels)
+    ============================================================================
+     ChatViewModel
+       AgentName          : string            "KAI" (vem da tela de seleção)
+       AgentLevel         : int               exibido na pill "Nível 2"
+       ChatTitle          : string            rodapé, §3.8
+       UsedTokens         : int
+       MaxContextTokens   : int  { get; }     = campo homônimo de Configurações
+       ContextSavingPct   : double            negativo = economia
+       Messages           : ObservableCollection<Message>
+       IsThinking         : bool              mostra o §3.6
+       IsRecording        : bool              estado do botão primário
+       ConnectionState    : enum { Online, Reconnecting, Offline }
+       PendingConfirmation: ConfirmationRequest?   não-nulo bloqueia a fila
+       IsPanelOpen        : bool
+
+     Message
+       Author    : enum { User, Ai, System }
+       Text      : string
+       Timestamp : DateTime
+       ToolChain : ObservableCollection<ToolCall>?
+       CodeBlocks: IList<CodeBlock>?
+
+     ToolCall
+       Tool      : string        "write_file", "copy_file", "delete_file"...
+       Argument  : string        resumo exibido no chip em execução
+       FullTarget: string        caminho completo (tooltip)
+       Kind      : enum { Write, Copy, Move, CreateDir, Rename, Read, List,
+                          Delete, Command }
+       Status    : enum { Running, Waiting, Done, Failed }
+       Error     : string?
+
+     ConfirmationRequest   (§5.3)
+       Tool, FullTarget, Consequence : string
+       ApproveCommand, DenyCommand   : ICommand
+
+     ConversationSummary   (§6.1)
+       Id, Title, LastSnippet : string
+       Date : DateTime
+       IsActive : bool
+
+     ContextFile           (§6.3)
+       Name, Folder, FullPath : string
+       Extension : string          -> ícone (converter)
+       Origin : enum { CreatedByAi, CopiedByAi, ReadByAi, AttachedByUser }
+       SizeBytes : long
+       RemoveCommand, RevealInExplorerCommand : ICommand
+
+     ActionLogEntry        (§6.4)
+       Tool, Target, FullTarget, Command, RawOutput, Result : string
+       Kind : enum (mesmo de ToolCall.Kind)
+       Status : enum { Done, Failed }
+       Timestamp : DateTime
+
+     MailSummary           (§6.2)  — MESMA classe do Shadow Assistant (§4.8 lá).
+       Id            : string      identificador na caixa (UID IMAP)
+       Name          : string      assunto OU remetente, como vier do servidor
+       Description   : string      resumo gerado pela IA a partir do corpo
+       Urgency       : enum { Maxima, Media, Baixa }   -> cor e rótulo
+       ReceivedAt    : DateTime
+       ContextTokens : int         peso do resumo no prompt atual
+       OpenCommand   : ICommand    abre no cliente de e-mail padrão
+
+     MailAccountViewModel  (§6.2.1 / §6.5)
+       IsConfigured   : bool       false -> §6.2.1; true -> lista (§6.2)
+       Address        : string     campo 1 do modal
+       AppPassword    : SecureString   campo 2; DPAPI ao persistir
+       IsPasswordVisible : bool    olho do modal
+       IsConnecting   : bool       "Conectando…" + botão desabilitado
+       ErrorMessage   : string     null -> faixa .m-error Collapsed
+       CanConnect     : bool  => Address e AppPassword preenchidos
+                                  e !IsConnecting
+       Mails          : ObservableCollection<MailSummary>
+       TotalCount     : int  => Mails.Count
+       UrgentCount    : int  => Maxima + Media   (rodapé, §6.2)
+       ContextTokens  : int  => soma de MailSummary.ContextTokens
+
+     HistoryFooterViewModel (§6.1)
+       ChatCount    : int
+       DiskBytes    : long   => por chat: arquivo do CHAT
+                                        + arquivos de CAPÍTULOS
+                                        + arquivos de ATOS
+                                (a compressão de contexto grava os três)
+
+     COMANDOS
+       SendMessageCommand      Enter (sem Shift) ou botão primário
+       ToggleRecordingCommand  botão primário em modo gravação
+       OpenSettingsCommand     engrenagem do header
+       TogglePanelCommand      1º botão do header
+       ClearConversationCommand
+       LoadConversationCommand(id)     §6.1
+       AddContextFilesCommand          §6.3 "+ Adicionar"
+       CompactContextCommand           §5.4 "Compactar"
+       RetryConnectionCommand          §5.7 "Tentar agora"
+       OpenMailSetupCommand            §6.2.1 "Configurar e-mail" -> abre §6.5
+       ConnectMailCommand              §6.5 "Conectar" (CanExecute = CanConnect)
+       CancelMailSetupCommand          §6.5 Cancelar / Esc / clique no véu
+       ToggleMailPasswordCommand       §6.5 olho de revelar
+       OpenMailCommand(id)             §6.2 clique no item
+       RefreshMailCommand              varredura manual (sem UI própria ainda)
+
+    ============================================================================
+     §6.6  PLANO DE IMPLEMENTAÇÃO DAS ADIÇÕES DE E-MAIL
+    ============================================================================
+     Estas partes são novas em relação ao restante do arquivo. Ordem sugerida,
+     cada passo verificável isolado:
+
+     E1. MODELO. MailSummary + MailAccountViewModel (§7). O serviço de IMAP
+         pode ser um stub que devolve 4 itens fixos — os iguais ao markup —
+         para destravar a UI.
+     E2. UrgencyToBrush / UrgencyToLabel converters. Três níveis, cores em §2:
+         Maxima #E5484D, Media #E8A33D, Baixa #8B8794. O fundo do selo é a
+         MESMA cor a 13% (Baixa: branco a 5%). Não criar um quarto nível.
+     E3. MailListItem.xaml — UserControl do item (§6.2). É o MESMO controle do
+         Shadow Assistant (shadow-assistant.html §4.8); se aquele já existe,
+         reusar e só sobrescrever CornerRadius (14 aqui, 12 lá) e o hover
+         (lilás do painel). Marcar como PROVISÓRIO no topo do arquivo: este
+         layout vai mudar.
+     E4. Quarta aba no painel: o botão (ícone de envelope 18px) entra em
+         SEGUNDO lugar, entre Histórico de Chats e Arquivos no Contexto. A
+         ordem é: Histórico | E-mails | Arquivos | Ações.
+     E5. Pane de e-mails: .panel-title-row ("E-mails", canto direito vazio e
+         reservado) + ItemsControl rolável + .panel-foot. Ordenação: urgência
+         decrescente, e dentro do nível o mais recente no topo.
+     E6. Rodapés de contagem (.panel-foot) nas QUATRO abas. Uma linha só,
+         MinHeight 25, NoWrap nos filhos, rótulos curtos. Confira a base dos
+         quatro rodapés na mesma altura ao alternar de aba (§8 A8, A16).
+     E7. Estado §6.2.1 (sem conta). UM DataTrigger em IsConfigured controla
+         três elementos: lista Collapsed, rodapé Collapsed, convite Visible
+         (§8 A17). A linha de título permanece.
+     E8. Modal §6.5 como overlay dentro da janela de chat (§8 A14). Campos,
+         olho, validação e CanConnect. Persistir a senha com
+         ProtectedData.Protect (DPAPI, escopo CurrentUser) — nunca em texto
+         puro, nunca em log, nunca reexibida (§8 A15).
+     E9. Fluxo de conexão: IsConnecting -> "Conectando…"; sucesso fecha o
+         modal, seta IsConfigured e dispara a primeira varredura; falha mantém
+         o modal aberto e preenche ErrorMessage.
+     E10. Rodapé do histórico (§6.1): ChatCount e DiskBytes = chat + capítulos
+         + atos. O cálculo é do serviço de persistência, não da View.
+
+    ============================================================================
+     §8  MAPA HTML -> XAML, ARMADILHAS E CHECKLIST
+    ============================================================================
+
+     §8.0  MAPA DE CONVERSÃO
+     ---------------------------------------------------------------------------
+     seletor CSS          | elemento WPF             | observação
+     ---------------------|--------------------------|-----------------------
+     body / .page / .stage| (fora do escopo)         | é o desktop; ignorar
+     .scenarios           | (NÃO IMPLEMENTAR)        | seletor do mock
+     .window-border       | Border                   | Background=neon, Pad=1.5
+     .window              | Border                   | Background=glass, r18.5
+     .header              | Grid                     | DragMove(); Row 0
+     .level-pill          | Border+TextBlock          | r20, padding 3,10
+     .icon-btn            | Button + Style            | 34x34, r8
+     .messages            | ScrollViewer>ItemsControl | Row 1 = "*"
+     .row                 | ContentPresenter          | HorizontalAlignment
+     .bubble.user         | Border                    | gradiente primary
+     .bubble.ai           | Border                    | surfaceCard + shadow
+     .typing              | Border + Storyboard       | 3 Ellipse de 6px
+     .tool-chain          | ItemsControl Horizontal   | gap 8 via Margin
+     .tool-call           | Border                    | min-height 41
+     .icon-track          | ScrollViewer Horizontal   | MaxWidth 142
+     .tool-action-icon    | Path 22x22 + ToolTip      | Kind -> Geometry
+     .action-tooltip      | ToolTip (popup)           | §4.6 — nunca filho
+     .confirm-card        | UserControl               | §5.3
+     .system-notice       | Border centralizado       | §5.4 / §5.7
+     .code-block          | RichTextBox read-only     | ou FlowDocument
+     .empty-state         | Grid centralizado         | §5.6
+     .input-border        | Border                    | gradiente inputFrame
+     .input-bar           | Grid                      | #16151C, r16.5
+     .record-btn          | Button circular 38        | 2 estados
+     .chat-footer         | Grid (Auto,*,Auto)        | Row 3
+     .stamp               | TextBlock                 | Opacity=IsMouseOver
+     .panel-border        | Border (2ª Window)        | 300x520
+     .panel-tab           | RadioButton estilizado    | ativa = lilás
+     .tab-pane            | ContentControl            | 1 de 4
+     .mail-item           | Border + Grid 3 colunas   | §6.2 (= shadow §4.8)
+     .panel-empty-state   | Grid centralizado         | §6.2.1, no lugar da lista
+     .btn-empty-action    | Button outline            | abre o modal de §6.5
+     .modal-veil          | Grid overlay + ZIndex     | §6.5 — NÃO uma Window
+     .modal-card          | Border sólido r16         | §6.5
+     .control             | TextBox / PasswordBox     | Style de configurações
+     .btn-reveal          | ToggleButton              | password <-> texto
+     .panel-foot          | StackPanel Horizontal     | NoWrap, MinHeight 25
+     .pf-important        | TextBlock                 | #E8A33D quando > 0
+     .file-item           | Border + Style            | §6.3
+     .log-item            | Grid + Border(trilha)     | §6.4
+
+     Equivalências que costumam confundir:
+       gap: Npx           -> Margin nos filhos (WPF não tem gap)
+       letter-spacing     -> TextBlock.CharacterSpacing (1/1000 em)
+       text-transform     -> escrever o texto já em maiúsculas
+       ::after régua      -> Rectangle Height=1 numa coluna "*"
+       flex: 1 1 auto     -> RowDefinition/ColumnDefinition "*"
+       min-height: 0      -> deixar a Row como "*" (§8 A3)
+       overflow-y: auto   -> ScrollViewer VerticalScrollBarVisibility="Auto"
+       direction: rtl     -> encurtar o caminho no ViewModel
+
+     §8.1  ARMADILHAS  (erros reais, já pagos — não repetir)
+     ---------------------------------------------------------------------------
+     A1. BLUR NATIVO. Gaussian/Acrylic/DWM dá glitch de render no Windows e
+         custa frame. O vidro é UMA cor sólida a 90%.
+     A2. JANELA ENCOLHENDO. Se a moldura usar width:100%/MaxWidth, ela divide
+         o espaço com o painel lateral e encolhe quando ele abre. Largura FIXA
+         de 770px.
+     A3. INPUT EMPURRADO PARA FORA. Sem altura definida na janela e sem a lista
+         como "*" (min-height:0 no CSS), a lista cresce com o conteúdo e empurra
+         a barra de input e o rodapé fora do frame.
+     A4. GRADIENTE COMO BorderBrush. Com CornerRadius o WPF renderiza cantos
+         sujos. Usar o truque de dois Borders aninhados (§3.2).
+     A5. HORA DENTRO DA LINHA FLEX. Se o timestamp for filho flex da linha do
+         usuário (justify-content:flex-end), ele OCUPA espaço e empurra a bolha
+         para longe da borda. Nas linhas do usuário ele vai à esquerda
+         (order:-1); sempre fora da bolha.
+     A6. TOOLTIP DENTRO DE ÁREA ROLÁVEL. overflow-x:auto recorta nos DOIS eixos:
+         um ::after dentro da trilha de ícones nunca aparece. O tooltip é um
+         elemento único fora de tudo (no WPF, ToolTip nativo em popup).
+     A7. MICROFONE COMO BOTÃO PRIMÁRIO. O primário é ENVIAR; o microfone é o
+         botão separado à esquerda. Já foi trocado por engano uma vez.
+     A8. TÍTULO DE ABA PULANDO. Se só uma pane usar a linha de título com botão,
+         o título troca de altura ao alternar abas. Todas usam .panel-title-row
+         com min-height 27px.
+     A9. CHIP CONCLUÍDO COMPRIMIDO. Sem flex:0 0 auto + width:fit-content +
+         max-width:none, os ícones transbordam ou o chip encolhe dentro da
+         cadeia.
+     A10. ALTURAS DIFERENTES NA MESMA LINHA. Chip concluído e chip em execução
+         precisam do MESMO min-height (41px), senão desalinham.
+     A11. CONTADOR "+N" NA TRILHA. Foi implementado e REMOVIDO de propósito: a
+         barra de rolagem de 4px já comunica que há mais ações. Não readicionar.
+
+     §8.2  CHECKLIST DE ACEITE
+     ---------------------------------------------------------------------------
+     [ ] Nenhum blur; vidro = cor sólida Argb(230,18,18,22).
+     [ ] Moldura neon: 4 paradas roxo->azul->magenta->laranja, 1.5px.
+     [ ] DropShadow presente na janela e no painel, não recortada.
+     [ ] Bolhas com raio 18px uniforme; a do usuário sem sombra.
+     [ ] Header 52px com nome + pill de nível + 4 botões de 34px.
+     [ ] Contador de tokens no RODAPÉ (não no header), mono, cor por estado.
+     [ ] Título do chat à esquerda do rodapé, com ellipsis.
+     [ ] Botão primário do input = enviar; microfone separado.
+     [ ] Enter envia, Shift+Enter quebra linha.
+     [ ] Cadeia de ações em UMA linha; concluídas colapsadas em ícones.
+     [ ] Trilha com no máximo 5 ícones e rolagem horizontal pela roda do mouse.
+     [ ] Chip concluído e em execução com a mesma altura.
+     [ ] Tooltip aparece por cima de tudo, inclusive sobre a trilha rolável.
+     [ ] Tooltip em bloco do log: caminho completo; ou comando + resultado +
+         saída bruta, com divisórias.
+     [ ] Card de confirmação bloqueia a fila e mostra "Aguardando" no chip.
+     [ ] Hora só no hover, fora da bolha, sem deslocar a bolha da borda.
+     [ ] Painel lateral 300x520, mesma altura da janela; chat não encolhe.
+     [ ] 4 abas, títulos na mesma altura ao alternar.
+     [ ] Aba de e-mails: item igual ao do Shadow Assistant (§6.2) — nome em 1
+         linha, resumo em no máximo 2, selo e barra na cor da urgência.
+     [ ] Clique num e-mail abre o cliente de e-mail padrão.
+     [ ] Rodapés das quatro abas em UMA linha e na mesma altura (25px).
+     [ ] Aba de histórico: N chats e peso = chat + capítulos + atos.
+     [ ] Aba de e-mails: total, urgentes (âmbar) e tokens, no FIM do pane.
+     [ ] Sem conta conectada: o rodapé de contagens também desaparece.
+     [ ] Aba de arquivos: total, KB e tokens.
+     [ ] Sem conta conectada: aba de e-mails mostra o convite de §6.2.1 com o
+         botão "Configurar e-mail", que abre o modal de §6.5.
+     [ ] Modal de e-mail: 2 campos (e-mail e senha de app), olho de revelar,
+         "Conectar" desabilitado até os dois estarem preenchidos.
+     [ ] Esc, Cancelar e clique no véu fecham o modal sem salvar.
+     [ ] Senha de app gravada com DPAPI e nunca reexibida.
+     [ ] Aba de arquivos: ícone pelo TIPO; operação só na pill de origem.
+     [ ] Clique em arquivo/entrada abre o Explorer com o item selecionado.
+     [ ] Clique no X de remover não abre o Explorer.
+     [ ] Os 7 estados de §5 implementados.
+    ============================================================================
+  */
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+
+  /* Fundo só do mock — representa o desktop atrás da janela. */
+  body {
+    display: flex;
+    align-items: flex-start;       /* centralizar cortaria o topo quando não cabe */
+    justify-content: flex-start;   /* idem no eixo X — .page usa margin:auto */
+    padding: 32px 40px;
+    background: radial-gradient(120% 100% at 30% 0%, #241b3a 0%, #0d0b14 55%, #0a0910 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  }
+
+  /* ---- 3. BORDA NEON: Border externo com pincel de degradê ---- */
+  .window-border {
+    width: 770px;       /* largura fixa: não encolhe quando o painel abre */
+    flex: 0 0 770px;
+    height: 520px;      /* altura DEFINIDA: sem ela a lista não encolhe
+                           e empurra a barra de input fora do frame */
+    border-radius: 20px;
+    padding: 1.5px;
+    background: linear-gradient(135deg, #9B51E0 0%, #3182CE 35%, #D53F8C 65%, #E28743 100%);
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.55);
+  }
+
+  /* ---- 2. VIDRO FUMÊ: cor sólida a 90%, sem blur ---- */
+  .window {
+    height: 100%;
+    border-radius: 18.5px;
+    background: rgba(18, 18, 22, 0.90);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ================= 4. HEADER ================= */
+  .header {
+    flex: 0 0 52px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px 0 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    -webkit-app-region: drag;             /* DragMove() no WPF */
+  }
+  .header-glyph { font-size: 13px; color: #C79EF0; line-height: 1; }
+  .header-name  { font-size: 16px; font-weight: 600; color: #F5F4F7; line-height: 1; }
+
+  /* PILL de nível — reaproveita a pill de personalidade da seleção */
+  .level-pill {
+    font-size: 11px;
+    font-weight: 600;
+    color: #C79EF0;
+    background: rgba(155, 81, 224, 0.14);
+    border: 1px solid rgba(155, 81, 224, 0.30);
+    border-radius: 20px;
+    padding: 3px 10px;
+    white-space: nowrap;
+  }
+
+  .header-spacer { flex: 1 1 auto; }
+
+  .token-counter {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 12px;
+    color: #4ADE80;                        /* trocar por estado, ver 4e */
+    white-space: nowrap;
+  }
+
+  .icon-btn {
+    width: 34px; height: 34px;
+    flex: 0 0 34px;
+    display: flex; align-items: center; justify-content: center;
+    align-self: center;                    /* centralizado verticalmente */
+    border: none; border-radius: 8px;
+    background: transparent;
+    color: #8B8794;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.07); color: #CBC8D1; }
+  .icon-btn.close:hover { background: rgba(229,72,77,0.16); color: #E5484D; }
+
+  /* ================= 5. LISTA DE MENSAGENS ================= */
+  .messages {
+    flex: 1 1 auto;                       /* única área elástica */
+    min-height: 0;                        /* deixa encolher e rolar, em vez
+                                             de empurrar o input para fora */
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 24px 26px;
+  }
+  .messages::-webkit-scrollbar { width: 6px; }
+  .messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+  .row { display: flex; }
+  .row.user { justify-content: flex-end; }
+  .row.ai   { justify-content: flex-start; }
+
+  .bubble {
+    max-width: 74%;
+    padding: 13px 17px;
+    font-size: 14px;
+    line-height: 1.5;
+    border-radius: 18px;                  /* raio uniforme, geometria de card */
+    text-wrap: pretty;
+  }
+
+  /* (A) USUÁRIO — degradê do botão primário */
+  .bubble.user {
+    background: linear-gradient(135deg, #9B51E0, #3182CE);
+    color: #FFFFFF;
+  }
+
+  /* (B) IA — casca do card não selecionado */
+  .bubble.ai {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.20);
+    color: #CBC8D1;
+  }
+
+  /* CADEIA DE AÇÕES: chips de tool call agrupados em UMA linha */
+  .tool-chain {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 90%;
+    min-width: 0;
+  }
+
+  /* Indicador de CHAMADA DE FERRAMENTA — casca de card, largura auto */
+  .tool-call {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 74%;
+    min-height: 41px;   /* altura compartilhada: a trilha de ícones do chip
+                           concluído (22px + 4px de barra) é a caixa mais
+                           alta, então as duas variantes usam esta medida */
+    padding: 7px 14px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(155, 81, 224, 0.30);   /* borda lilás = ação em curso */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.20);
+  }
+  /* anéis girando — WPF: RotateTransform + DoubleAnimation Forever */
+  .tool-spinner {
+    width: 12px; height: 12px;
+    flex: 0 0 12px;
+    border-radius: 50%;
+    border: 1.6px solid rgba(155, 81, 224, 0.25);
+    border-top-color: #C79EF0;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tool-label { font-size: 12px; color: #8B8794; }
+
+  /* estado CONCLUÍDO: mesma geometria do chip em execução (altura e
+     padding idênticos) — muda só a borda neutra e o conteúdo colapsado. */
+  .tool-call.done {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    width: fit-content;      /* cresce a cada ação concluída */
+    max-width: none;         /* o cap de 74% é da cadeia, não do chip */
+    flex: 0 0 auto;          /* nunca comprime dentro da .tool-chain */
+  }
+  .tool-check {
+    width: 12px; height: 12px;
+    flex: 0 0 12px;
+    display: flex; align-items: center; justify-content: center;
+    color: #4ADE80;
+  }
+  /* CADEIA LONGA: o chip concluído mostra no máximo 5 ícones por vez e
+     rola horizontalmente. A largura é calculada, não arbitrária:
+       5 ícones × 22px + 4 gaps × 8px = 142px
+     WPF: ScrollViewer HorizontalScrollBarVisibility=Auto,
+     VerticalScrollBarVisibility=Disabled, com MaxWidth equivalente e o
+     mesmo redirecionamento de roda vertical -> offset horizontal. */
+  .icon-track {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 142px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .icon-track::-webkit-scrollbar { height: 4px; }
+  .icon-track::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 2px; }
+  /* ícone que remete à ação executada (criar arquivo, copiar, excluir...) */
+  .tool-action-icon {
+    position: relative;
+    width: 22px; height: 22px;
+    flex: 0 0 22px;
+    scroll-snap-align: start;
+    display: flex; align-items: center; justify-content: center;
+    color: #8B8794;
+    cursor: default;
+    transition: color 0.12s ease;
+  }
+  .tool-action-icon:hover { color: #CBC8D1; }
+
+  /* TOOLTIP com a ação completa. É um elemento ÚNICO no topo do documento,
+     posicionado por JS no hover — e não um ::after dentro do ícone: dentro
+     da trilha rolável (overflow-x: auto) qualquer filho é recortado nos dois
+     eixos e o tooltip nunca escaparia.
+     WPF: é exatamente o comportamento de um ToolTip nativo, que abre em
+     popup fora do ScrollViewer. Estilo abaixo = template do ToolTip. */
+  .action-tooltip {
+    position: fixed;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: #1D1C24;
+    border: 1px solid rgba(155, 81, 224, 0.30);
+    color: #CBC8D1;
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 11px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    z-index: 100;
+  }
+  .action-tooltip.on { opacity: 1; }
+  /* VARIANTE EM BLOCO: usada no histórico de ações. Para caminho completo
+     é uma única linha que pode quebrar; para comando, duas seções
+     separadas por uma divisória — comando em cima, output embaixo.
+     WPF: o mesmo ToolTip, com um StackPanel de duas linhas e um Separator. */
+  .action-tooltip.block {
+    white-space: normal;
+    width: 340px;              /* largura fixa: o conteúdo é monoespaçado */
+    max-width: 340px;
+    padding: 0;
+    line-height: 1.45;
+    display: flex;
+    flex-direction: column;
+  }
+  /* cada seção é um BLOCO (span com padding só funciona como block) */
+  .action-tooltip .tt-section {
+    display: block;
+    padding: 9px 12px;
+  }
+  /* divisória entre as seções (comando | resumo | saída bruta) */
+  .action-tooltip .tt-section + .tt-section {
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+  }
+  .action-tooltip .tt-label {
+    display: block;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size: 9px; font-weight: 600;
+    letter-spacing: 0.10em; text-transform: uppercase;
+    color: #6F6A7A;
+    margin-bottom: 5px;
+  }
+  .action-tooltip .tt-code {
+    display: block;
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 11px; color: #CBC8D1;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  /* resumo estruturado do resultado */
+  .action-tooltip .tt-sum {
+    display: block;
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 11px; color: #C79EF0;
+    white-space: pre-wrap;
+  }
+  /* SAÍDA BRUTA: texto do console como saiu, em caixa escura própria */
+  .action-tooltip .tt-out {
+    display: block;
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 10.5px; color: #8B8794;
+    white-space: pre;
+    background: rgba(0, 0, 0, 0.30);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 7px;
+    padding: 8px 9px;
+    max-height: 118px;
+    overflow: auto;
+  }
+  .action-tooltip .tt-out::-webkit-scrollbar { width: 5px; height: 5px; }
+  .action-tooltip .tt-out::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+  .tool-name {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: #C79EF0;
+  }
+  .tool-arg {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 11px;
+    color: #6F6A7A;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Indicador "digitando" — mesma casca da bolha da IA */
+  .typing {
+    display: flex; align-items: center; gap: 5px;
+    padding: 15px 18px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.20);
+  }
+  .typing span {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #C79EF0;
+    animation: blink 1.2s infinite ease-in-out;
+  }
+  .typing span:nth-child(2) { animation-delay: 0.16s; }
+  .typing span:nth-child(3) { animation-delay: 0.32s; }
+  @keyframes blink {
+    0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+    40%           { opacity: 1;    transform: translateY(-2px); }
+  }
+
+  /* ================= 6. BARRA DE INPUT ================= */
+  .input-wrap { padding: 0 20px 10px; }
+
+  /* ---- RODAPÉ ABAIXO DO INPUT ----
+     Linha de contexto da conversa: título do chat à esquerda, contador de
+     tokens à direita. Altura fixa ~26px, sem divisória (a borda do input
+     já separa). WPF: Grid de 2 colunas (Auto | Auto) com o espaçador
+     no meio, Margin equivalente. */
+  .chat-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 26px 14px;
+    min-height: 26px;
+  }
+  .chat-title {
+    font-size: 12px;
+    color: #8B8794;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-footer .footer-spacer { flex: 1 1 auto; }
+
+  .input-border {
+    border-radius: 18px;                  /* card, não pílula */
+    padding: 1.5px;
+    background: linear-gradient(135deg, #9B51E0, #3182CE 55%, #D53F8C 100%);
+  }
+  .input-bar {
+    height: 49px;
+    border-radius: 16.5px;
+    background: #16151c;                  /* vidro + superfície de card */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 6px 0 16px;
+  }
+  .input-glyph { font-size: 13px; color: #C79EF0; }
+
+  .input-field {
+    flex: 1 1 auto;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #E8E6EC;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  .input-field::placeholder { color: #6F6A7A; }
+
+  /* Botão primário circular — glow igual ao "Próximo" da seleção */
+  .record-btn {
+    width: 38px; height: 38px;
+    flex: 0 0 38px;
+    border: none; border-radius: 50%;
+    background: linear-gradient(135deg, #9B51E0, #3182CE);
+    box-shadow: 0 4px 16px rgba(155, 81, 224, 0.35);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .record-btn .stop-square {
+    width: 13px; height: 13px;
+    border-radius: 3px;
+    background: #E5484D;                  /* estado "gravando" */
+  }
+
+  /* ================= 7. NOVOS ESTADOS ================= */
+
+  /* ---- (7a) CHIP DE TOOL CALL COM ERRO ----
+     Mesma casca do chip, borda e ícone em vermelho de perigo.
+     WPF: terceiro estado do DataTemplateSelector (Status=Failed);
+     o tooltip do ícone traz a mensagem de erro completa. */
+  .tool-call.failed { border: 1px solid rgba(229, 72, 77, 0.35); }
+  .tool-fail-icon {
+    width: 13px; height: 13px;
+    flex: 0 0 13px;
+    display: flex; align-items: center; justify-content: center;
+    color: #E5484D;
+  }
+  .tool-call.failed .tool-name { color: #E5484D; }
+  .tool-action-icon.failed { color: #E5484D; }
+  .tool-action-icon.failed:hover { color: #FF7A7E; }
+  .tool-action-icon.failed::after { border-color: rgba(229, 72, 77, 0.40); }
+
+  /* ---- (7b) CONFIRMAÇÃO DE AÇÃO DESTRUTIVA ----
+     Card na coluna da IA pedindo aprovação ANTES de executar. Borda
+     vermelha discreta; a ferramenta e o alvo em monoespaçada, para o
+     usuário ler exatamente o que vai acontecer.
+     WPF: UserControl com dois Commands (Approve/Deny). Enquanto ele
+     está visível, a execução fica bloqueada. */
+  .confirm-card {
+    max-width: 78%;
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(229, 72, 77, 0.35);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.20);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .confirm-head { display: flex; align-items: center; gap: 8px; }
+  .confirm-title { font-size: 13px; font-weight: 600; color: #F5F4F7; }
+  .confirm-target {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 12px;
+    color: #CBC8D1;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 8px 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .confirm-actions { display: flex; align-items: center; gap: 10px; }
+  /* "Recusar" = botão outline (mesmo do "Voltar" da tela de seleção) */
+  .btn-deny {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #E8E6EC;
+    font-size: 13px; font-weight: 600;
+    padding: 8px 18px; border-radius: 10px;
+    cursor: pointer; font-family: inherit;
+  }
+  /* "Permitir" = botão cheio, vermelho por ser destrutivo */
+  .btn-allow {
+    background: #E5484D;
+    border: none;
+    color: #FFFFFF;
+    font-size: 13px; font-weight: 700;
+    padding: 8px 18px; border-radius: 10px;
+    cursor: pointer; font-family: inherit;
+    box-shadow: 0 4px 16px rgba(229, 72, 77, 0.32);
+  }
+  .confirm-hint { font-size: 11px; color: #6F6A7A; margin-left: auto; }
+
+  /* ---- (7c) AVISO DE CONTEXTO CHEIO ----
+     Faixa centralizada na conversa (não é bolha de ninguém) com uma
+     ação direta. WPF: item de sistema na mesma coleção de mensagens,
+     com DataTemplate próprio. */
+  .row.system { justify-content: center; }
+  .system-notice {
+    display: flex; align-items: center; gap: 10px;
+    max-width: 88%;
+    padding: 9px 14px;
+    border-radius: 14px;
+    background: rgba(226, 135, 67, 0.10);
+    border: 1px solid rgba(226, 135, 67, 0.32);
+  }
+  .system-notice .notice-icon { color: #E28743; display: flex; flex: 0 0 14px; }
+  .system-notice .notice-text { font-size: 12px; color: #CBC8D1; }
+  .btn-compact {
+    background: transparent;
+    border: 1px solid rgba(226, 135, 67, 0.45);
+    color: #E28743;
+    font-size: 12px; font-weight: 600;
+    padding: 5px 12px; border-radius: 8px;
+    cursor: pointer; font-family: inherit;
+    white-space: nowrap;
+  }
+
+  /* ---- (7d) CÓDIGO NAS BOLHAS DA IA ----
+     Código inline e bloco monoespaçado dentro da bolha da IA.
+     WPF: FlowDocument (ou RichTextBox somente-leitura) com estilos
+     de Run/Paragraph correspondentes. */
+  .bubble.ai code {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 12.5px;
+    color: #C79EF0;
+    background: rgba(0, 0, 0, 0.30);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 5px;
+    padding: 1px 5px;
+  }
+  .code-block {
+    margin-top: 10px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.34);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #CBC8D1;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .code-block::-webkit-scrollbar { height: 6px; }
+  .code-block::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+  /* barra do bloco: linguagem + copiar */
+  .code-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 10px;
+    padding: 6px 12px;
+    border-radius: 10px 10px 0 0;
+    background: rgba(0, 0, 0, 0.34);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-bottom: none;
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 11px;
+    color: #6F6A7A;
+  }
+  .code-head + .code-block { margin-top: 0; border-radius: 0 0 12px 12px; }
+  .btn-copy {
+    background: transparent; border: none;
+    color: #8B8794; font-size: 11px; font-weight: 600;
+    cursor: pointer; font-family: inherit; padding: 0;
+  }
+  .btn-copy:hover { color: #CBC8D1; }
+
+  /* ---- (7e) ESTADO VAZIO (primeira abertura) ----
+     Ocupa a lista inteira, centralizado. Reaproveita a tipografia do
+     cabeçalho da tela de seleção (título 20px + subtítulo 13px). */
+  .empty-state {
+    flex: 1 1 auto;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 10px; text-align: center;
+    padding: 20px;
+  }
+  .empty-glyph {
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: #C79EF0;
+    background: rgba(155, 81, 224, 0.12);
+    border: 1px solid rgba(155, 81, 224, 0.28);
+    margin-bottom: 4px;
+  }
+  .empty-title { font-size: 17px; font-weight: 600; color: #F5F4F7; }
+  .empty-sub { font-size: 13px; color: #8B8794; max-width: 300px; line-height: 1.5; }
+
+  /* ---- (7f) RECONEXÃO ----
+     Igual à faixa de sistema, mas em magenta e com spinner: a conexão
+     com o modelo caiu e está sendo restabelecida. */
+  .system-notice.reconnect {
+    background: rgba(213, 63, 140, 0.10);
+    border-color: rgba(213, 63, 140, 0.34);
+  }
+  .reconnect-spinner {
+    width: 12px; height: 12px; flex: 0 0 12px;
+    border-radius: 50%;
+    border: 1.6px solid rgba(213, 63, 140, 0.25);
+    border-top-color: #D53F8C;
+    animation: spin 0.9s linear infinite;
+  }
+  .system-notice.reconnect .notice-text { color: #CBC8D1; }
+  .btn-retry {
+    background: transparent;
+    border: 1px solid rgba(213, 63, 140, 0.45);
+    color: #D53F8C;
+    font-size: 12px; font-weight: 600;
+    padding: 5px 12px; border-radius: 8px;
+    cursor: pointer; font-family: inherit;
+  }
+
+  /* ---- (7g) HORA DA MENSAGEM (só no hover) ----
+     Nas linhas do usuário o horário vai à ESQUERDA da bolha (order: -1),
+     nas da IA à direita — sempre do lado de fora, para a bolha continuar
+     encostada na sua borda. WPF: TextBlock na mesma Grid da bolha, coluna
+     oposta ao alinhamento, Opacity ligada a IsMouseOver da linha. */
+  .row { position: relative; align-items: flex-end; }
+  .row.user .stamp { order: -1; }
+  .stamp {
+    align-self: flex-end;
+    font-size: 10.5px;
+    color: #6F6A7A;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    padding: 0 4px 3px;
+    white-space: nowrap;
+  }
+  .row:hover .stamp { opacity: 1; }
+
+  /* ================= 7.b MODAL "CONFIGURAR E-MAIL" (§6.5) =================
+     Diálogo modal SOBRE a janela de chat, aberto pelo botão "Configurar
+     e-mail" do estado §6.2.1. Não é uma tela nova e não é a tela de
+     configurações: pede só o par conta + senha de app.
+     IMPL WPF: um Grid overlay dentro da própria janela de chat (último filho
+     do Grid raiz, Panel.ZIndex alto), NÃO uma Window nova — uma segunda
+     Window teria borda, sombra e barra de tarefas próprias e o véu não
+     cobriria o chat. Alternativa aceita: Adorner sobre o AdornerDecorator.
+     O painel lateral NÃO é escurecido (é outra janela) — ver §8 A14. */
+  .modal-veil {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    border-radius: 18.5px;          /* acompanha o vidro da janela (§2) */
+    background: rgba(8, 6, 12, 0.62);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    /* IMPL: clique no véu = MESMO que Cancelar (fecha sem salvar) */
+    cursor: default;
+  }
+  /* o cartão: mesma casca dos cards da tela de configurações, um degrau mais
+     opaco porque flutua sobre conteúdo */
+  .modal-card {
+    width: 384px;
+    max-width: 100%;
+    background: #17141C;                              /* sólido: o véu já é o vidro */
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 16px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .modal-head { display: flex; align-items: flex-start; gap: 11px; }
+  /* mesmo círculo/glifo do estado vazio (§6.2.1), 34px */
+  .modal-glyph {
+    width: 34px; height: 34px; flex: 0 0 34px;
+    border-radius: 50%;
+    background: rgba(155, 81, 224, 0.12);
+    border: 1px solid rgba(155, 81, 224, 0.30);
+    display: flex; align-items: center; justify-content: center;
+    color: #C79EF0;
+  }
+  .modal-head-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .modal-title { font-size: 15px; font-weight: 600; color: #F5F4F7; letter-spacing: -0.01em; }
+  .modal-sub { font-size: 11.5px; color: #8B8794; line-height: 1.45; }
+
+  /* CAMPOS: rótulo ACIMA do controle (o modal é estreito; a coluna de 210px
+     da tela de configurações não cabe — ver §6.5). */
+  .modal-fields { display: flex; flex-direction: column; gap: 12px; }
+  .m-field { display: flex; flex-direction: column; gap: 6px; }
+  .m-label { font-size: 11.5px; font-weight: 600; color: #CBC8D1; }
+  /* .control é o MESMO estilo da tela de configurações (§3.6 de lá):
+     h36, r10, fundo rgba(0,0,0,0.28), borda rgba(255,255,255,0.10),
+     hover/focus = rgba(155,81,224,0.45). Não redefinir; reusar o Style. */
+  .control {
+    width: 100%;
+    height: 36px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 10px;
+    color: #E8E6EC;
+    font-size: 12.5px;
+    font-family: inherit;
+    padding: 0 12px;
+    outline: none;
+    transition: border-color 0.12s ease;
+    box-sizing: border-box;
+  }
+  .control:hover, .control:focus { border-color: rgba(155, 81, 224, 0.45); }
+  .control::placeholder { color: #6F6A7A; }
+  .control.mono { font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: 12px; letter-spacing: 0.06em; }
+
+  /* senha de app: campo + botão de revelar, lado a lado */
+  .m-pass { display: flex; align-items: center; gap: 8px; }
+  .btn-reveal {
+    flex: 0 0 36px; width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 10px;
+    color: #8B8794;
+    cursor: pointer;
+    transition: color 0.12s ease, border-color 0.12s ease;
+  }
+  .btn-reveal:hover { color: #CBC8D1; border-color: rgba(255, 255, 255, 0.22); }
+  /* ajuda do campo, com o link para o gerador de senha de app do provedor */
+  .m-help { font-size: 10.5px; color: #6F6A7A; line-height: 1.45; }
+  .m-help a { color: #C79EF0; text-decoration: none; }
+  .m-help a:hover { text-decoration: underline; color: #D9BCFF; }
+
+  /* faixa de erro — só aparece depois de uma tentativa falha de conexão */
+  .m-error {
+    display: flex; align-items: flex-start; gap: 7px;
+    background: rgba(229, 72, 77, 0.10);
+    border: 1px solid rgba(229, 72, 77, 0.30);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 11px; color: #F2A0A2; line-height: 1.45;
+  }
+
+  .modal-footer { display: flex; align-items: center; gap: 8px; }
+  .modal-footer .spacer { flex: 1 1 auto; }
+  /* mesmos dois botões do rodapé da tela de configurações, um degrau menores */
+  .btn-cancel {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #E8E6EC;
+    font-size: 12.5px; font-weight: 600; font-family: inherit;
+    padding: 8px 16px; border-radius: 10px; cursor: pointer;
+  }
+  .btn-cancel:hover { border-color: rgba(255, 255, 255, 0.30); }
+  .btn-save {
+    background: linear-gradient(135deg, #9B51E0, #3182CE);
+    border: none; color: #FFFFFF;
+    font-size: 12.5px; font-weight: 700; font-family: inherit;
+    padding: 8px 20px; border-radius: 10px; cursor: pointer;
+  }
+  /* IsEnabled = os dois campos preenchidos (§6.5) */
+  .btn-save:disabled { opacity: 0.45; cursor: default; }
+
+  /* ================= 8. PAINEL LATERAL (janela separada) =================
+     No app real este painel é uma SEGUNDA janela flutuante, com a mesma
+     borda neon e o mesmo vidro fumê da janela de chat, ancorada ao lado
+     dela. Abre/fecha pelo primeiro botão do header.
+     WPF: Window própria (WindowStyle=None, AllowsTransparency=True) cuja
+     posição acompanha a janela principal (LocationChanged/SizeChanged),
+     ou um Popup com Placement=Right. Ela tem sombra própria. */
+  .stage { display: flex; align-items: flex-end; gap: 16px; }
+
+  .panel-border {
+    width: 300px;
+    height: 520px;      /* mesma altura da janela de chat */
+    flex: 0 0 300px;
+    border-radius: 20px;
+    padding: 1.5px;
+    background: linear-gradient(135deg, #9B51E0 0%, #3182CE 35%, #D53F8C 65%, #E28743 100%);
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.55);
+  }
+  .panel {
+    height: 100%;
+    border-radius: 18.5px;
+    background: rgba(18, 18, 22, 0.90);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow: hidden;
+  }
+  /* cada aba é um pane que ocupa a altura restante do painel */
+  .tab-pane {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  /* barra de abas do painel. Hoje só a primeira (Histórico) existe;
+     ordem: Histórico de Chats | E-mails | Arquivos no Contexto | Ações. */
+  .panel-tabs { display: flex; align-items: center; gap: 6px; }
+  .panel-tab {
+    width: 36px; height: 36px;
+    flex: 0 0 36px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: #8B8794;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  }
+  .panel-tab:hover { color: #CBC8D1; background: rgba(255,255,255,0.05); }
+  /* aba ativa: fundo lilás + borda lilás (mesma família da pill de nível) */
+  .panel-tab.active {
+    color: #C79EF0;
+    background: rgba(155, 81, 224, 0.14);
+    border-color: rgba(155, 81, 224, 0.30);
+  }
+
+  .panel-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #C79EF0;
+  }
+
+  /* lista de conversas salvas */
+  .panel-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 auto;      /* ocupa a altura restante do painel */
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .panel-list::-webkit-scrollbar { width: 6px; }
+  .panel-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+  /* item de conversa: casca de card (igual à bolha da IA) */
+  .chat-item {
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: border-color 0.12s ease, background 0.12s ease;
+  }
+  .chat-item:hover {
+    border-color: rgba(155, 81, 224, 0.40);
+    background: rgba(155, 81, 224, 0.08);
+  }
+  .chat-item .ci-top { display: flex; align-items: baseline; gap: 8px; }
+  .chat-item .ci-title {
+    font-size: 12.5px; font-weight: 600; color: #F5F4F7;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chat-item .ci-date { font-size: 10.5px; color: #6F6A7A; margin-left: auto; flex: 0 0 auto; }
+  .chat-item .ci-snippet {
+    font-size: 11.5px; color: #8B8794; line-height: 1.45;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* ---- TÍTULO DO PAINEL COM AÇÃO À DIREITA ----
+     Toda aba usa esta linha (com ou sem botão) para que o título fique
+     sempre na MESMA altura ao trocar de aba. min-height = altura do botão. */
+  .panel-title-row {
+    display: flex; align-items: center; gap: 10px;
+    min-height: 27px;
+    flex: 0 0 auto;
+  }
+  .panel-title-row .panel-title { margin: 0; }
+  .panel-title-row .spacer { flex: 1 1 auto; }
+  /* botão outline compacto — mesma família do "Voltar" da tela de seleção */
+  .btn-add-file {
+    display: flex; align-items: center; gap: 5px;
+    background: transparent;
+    border: 1px solid rgba(155, 81, 224, 0.40);
+    color: #C79EF0;
+    font-size: 11.5px; font-weight: 600; font-family: inherit;
+    padding: 5px 10px; border-radius: 8px;
+    cursor: pointer; white-space: nowrap;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .btn-add-file:hover { background: rgba(155, 81, 224, 0.12); border-color: rgba(155, 81, 224, 0.6); }
+
+  /* ---- ITEM DE ARQUIVO NO CONTEXTO ----
+     Casca de card (igual ao item de conversa). Clicar no item abre o
+     Explorer na pasta do arquivo COM ELE SELECIONADO:
+       Process.Start("explorer.exe", "/select,\"" + fullPath + "\"");
+     O botão de remover (X) NÃO deve propagar o clique para o item. */
+  .file-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: border-color 0.12s ease, background 0.12s ease;
+  }
+  .file-item:hover {
+    border-color: rgba(155, 81, 224, 0.40);
+    background: rgba(155, 81, 224, 0.08);
+  }
+  /* ícone do TIPO de arquivo (extensão define o glifo) */
+  .fi-icon {
+    width: 26px; height: 26px; flex: 0 0 26px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px;
+    color: #C79EF0;
+    background: rgba(155, 81, 224, 0.12);
+    border: 1px solid rgba(155, 81, 224, 0.24);
+  }
+  .fi-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+  .fi-name {
+    font-size: 12.5px; font-weight: 600; color: #F5F4F7;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* caminho relativo/pasta + tamanho, em monoespaçada apagada */
+  .fi-path {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 10.5px; color: #6F6A7A;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    direction: rtl; text-align: left;   /* corta o INÍCIO do caminho, não o fim */
+  }
+  /* origem: como o arquivo entrou no contexto */
+  .fi-origin {
+    font-size: 10px; font-weight: 600;
+    color: #8B8794;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 2px 8px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  /* arquivo tocado pela IA nesta sessão: origem em lilás */
+  .fi-origin.by-ai {
+    color: #C79EF0;
+    background: rgba(155, 81, 224, 0.12);
+    border-color: rgba(155, 81, 224, 0.26);
+  }
+  /* remover do contexto — só aparece no hover do item */
+  .fi-remove {
+    width: 22px; height: 22px; flex: 0 0 22px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; border-radius: 6px;
+    background: transparent;
+    color: #6F6A7A;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+  }
+  .file-item:hover .fi-remove { opacity: 1; }
+  .fi-remove:hover { color: #E5484D; background: rgba(229, 72, 77, 0.14); }
+
+  /* ================= ABA 2: E-MAILS =================
+     Mesma casca das outras panes (.panel-title-row + .panel-list); só o ITEM é
+     diferente. O item é o MESMO da lista de e-mails do Shadow Assistant
+     (shadow-assistant.html §4.8): barra de urgência | nome + resumo | selo.
+     Reaproveitar o controle de lá, não reimplementar.
+     PROVISÓRIO: este layout de item será revisto; manter em um UserControl
+     isolado (MailListItem) para a troca sair barata. */
+  .mail-item {
+    display: grid;
+    grid-template-columns: 3px 1fr auto;
+    align-items: start;
+    column-gap: 10px;
+    row-gap: 3px;
+    padding: 9px 11px 10px 9px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: border-color 0.12s ease, background 0.12s ease;
+  }
+  .mail-item:hover {
+    border-color: rgba(155, 81, 224, 0.40);
+    background: rgba(155, 81, 224, 0.08);
+  }
+  .mail-bar { grid-row: 1 / span 2; align-self: stretch; width: 3px; border-radius: 2px; }
+  .mail-name {
+    grid-column: 2; font-size: 12.5px; font-weight: 600; color: #F5F4F7;
+    line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* LIMITE DE 2 LINHAS. O clamp CSS abaixo corta a altura, mas NÃO desenha as
+     reticências de forma confiável — por isso os textos do mock já vêm
+     dimensionados para caber em 2 linhas (na coluna de ~162px isso dá cerca
+     de 58 caracteres), e o primeiro item traz um "…" literal para mostrar
+     como fica um resumo truncado.
+     EM WPF NÃO SE FAZ NADA DISSO: o corte e o "…" são nativos —
+       <TextBlock TextWrapping="Wrap" MaxLines="2"
+                  TextTrimming="CharacterEllipsis"/>
+     e o texto completo, sem encurtar, vai para o Text. Não copie o texto
+     abreviado do mock para o C#. */
+  .mail-desc {
+    grid-column: 2; grid-row: 2; min-width: 0;
+    font-size: 11.5px; color: #8B8794; line-height: 1.45;
+  }
+  .mail-desc > span {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .mail-urg {
+    grid-column: 3; grid-row: 1;
+    display: flex; align-items: center; gap: 5px;
+    padding: 3px 8px 3px 6px;
+    border-radius: 999px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .mail-urg .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .u-max { color: #E5484D; background: rgba(229, 72, 77, 0.13); }
+  .u-med { color: #E8A33D; background: rgba(232, 163, 61, 0.13); }
+  .u-low { color: #8B8794; background: rgba(255, 255, 255, 0.05); }
+  .b-max { background: #E5484D; }
+  .b-med { background: #E8A33D; }
+  .b-low { background: rgba(255, 255, 255, 0.16); }
+
+  /* ---- ESTADO "E-MAIL NÃO CONFIGURADO" (§6.2.1) ----
+     Mesma composição do estado de conversa vazia (§5.6: glifo em círculo,
+     título, subtítulo), reduzida para a largura do painel (252px úteis) e com
+     um BOTÃO como último elemento. Ocupa o lugar da lista, não do título.
+     IMPL WPF: um Grid centralizado no lugar do ItemsControl, alternado por
+     Visibility/DataTrigger em MailAccountConfigured. */
+  .panel-empty-state {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    gap: 4px;
+    padding: 16px 8px;
+  }
+  /* mesmo círculo do §5.6, 42px em vez de 46 (o painel é estreito) */
+  .panel-empty-glyph {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: rgba(155, 81, 224, 0.12);
+    border: 1px solid rgba(155, 81, 224, 0.30);
+    display: flex; align-items: center; justify-content: center;
+    color: #C79EF0;
+    margin-bottom: 6px;
+  }
+  .panel-empty-title { font-size: 13.5px; font-weight: 600; color: #F5F4F7; }
+  .panel-empty-sub {
+    font-size: 11.5px; color: #8B8794; line-height: 1.5; max-width: 232px;
+  }
+  /* botão de ação do estado vazio: mesma família do .btn-add-file, um degrau
+     maior porque aqui ele é a ÚNICA ação da tela */
+  .btn-empty-action {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 10px;
+    background: transparent;
+    border: 1px solid rgba(155, 81, 224, 0.40);
+    color: #C79EF0;
+    font-size: 12px; font-weight: 600; font-family: inherit;
+    padding: 7px 13px; border-radius: 9px;
+    cursor: pointer; white-space: nowrap;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .btn-empty-action:hover { background: rgba(155, 81, 224, 0.12); border-color: rgba(155, 81, 224, 0.6); }
+
+  /* ================= ABA 4: HISTÓRICO DE AÇÕES =================
+     Registro cronológico de TUDO que a IA fez na conversa: criar, editar,
+     excluir arquivos e pastas, listar diretórios e executar comandos.
+     Cada entrada é um item de lista com trilha vertical à esquerda.
+     WPF: ItemsControl bound a ObservableCollection<ActionLogEntry>, com
+     DataTemplate único e converters para ícone/cor por Kind e Status. */
+
+  /* separador de bloco temporal ("hoje", "ontem", "21/08") */
+  .log-day {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #6F6A7A;
+    padding-top: 4px;
+  }
+  .log-day::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  /* item do log: trilha vertical + ícone + conteúdo */
+  .log-item {
+    display: flex;
+    gap: 10px;
+    position: relative;
+    padding-bottom: 12px;
+  }
+  /* linha da trilha: liga um item ao próximo. O último item não tem. */
+  .log-item:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 12px;
+    top: 26px;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  /* marcador redondo com o ícone da AÇÃO (aqui o ícone REFLETE a operação,
+     ao contrário da aba de arquivos, onde reflete o tipo) */
+  .log-dot {
+    width: 25px; height: 25px; flex: 0 0 25px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(155, 81, 224, 0.12);
+    border: 1px solid rgba(155, 81, 224, 0.26);
+    color: #C79EF0;
+    z-index: 1;
+  }
+  /* variantes por natureza da ação */
+  .log-dot.destructive {
+    background: rgba(229, 72, 77, 0.12);
+    border-color: rgba(229, 72, 77, 0.30);
+    color: #E5484D;
+  }
+  .log-dot.readonly {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.10);
+    color: #8B8794;
+  }
+  .log-dot.failed {
+    background: rgba(229, 72, 77, 0.12);
+    border-color: rgba(229, 72, 77, 0.30);
+    color: #E5484D;
+  }
+
+  .log-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto; }
+  .log-head { display: flex; align-items: baseline; gap: 8px; }
+  /* nome da ferramenta, em monoespaçada */
+  .log-tool {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 12px; font-weight: 600; color: #F5F4F7;
+  }
+  .log-time { font-size: 10.5px; color: #6F6A7A; margin-left: auto; flex: 0 0 auto; }
+  /* alvo: caminho, diretório ou comando executado */
+  .log-target {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 10.5px; color: #8B8794;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* resultado resumido: nº de itens listados, saída do comando, erro */
+  .log-target[data-tip-path], .log-cmd[data-tip-cmd] { cursor: help; }
+  .log-result { font-size: 10.5px; color: #6F6A7A; }
+  .log-result.error { color: #E5484D; }
+  /* comando executado ganha caixa escura, como um bloco de código curto */
+  .log-cmd {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 10.5px; color: #CBC8D1;
+    background: rgba(0, 0, 0, 0.30);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 7px;
+    padding: 5px 8px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* rodapé da aba: total de arquivos e peso somado no contexto */
+  /* Rodapé de aba — UMA linha só, nas abas 2, 3 e 4, com a MESMA altura
+     (§8 A8: o conteúdo não pode pular ao trocar de aba). Os rótulos são
+     curtos de propósito: em 269px úteis não cabem três métricas escritas por
+     extenso. IMPL WPF: StackPanel Horizontal com TextWrapping="NoWrap" nos
+     TextBlocks e MinHeight fixa. */
+  .panel-foot {
+    display: flex; align-items: center; gap: 8px;
+    min-height: 25px;
+    white-space: nowrap;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 11px; color: #6F6A7A;
+  }
+  .panel-foot .pf-count { color: #8B8794; }
+  /* quantos e-mails exigem atenção — âmbar quando > 0, textMuted quando 0 */
+  .panel-foot .pf-important { color: #E8A33D; }
+
+  /* estado vazio do painel — exatamente o texto do app real */
+  .panel-empty { font-size: 12px; font-style: italic; color: #6F6A7A; }
+
+  /* MOCK-ONLY: alternador de estado da aba de e-mails, no rodapé de cenários.
+     Tracejado para deixar claro que é chave de mock, não cenário. */
+  .scn-btn.mock-toggle { border-style: dashed; }
+  .scn-btn.mock-toggle.on {
+    color: #C79EF0; border-color: rgba(155, 81, 224, 0.45);
+    background: rgba(155, 81, 224, 0.12);
+  }
+
+  /* ================= PAINEL DE CENÁRIOS (NÃO É PRODUTO) =================
+     Esta barra existe SOMENTE neste mock, para você percorrer os estados.
+     Não deve ser portada para o C#. */
+  .page {
+    display: flex; flex-direction: column; align-items: center; gap: 18px;
+    margin: auto;                  /* centraliza só quando há espaço sobrando */
+  }
+  .scenarios {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+    max-width: 780px;
+  }
+  .scenarios .tag {
+    font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #6F6A7A; width: 100%; text-align: center; margin-bottom: 2px;
+  }
+  .scn-btn {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: #8B8794;
+    font-size: 12px; font-weight: 600; font-family: inherit;
+    padding: 7px 14px; border-radius: 10px;
+    cursor: pointer;
+    transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  }
+  .scn-btn:hover { color: #CBC8D1; border-color: rgba(255,255,255,0.2); }
+  .scn-btn.active {
+    color: #FFFFFF;
+    background: linear-gradient(135deg, #9B51E0, #3182CE);
+    border-color: transparent;
+    box-shadow: 0 4px 16px rgba(155, 81, 224, 0.35);
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+<div class="stage">
+
+<!-- ============ JANELA (Window sem chrome, flutuante) ============ -->
+<div class="window-border" data-spec="window.border">
+  <div class="window" data-spec="window.glass">
+
+    <!-- ============ 4. HEADER / barra de título arrastável ============ -->
+    <div class="header" data-spec="header">
+      <span class="header-glyph">✦</span>
+      <span class="header-name">KAI</span>
+      <span class="level-pill">Nível 2</span>
+
+      <span class="header-spacer"></span>
+
+      <!-- abre/fecha a janela do painel lateral -->
+      <button class="icon-btn" id="panelBtn" title="Painel lateral">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+          <rect x="1.8" y="2.5" width="12.4" height="11" rx="2"></rect>
+          <line x1="9.6" y1="2.5" x2="9.6" y2="13.5"></line>
+        </svg>
+      </button>
+
+      <!-- Engrenagem: abre a tela de configuração da Inteligência -->
+      <button class="icon-btn" title="Configurações">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3.1"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+
+      <button class="icon-btn" title="Limpar conversa">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+          <path d="M2.6 4.4h10.8M6 4.4V2.9h4v1.5M4 4.4l.8 8.4a1 1 0 0 0 1 .9h4.4a1 1 0 0 0 1-.9l.8-8.4"></path>
+        </svg>
+      </button>
+
+      <button class="icon-btn close" title="Fechar">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M4 4l8 8M12 4l-8 8"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- ============ 5. LISTA DE MENSAGENS ============
+         O conteúdo é injetado pelo seletor de cenários (ver <script>).
+         No produto, isto é um ItemsControl bound à coleção de mensagens. -->
+    <div class="messages" id="messages" data-spec="messages"></div>
+
+    <!-- ============ 6. BARRA DE INPUT ============ -->
+    <div class="input-wrap" data-spec="input">
+      <div class="input-border">
+        <div class="input-bar">
+          <span class="input-glyph">✦</span>
+
+          <input class="input-field" id="inputField" type="text" placeholder="Fale com a KAI...">
+
+          <button class="icon-btn" title="Capturar imagem">
+            <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="2.2" y="5.4" width="15.6" height="10.4" rx="2.2"></rect>
+              <circle cx="10" cy="10.6" r="3"></circle>
+              <path d="M7.2 5.4l1.1-1.6h3.4l1.1 1.6"></path>
+            </svg>
+          </button>
+
+          <button class="icon-btn" title="Microfone">
+            <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="7.6" y="2.4" width="4.8" height="9.2" rx="2.4"></rect>
+              <path d="M4.6 9.6a5.4 5.4 0 0 0 10.8 0M10 15v2.6"></path>
+            </svg>
+          </button>
+
+          <!-- primário: enviar (aviãozinho) | gravando = parar (quadrado vermelho) -->
+          <button class="record-btn" id="recordBtn" title="Enviar">
+            <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3.1 10L16.9 3.4 12.6 16.6 9.7 11.6z"></path>
+              <path d="M9.7 11.6L16.9 3.4"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 6b. RODAPÉ: título do chat + contador de tokens ============ -->
+    <div class="chat-footer" data-spec="chat-footer">
+      <span class="chat-title">Organizar pasta de notas</span>
+      <span class="footer-spacer"></span>
+      <!-- Contexto: usados/total + % de economia. Cor muda por estado. -->
+      <span class="token-counter" id="tokenCounter">909/8704 tokens (-91%)</span>
+    </div>
+
+    <!-- ====== MODAL "CONFIGURAR E-MAIL" (§6.5) (data-spec="modal.mail") ======
+         Último filho da JANELA DE CHAT, por cima de tudo (z-index 40).
+         Aberto por: botão "Configurar e-mail" de §6.2.1.
+         Fechado por: Cancelar, clique no véu, Esc (todos = descartar).
+         No mock começa oculto; o rodapé de cenários tem o botão que o abre. -->
+    <div class="modal-veil" id="mailModal" data-spec="modal.mail" style="display: none;">
+      <div class="modal-card" data-spec="modal.mail.card">
+
+        <div class="modal-head">
+          <div class="modal-glyph">
+            <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2.4" y="4.4" width="15.2" height="11.2" rx="1.8"></rect>
+              <path d="M3.1 5.6L10 10.8l6.9-5.2"></path>
+            </svg>
+          </div>
+          <div class="modal-head-text">
+            <span class="modal-title">Conectar e-mail</span>
+            <span class="modal-sub">A KAI usa IMAP para ler sua caixa de entrada. Nada é enviado sem sua confirmação.</span>
+          </div>
+        </div>
+
+        <div class="modal-fields">
+          <!-- CAMPO 1: endereço de e-mail. Validação: formato de e-mail;
+               a mensagem de erro só aparece ao sair do campo (LostFocus). -->
+          <div class="m-field">
+            <span class="m-label">E-mail</span>
+            <input class="control mono" type="email" id="mailAddr" data-spec="modal.mail.address" placeholder="voce@exemplo.com" value="ana.ribeiro@empresa.com" />
+          </div>
+
+          <!-- CAMPO 2: SENHA DE APP (não é a senha da conta).
+               IMPL: PasswordBox no WPF; o botão à direita alterna para um
+               TextBox espelhado para revelar. Guardar com DPAPI /
+               ProtectedData — NUNCA em texto puro no arquivo de config. -->
+          <div class="m-field">
+            <span class="m-label">Senha de app</span>
+            <div class="m-pass">
+              <input class="control mono" type="password" id="mailPass" data-spec="modal.mail.password" placeholder="xxxx xxxx xxxx xxxx" value="abcd efgh ijkl mnop" />
+              <button class="btn-reveal" id="mailReveal" title="Mostrar senha" data-spec="modal.mail.reveal">
+                <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1.8 10S4.6 4.8 10 4.8 18.2 10 18.2 10 15.4 15.2 10 15.2 1.8 10 1.8 10z"></path>
+                  <circle cx="10" cy="10" r="2.5"></circle>
+                </svg>
+              </button>
+            </div>
+            <span class="m-help">Não use a senha da sua conta. Gere uma senha de app no seu provedor — <a href="#" data-spec="modal.mail.help">como gerar</a>.</span>
+          </div>
+        </div>
+
+        <!-- FAIXA DE ERRO — Visibility=Collapsed por padrão; aparece só depois
+             de uma tentativa de conexão recusada. Texto vem do servidor.
+             <div class="m-error" data-spec="modal.mail.error">
+               <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                 <circle cx="10" cy="10" r="7.6"></circle><path d="M10 6.4v4.6M10 13.4v.1"></path>
+               </svg>
+               <span>Não foi possível entrar. Verifique o e-mail e a senha de app.</span>
+             </div> -->
+
+        <div class="modal-footer">
+          <span class="spacer"></span>
+          <button class="btn-cancel" id="mailCancel" data-spec="modal.mail.cancel">Cancelar</button>
+          <!-- IsEnabled = os dois campos preenchidos. Ao clicar: entra em
+               "Conectando…" (spinner no lugar do rótulo, botão desabilitado)
+               antes de fechar — ver §6.5. -->
+          <button class="btn-save" id="mailConnect" data-spec="modal.mail.connect">Conectar</button>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============ 8. PAINEL LATERAL (segunda janela flutuante) ============
+     Ancorado ao lado da janela de chat. Quatro abas; ver §6. -->
+<div class="panel-border" id="sidePanel" data-spec="panel">
+  <div class="panel">
+
+    <!-- abas do painel, nesta ordem:
+         1) Histórico de Chats  2) E-mails  3) Arquivos no Contexto
+         4) Histórico de Ações -->
+    <div class="panel-tabs">
+      <button class="panel-tab active" data-tab="history" title="Histórico de Chats">
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="10" cy="10" r="7.4"></circle>
+          <path d="M10 6.1V10l2.8 1.7"></path>
+        </svg>
+      </button>
+      <!-- ABA 2: E-MAILS — ícone de envelope -->
+      <button class="panel-tab" data-tab="mail" title="E-mails">
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2.4" y="4.4" width="15.2" height="11.2" rx="1.8"></rect>
+          <path d="M3.1 5.6L10 10.8l6.9-5.2"></path>
+        </svg>
+      </button>
+      <button class="panel-tab" data-tab="files" title="Arquivos no Contexto">
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2.6 5.6a1.6 1.6 0 0 1 1.6-1.6h3l1.6 2h6a1.6 1.6 0 0 1 1.6 1.6v6.8a1.6 1.6 0 0 1-1.6 1.6H4.2a1.6 1.6 0 0 1-1.6-1.6z"></path>
+        </svg>
+      </button>
+      <button class="panel-tab" data-tab="log" title="Histórico de Ações">
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7.4 4.4h8.2M7.4 10h8.2M7.4 15.6h8.2"></path>
+          <path d="M3.6 4.4h.01M3.6 10h.01M3.6 15.6h.01"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- ====== ABA 1: HISTÓRICO DE CHATS ====== -->
+    <div class="tab-pane" data-pane="history" data-spec="pane.history">
+      <div class="panel-title-row">
+        <span class="panel-title">Histórico de Chats</span>
+      </div>
+
+      <!-- lista de conversas salvas.
+           CLICAR num item RESTAURA a conversa na janela principal:
+           repovoa as mensagens, e junto com elas o título do chat, o
+           contador de tokens do rodapé e as abas 3 e 4 (arquivos e ações
+           daquela conversa). Ver item 8a do bloco de handoff. -->
+      <div class="panel-list">
+      <div class="chat-item">
+        <div class="ci-top">
+          <span class="ci-title">Organizar pasta de notas</span>
+          <span class="ci-date">hoje</span>
+        </div>
+        <span class="ci-snippet">Crie um arquivo no local.... duplique ele e depois delete o original</span>
+      </div>
+      <div class="chat-item">
+        <div class="ci-top">
+          <span class="ci-title">Listar arquivos por data</span>
+          <span class="ci-date">ontem</span>
+        </div>
+        <span class="ci-snippet">Use Get-ChildItem com ordenação por LastWriteTime</span>
+      </div>
+      <div class="chat-item">
+        <div class="ci-top">
+          <span class="ci-title">Primeira conversa</span>
+          <span class="ci-date">21/08</span>
+        </div>
+        <span class="ci-snippet">Kai online. Olá.</span>
+      </div>
+      </div>
+
+      <!-- ESTADO VAZIO (alternativa à lista acima) — texto do app real:
+           <div class="panel-empty">Nenhum chat salvo.</div> -->
+
+      <!-- rodapé da aba: quantos chats salvos e quanto ocupam em disco.
+           ÚLTIMO filho do pane; mesma .panel-foot das abas 2, 3 e 4 (uma
+           linha, MinHeight 25, rótulos curtos — §8 A16).
+           COMO CALCULAR O PESO:
+             peso = soma, para cada chat salvo, de
+                      arquivo do CHAT      (as mensagens em si)
+                    + arquivos de CAPÍTULOS (os resumos intermediários)
+                    + arquivos de ATOS      (os resumos de nível acima)
+           Ou seja: chat + capítulos + atos. Não é só o .json das mensagens —
+           a compressão de contexto grava capítulos e atos ao lado dele, e é
+           o total no disco que interessa ao usuário aqui.
+           Collapsed junto com a lista quando não há nenhum chat salvo. -->
+      <div class="panel-foot" data-spec="pane.history.foot">
+        <span class="pf-count">7 chats</span>
+        <span>•</span>
+        <span>4.1 MB em disco</span>
+      </div>
+    </div>
+
+    <!-- ====== ABA 2: E-MAILS ======
+         Caixa de entrada resumida pela IA. Item IDÊNTICO ao do balão do
+         Shadow Assistant (shadow-assistant.html §4.8): barra de urgência,
+         nome (assunto/remetente) em UMA linha com ellipsis, resumo gerado
+         pela IA em no máximo DUAS linhas, e selo de urgência.
+         Interações:
+           - CLICAR no item -> abre o e-mail no cliente padrão
+           - a lista rola verticalmente como as outras panes (o limite de 3
+             itens é só do balão do orbe)
+         PROVISÓRIO: layout do item sujeito a revisão. -->
+    <div class="tab-pane" data-pane="mail" data-spec="pane.mail" style="display: none;">
+      <div class="panel-title-row">
+        <span class="panel-title">E-mails</span>
+        <!-- este canto direito fica reservado para o próximo botão da aba -->
+      </div>
+      <div class="panel-list">
+        <div class="mail-item" data-spec="mail-item" data-urgency="max">
+          <span class="mail-bar b-max"></span>
+          <span class="mail-name">Jurídico — contrato Vertex</span>
+          <span class="mail-urg u-max"><span class="dot"></span>Máxima</span>
+          <span class="mail-desc"><span>Pedem sua assinatura no aditivo até as 18h de hoje…</span></span>
+        </div>
+        <div class="mail-item" data-spec="mail-item" data-urgency="med">
+          <span class="mail-bar b-med"></span>
+          <span class="mail-name">Marina Costa — revisão do orçamento</span>
+          <span class="mail-urg u-med"><span class="dot"></span>Média</span>
+          <span class="mail-desc"><span>Planilha com os cortes de infra; quer sua confirmação até quinta.</span></span>
+        </div>
+        <div class="mail-item" data-spec="mail-item" data-urgency="low">
+          <span class="mail-bar b-low"></span>
+          <span class="mail-name">Notion — resumo semanal</span>
+          <span class="mail-urg u-low"><span class="dot"></span>Baixa</span>
+          <span class="mail-desc"><span>Relatório automático do workspace. Nada pendente.</span></span>
+        </div>
+        <div class="mail-item" data-spec="mail-item" data-urgency="low">
+          <span class="mail-bar b-low"></span>
+          <span class="mail-name">GitHub — 3 notificações</span>
+          <span class="mail-urg u-low"><span class="dot"></span>Baixa</span>
+          <span class="mail-desc"><span>Menções em issues do aib-desktop. Nada urgente.</span></span>
+        </div>
+      </div>
+
+      <!-- ====== ESTADO "E-MAIL NÃO CONFIGURADO" (§6.2.1) ======
+           Substitui a .panel-list acima quando não há conta conectada.
+           No mock começa oculto; o botão MOCK-ONLY no rodapé do painel
+           alterna entre a lista e este estado. -->
+      <div class="panel-empty-state" data-spec="pane.mail.empty" style="display: none;">
+        <div class="panel-empty-glyph">
+          <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2.4" y="4.4" width="15.2" height="11.2" rx="1.8"></rect>
+            <path d="M3.1 5.6L10 10.8l6.9-5.2"></path>
+          </svg>
+        </div>
+        <div class="panel-empty-title">Nenhum e-mail conectado</div>
+        <div class="panel-empty-sub">Conecte uma conta para a KAI ler, resumir e priorizar sua caixa de entrada.</div>
+        <button class="btn-empty-action" data-spec="pane.mail.empty.action">
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="10" cy="10" r="2.6"></circle>
+            <path d="M10 1.9v2.3M10 15.8v2.3M3.9 3.9l1.6 1.6M14.5 14.5l1.6 1.6M1.9 10h2.3M15.8 10h2.3M3.9 16.1l1.6-1.6M14.5 5.5l1.6-1.6"></path>
+          </svg>
+          Configurar e-mail
+        </button>
+      </div>
+
+      <!-- ESTADO SEM E-MAILS, com conta já conectada (outro caso, não este):
+           <div class="panel-empty">Nenhum e-mail novo.</div> -->
+
+      <!-- rodapé da aba: total, quantos exigem atenção e o peso em contexto.
+           ÚLTIMO filho do pane, para ficar de fato no fim.
+           Mesma .panel-foot das abas de arquivos e ações — o "•" é um
+           TextBlock literal, não um separador desenhado.
+           "urgentes" = itens de urgência MÁXIMA + MÉDIA (§6.2).
+           "tokens"   = quanto dos resumos está no prompt agora; mesma fonte
+                        do contador do rodapé do chat (§3.2).
+           VISIBILIDADE: Collapsed junto com a lista quando não há conta
+           conectada (§6.2.1) — contar e-mails que não existem é errado. -->
+      <div class="panel-foot" data-spec="pane.mail.foot">
+        <span class="pf-count">4 e-mails</span>
+        <span>•</span>
+        <span class="pf-important">2 urgentes</span>
+        <span>•</span>
+        <span>1.2k tokens</span>
+      </div>
+    </div>
+
+    <!-- ====== ABA 3: ARQUIVOS NO CONTEXTO ======
+         Lista todos os arquivos que a IA tocou de alguma forma (leu, criou,
+         copiou, moveu) mais os que o usuário anexou manualmente.
+         Interações:
+           - CLICAR no item -> abre o Explorer na pasta do arquivo COM ele
+             selecionado:  explorer.exe /select,"C:\caminho\arquivo.txt"
+           - "+ Adicionar" -> OpenFileDialog (multiselect) e insere no contexto
+           - X do item     -> remove do contexto (não apaga o arquivo do disco);
+                              o clique NÃO deve propagar para o item -->
+    <div class="tab-pane" data-pane="files" data-spec="pane.files" style="display: none;">
+      <div class="panel-title-row">
+        <span class="panel-title">Arquivos no Contexto</span>
+        <span class="spacer"></span>
+        <button class="btn-add-file" title="Adicionar arquivos ao contexto">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M8 3.4v9.2M3.4 8h9.2"></path>
+          </svg>
+          Adicionar
+        </button>
+      </div>
+
+      <div class="panel-list">
+        <div class="file-item">
+          <span class="fi-icon">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 1.8H4.2a1.4 1.4 0 0 0-1.4 1.4v9.6a1.4 1.4 0 0 0 1.4 1.4h7.6a1.4 1.4 0 0 0 1.4-1.4V6.2z"></path>
+              <path d="M9 1.8v4.4h4.2"></path>
+              <path d="M5.4 8.4h5.2M5.4 10.6h3.4"></path>
+            </svg>
+          </span>
+          <span class="fi-body">
+            <span class="fi-name">notas.txt</span>
+            <span class="fi-path">C:\Users\rafa\Documentos\notas</span>
+          </span>
+          <span class="fi-origin by-ai">criado</span>
+          <button class="fi-remove" title="Remover do contexto">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+              <path d="M4 4l8 8M12 4l-8 8"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="file-item">
+          <span class="fi-icon">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 1.8H4.2a1.4 1.4 0 0 0-1.4 1.4v9.6a1.4 1.4 0 0 0 1.4 1.4h7.6a1.4 1.4 0 0 0 1.4-1.4V6.2z"></path>
+              <path d="M9 1.8v4.4h4.2"></path>
+              <path d="M5.4 8.4h5.2M5.4 10.6h3.4"></path>
+            </svg>
+          </span>
+          <span class="fi-body">
+            <span class="fi-name">notas (cópia).txt</span>
+            <span class="fi-path">C:\Users\rafa\Documentos\notas</span>
+          </span>
+          <span class="fi-origin by-ai">copiado</span>
+          <button class="fi-remove" title="Remover do contexto">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+              <path d="M4 4l8 8M12 4l-8 8"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="file-item">
+          <span class="fi-icon">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 1.8H4.2a1.4 1.4 0 0 0-1.4 1.4v9.6a1.4 1.4 0 0 0 1.4 1.4h7.6a1.4 1.4 0 0 0 1.4-1.4V6.2z"></path>
+              <path d="M9 1.8v4.4h4.2"></path>
+              <path d="M5.2 11.8V8.6l1.5 1.8 1.5-1.8v3.2"></path>
+              <path d="M10.2 8.6v3.2h1.4"></path>
+            </svg>
+          </span>
+          <span class="fi-body">
+            <span class="fi-name">_index.md</span>
+            <span class="fi-path">C:\Users\rafa\Documentos\notas</span>
+          </span>
+          <span class="fi-origin by-ai">lido</span>
+          <button class="fi-remove" title="Remover do contexto">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+              <path d="M4 4l8 8M12 4l-8 8"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="file-item">
+          <span class="fi-icon">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2.4" y="3.2" width="11.2" height="9.6" rx="1.4"></rect>
+              <circle cx="6" cy="6.6" r="1.1"></circle>
+              <path d="M2.4 10.6l3.2-2.6 3 2.4 2.2-1.8 2.8 2.4"></path>
+            </svg>
+          </span>
+          <span class="fi-body">
+            <span class="fi-name">print-erro.png</span>
+            <span class="fi-path">C:\Users\rafa\Imagens\Capturas</span>
+          </span>
+          <span class="fi-origin">anexado</span>
+          <button class="fi-remove" title="Remover do contexto">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+              <path d="M4 4l8 8M12 4l-8 8"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- total, peso em disco e peso somado no contexto -->
+      <div class="panel-foot" data-spec="pane.files.foot">
+        <span class="pf-count">4 arquivos</span>
+        <span>•</span>
+        <span>38 KB</span>
+        <span>•</span>
+        <span>2.9k tokens</span>
+      </div>
+
+      <!-- ESTADO VAZIO (alternativa à lista acima):
+           <div class="panel-empty">Nenhum arquivo no contexto.</div> -->
+    </div>
+
+    <!-- ====== ABA 4: HISTÓRICO DE AÇÕES ======
+         Registro cronológico de TUDO que a IA fez na conversa inteira:
+         criar/editar/excluir arquivos e pastas, listar diretórios e
+         executar comandos. Mais recente no TOPO, agrupado por dia.
+         Aqui o ícone reflete a OPERAÇÃO (ao contrário da aba de arquivos).
+         Clicar num item que tenha caminho abre o Explorer nele. -->
+    <div class="tab-pane" data-pane="log" data-spec="pane.log" style="display: none;">
+      <div class="panel-title-row">
+        <span class="panel-title">Histórico de Ações</span>
+      </div>
+
+      <div class="panel-list">
+
+        <div class="log-day">hoje</div>
+
+        <!-- excluir arquivo: marcador vermelho (ação destrutiva) -->
+        <div class="log-item">
+          <span class="log-dot destructive">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.6 4.4h10.8M6 4.4V2.9h4v1.5M4 4.4l.8 8.4a1 1 0 0 0 1 .9h4.4a1 1 0 0 0 1-.9l.8-8.4"></path>
+            </svg>
+          </span>
+          <span class="log-body">
+            <span class="log-head">
+              <span class="log-tool">delete_file</span>
+              <span class="log-time">14:09</span>
+            </span>
+            <span class="log-target" data-tip-path="C:\Users\rafa\Documentos\notas\nota3 (cópia).txt">C:\Users\rafa\Documentos\notas\nota3 (cópia).txt</span>
+          </span>
+        </div>
+
+        <!-- comando executado: caixa escura com a linha de comando -->
+        <div class="log-item">
+          <span class="log-dot">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4.2 5.6L6.8 8l-2.6 2.4"></path>
+              <path d="M8.4 11h3.4"></path>
+            </svg>
+          </span>
+          <span class="log-body">
+            <span class="log-head">
+              <span class="log-tool">run_command</span>
+              <span class="log-time">14:08</span>
+            </span>
+            <span class="log-cmd" data-tip-cmd="Get-ChildItem -Path C:\Users\rafa\Documentos\notas -File | Measure-Object -Property Length -Sum" data-tip-sum="12 arquivos • 38 KB" data-tip-out="Count    : 12&#10;Average  :&#10;Sum      : 38912&#10;Maximum  :&#10;Minimum  :&#10;Property : Length&#10;&#10;PS C:\Users\rafa&gt; ">Get-ChildItem -Path .\notas -File | Measure-Object</span>
+            <span class="log-result">saída: 12 itens</span>
+          </span>
+        </div>
+
+        <!-- mover arquivo -->
+        <div class="log-item">
+          <span class="log-dot">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.4 8h9.4"></path><path d="M9.2 5.2L12 8l-2.8 2.8"></path><path d="M13.6 3.4v9.2"></path>
+            </svg>
+          </span>
+          <span class="log-body">
+            <span class="log-head">
+              <span class="log-tool">move_file</span>
+              <span class="log-time">14:07</span>
+            </span>
+            <span class="log-target" data-tip-path="C:\Users\rafa\Documentos\notas\2026-08-02.txt  →  C:\Users\rafa\Documentos\notas\arquivo-morto\2026-08-02.txt">2026-08-02.txt → notas\arquivo-morto\</span>
+          </span>
+        </div>
+
+        <!-- criar pasta -->
+        <div class="log-item">
+          <span class="log-dot">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.2 4.6a1.3 1.3 0 0 1 1.3-1.3h2.4l1.3 1.6h5.1a1.3 1.3 0 0 1 1.3 1.3v5.5a1.3 1.3 0 0 1-1.3 1.3H3.5a1.3 1.3 0 0 1-1.3-1.3z"></path>
+              <path d="M8 7.8v3.4M6.3 9.5h3.4"></path>
+            </svg>
+          </span>
+          <span class="log-body">
+            <span class="log-head">
+              <span class="log-tool">create_dir</span>
+              <span class="log-time">14:06</span>
+            </span>
+            <span class="log-target" data-tip-path="C:\Users\rafa\Documentos\notas\arquivo-morto">C:\Users\rafa\Documentos\notas\arquivo-morto</span>
+          </span>
+        </div>
+
+        <!-- editar arquivo -->
+        <div class="log-item">
+          <span class="log-dot">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.6 13.4h10.8"></path>
+              <path d="M4.2 10.8l6.6-6.6a1.3 1.3 0 0 1 1.9 0l.3.3a1.3 1.3 0 0 1 0 1.9l-6.6 6.6H4.2z"></path>
+            </svg>
+          </span>
+          <span class="log-body">
+            <span class="log-head">
+              <span class="log-tool">edit_file</span>
+              <span class="log-time">14:05</span>
+            </span>
+            <span class="log-target" data-tip-path="C:\Users\rafa\Documentos\notas\_index.md">notas\_index.md</span>
+            <span class="log-result">+8 linhas, −2 linhas</span>
+          </span>
+        </div>
+
+        <!-- ação que FALHOU: marcador vermelho + resultado em vermelho -->
+        <div class="log-item">
+          <span class="log-dot failed">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <circle cx="8" cy="8" r="6.2"></circle><path d="M8 5v3.6M8 10.8v.2"></path>
+            </svg>
+          </span>
+          <span class="log-body">
+            <span class="log-head">
+              <span class="log-tool">delete_file</span>
+              <span class="log-time">14:04</span>
+            </span>
+            <span class="log-target" data-tip-path="C:\Users\rafa\Documentos\notas\notas.txt">notas\notas.txt</span>
+            <span class="log-result error">acesso negado — arquivo em uso</span>
+          </span>
+        </div>
+
+        <!-- criar arquivo -->
+        <div class="log-item">
+          <span class="log-dot">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 1.8H4.2a1.4 1.4 0 0 0-1.4 1.4v9.6a1.4 1.4 0 0 0 1.4 1.4h7.6a1.4 1.4 0 0 0 1.4-1.4V6.2z"></path>
+              <path d="M9 1.8v4.4h4.2"></path><path d="M8 8.6v3.4M6.3 10.3h3.4"></path>
+            </svg>
+          </span>
+          <span class="log-body">
+            <span class="log-head">
+              <span class="log-tool">write_file</span>
+              <span class="log-time">14:03</span>
+            </span>
+            <span class="log-target" data-tip-path="C:\Users\rafa\Documentos\notas\notas.txt">C:\Users\rafa\Documentos\notas\notas.txt</span>
+          </span>
+        </div>
+
+        <div class="log-day">ontem</div>
+
+        <!-- somente leitura: marcador cinza -->
+        <div class="log-item">
+          <span class="log-dot readonly">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5.6 4.2h8M5.6 8h8M5.6 11.8h8"></path>
+              <path d="M2.8 4.2v.01M2.8 8v.01M2.8 11.8v.01"></path>
+            </svg>
+          </span>
+          <span class="log-body">
+            <span class="log-head">
+              <span class="log-tool">list_dir</span>
+              <span class="log-time">18:42</span>
+            </span>
+            <span class="log-target" data-tip-path="C:\Users\rafa\Documentos\notas">C:\Users\rafa\Documentos\notas</span>
+            <span class="log-result">12 arquivos, 2 pastas</span>
+          </span>
+        </div>
+
+        <div class="log-item">
+          <span class="log-dot readonly">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 1.8H4.2a1.4 1.4 0 0 0-1.4 1.4v9.6a1.4 1.4 0 0 0 1.4 1.4h7.6a1.4 1.4 0 0 0 1.4-1.4V6.2z"></path>
+              <path d="M9 1.8v4.4h4.2"></path><path d="M5.4 8.4h5.2M5.4 10.6h3.4"></path>
+            </svg>
+          </span>
+          <span class="log-body">
+            <span class="log-head">
+              <span class="log-tool">read_file</span>
+              <span class="log-time">18:41</span>
+            </span>
+            <span class="log-target" data-tip-path="C:\Users\rafa\Documentos\notas\_index.md">notas\_index.md</span>
+          </span>
+        </div>
+
+      </div>
+
+      <!-- total de ações da conversa -->
+      <div class="panel-foot">
+        <span class="pf-count">9 ações</span>
+        <span>•</span>
+        <span>1 falha</span>
+      </div>
+
+      <!-- ESTADO VAZIO:
+           <div class="panel-empty">Nenhuma ação registrada.</div> -->
+    </div>
+
+  </div>
+</div>
+
+</div>
+
+<!-- tooltip único das ações concluídas (fora de qualquer área rolável) -->
+<div class="action-tooltip" id="actionTooltip" data-spec="action-tooltip"></div>
+
+<!-- ============ PAINEL DE CENÁRIOS — NÃO FAZ PARTE DO PRODUTO ============
+     Só serve para percorrer os estados neste mock. Não portar para o C#. -->
+<div class="scenarios" id="scenarios" data-spec="MOCK-ONLY">
+  <span class="tag">cenários do mock — não faz parte do produto</span>
+  <!-- os botões de cenário são injetados aqui pelo <script>;
+       o alternador da aba de e-mails (§6.2 / §6.2.1) entra no fim da fila -->
+</div>
+
+</div>
+
+<script>
+/*
+  ================================================================
+  CENÁRIOS
+  Cada entrada abaixo é o markup REAL de um estado da conversa.
+  É esse markup que serve de referência para o XAML — o seletor em si
+  é só um atalho deste arquivo.
+  ================================================================
+*/
+
+/* Blocos reutilizados ------------------------------------------------ */
+
+const CHECK = '<span class="tool-check"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.6l3.1 3.1 6.5-7"></path></svg></span>';
+
+const FAIL = '<span class="tool-fail-icon"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"></circle><path d="M8 5v3.6M8 10.8v.2"></path></svg></span>';
+
+/* ícone de ação concluída, colapsado, com tooltip no hover */
+function actionIcon(paths, tip, failed) {
+  return '<span class="tool-action-icon' + (failed ? ' failed' : '') + '" data-tip="' + tip + '">'
+    + '<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width: 19px; height: 19px;">'
+    + paths + '</svg></span>';
+}
+
+const ICON_CREATE = '<path d="M9 1.8H4.2a1.4 1.4 0 0 0-1.4 1.4v9.6a1.4 1.4 0 0 0 1.4 1.4h7.6a1.4 1.4 0 0 0 1.4-1.4V6.2z"></path><path d="M9 1.8v4.4h4.2"></path><path d="M8 8.6v3.4M6.3 10.3h3.4"></path>';
+const ICON_COPY   = '<rect x="5.8" y="5.8" width="7.6" height="8.4" rx="1.3"></rect><path d="M10.6 3.9V3.1a1.3 1.3 0 0 0-1.3-1.3H3.9a1.3 1.3 0 0 0-1.3 1.3v6.2a1.3 1.3 0 0 0 1.3 1.3h.8"></path>';
+const ICON_LIST   = '<path d="M5.6 4.2h8M5.6 8h8M5.6 11.8h8"></path><path d="M2.8 4.2v.01M2.8 8v.01M2.8 11.8v.01"></path>';
+const ICON_RENAME = '<path d="M2.6 13.4h10.8"></path><path d="M4.2 10.8l6.6-6.6a1.3 1.3 0 0 1 1.9 0l.3.3a1.3 1.3 0 0 1 0 1.9l-6.6 6.6H4.2z"></path>';
+const ICON_FOLDER = '<path d="M2.2 4.6a1.3 1.3 0 0 1 1.3-1.3h2.4l1.3 1.6h5.1a1.3 1.3 0 0 1 1.3 1.3v5.5a1.3 1.3 0 0 1-1.3 1.3H3.5a1.3 1.3 0 0 1-1.3-1.3z"></path>';
+const ICON_MOVE   = '<path d="M2.4 8h9.4"></path><path d="M9.2 5.2L12 8l-2.8 2.8"></path><path d="M13.6 3.4v9.2"></path>';
+const ICON_DELETE = '<path d="M2.6 4.4h10.8M6 4.4V2.9h4v1.5M4 4.4l.8 8.4a1 1 0 0 0 1 .9h4.4a1 1 0 0 0 1-.9l.8-8.4"></path>';
+
+const TYPING = '<div class="row ai"><div class="typing"><span></span><span></span><span></span></div></div>';
+
+const ASK = '<div class="row user"><div class="bubble user">Crie um arquivo no local.... duplique ele e depois delete o original</div></div>';
+const ACCEPT = '<div class="row ai"><div class="bubble ai">Entendido. Vou criar o arquivo, duplicar e remover o original.</div></div>';
+
+const HELLO = '<div class="row user"><div class="bubble user">Ola!</div><span class="stamp">14:02</span></div>'
+  + '<div class="row ai"><div class="bubble ai">Kai online. Olá.</div><span class="stamp">14:02</span></div>';
+
+/* Cenários ---------------------------------------------------------- */
+
+const SCENARIOS = [
+
+  /* ---- 1. Execução em andamento (estado atual da v2) ---- */
+  { id: 'exec', label: 'Executando ações', tokens: ['909/8704 tokens (-91%)', '#4ADE80'], html:
+      HELLO + ASK + ACCEPT
+      + '<div class="row ai"><div class="tool-chain">'
+      +   '<div class="tool-call done" style="width: 102px; height: 27px;">'
+      +     CHECK
+      +     actionIcon(ICON_CREATE, 'write_file &nbsp;•&nbsp; C:\\Users\\...\\notas.txt')
+      +     actionIcon(ICON_COPY, 'copy_file &nbsp;•&nbsp; notas.txt → notas (cópia).txt')
+      +   '</div>'
+      +   '<div class="tool-call">'
+      +     '<span class="tool-spinner"></span>'
+      +     '<span class="tool-label">Executando</span>'
+      +     '<span class="tool-name">delete_file</span>'
+      +     '<span class="tool-arg">notas.txt</span>'
+      +   '</div>'
+      + '</div></div>'
+      + TYPING
+  },
+
+  /* ---- 2. (7a) Falha em uma das ações ---- */
+  { id: 'error', label: 'Erro na execução', tokens: ['909/8704 tokens (-91%)', '#4ADE80'], html:
+      ASK + ACCEPT
+      + '<div class="row ai"><div class="tool-chain">'
+      +   '<div class="tool-call done" style="width: 100px; height: 31px;">'
+      +     CHECK
+      +     actionIcon(ICON_CREATE, 'write_file &nbsp;•&nbsp; C:\\Users\\...\\notas.txt')
+      +     actionIcon(ICON_COPY, 'copy_file &nbsp;•&nbsp; notas.txt → notas (cópia).txt')
+      +   '</div>'
+      +   '<div class="tool-call failed">'
+      +     FAIL
+      +     '<span class="tool-label">Falhou</span>'
+      +     '<span class="tool-name">delete_file</span>'
+      +     '<span class="tool-arg">acesso negado — arquivo em uso</span>'
+      +   '</div>'
+      + '</div></div>'
+      + '<div class="row ai"><div class="bubble ai">Não consegui remover o original: o arquivo está aberto em outro processo. Quer que eu tente de novo depois de fechá-lo?</div></div>'
+  },
+
+  /* ---- 3. (7b) Pedido de confirmação antes de destruir ---- */
+  { id: 'confirm', label: 'Confirmar ação destrutiva', tokens: ['909/8704 tokens (-91%)', '#4ADE80'], html:
+      ASK + ACCEPT
+      + '<div class="row ai"><div class="tool-chain">'
+      +   '<div class="tool-call done" style="width: 102px; height: 31px;">'
+      +     CHECK
+      +     actionIcon(ICON_CREATE, 'write_file &nbsp;•&nbsp; C:\\Users\\...\\notas.txt')
+      +     actionIcon(ICON_COPY, 'copy_file &nbsp;•&nbsp; notas.txt → notas (cópia).txt')
+      +   '</div>'
+      +   '<div class="tool-call">'
+      +     '<span class="tool-spinner"></span>'
+      +     '<span class="tool-label">Aguardando</span>'
+      +     '<span class="tool-name">delete_file</span>'
+      +     '<span class="tool-arg">notas.txt</span>'
+      +   '</div>'
+      + '</div></div>'
+      + '<div class="row ai">'
+      +   '<div class="confirm-card">'
+      +     '<div class="confirm-head">'
+      +       '<span class="tool-fail-icon"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 1.9l6.1 11.2H1.9z"></path><path d="M8 6.3v3M8 11.2v.2"></path></svg></span>'
+      +       '<span class="confirm-title">Permitir exclusão de arquivo?</span>'
+      +     '</div>'
+      +     '<div class="confirm-target">delete_file &nbsp;•&nbsp; C:\\Users\\...\\notas.txt</div>'
+      +     '<div class="confirm-actions">'
+      +       '<button class="btn-allow">Permitir</button>'
+      +       '<button class="btn-deny">Recusar</button>'
+      +       '<span class="confirm-hint">a execução está pausada</span>'
+      +     '</div>'
+      +   '</div>'
+      + '</div>'
+  },
+
+  /* ---- 4. (7a2) Cadeia longa: 10 ações, 9 concluídas ---- */
+  { id: 'many', label: '10 ações (rolagem)', tokens: ['3180/8704 tokens (-63%)', '#4ADE80'], html:
+      '<div class="row user"><div class="bubble user">Reorganize a pasta de notas: renomeie os arquivos por data, mova os antigos pra um subdiretório e limpe os duplicados</div></div>'
+      + '<div class="row ai"><div class="bubble ai">Certo. São dez passos — vou executando e te aviso ao final.</div></div>'
+      + '<div class="row ai"><div class="tool-chain">'
+      +   '<div class="tool-call done">'
+      +     CHECK
+      +     '<div class="icon-track">'
+      +       actionIcon(ICON_LIST,   'list_dir &nbsp;•&nbsp; C:\\Users\\...\\notas')
+      +       actionIcon(ICON_CREATE, 'write_file &nbsp;•&nbsp; notas/_index.md')
+      +       actionIcon(ICON_RENAME, 'rename_file &nbsp;•&nbsp; nota1.txt → 2026-08-02.txt')
+      +       actionIcon(ICON_RENAME, 'rename_file &nbsp;•&nbsp; nota2.txt → 2026-08-09.txt')
+      +       actionIcon(ICON_RENAME, 'rename_file &nbsp;•&nbsp; nota3.txt → 2026-08-14.txt')
+      +       actionIcon(ICON_FOLDER, 'create_dir &nbsp;•&nbsp; notas/arquivo-morto')
+      +       actionIcon(ICON_MOVE,   'move_file &nbsp;•&nbsp; 2026-08-02.txt → arquivo-morto/')
+      +       actionIcon(ICON_MOVE,   'move_file &nbsp;•&nbsp; 2026-08-09.txt → arquivo-morto/')
+      +       actionIcon(ICON_COPY,   'copy_file &nbsp;•&nbsp; _index.md → _index.bak')
+      +     '</div>'
+      +   '</div>'
+      +   '<div class="tool-call">'
+      +     '<span class="tool-spinner"></span>'
+      +     '<span class="tool-label">Executando</span>'
+      +     '<span class="tool-name">delete_file</span>'
+      +     '<span class="tool-arg">nota3 (cópia).txt</span>'
+      +   '</div>'
+      + '</div></div>'
+      + TYPING
+  },
+
+  /* ---- 5. (7c) Contexto perto do limite ---- */
+  { id: 'context', label: 'Contexto cheio', tokens: ['8102/8704 tokens (-7%)', '#D53F8C'], html:
+      ASK + ACCEPT
+      + '<div class="row system">'
+      +   '<div class="system-notice">'
+      +     '<span class="notice-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 1.9l6.1 11.2H1.9z"></path><path d="M8 6.3v3M8 11.2v.2"></path></svg></span>'
+      +     '<span class="notice-text">A janela de contexto está quase cheia. Compactar mantém o essencial e libera espaço.</span>'
+      +     '<button class="btn-compact">Compactar</button>'
+      +   '</div>'
+      + '</div>'
+  },
+
+  /* ---- 5. (7d) Resposta com código ---- */
+  { id: 'code', label: 'Resposta com código', tokens: ['1420/8704 tokens (-84%)', '#4ADE80'], html:
+      '<div class="row user"><div class="bubble user">como faço pra listar os arquivos por data?</div></div>'
+      + '<div class="row ai">'
+      +   '<div class="bubble ai">'
+      +     'Use <code>Get-ChildItem</code> com ordenação por <code>LastWriteTime</code>:'
+      +     '<div class="code-head"><span>powershell</span><button class="btn-copy">Copiar</button></div>'
+      +     '<div class="code-block">Get-ChildItem -Path "C:\\Users\\notas" -File |\n  Sort-Object LastWriteTime -Descending |\n  Select-Object Name, LastWriteTime</div>'
+      +   '</div>'
+      + '</div>'
+  },
+
+  /* ---- 6. (7e) Primeira abertura ---- */
+  { id: 'empty', label: 'Conversa vazia', tokens: ['0/8704 tokens', '#8B8794'], html:
+      '<div class="empty-state">'
+      +   '<div class="empty-glyph">✦</div>'
+      +   '<div class="empty-title">KAI online</div>'
+      +   '<div class="empty-sub">Fale por texto ou voz. Ela pode criar, copiar e organizar arquivos no seu computador.</div>'
+      + '</div>'
+  },
+
+  /* ---- 7. (7f) Conexão caiu ---- */
+  { id: 'reconnect', label: 'Reconectando', tokens: ['909/8704 tokens (-91%)', '#8B8794'], html:
+      HELLO
+      + '<div class="row system">'
+      +   '<div class="system-notice reconnect">'
+      +     '<span class="reconnect-spinner"></span>'
+      +     '<span class="notice-text">Conexão perdida. Tentando reconectar…</span>'
+      +     '<button class="btn-retry">Tentar agora</button>'
+      +   '</div>'
+      + '</div>'
+  }
+];
+
+/* Montagem do seletor (mock only) ----------------------------------- */
+(function () {
+  var messages = document.getElementById('messages');
+  var counter  = document.getElementById('tokenCounter');
+  var bar      = document.getElementById('scenarios');
+
+  function show(i) {
+    var s = SCENARIOS[i];
+    messages.innerHTML = s.html;
+    counter.textContent = s.tokens[0];
+    counter.style.color = s.tokens[1];
+    /* o estado vazio precisa centralizar: sem gap/padding da lista */
+    messages.style.justifyContent = (s.id === 'empty') ? 'center' : 'flex-start';
+    addStamps();
+    messages.scrollTop = messages.scrollHeight;
+    Array.prototype.forEach.call(bar.querySelectorAll('.scn-btn'), function (b, j) {
+      b.classList.toggle('active', j === i);
+    });
+  }
+
+  SCENARIOS.forEach(function (s, i) {
+    var b = document.createElement('button');
+    b.className = 'scn-btn';
+    b.textContent = (i + 1) + '. ' + s.label;
+    b.addEventListener('click', function () { show(i); });
+    bar.appendChild(b);
+  });
+
+  /* MOCK-ONLY: alternador de estado da ABA DE E-MAILS, no fim do rodapé de
+     cenários (§6.2 lista <-> §6.2.1 sem conta configurada). Não portar. */
+  (function () {
+    var pane = document.querySelector('[data-pane="mail"]');
+    if (!pane) return;
+    var list = pane.querySelector('.panel-list');
+    var empty = pane.querySelector('.panel-empty-state');
+    var foot = pane.querySelector('.panel-foot');
+    var b = document.createElement('button');
+    b.className = 'scn-btn mock-toggle';
+    b.textContent = 'e-mails: sem conta configurada';
+    b.addEventListener('click', function () {
+      var showEmpty = empty.style.display === 'none';
+      list.style.display = showEmpty ? 'none' : 'flex';
+      /* o rodapé acompanha a LISTA, não o pane (§6.2.1) */
+      foot.style.display = showEmpty ? 'none' : 'flex';
+      empty.style.display = showEmpty ? 'flex' : 'none';
+      b.classList.toggle('on', showEmpty);
+      b.textContent = showEmpty ? 'e-mails: com conta configurada'
+                                : 'e-mails: sem conta configurada';
+      document.querySelector('.panel-tab[data-tab="mail"]').click();
+    });
+    bar.appendChild(b);
+  })();
+
+  /* MOCK-ONLY: abre/fecha o modal de e-mail (§6.5) e o olho da senha. */
+  (function () {
+    var modal = document.getElementById('mailModal');
+    if (!modal) return;
+    var open = function () { modal.style.display = 'flex'; };
+    var close = function () { modal.style.display = 'none'; };
+
+    document.getElementById('mailCancel').addEventListener('click', close);
+    document.getElementById('mailConnect').addEventListener('click', close);
+    modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+
+    /* o botão do estado §6.2.1 é o gatilho real no produto */
+    var trigger = document.querySelector('.btn-empty-action');
+    if (trigger) trigger.addEventListener('click', open);
+
+    var pass = document.getElementById('mailPass');
+    document.getElementById('mailReveal').addEventListener('click', function () {
+      pass.type = pass.type === 'password' ? 'text' : 'password';
+      this.title = pass.type === 'password' ? 'Mostrar senha' : 'Ocultar senha';
+    });
+
+    var b = document.createElement('button');
+    b.className = 'scn-btn mock-toggle';
+    b.textContent = 'modal: configurar e-mail';
+    b.addEventListener('click', open);
+    bar.appendChild(b);
+  })();
+
+  show(0);
+
+  /* Enter envia (só demonstração; WPF: PreviewKeyDown no TextBox) */
+  document.getElementById('inputField').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      var t = this.value.trim();
+      if (!t) return;
+      var row = document.createElement('div');
+      row.className = 'row user';
+      var b = document.createElement('div');
+      b.className = 'bubble user';
+      b.textContent = t;
+      row.appendChild(b);
+      messages.appendChild(row);
+      this.value = '';
+      messages.scrollTop = messages.scrollHeight;
+    }
+  });
+
+  /* Horário em toda linha com bolha. No produto isto vem do modelo
+     (Message.Timestamp); aqui o mock preenche para todos os cenários. */
+  function addStamps() {
+    var t = 2;
+    Array.prototype.forEach.call(messages.querySelectorAll('.row'), function (row) {
+      if (!row.querySelector('.bubble') || row.querySelector('.stamp')) return;
+      var span = document.createElement('span');
+      span.className = 'stamp';
+      span.textContent = '14:' + String(t < 10 ? '0' + t : t);
+      t += 1;
+      row.appendChild(span);
+    });
+  }
+
+  /* Tooltip das ações concluídas: um só elemento, posicionado no hover.
+     WPF: ToolTip nativo no ícone, com o template de .action-tooltip. */
+  var tip = document.getElementById('actionTooltip');
+
+  /* Monta e posiciona o tooltip a partir do alvo. Dois formatos:
+       - simples: uma linha (ações concluídas do chat)
+       - bloco:   caminho completo, ou comando + divisória + saída
+                  (histórico de ações do painel) */
+  function showTip(el) {
+    var block = el.hasAttribute('data-tip-cmd') || el.hasAttribute('data-tip-path');
+    tip.classList.toggle('block', block);
+
+    if (el.hasAttribute('data-tip-cmd')) {
+      var html =
+        '<span class="tt-section"><span class="tt-label">comando</span>'
+        + '<span class="tt-code">' + el.getAttribute('data-tip-cmd') + '</span></span>';
+      if (el.hasAttribute('data-tip-sum')) {
+        html += '<span class="tt-section"><span class="tt-label">resultado</span>'
+          + '<span class="tt-sum">' + el.getAttribute('data-tip-sum') + '</span></span>';
+      }
+      html += '<span class="tt-section"><span class="tt-label">saída bruta</span>'
+        + '<span class="tt-out">' + el.getAttribute('data-tip-out') + '</span></span>';
+      tip.innerHTML = html;
+    } else if (el.hasAttribute('data-tip-path')) {
+      tip.innerHTML =
+        '<span class="tt-section"><span class="tt-label">caminho completo</span>'
+        + '<span class="tt-code">' + el.getAttribute('data-tip-path') + '</span></span>';
+    } else {
+      tip.innerHTML = el.getAttribute('data-tip');
+    }
+
+    /* posiciona acima do alvo, preso dentro da janela do navegador */
+    tip.classList.add('on');
+    var r = el.getBoundingClientRect();
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    var left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    var top = r.top - h - 10;
+    if (top < 8) top = r.bottom + 10;   /* sem espaço acima -> abre abaixo */
+    top = Math.min(top, window.innerHeight - h - 8);
+    top = Math.max(8, top);
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  var TIP_SEL = '.tool-action-icon[data-tip], [data-tip-path], [data-tip-cmd]';
+  [messages, document.getElementById('sidePanel')].forEach(function (root) {
+    root.addEventListener('mouseover', function (e) {
+      var el = e.target.closest ? e.target.closest(TIP_SEL) : null;
+      if (el) showTip(el);
+    });
+    root.addEventListener('mouseout', function (e) {
+      var el = e.target.closest ? e.target.closest(TIP_SEL) : null;
+      if (el) tip.classList.remove('on');
+    });
+  });
+
+  /* Trilha de ícones: roda vertical -> rolagem horizontal.
+     WPF: PreviewMouseWheel no ScrollViewer somando ao HorizontalOffset. */
+  messages.addEventListener('wheel', function (e) {
+    var track = e.target.closest ? e.target.closest('.icon-track') : null;
+    if (!track) return;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      track.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+
+  /* Abas do painel lateral. WPF: TabControl sem chrome, ou um
+     ContentControl trocando de DataTemplate por aba selecionada. */
+  var panelEl = document.getElementById('sidePanel');
+  /* MOCK-ONLY: alterna a lista de e-mails com o estado "não configurado". */
+  var mailToggle = document.getElementById('mailEmptyToggle');
+  if (mailToggle) {
+    mailToggle.addEventListener('click', function () {
+      var pane = document.querySelector('[data-pane="mail"]');
+      var list = pane.querySelector('.panel-list');
+      var empty = pane.querySelector('.panel-empty-state');
+      var showEmpty = empty.style.display === 'none';
+      list.style.display = showEmpty ? 'none' : 'flex';
+      empty.style.display = showEmpty ? 'flex' : 'none';
+      mailToggle.textContent = showEmpty ? 'com e-mails' : 'estado vazio';
+    });
+  }
+
+  Array.prototype.forEach.call(panelEl.querySelectorAll('.panel-tab'), function (tab) {
+    tab.addEventListener('click', function () {
+      var name = tab.getAttribute('data-tab');
+      Array.prototype.forEach.call(panelEl.querySelectorAll('.panel-tab'), function (t) {
+        t.classList.toggle('active', t === tab);
+      });
+      Array.prototype.forEach.call(panelEl.querySelectorAll('.tab-pane'), function (p) {
+        p.style.display = (p.getAttribute('data-pane') === name) ? '' : 'none';
+      });
+    });
+  });
+
+  /* Remover arquivo do contexto: o X não pode propagar o clique para o
+     item (que abriria o Explorer). WPF: e.Handled = true no botão. */
+  panelEl.addEventListener('click', function (e) {
+    var rm = e.target.closest ? e.target.closest('.fi-remove') : null;
+    if (!rm) return;
+    e.stopPropagation();
+    rm.closest('.file-item').remove();
+  });
+
+  /* Painel lateral: o botão do header abre/fecha a segunda janela.
+     WPF: alternar Visibility (ou Show/Hide) da Window do painel. */
+  var panel = document.getElementById('sidePanel');
+  document.getElementById('panelBtn').addEventListener('click', function () {
+    panel.style.display = (panel.style.display === 'none') ? '' : 'none';
+  });
+
+  /* Botão primário: enviar <-> parar gravação (WPF: bool IsRecording) */
+  var rec = document.getElementById('recordBtn');
+  var isRecording = false;
+  var SEND = '<svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.1 10L16.9 3.4 12.6 16.6 9.7 11.6z"></path><path d="M9.7 11.6L16.9 3.4"></path></svg>';
+  rec.addEventListener('click', function () {
+    isRecording = !isRecording;
+    rec.innerHTML = isRecording ? '<span class="stop-square"></span>' : SEND;
+    rec.title = isRecording ? 'Parar gravação' : 'Enviar';
+  });
+})();
+</script>
+
+
+<!-- ============================================================================
+     ESPECIFICAÇÃO EM JSON
+     Os mesmos tokens e medidas dos comentários do <style>, em formato
+     consumível por ferramenta. Bloco inerte: não afeta a renderização.
+     ============================================================================ -->
+<script type="application/json" id="design-spec">
+{
+  "screen": "chat",
+  "target": "csharp-wpf",
+  "supersedes": ["tela-chat.html", "tela-chat-v2.html"],
+  "relatedScreens": {
+    "selection": "handoff/selecao-inteligencia.html",
+    "settings": "handoff/tela-configuracoes.html"
+  },
+  "windows": {
+    "chat": {
+      "width": 770, "height": 520, "widthFixed": true,
+      "chrome": "none", "transparent": true,
+      "radiusOuter": 20, "radiusInner": 18.5, "neonStroke": 1.5,
+      "draggableRegion": "header",
+      "rows": ["header:auto", "messages:*", "input:auto", "footer:auto"]
+    },
+    "sidePanel": {
+      "width": 300, "height": 520,
+      "radiusOuter": 20, "radiusInner": 18.5, "neonStroke": 1.5,
+      "alignsWith": "bottom of chat window",
+      "shrinksChatWindow": false
+    },
+    "shadow": { "blurRadius": 60, "shadowDepth": 15, "opacity": 0.55, "color": "#000000" }
+  },
+  "panelFootFormat": {
+    "tabOrderIsIn": "sidePanelTabs — lista única de abas neste documento",
+    "minHeight": 25, "fontSize": 11, "gap": 8, "wrap": false,
+    "separator": "•",
+    "usableWidth": 269,
+    "note": "rótulos curtos de propósito; por extenso não cabem em uma linha",
+    "importantColor": "#E8A33D",
+    "perTabContentIn": "sidePanelTabs[].footer"
+  },
+  "mailPane": {
+    "sameItemAs": "shadow-assistant.html §4.8",
+    "provisional": true,
+    "item": {
+      "radius": 14, "padding": [9, 11, 10, 9], "gap": 6,
+      "columns": ["3px urgencyBar", "*", "auto badge"],
+      "hoverBorder": "rgba(155,81,224,0.40)", "hoverBackground": "rgba(155,81,224,0.08)",
+      "name": { "size": 12.5, "weight": 600, "color": "#F5F4F7", "lines": 1, "trimming": "CharacterEllipsis" },
+      "desc": { "size": 11.5, "color": "#8B8794", "lineHeight": 1.45, "maxLines": 2 },
+      "badge": { "radius": 999, "size": 10, "weight": 600, "dot": 5, "padding": [3, 8, 3, 6] }
+    },
+    "urgency": {
+      "Maxima": { "color": "#E5484D", "label": "Máxima" },
+      "Media":  { "color": "#E8A33D", "label": "Média" },
+      "Baixa":  { "color": "#8B8794", "label": "Baixa" },
+      "badgeBackgroundAlpha": 0.13,
+      "baixaBadgeBackground": "rgba(255,255,255,0.05)"
+    },
+    "sort": "urgency desc, then receivedAt desc",
+    "scrolls": true,
+    "itemClick": "abre o e-mail no cliente padrão",
+    "emptyStates": {
+      "notConfigured": { "spec": "§6.2.1", "hasActionButton": true },
+      "configuredNoMail": { "text": "Nenhum e-mail novo." }
+    }
+  },
+  "mailEmptyState": {
+    "glyph": { "size": 42, "icon": 19, "background": "rgba(155,81,224,0.12)", "border": "rgba(155,81,224,0.30)" },
+    "title": { "text": "Nenhum e-mail conectado", "size": 13.5, "weight": 600 },
+    "subtitle": { "text": "Conecte uma conta para a KAI ler, resumir e priorizar sua caixa de entrada.", "size": 11.5, "maxWidth": 232 },
+    "button": { "text": "Configurar e-mail", "size": 12, "weight": 600, "radius": 9, "padding": [7, 13], "icon": 13, "opens": "modal.mail" },
+    "keepsTitleRow": true, "hidesPanelFoot": true
+  },
+  "mailModal": {
+    "hostedIn": "chat window overlay (Panel.ZIndex), NOT a new Window",
+    "veil": { "color": "rgba(8,6,12,0.62)", "radius": 18.5, "clickCloses": true },
+    "card": { "width": 384, "background": "#17141C", "border": "rgba(255,255,255,0.10)", "radius": 16, "padding": 20, "gap": 14,
+              "shadow": "0 18 48 rgba(0,0,0,0.55)" },
+    "head": { "glyph": 34, "icon": 17, "title": "Conectar e-mail", "titleSize": 15,
+              "subtitle": "A KAI usa IMAP para ler sua caixa de entrada. Nada é enviado sem sua confirmação." },
+    "fields": [
+      { "id": "address", "label": "E-mail", "control": "TextBox", "mono": true,
+        "placeholder": "voce@exemplo.com", "validate": "formato de e-mail, em LostFocus" },
+      { "id": "appPassword", "label": "Senha de app", "control": "PasswordBox", "mono": true,
+        "placeholder": "xxxx xxxx xxxx xxxx", "reveal": { "size": 36, "radius": 10 },
+        "help": "Não use a senha da sua conta. Gere uma senha de app no seu provedor — como gerar.",
+        "storage": "DPAPI / ProtectedData (CurrentUser); nunca em texto puro, nunca reexibida" }
+    ],
+    "labelPlacement": "above control",
+    "control": { "height": 36, "radius": 10, "background": "rgba(0,0,0,0.28)", "border": "rgba(255,255,255,0.10)",
+                 "focusBorder": "rgba(155,81,224,0.45)", "fontSize": 12.5, "monoLetterSpacing": "0.06em" },
+    "error": { "background": "rgba(229,72,77,0.10)", "border": "rgba(229,72,77,0.30)", "color": "#F2A0A2",
+               "text": "Não foi possível entrar. Verifique o e-mail e a senha de app.", "visibleOnlyAfterFailedAttempt": true },
+    "footer": { "buttons": ["Cancelar", "Conectar"], "align": "right", "gap": 8,
+                "connectEnabledWhen": "os dois campos preenchidos",
+                "connectingLabel": "Conectando…" },
+    "closeVia": ["Cancelar", "Esc", "clique no véu"],
+    "hasCloseX": false
+  },
+  "tokens": {
+    "surfaces": {
+      "glass": "rgba(18,18,22,0.90)", "glassArgb": [230, 18, 18, 22],
+      "surfaceCard": "rgba(255,255,255,0.035)",
+      "surfaceCode": "rgba(0,0,0,0.30)",
+      "surfaceCodeBlock": "rgba(0,0,0,0.34)",
+      "surfaceHoverSoft": "rgba(255,255,255,0.07)",
+      "surfaceInputBar": "#16151C",
+      "surfaceTooltip": "#1D1C24"
+    },
+    "borders": {
+      "borderCard": "rgba(255,255,255,0.08)",
+      "borderCardHover": "rgba(255,255,255,0.16)",
+      "divider": "rgba(255,255,255,0.06)",
+      "dividerTooltip": "rgba(255,255,255,0.10)",
+      "accentBorder": "rgba(155,81,224,0.30)",
+      "accentBorderStrong": "rgba(155,81,224,0.40)",
+      "dangerBorder": "rgba(229,72,77,0.35)",
+      "warnBorder": "rgba(226,135,67,0.32)",
+      "magentaBorder": "rgba(213,63,140,0.34)"
+    },
+    "text": {
+      "textStrong": "#F5F4F7", "textNormal": "#E8E6EC", "textBody": "#CBC8D1",
+      "textSecondary": "#8B8794", "textMuted": "#6F6A7A",
+      "accentLilac": "#C79EF0", "accentLilacHover": "#D9BCFF",
+      "success": "#4ADE80", "danger": "#E5484D", "dangerText": "#FF8A8D",
+      "warn": "#E28743", "magenta": "#D53F8C"
+    },
+    "gradients": {
+      "neon": { "angle": "135deg", "stops": [
+        { "color": "#9B51E0", "offset": 0.00 }, { "color": "#3182CE", "offset": 0.35 },
+        { "color": "#D53F8C", "offset": 0.65 }, { "color": "#E28743", "offset": 1.00 }
+      ]},
+      "primary": { "angle": "135deg", "stops": [
+        { "color": "#9B51E0", "offset": 0.00 }, { "color": "#3182CE", "offset": 1.00 }
+      ]},
+      "inputFrame": { "angle": "135deg", "stops": [
+        { "color": "#9B51E0", "offset": 0.00 }, { "color": "#3182CE", "offset": 0.55 },
+        { "color": "#D53F8C", "offset": 1.00 }
+      ]}
+    },
+    "shadows": {
+      "cardShadow": "0 2px 8px rgba(0,0,0,0.20)",
+      "tooltipShadow": "0 6px 18px rgba(0,0,0,0.45)",
+      "userBubble": "none"
+    },
+    "radius": {
+      "windowOuter": 20, "windowInner": 18.5, "bubble": 18, "chip": 18,
+      "inputFrame": 18, "inputInner": 16.5, "card": 12, "cardLarge": 16,
+      "tooltip": 8, "codeBlock": 12, "codeInline": 5, "iconButton": 8, "pill": 20
+    },
+    "geometry": {
+      "headerHeight": 52,
+      "messagesPadding": [24, 26, 24, 26], "messagesGap": 14,
+      "bubbleMaxWidthPct": 74, "bubblePadding": [13, 17, 13, 17],
+      "chipMinHeight": 41, "chipPadding": [7, 14, 7, 14],
+      "iconTrackMaxWidth": 142, "iconTrackFormula": "5*22 + 4*8",
+      "actionIcon": 22, "actionIconsVisible": 5,
+      "inputHeight": 49, "inputWrapPadding": [0, 20, 10, 20],
+      "footerPadding": [0, 26, 14, 26], "footerMinHeight": 26,
+      "recordButton": 38, "iconButton": 34,
+      "scrollbarVertical": 6, "scrollbarIconTrack": 4,
+      "tooltipBlockWidth": 340, "tooltipRawOutputMaxHeight": 118,
+      "logDot": 25, "fileTypeIcon": 26
+    },
+    "typography": {
+      "uiFamily": "Segoe UI", "monoFamily": ["Cascadia Code", "Consolas"],
+      "headerName": { "size": 16, "weight": 600, "color": "#F5F4F7" },
+      "levelPill": { "size": 11, "weight": 600, "color": "#C79EF0" },
+      "bubbleText": { "size": 14, "weight": 400, "lineHeight": 1.5 },
+      "toolName": { "size": 12, "weight": 600, "color": "#C79EF0", "mono": true },
+      "toolLabel": { "size": 12, "weight": 400, "color": "#8B8794" },
+      "toolArg": { "size": 11, "weight": 400, "color": "#6F6A7A", "mono": true },
+      "inputField": { "size": 14, "weight": 400, "color": "#E8E6EC" },
+      "chatTitle": { "size": 12, "weight": 400, "color": "#8B8794" },
+      "tokenCounter": { "size": 12, "weight": 400, "mono": true },
+      "stamp": { "size": 10.5, "weight": 400, "color": "#6F6A7A" },
+      "codeInline": { "size": 12.5, "weight": 400, "color": "#C79EF0", "mono": true },
+      "codeBlock": { "size": 12.5, "weight": 400, "color": "#CBC8D1", "mono": true, "lineHeight": 1.55 }
+    }
+  },
+  "tokenCounter": {
+    "format": "{used}/{max} tokens ({savingPct}%)",
+    "note": "valor entre parênteses = economia de contexto via cache; negativo = economia",
+    "maxComesFrom": "campo 'Máximo de Tokens de Contexto' da tela de Configurações",
+    "colorRules": [
+      { "when": "saving >= 50", "color": "#4ADE80" },
+      { "when": "saving 20..49", "color": "#E28743" },
+      { "when": "saving < 20", "color": "#D53F8C" }
+    ]
+  },
+  "toolChain": {
+    "layout": "uma única linha, flex, gap 8, maxWidth 90%",
+    "chipStates": ["Running", "Waiting", "Done", "Failed"],
+    "sharedMinHeight": 41,
+    "collapsedChip": {
+      "content": ["check verde 12px", "trilha de ícones das ações"],
+      "width": "fit-content", "flex": "0 0 auto", "maxWidth": "none"
+    },
+    "iconTrack": {
+      "maxWidth": 142, "visibleIcons": 5, "scrollbarHeight": 4,
+      "wheelRedirect": "vertical -> horizontal",
+      "counterPlusN": false,
+      "counterNote": "removido de propósito; a barra de 4px já comunica overflow"
+    },
+    "iconMeaning": "a OPERAÇÃO (write_file, copy_file, delete_file...)",
+    "tooltip": {
+      "element": "único, position:fixed, fora de qualquer área rolável",
+      "variants": {
+        "simple": "uma linha: tool + caminho",
+        "block": {
+          "width": 340,
+          "sections": ["CAMINHO COMPLETO", "COMANDO", "RESULTADO", "SAÍDA BRUTA"],
+          "optional": ["RESULTADO"],
+          "dividers": "1px rgba(255,255,255,0.10)"
+        }
+      },
+      "placement": "Top com fallback Bottom, preso na viewport (8px)"
+    }
+  },
+  "conversationStates": [
+    { "id": "exec", "label": "Executando ações" },
+    { "id": "error", "label": "Erro na execução" },
+    { "id": "confirm", "label": "Confirmar ação destrutiva", "blocksQueue": true },
+    { "id": "many", "label": "10 ações (rolagem)" },
+    { "id": "context", "label": "Contexto cheio" },
+    { "id": "code", "label": "Resposta com código" },
+    { "id": "empty", "label": "Conversa vazia" },
+    { "id": "reconnect", "label": "Reconectando", "disablesInput": true }
+  ],
+  "sidePanelTabs": [
+    {
+      "id": "history", "title": "Histórico de Chats",
+      "emptyState": "Nenhum chat salvo.",
+      "onItemClick": "restaura a conversa: mensagens + título + contador + abas 3 e 4",
+      "restoreSteps": [
+        "persistir a conversa atual se houver mensagens não salvas",
+        "carregar do disco e repovoar a coleção de mensagens na ordem original",
+        "restaurar título do chat, contador de tokens, aba de arquivos (3) e aba de ações (4)",
+        "rolar a lista de mensagens para o fim",
+        "marcar o item como ativo na lista"
+      ],
+      "panelStaysOpen": true,
+      "footer": { "parts": ["N chats", "N MB em disco"],
+                  "diskBytes": "soma por chat de: arquivo do chat + capítulos + atos",
+                  "hiddenWhenEmpty": true }
+    },
+    {
+      "id": "mail", "title": "E-mails",
+      "spec": "§6.2",
+      "provisionalItemLayout": true,
+      "itemSameAs": "shadow-assistant.html §4.8 — ver mailPane neste JSON",
+      "emptyState": "Nenhum e-mail novo.",
+      "notConfiguredState": "§6.2.1 — convite com botão que abre modal.mail (§6.5)",
+      "iconMeaning": "envelope; a aba é a 2ª, entre histórico e arquivos",
+      "order": "urgência decrescente, depois mais recente no topo",
+      "scrolls": true,
+      "onItemClick": "abre o e-mail no cliente padrão",
+      "footer": { "parts": ["N e-mails", "N urgentes", "N tokens"],
+                  "urgentes": "urgência Máxima + Média, em #E8A33D",
+                  "hiddenWhenNotConfigured": true }
+    },
+    {
+      "id": "files", "title": "Arquivos no Contexto",
+      "emptyState": "Nenhum arquivo no contexto.",
+      "iconMeaning": "o TIPO de arquivo (extensão) — nunca a operação",
+      "operationShownIn": "pill de origem",
+      "origins": ["criado", "copiado", "lido", "anexado"],
+      "onItemClick": "explorer.exe /select,{fullPath}",
+      "removeButton": "remove do contexto, nunca do disco; e.Handled = true",
+      "addButton": { "label": "Adicionar", "action": "OpenFileDialog multiselect" },
+      "footer": { "parts": ["N arquivos", "N KB", "N tokens"],
+                  "note": "KB é o tamanho em disco; tokens é o custo no prompt — as duas ficam" }
+    },
+    {
+      "id": "log", "title": "Histórico de Ações",
+      "emptyState": "Nenhuma ação registrada.",
+      "order": "mais recente no topo, agrupado por dia",
+      "iconMeaning": "a OPERAÇÃO",
+      "dotVariants": {
+        "write": "lilás rgba(155,81,224,0.12)",
+        "destructiveOrFailed": "vermelho rgba(229,72,77,0.12)",
+        "readOnly": "cinza rgba(255,255,255,0.05)"
+      },
+      "hoverTooltip": "variante em bloco",
+      "footer": "total de ações + quantas falharam"
+    }
+  ],
+  "keyboard": { "Enter": "enviar", "Shift+Enter": "quebrar linha" },
+  "constraints": [
+    "sem blur nativo; vidro = cor sólida Argb(230,18,18,22)",
+    "borda neon é a única cor saturada da moldura",
+    "bolhas com raio 18px uniforme; a do usuário sem sombra",
+    "janela de chat com largura fixa: não encolhe quando o painel abre",
+    "tooltip nunca é filho de área rolável",
+    "chip concluído e em execução compartilham a mesma altura",
+    "botão primário do input é ENVIAR; microfone é separado",
+    "ações destrutivas exigem confirmação e bloqueiam a fila",
+    "contador +N na trilha de ícones foi removido de propósito"
+  ],
+  "mockOnly": [".scenarios", "body background", ".page", ".stage"]
+}
+</script>
+
+</body>
+</html>

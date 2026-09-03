@@ -177,10 +177,21 @@ namespace AIB.Tests
                 var janela = new SettingsWindow(ServicoDescartavel());
                 Desenhar(janela, "configuracoes");
 
-                // Segunda passada bem mais alta. A área de seções é a única linha `*`, então
-                // ela cresce e mostra os nove campos de uma vez — inclusive os dois switches,
-                // que na altura de desenho ficam abaixo da dobra.
-                Desenhar(janela, "configuracoes-inteira", 700, 1080);
+                // Uma passada por página. Com o menu lateral não existe mais "a tela inteira":
+                // cada página é uma View, e desenhar só a primeira deixaria as outras três sem
+                // nenhuma verificação de montagem — inclusive a de e-mail, que é a única com
+                // DataTemplate e conversores.
+                foreach (var pagina in new[]
+                {
+                    PaginaDeConfiguracoes.Identidade,
+                    PaginaDeConfiguracoes.Conexao,
+                    PaginaDeConfiguracoes.Email,
+                    PaginaDeConfiguracoes.Avancado
+                })
+                {
+                    janela.IrPara(pagina);
+                    Desenhar(janela, "configuracoes-" + pagina.ToString().ToLowerInvariant(), 960, 650);
+                }
 
                 janela.Close();
             });
