@@ -41,6 +41,51 @@ namespace AIB.Tests
         }
 
         // ─────────────────────────────────────────────────────────────────────
+        // Prova de vida no terminal
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task OTurnoINTEIRO_DeixaRastroNoTerminal()
+        {
+            // Sem isto, um turno lento era silêncio absoluto: o [STREAM-END] só imprime quando
+            // o stream acaba. O rastro tem de existir do envio ao fechamento, e o fechamento
+            // precisa separar o prefill da geração — são dois custos com causas diferentes.
+            var loop = BuildLoop(new ScriptedProvider(null, TextTurn("pronto")));
+            var store = new RecordingStore();
+
+            await DrainAsync(loop.RunAsync(Request(store), CancellationToken.None));
+
+            string tudo;
+            lock (_pulso) tudo = string.Join("\n", _pulso);
+
+            tudo.Should().Contain("[TURNO 1]");
+            tudo.Should().Contain("reuso previsto", "é o número que explica a duração da espera");
+            tudo.Should().Contain("primeiro token em", "marca o fim do prefill");
+            tudo.Should().Contain("respondeu", "e o fechamento diz como o turno acabou");
+        }
+
+        [Fact]
+        public async Task ATrocaDeIteracao_APARECE_NoRastro()
+        {
+            // Um turno com ferramenta paga um prefill por iteração. Sem o número da iteração no
+            // rastro, três esperas seguidas pareceriam uma só, muito mais longa.
+            var loop = BuildLoop(new ScriptedProvider(
+                null,
+                ToolTurn(("k0", "id0", "read_file", "{\"path\":\"a.txt\"}")),
+                TextTurn("li o arquivo")));
+
+            var store = new RecordingStore();
+
+            await DrainAsync(loop.RunAsync(Request(store), CancellationToken.None));
+
+            string tudo;
+            lock (_pulso) tudo = string.Join("\n", _pulso);
+
+            tudo.Should().Contain("[TURNO 1]").And.Contain("[TURNO 2]");
+            tudo.Should().Contain("ferramenta read_file — executando");
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
         // Dublês
         // ─────────────────────────────────────────────────────────────────────
 
@@ -140,8 +185,12 @@ namespace AIB.Tests
             new StreamChunk.Done(StreamFinishReason.Stop, "stop")
         };
 
+        /// <summary>Linhas do pulso do último laço montado. Diagnóstico dos ensaios.</summary>
+        private readonly List<string> _pulso = new();
+
         private AgentLoop BuildLoop(IChatProvider provider)
-            => new AgentLoop(new ToolRegistry(), new FixedProviderFactory(provider), _settings, new TokenCounter());
+            => new AgentLoop(new ToolRegistry(), new FixedProviderFactory(provider), _settings,
+                             new TokenCounter(), linha => { lock (_pulso) _pulso.Add(linha); });
 
         private static AgentTurnRequest Request(IMessageStore store)
             => new AgentTurnRequest(store, Array.Empty<ChatTool>(), 1, ChatRequestOptions.Default, false);

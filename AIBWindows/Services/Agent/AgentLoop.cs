@@ -46,6 +46,12 @@ public sealed class AgentLoop
     /// </summary>
     private readonly PromptPrefixTracker _prefixTracker;
 
+    /// <summary>
+    /// Para onde o <see cref="PulsoDoTurno"/> escreve. Injetável para o ensaio poder ler as
+    /// linhas em vez de depender do console do processo de teste.
+    /// </summary>
+    private readonly Action<string>? _escreverPulso;
+
     /// <param name="tokenCounter">
     /// Contador usado para estimar os tokens já gerados no stream. Opcional para manter a
     /// assinatura do contrato válida; quem compõe o app passa a instância única.
@@ -54,8 +60,10 @@ public sealed class AgentLoop
         ToolRegistry toolRegistry,
         IChatProviderFactory providerFactory,
         SettingsService settingsService,
-        TokenCounter? tokenCounter = null)
+        TokenCounter? tokenCounter = null,
+        Action<string>? escreverPulso = null)
     {
+        _escreverPulso = escreverPulso;
         _toolRegistry = toolRegistry ?? throw new ArgumentNullException(nameof(toolRegistry));
         _providerFactory = providerFactory ?? throw new ArgumentNullException(nameof(providerFactory));
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
@@ -100,6 +108,18 @@ public sealed class AgentLoop
             // porque o Ollama não reporta cache; o OpenAI reporta e tem prioridade.
             int predictedCached = _prefixTracker.RecordAndGetReusableTokens(messages);
 
+            // PROVA DE VIDA no terminal. Um prefill frio de ~3500 tokens passa de três minutos
+            // nesta máquina, e nesse intervalo não há chunk, evento nem linha de log: por fora
+            // é indistinguível de travamento. O pulso bate a cada poucos segundos dizendo em que
+            // fase o turno está e há quanto tempo.
+            using var pulso = new PulsoDoTurno(
+                iteration,
+                provider.Model,
+                baselineTokens,
+                predictedCached,
+                request.Options.NumCtx,
+                escrever: _escreverPulso);
+
             await foreach (var chunk in provider
                 .StreamAsync(messages, tools, request.Options, ct)
                 .WithCancellation(ct)
@@ -114,16 +134,22 @@ public sealed class AgentLoop
                 {
                     if (text.Channel == TextChannel.Final)
                     {
+                        pulso.Escreveu(text.Text.Length);
                         finalText.Append(text.Text);
                         yield return new AgentEvent.Text(text.Text);
                     }
                     else
                     {
+                        pulso.Raciocinou(text.Text.Length);
                         yield return new AgentEvent.Reasoning(text.Text);
                     }
                 }
                 else if (chunk is StreamChunk.ToolCallDelta delta)
                 {
+                    // Turno que só chama ferramenta não emite texto nenhum: sem esta linha o
+                    // prefill dele nunca seria dado por encerrado no pulso.
+                    pulso.PrimeiroToken();
+
                     // Agregação por CallKey, em ordem de primeira aparição. A chave é opaca:
                     // quem decide o que é uma chamada distinta é o provider.
                     if (!callsByKey.TryGetValue(delta.CallKey, out int position))
@@ -213,6 +239,7 @@ public sealed class AgentLoop
                 // abaixo, e a cadeia de ações precisa mostrar as que estão em curso juntas.
                 foreach (var tc in calls)
                 {
+                    pulso.FerramentaComecou(tc.Name);
                     yield return new AgentEvent.Technical($"[FERRAMENTA] Nome: {tc.Name} | Args: {tc.ArgumentsOrEmpty()}\n");
                     yield return new AgentEvent.ToolStarted(tc.Id, tc.Name, tc.ArgumentsOrEmpty());
                 }
@@ -225,6 +252,7 @@ public sealed class AgentLoop
                 // Resultados na ordem original, mesmo que tenham terminado fora de ordem.
                 foreach (var (tc, result) in results)
                 {
+                    pulso.FerramentaTerminou(tc.Name, Memory.ArtifactExtractor.Falhou(result));
                     yield return new AgentEvent.Technical($"[FERRAMENTA] Resultado ({tc.Name}): {result}\n");
 
                     // O literal sai do MESMO extrator que alimenta a memória. Dois extratores
@@ -243,6 +271,7 @@ public sealed class AgentLoop
 
                 store.Trim(request.UserLevel);
                 store.NotifyTokenCount(request.UserLevel);
+                pulso.Fim($"ferramenta(s) executada(s), voltando ao modelo (iteração {iteration + 1})");
                 continue;
             }
 
@@ -258,6 +287,7 @@ public sealed class AgentLoop
                     string.IsNullOrEmpty(rawAssistantText) ? finalText.ToString() : rawAssistantText!);
                 store.Trim(request.UserLevel);
                 store.NotifyTokenCount(request.UserLevel);
+                pulso.Fim("respondeu", _tokenCounter.CountText(finalText.ToString()));
                 yield return new AgentEvent.Completed(TurnOutcome.Answered, iteration);
                 yield break;
             }
@@ -265,6 +295,7 @@ public sealed class AgentLoop
             // ── Stream vazio: sem texto e sem ferramenta ──────────────────────────
             store.Trim(request.UserLevel);
             store.NotifyTokenCount(request.UserLevel);
+            pulso.Fim("resposta VAZIA");
             yield return new AgentEvent.Completed(TurnOutcome.EmptyResponse, iteration);
             yield break;
         }
