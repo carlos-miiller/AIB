@@ -759,6 +759,81 @@ namespace AIB.Tests
             });
         }
 
+        [Fact]
+        public void JanelaVAZIA_NaoAPAGA_OProgressoJaGuardado()
+        {
+            // Uma varredura sem nada na janela devolve ultimoUid 0, que significa "nao vi
+            // nada" e NAO "recomece do zero". Gravar esse zero faria a caixa inteira voltar a
+            // parecer novidade — um fim de semana sem e-mail bastaria para causar isso.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                string pasta = PastaTemporaria();
+                string caminho = System.IO.Path.Combine(pasta, "settings.json");
+                var cofre = new MailVault(pasta);
+                var estado = new EstadoDasCaixas(pasta);
+
+                var primeira = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new ServicoQueVarre(mensagens: 12, naoLidas: 2, uidValidity: 8271, ultimoUid: 91043),
+                    cofre, estado);
+                Clicar(primeira, "BotaoAdicionarConta");
+                Digitar(primeira, "ana@gmail.com", "abcdefghijklmnop");
+                Clicar(primeira, "BotaoConectarConta");
+                Bombear();
+                primeira.Close();
+
+                var segunda = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new ServicoQueVarre(mensagens: 0, naoLidas: 0, uidValidity: 8271, ultimoUid: 0),
+                    cofre, estado);
+                Bombear();
+
+                estado.Ler("ana@gmail.com")!.LastUid.Should().Be(91043,
+                    "a caixa quieta nao desfaz o que ja tinha sido lido");
+
+                segunda.Close();
+            });
+        }
+
+        [Fact]
+        public void SeloDeValidadeTROCADO_DESCARTA_OUidGuardado()
+        {
+            // uidValidity diferente significa que o servidor RENUMEROU a caixa: o UID guardado
+            // e de outra numeracao, e preserva-lo pelo maior numero apontaria para uma mensagem
+            // que nao existe. Aqui o numero novo tem de vencer mesmo sendo MENOR.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                string pasta = PastaTemporaria();
+                string caminho = System.IO.Path.Combine(pasta, "settings.json");
+                var cofre = new MailVault(pasta);
+                var estado = new EstadoDasCaixas(pasta);
+
+                var primeira = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new ServicoQueVarre(mensagens: 12, naoLidas: 2, uidValidity: 8271, ultimoUid: 91043),
+                    cofre, estado);
+                Clicar(primeira, "BotaoAdicionarConta");
+                Digitar(primeira, "ana@gmail.com", "abcdefghijklmnop");
+                Clicar(primeira, "BotaoConectarConta");
+                Bombear();
+                primeira.Close();
+
+                var segunda = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new ServicoQueVarre(mensagens: 4, naoLidas: 1, uidValidity: 9999, ultimoUid: 7),
+                    cofre, estado);
+                Bombear();
+
+                var guardado = estado.Ler("ana@gmail.com")!;
+                guardado.UidValidity.Should().Be(9999);
+                guardado.LastUid.Should().Be(7, "numeracao nova nao se compara com a antiga");
+
+                segunda.Close();
+            });
+        }
+
         /// <summary>Serviço que conecta e devolve uma varredura com números fixos.</summary>
         private sealed class ServicoQueVarre : IMailService
         {

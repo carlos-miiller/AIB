@@ -672,10 +672,17 @@ public partial class SettingsWindow : Window
             Console.WriteLine($"[EMAIL] {conta.Address}: uidValidity mudou "
                               + $"({guardado!.UidValidity} -> {r.UidValidity}); recomeçando pela data.");
 
+        // Até onde se leu: o maior UID entre o que ficou guardado e o que acabou de aparecer.
+        // O máximo importa porque uma janela VAZIA devolve zero, e gravar esse zero apagaria o
+        // progresso — um fim de semana sem e-mail bastaria para a caixa inteira voltar a
+        // parecer novidade na segunda-feira. Com o selo trocado não há o que preservar: o UID
+        // guardado é de outra numeração e compará-lo com o de agora seria ficção.
+        uint ultimoUid = renumerou ? r.UltimoUid : Math.Max(partida, r.UltimoUid);
+
         _estado.Gravar(conta.Address, new EstadoDaCaixa
         {
             UidValidity = r.UidValidity,
-            LastUid = r.UltimoUid,
+            LastUid = ultimoUid,
             LastReadUtc = DateTime.UtcNow
         });
 
@@ -687,7 +694,7 @@ public partial class SettingsWindow : Window
 
         Console.WriteLine($"[EMAIL] {conta.Address}: {r.Mensagens} mensagem(ns) na janela, "
                           + $"{r.NaoLidas} por ler, {novas} nova(s) desde a última varredura. "
-                          + $"uidValidity={r.UidValidity} últimoUid={r.UltimoUid}");
+                          + $"uidValidity={r.UidValidity} últimoUid={ultimoUid}");
     }
 
     /// <summary>A conta da linha em que o botão clicado vive.</summary>

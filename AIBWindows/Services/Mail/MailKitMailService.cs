@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,13 @@ public sealed class MailKitMailService : IMailService
 {
     /// <summary>§9 passo 4: quinze segundos por caixa. Servidor mudo não segura a tela.</summary>
     private static readonly TimeSpan Paciencia = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// O que desce do servidor: identificador, flags e data de chegada —
+    /// <c>FETCH (UID FLAGS INTERNALDATE)</c>. Nem corpo, nem assunto, nem remetente.
+    /// </summary>
+    private const MessageSummaryItems ItensDaVarredura =
+        MessageSummaryItems.UniqueId | MessageSummaryItems.Flags | MessageSummaryItems.InternalDate;
 
     public bool Disponivel => true;
 
@@ -175,21 +183,19 @@ public sealed class MailKitMailService : IMailService
 
             uint validade = inbox.UidValidity;
 
-            // SINCE tem granularidade de DIA no protocolo — não adianta passar hora aqui.
+            // O SINCE conta em DIAS e pela hora do SERVIDOR, então a busca sai com um dia de
+            // folga: pedir a data exata perderia mensagem na virada de fuso. A folga faz o
+            // servidor devolver mais do que se pediu, e é o NaJanela abaixo que apara o excesso.
             var busca = SearchQuery.DeliveredAfter(desdeUtc.Date.AddDays(-1));
             var uids = await inbox.SearchAsync(busca, ct).ConfigureAwait(false);
 
-            if (uids.Count == 0)
-            {
-                await DesconectarAsync(cliente).ConfigureAwait(false);
-                return new MailScanResult(true, 0, 0, 0, validade, 0, "");
-            }
-
-            // Envelope e flags: FETCH (UID FLAGS ENVELOPE). NÃO é BODY[] — nada do conteúdo
-            // desce, e nada é marcado como lido.
-            var resumos = await inbox
-                .FetchAsync(uids, MessageSummaryItems.UniqueId | MessageSummaryItems.Flags, ct)
-                .ConfigureAwait(false);
+            // FETCH (UID FLAGS INTERNALDATE). NÃO é BODY[] — nada do conteúdo desce, e nada é
+            // marcado como lido.
+            var resumos = uids.Count == 0
+                ? new List<IMessageSummary>()
+                : (await inbox.FetchAsync(uids, ItensDaVarredura, ct).ConfigureAwait(false))
+                    .Where(r => NaJanela(r.InternalDate, desdeUtc))
+                    .ToList();
 
             int naoLidas = resumos.Count(r => r.Flags.HasValue && !r.Flags.Value.HasFlag(MessageFlags.Seen));
 
@@ -198,6 +204,9 @@ public sealed class MailKitMailService : IMailService
             uint partida = uidDePartida;
             int novas = partida == 0 ? resumos.Count : resumos.Count(r => r.UniqueId.Id > partida);
 
+            // Zero aqui significa "não vi nada nesta janela", e NÃO "recomece do zero". Quem
+            // decide o que guardar é o chamador, que é o único que sabe se o selo de validade
+            // bateu — daqui um UID guardado de outra numeração é indistinguível de um bom.
             uint ultimoUid = resumos.Count == 0 ? 0 : resumos.Max(r => r.UniqueId.Id);
 
             await DesconectarAsync(cliente).ConfigureAwait(false);
@@ -210,6 +219,27 @@ public sealed class MailKitMailService : IMailService
             await DesconectarAsync(cliente).ConfigureAwait(false);
             return new MailScanResult(false, 0, 0, 0, 0, 0, "não consegui ler a caixa agora");
         }
+    }
+
+    /// <summary>
+    /// Se a mensagem cabe mesmo na janela pedida.
+    /// <para>
+    /// Existe porque a busca no servidor é GROSSA de propósito: o <c>SINCE</c> conta em dias e
+    /// leva um dia de folga para não perder nada na virada de fuso. Sem aparar o excesso aqui, a
+    /// tela diria "3 dias" mostrando a contagem de quase cinco — e o número da tela tem de ser o
+    /// número da janela.
+    /// </para>
+    /// <para>
+    /// Mensagem sem data de chegada FICA. O servidor já a considerou dentro do intervalo, e
+    /// descartá-la por falta de um campo opcional esconderia mensagem de verdade.
+    /// </para>
+    /// </summary>
+    public static bool NaJanela(DateTimeOffset? recebido, DateTime desdeUtc)
+    {
+        if (recebido == null) return true;
+
+        DateTime limite = desdeUtc.Kind == DateTimeKind.Utc ? desdeUtc : desdeUtc.ToUniversalTime();
+        return recebido.Value.UtcDateTime >= limite;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

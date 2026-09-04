@@ -540,4 +540,47 @@ namespace AIB.Tests
             r.Erro.Should().Contain("não encontramos o servidor");
         }
     }
+    /// <summary>
+    /// O aparo da folga da busca — o número da tela tem de ser o número da janela.
+    /// </summary>
+    public class NaJanelaTests
+    {
+        private static readonly DateTime Corte = new(2026, 9, 1, 14, 0, 0, DateTimeKind.Utc);
+
+        [Fact]
+        public void OQueChegouDEPOIS_DoCorte_FICA()
+        {
+            MailKitMailService.NaJanela(new DateTimeOffset(Corte.AddHours(1)), Corte)
+                .Should().BeTrue();
+        }
+
+        [Fact]
+        public void OQueOSINCE_TROUXE_DeSOBRA_SAI()
+        {
+            // O SINCE conta em dias e sai com um dia de folga, entao o servidor devolve ate
+            // ~2 dias a mais do que se pediu. Sem este corte a linha dizia "34 em 3d" contando
+            // quase cinco dias — um numero que nao correspondia a nenhuma janela real.
+            MailKitMailService.NaJanela(new DateTimeOffset(Corte.AddDays(-1)), Corte)
+                .Should().BeFalse();
+        }
+
+        [Fact]
+        public void MensagemSEM_DataDeChegada_FICA()
+        {
+            // INTERNALDATE e opcional. Descartar por falta dele esconderia mensagem de verdade,
+            // e o servidor ja a considerou dentro do intervalo ao devolve-la no SEARCH.
+            MailKitMailService.NaJanela(null, Corte).Should().BeTrue();
+        }
+
+        [Fact]
+        public void FusoDoRemetente_NaoMuda_ADecisao()
+        {
+            // Mesmo instante, escrito em outro fuso: a comparacao e em UTC, entao a resposta
+            // tem de ser a mesma. Comparar DateTime local com corte UTC erraria por horas.
+            var umMinutoDepois = new DateTimeOffset(
+                2026, 9, 1, 12, 1, 0, TimeSpan.FromHours(-3));   // = 15:01 UTC
+
+            MailKitMailService.NaJanela(umMinutoDepois, Corte).Should().BeTrue();
+        }
+    }
 }
