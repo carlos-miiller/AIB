@@ -401,7 +401,8 @@ public partial class ChatWindow : Window
 
         var hora = new TextBlock
         {
-            Style = (Style)Resources["StampText"],
+            // FindResource, e nao Resources[]: ver a nota do AddUserBubble.
+            Style = (Style)FindResource("StampText"),
             Text = DateTime.Now.ToString("HH:mm")
         };
 
@@ -642,7 +643,15 @@ public partial class ChatWindow : Window
     {
         var border = new Border
         {
-            Style = (Style)Resources["UserBubble"],
+            // FindResource, e NAO Resources["..."]. O indexador olha o dicionario DESTA janela
+            // e mais nada; o FindResource sobe pela arvore ate o Application.Resources.
+            //
+            // A bolha azul sumiu por causa disso: o estilo morava no Window.Resources e mudou
+            // para o Themes/Controls.xaml quando a pilha de falas do Shadow passou a precisar
+            // dele. A partir dali o indexador devolvia null, o Style ficava nulo, e a Border
+            // nascia sem fundo, sem padding e sem alinhamento — texto branco solto na tela. Sem
+            // erro, sem excecao: um cast de null para Style e valido.
+            Style = (Style)FindResource("UserBubble"),
             Child = new TextBlock
             {
                 Text = text,

@@ -1,7 +1,9 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using AIB.Services;
@@ -225,6 +227,45 @@ namespace AIB.Tests
                 var servico = ServicoDescartavel();
                 var janela = new ChatWindow(ConversaDescartavel(servico), servico);
                 Desenhar(janela, "chat", 820, 605);
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void ABolhaDoUsuario_NASCE_ComOEstiloAzul()
+        {
+            // A bolha azul sumiu da tela e nenhum ensaio viu. O que existia desenhava um PNG e
+            // nao afirmava nada sobre o estilo, entao um Style nulo passava batido: a Border
+            // continuava sendo criada, so que sem fundo, sem padding e sem alinhamento.
+            //
+            // A causa era Resources["UserBubble"] — o indexador olha o dicionario DESTA janela e
+            // mais nada. O estilo tinha mudado para o Themes/Controls.xaml, que e mesclado no
+            // Application.Resources, e so o FindResource chega la.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var servico = ServicoDescartavel();
+                var janela = new ChatWindow(ConversaDescartavel(servico), servico);
+                Desenhar(janela, "chat-bolha-descartar", 820, 605);
+
+                const System.Reflection.BindingFlags Privados =
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+
+                typeof(ChatWindow).GetMethod("AddUserBubble", Privados)!
+                    .Invoke(janela, new object[] { "oi" });
+
+                var lista = (System.Windows.Controls.Panel)janela.FindName("MessagesPanel");
+
+                var bolha = lista.Children.OfType<Grid>()
+                    .SelectMany(l => l.Children.OfType<Border>())
+                    .Single();
+
+                bolha.Style.Should().NotBeNull("sem estilo a bolha nasce transparente e sem forma");
+                bolha.Background.Should().Be(Application.Current.FindResource("PrimaryBrush"),
+                                             "e o azul do usuario que a §3.5 pede");
+                bolha.HorizontalAlignment.Should().Be(System.Windows.HorizontalAlignment.Right);
+
                 janela.Close();
             });
         }
