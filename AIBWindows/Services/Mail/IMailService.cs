@@ -49,29 +49,48 @@ public interface IMailService
     Task<MailLoginResult> TestLoginAsync(string endereco, string senhaDeApp, CancellationToken ct);
 
     /// <summary>
-    /// Primeira olhada na caixa: quantas mensagens há na janela de arranque e quantas estão
-    /// por ler. NÃO baixa corpo de mensagem e NÃO marca nada como lido.
+    /// Olha a caixa. NÃO baixa corpo de mensagem e NÃO marca nada como lido.
+    /// <para>
+    /// <paramref name="guardado"/> é o que se sabia da caixa da última vez, e é o que decide o
+    /// TAMANHO do trabalho: com ele válido, a busca vai direto aos UIDs acima do último lido;
+    /// sem ele, cai na janela de <paramref name="desdeUtc"/>. Passar o estado inteiro, e não
+    /// só o último UID, existe porque a decisão depende do selo de validade — e o selo de
+    /// AGORA só aparece depois de abrir a pasta, quando quem chamou já respondeu.
+    /// </para>
     /// </summary>
     Task<MailScanResult> VarrerAsync(
         string endereco,
         string senhaDeApp,
         ImapEndpoint endpoint,
         DateTime desdeUtc,
-        uint uidDePartida,
+        EstadoDaCaixa? guardado,
         CancellationToken ct);
 }
 
-/// <summary>Resultado de uma varredura. Só números: nenhum assunto, nenhum remetente.</summary>
-/// <param name="Mensagens">Quantas mensagens caíram na janela pedida.</param>
+/// <summary>
+/// Resultado de uma varredura. Só números: nenhum assunto, nenhum remetente.
+/// <para>
+/// Não há campo "novas" separado de <paramref name="Mensagens"/>, e isso é de propósito: a
+/// busca já nasce recortada para o que interessa. Na varredura incremental tudo o que voltou é
+/// novo por construção; na varredura por data não se sabia nada da caixa antes, então tudo o
+/// que voltou também é novo. Um segundo campo aqui seria sempre igual ao primeiro, e um dia
+/// alguém acreditaria que não é.
+/// </para>
+/// </summary>
+/// <param name="Mensagens">Quantas mensagens a busca trouxe.</param>
 /// <param name="NaoLidas">Quantas dessas ainda não foram lidas pelo usuário.</param>
-/// <param name="Novas">Quantas têm UID acima do <c>uidDePartida</c>, ou seja, chegaram depois.</param>
+/// <param name="Incremental">
+/// <c>true</c> quando a busca partiu do último UID lido; <c>false</c> quando releu a janela por
+/// data. Quem mostra o número precisa saber disso: "3 novas" e "3 nos últimos 3 dias" são
+/// frases diferentes, e trocar uma pela outra mente sobre o que foi olhado.
+/// </param>
 /// <param name="UidValidity">Selo de validade dos UIDs. Mudou? o último UID guardado virou lixo.</param>
-/// <param name="UltimoUid">Maior UID visto, para a próxima varredura partir dele.</param>
+/// <param name="UltimoUid">Maior UID visto, ou zero quando a busca não trouxe nada.</param>
 public readonly record struct MailScanResult(
     bool Ok,
     int Mensagens,
     int NaoLidas,
-    int Novas,
+    bool Incremental,
     uint UidValidity,
     uint UltimoUid,
     string Erro);
@@ -99,8 +118,8 @@ public sealed class MailServiceStub : IMailService
 
     public Task<MailScanResult> VarrerAsync(
         string endereco, string senhaDeApp, ImapEndpoint endpoint,
-        DateTime desdeUtc, uint uidDePartida, CancellationToken ct)
-        => Task.FromResult(new MailScanResult(false, 0, 0, 0, 0, 0, TextoPendente));
+        DateTime desdeUtc, EstadoDaCaixa? guardado, CancellationToken ct)
+        => Task.FromResult(new MailScanResult(false, 0, 0, false, 0, 0, TextoPendente));
 
     public Task<MailLoginResult> TestLoginAsync(string endereco, string senhaDeApp, CancellationToken ct)
     {

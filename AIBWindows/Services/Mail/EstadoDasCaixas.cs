@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -19,6 +19,18 @@ public sealed class EstadoDaCaixa
     public uint LastUid { get; set; }
 
     public DateTime? LastReadUtc { get; set; }
+
+    /// <summary>
+    /// Se este estado pode ser usado para ir DIRETO às mensagens novas, em vez de reler a
+    /// janela inteira por data.
+    /// <para>
+    /// É a única casa desta regra. Ela é consultada em dois lugares distantes — aqui, antes de
+    /// conectar, e dentro do cliente IMAP, depois do EXAMINE revelar o selo de validade de
+    /// agora — e duas cópias dela iriam divergir no dia em que uma fosse corrigida sozinha.
+    /// </para>
+    /// </summary>
+    public bool ServeParaPartir(uint uidValidityAtual)
+        => LastUid > 0 && UidValidity == uidValidityAtual;
 }
 
 /// <summary>
@@ -91,7 +103,7 @@ public sealed class EstadoDasCaixas
     {
         var estado = Ler(endereco);
         if (estado == null) return 0;
-        return estado.UidValidity == uidValidityAtual ? estado.LastUid : 0;
+        return estado.ServeParaPartir(uidValidityAtual) ? estado.LastUid : 0;
     }
 
     private static string Chave(string endereco) => (endereco ?? "").Trim().ToLowerInvariant();

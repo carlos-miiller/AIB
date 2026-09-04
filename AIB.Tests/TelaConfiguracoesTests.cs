@@ -558,6 +558,10 @@ namespace AIB.Tests
 
                 var conta = segunda.Contas.Contas[0];
                 conta.Status.Should().Be(MailAccountStatus.Ok, "a varredura passou");
+
+                // A primeira janela rodou com o ESQUELETO, que nao le nada, entao nao ficou
+                // estado guardado: esta segunda abertura e a primeira leitura de verdade e
+                // olha a janela por data. A frase tem de dizer isso.
                 conta.StatusText.Should().Contain("34 em 3d").And.Contain("5 por ler");
 
                 segunda.Close();
@@ -760,6 +764,48 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ReabrirATela_NaoRELE_ACaixaInteira()
+        {
+            // O bug relatado: entrar nas configuracoes refazia a leitura toda, mesmo com a
+            // conta ja registrada e ja lida. A causa era o estado guardado nao chegar ao
+            // servico — ele so rotulava como "novo" o que ja tinha sido baixado, sem poupar
+            // uma unica mensagem de trabalho.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                string pasta = PastaTemporaria();
+                string caminho = System.IO.Path.Combine(pasta, "settings.json");
+                var cofre = new MailVault(pasta);
+                var estado = new EstadoDasCaixas(pasta);
+
+                var primeira = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new ServicoQueVarre(mensagens: 33, naoLidas: 4, uidValidity: 8271, ultimoUid: 91043),
+                    cofre, estado);
+                Clicar(primeira, "BotaoAdicionarConta");
+                Digitar(primeira, "ana@gmail.com", "abcdefghijklmnop");
+                Clicar(primeira, "BotaoConectarConta");
+                Bombear();
+                primeira.Close();
+
+                var servico = new ServicoQueVarre(mensagens: 2, naoLidas: 1,
+                                                  uidValidity: 8271, ultimoUid: 91045);
+                var segunda = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    servico, cofre, estado);
+                Bombear();
+
+                servico.UltimoGuardado.Should().NotBeNull(
+                    "sem o estado em maos o servico nao tem como pular o que ja foi lido");
+                servico.UltimoGuardado!.LastUid.Should().Be(91043);
+                servico.UltimoGuardado.ServeParaPartir(8271).Should().BeTrue(
+                    "o selo bate, entao a busca pode ir direto aos UIDs acima de 91043");
+
+                segunda.Close();
+            });
+        }
+
+        [Fact]
         public void JanelaVAZIA_NaoAPAGA_OProgressoJaGuardado()
         {
             // Uma varredura sem nada na janela devolve ultimoUid 0, que significa "nao vi
@@ -858,11 +904,23 @@ namespace AIB.Tests
                 System.Threading.Tasks.Task.FromResult(new MailLoginResult(
                     true, ImapHostGuesser.Primeiro(endereco)!.Value, "", Verificado: true));
 
+            /// <summary>O estado que a tela entregou na última chamada.</summary>
+            public EstadoDaCaixa? UltimoGuardado { get; private set; }
+
             public System.Threading.Tasks.Task<MailScanResult> VarrerAsync(
                 string endereco, string senhaDeApp, ImapEndpoint endpoint,
-                DateTime desdeUtc, uint uidDePartida, System.Threading.CancellationToken ct)
-                => System.Threading.Tasks.Task.FromResult(new MailScanResult(
-                    true, _mensagens, _naoLidas, _mensagens, _uidValidity, _ultimoUid, ""));
+                DateTime desdeUtc, EstadoDaCaixa? guardado, System.Threading.CancellationToken ct)
+            {
+                UltimoGuardado = guardado;
+
+                // Mesma decisao do servico de verdade, pela mesma casa: o estado so serve se o
+                // selo bater. Sem espelhar isso aqui, o dublê responderia "por data" para
+                // sempre e os testes de estado deixariam de significar alguma coisa.
+                bool incremental = guardado != null && guardado.ServeParaPartir(_uidValidity);
+
+                return System.Threading.Tasks.Task.FromResult(new MailScanResult(
+                    true, _mensagens, _naoLidas, incremental, _uidValidity, _ultimoUid, ""));
+            }
         }
 
         /// <summary>Serviço que recusa qualquer login, para o caminho de erro do formulário.</summary>
@@ -873,9 +931,9 @@ namespace AIB.Tests
 
             public System.Threading.Tasks.Task<MailScanResult> VarrerAsync(
                 string endereco, string senhaDeApp, ImapEndpoint endpoint,
-                DateTime desdeUtc, uint uidDePartida, System.Threading.CancellationToken ct)
+                DateTime desdeUtc, EstadoDaCaixa? guardado, System.Threading.CancellationToken ct)
                 => System.Threading.Tasks.Task.FromResult(
-                    new MailScanResult(false, 0, 0, 0, 0, 0, "não consegui ler a caixa agora"));
+                    new MailScanResult(false, 0, 0, false, 0, 0, "não consegui ler a caixa agora"));
 
             public System.Threading.Tasks.Task<MailLoginResult> TestLoginAsync(
                 string endereco, string senhaDeApp, System.Threading.CancellationToken ct) =>

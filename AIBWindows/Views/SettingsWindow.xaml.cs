@@ -636,8 +636,14 @@ public partial class SettingsWindow : Window
         var guardado = _estado.Ler(conta.Address);
         uint partida = guardado?.LastUid ?? 0;
 
-        Console.WriteLine($"[EMAIL] {conta.Address}: varrendo {conta.ImapHost}:{conta.ImapPort}, "
-                          + $"últimos {JanelaDeArranqueEmDias} dia(s), a partir do UID {partida}.");
+        // O "a partir de" impresso aqui é uma INTENÇÃO, não um fato: quem confirma é o selo de
+        // validade, e ele só aparece depois de abrir a pasta. A linha de resultado abaixo diz o
+        // que de fato aconteceu.
+        Console.WriteLine(partida > 0
+            ? $"[EMAIL] {conta.Address}: varrendo {conta.ImapHost}:{conta.ImapPort}, "
+              + $"tentando partir do UID {partida}."
+            : $"[EMAIL] {conta.Address}: varrendo {conta.ImapHost}:{conta.ImapPort}, "
+              + $"primeira leitura — últimos {JanelaDeArranqueEmDias} dia(s).");
 
         MailScanResult r;
         try
@@ -646,7 +652,7 @@ public partial class SettingsWindow : Window
                 conta.Address, senha,
                 new ImapEndpoint(conta.ImapHost, conta.ImapPort, conta.UseSsl),
                 DateTime.UtcNow.AddDays(-JanelaDeArranqueEmDias),
-                partida,
+                guardado,
                 _cancelamento.Token).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
@@ -662,22 +668,16 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        // Selo de validade trocado significa que o servidor RENUMEROU a caixa: todo UID
-        // guardado é de outra numeração, e comparar com ele seria ficção. Nesse caso tudo o que
-        // se vê conta como novo.
-        bool renumerou = guardado != null && guardado.UidValidity != r.UidValidity;
-        int novas = renumerou ? r.Mensagens : r.Novas;
-
-        if (renumerou)
+        if (guardado != null && guardado.UidValidity != r.UidValidity)
             Console.WriteLine($"[EMAIL] {conta.Address}: uidValidity mudou "
-                              + $"({guardado!.UidValidity} -> {r.UidValidity}); recomeçando pela data.");
+                              + $"({guardado.UidValidity} -> {r.UidValidity}); recomeçando pela data.");
 
-        // Até onde se leu: o maior UID entre o que ficou guardado e o que acabou de aparecer.
-        // O máximo importa porque uma janela VAZIA devolve zero, e gravar esse zero apagaria o
-        // progresso — um fim de semana sem e-mail bastaria para a caixa inteira voltar a
-        // parecer novidade na segunda-feira. Com o selo trocado não há o que preservar: o UID
-        // guardado é de outra numeração e compará-lo com o de agora seria ficção.
-        uint ultimoUid = renumerou ? r.UltimoUid : Math.Max(partida, r.UltimoUid);
+        // Até onde se leu. Na incremental preserva-se o maior, porque uma busca VAZIA devolve
+        // zero e gravar esse zero apagaria o progresso — um fim de semana sem e-mail bastaria
+        // para a caixa inteira voltar a parecer novidade na segunda-feira. Na busca por data
+        // não há o que preservar: ou é a primeira leitura, ou o selo trocou e o UID guardado é
+        // de outra numeração, onde "maior" não quer dizer "mais recente".
+        uint ultimoUid = r.Incremental ? Math.Max(partida, r.UltimoUid) : r.UltimoUid;
 
         _estado.Gravar(conta.Address, new EstadoDaCaixa
         {
@@ -689,12 +689,32 @@ public partial class SettingsWindow : Window
         conta.Status = MailAccountStatus.Ok;
         conta.LastReadUtc = DateTime.UtcNow;
         conta.StatusText = $"{conta.ImapHost}:{conta.ImapPort} · "
-                           + $"{r.Mensagens} em {JanelaDeArranqueEmDias}d, {r.NaoLidas} por ler "
-                           + $"· leitura {DateTime.Now:HH:mm}";
+                           + $"{ResumoDaVarredura(r)} · leitura {DateTime.Now:HH:mm}";
 
-        Console.WriteLine($"[EMAIL] {conta.Address}: {r.Mensagens} mensagem(ns) na janela, "
-                          + $"{r.NaoLidas} por ler, {novas} nova(s) desde a última varredura. "
+        Console.WriteLine($"[EMAIL] {conta.Address}: "
+                          + (r.Incremental
+                              ? $"busca incremental a partir do UID {partida}"
+                              : $"busca por data, últimos {JanelaDeArranqueEmDias} dia(s)")
+                          + $" — {r.Mensagens} mensagem(ns), {r.NaoLidas} por ler. "
                           + $"uidValidity={r.UidValidity} últimoUid={ultimoUid}");
+    }
+
+    /// <summary>
+    /// A frase que descreve o que a varredura OLHOU.
+    /// <para>
+    /// Duas buscas diferentes não podem sair com a mesma frase. "12 em 3d" depois de uma busca
+    /// incremental diria que se conferiu três dias quando se conferiu só o que chegou desde a
+    /// última vez — e "0 em 3d" numa caixa cheia seria simplesmente falso.
+    /// </para>
+    /// </summary>
+    private static string ResumoDaVarredura(MailScanResult r)
+    {
+        if (!r.Incremental)
+            return $"{r.Mensagens} em {JanelaDeArranqueEmDias}d, {r.NaoLidas} por ler";
+
+        return r.Mensagens == 0
+            ? "em dia, nada novo"
+            : $"{r.Mensagens} nova(s), {r.NaoLidas} por ler";
     }
 
     /// <summary>A conta da linha em que o botão clicado vive.</summary>

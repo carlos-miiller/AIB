@@ -164,7 +164,7 @@ public sealed class MailKitMailService : IMailService
         string senhaDeApp,
         ImapEndpoint endpoint,
         DateTime desdeUtc,
-        uint uidDePartida,
+        EstadoDaCaixa? guardado,
         CancellationToken ct)
     {
         using var cliente = NovoCliente();
@@ -181,44 +181,65 @@ public sealed class MailKitMailService : IMailService
             var inbox = cliente.Inbox;
             await inbox.OpenAsync(FolderAccess.ReadOnly, ct).ConfigureAwait(false);
 
+            // O selo de validade de AGORA. Só aqui dá para saber se o estado guardado ainda
+            // descreve esta caixa — por isso a decisão entre as duas buscas mora neste método, e
+            // não em quem chamou.
             uint validade = inbox.UidValidity;
+            bool incremental = guardado != null && guardado.ServeParaPartir(validade);
 
-            // O SINCE conta em DIAS e pela hora do SERVIDOR, então a busca sai com um dia de
-            // folga: pedir a data exata perderia mensagem na virada de fuso. A folga faz o
-            // servidor devolver mais do que se pediu, e é o NaJanela abaixo que apara o excesso.
-            var busca = SearchQuery.DeliveredAfter(desdeUtc.Date.AddDays(-1));
-            var uids = await inbox.SearchAsync(busca, ct).ConfigureAwait(false);
+            var uids = incremental
+                ? await inbox.SearchAsync(AcimaDe(guardado!.LastUid), ct).ConfigureAwait(false)
+                // O SINCE conta em DIAS e pela hora do SERVIDOR, então a busca por data sai com
+                // um dia de folga: pedir a data exata perderia mensagem na virada de fuso. O
+                // excesso é aparado logo abaixo, pelo NaJanela.
+                : await inbox.SearchAsync(SearchQuery.DeliveredAfter(desdeUtc.Date.AddDays(-1)), ct)
+                    .ConfigureAwait(false);
 
             // FETCH (UID FLAGS INTERNALDATE). NÃO é BODY[] — nada do conteúdo desce, e nada é
             // marcado como lido.
             var resumos = uids.Count == 0
                 ? new List<IMessageSummary>()
-                : (await inbox.FetchAsync(uids, ItensDaVarredura, ct).ConfigureAwait(false))
-                    .Where(r => NaJanela(r.InternalDate, desdeUtc))
-                    .ToList();
+                : (await inbox.FetchAsync(uids, ItensDaVarredura, ct).ConfigureAwait(false)).ToList();
+
+            // O aparo por data vale SÓ na busca por data. Na incremental, UID acima do último
+            // lido JÁ significa "chegou depois", e filtrar por data ali esconderia mensagem
+            // recebida agora com carimbo antigo — o que acontece em migração de caixa e em
+            // APPEND. O critério da busca e o critério do corte têm de ser o mesmo.
+            if (!incremental)
+                resumos = resumos.Where(r => NaJanela(r.InternalDate, desdeUtc)).ToList();
 
             int naoLidas = resumos.Count(r => r.Flags.HasValue && !r.Flags.Value.HasFlag(MessageFlags.Seen));
 
-            // "Nova" é relativo ao que já se viu, e por isso depende da validade bater: com o
-            // selo trocado, todo UID guardado é de outra numeração e comparar seria ficção.
-            uint partida = uidDePartida;
-            int novas = partida == 0 ? resumos.Count : resumos.Count(r => r.UniqueId.Id > partida);
-
-            // Zero aqui significa "não vi nada nesta janela", e NÃO "recomece do zero". Quem
-            // decide o que guardar é o chamador, que é o único que sabe se o selo de validade
-            // bateu — daqui um UID guardado de outra numeração é indistinguível de um bom.
+            // Zero aqui significa "não vi nada", e NÃO "recomece do zero". Quem decide o que
+            // guardar é o chamador.
             uint ultimoUid = resumos.Count == 0 ? 0 : resumos.Max(r => r.UniqueId.Id);
 
             await DesconectarAsync(cliente).ConfigureAwait(false);
 
-            return new MailScanResult(true, resumos.Count, naoLidas, novas, validade, ultimoUid, "");
+            return new MailScanResult(true, resumos.Count, naoLidas, incremental, validade, ultimoUid, "");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[EMAIL] {endereco}: varredura falhou — {ex.GetType().Name}: {ex.Message}");
             await DesconectarAsync(cliente).ConfigureAwait(false);
-            return new MailScanResult(false, 0, 0, 0, 0, 0, "não consegui ler a caixa agora");
+            return new MailScanResult(false, 0, 0, false, 0, 0, "não consegui ler a caixa agora");
         }
+    }
+
+    /// <summary>
+    /// A busca dos UIDs acima do último já lido — <c>SEARCH UID {n+1}:*</c>.
+    /// <para>
+    /// É o que faz a segunda visita à mesma caixa custar quase nada: sem isto, abrir a tela de
+    /// configurações relê a janela inteira toda vez, e o estado guardado com tanto cuidado não
+    /// poupa trabalho nenhum — só serve para rotular como "novo" o que já tinha sido baixado.
+    /// </para>
+    /// </summary>
+    private static SearchQuery AcimaDe(uint ultimoLido)
+    {
+        // Saturar em vez de estourar: com o último UID no teto do uint, somar 1 daria zero e a
+        // busca voltaria a caixa inteira. É impossível na prática e barato de garantir.
+        uint primeiro = ultimoLido == uint.MaxValue ? uint.MaxValue : ultimoLido + 1;
+        return SearchQuery.Uids(new UniqueIdRange(new UniqueId(primeiro), UniqueId.MaxValue));
     }
 
     /// <summary>
