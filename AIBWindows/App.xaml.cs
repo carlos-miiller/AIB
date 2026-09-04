@@ -19,6 +19,9 @@ public partial class App : System.Windows.Application
     private ChatWindow? _chatWindow;
     private ShadowAssistantWindow? _orbe;
 
+    /// <summary>O item da bandeja que liga o orbe. Guardado para não sair de sincronia.</summary>
+    private System.Windows.Controls.MenuItem? _itemDoOrbe;
+
     // Composition root: os serviços são construídos aqui, uma única vez, e injetados.
     // O SettingsService precisa nascer DEPOIS de EnsureDirectories para enxergar o caminho certo.
     private readonly System.Net.Http.HttpClient _httpClient = new() { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
@@ -43,15 +46,39 @@ public partial class App : System.Windows.Application
         settings.ShadowAssistantEnabled = ligado;
         _settingsService.SaveSettings(settings);
 
+        SincronizarOrbe();
+    }
+
+    /// <summary>
+    /// Põe o orbe no estado que a configuração manda, agora.
+    /// <para>
+    /// Existe porque a mesma chave passou a ter DUAS portas: a bandeja e a página Shadow da
+    /// tela de configurações. Sem um lugar só aplicando a decisão, salvar nas configurações
+    /// gravaria o arquivo e não mudaria nada na tela até o próximo arranque — a chave pareceria
+    /// quebrada — e o visto da bandeja continuaria contando a história antiga.
+    /// </para>
+    /// </summary>
+    public static void AplicarEstadoDoOrbe()
+    {
+        if (Current is App app) app.SincronizarOrbe();
+    }
+
+    private void SincronizarOrbe()
+    {
+        bool ligado = _settingsService.LoadSettings().ShadowAssistantEnabled;
+
         if (ligado)
         {
             _orbe ??= CriarOrbe();
             _orbe.Show();
-            return;
+        }
+        else
+        {
+            _orbe?.Close();
+            _orbe = null;
         }
 
-        _orbe?.Close();
-        _orbe = null;
+        if (_itemDoOrbe != null) _itemDoOrbe.IsChecked = ligado;
     }
 
     /// <summary>
@@ -229,6 +256,7 @@ public partial class App : System.Windows.Application
                 IsChecked = _orbe != null
             };
             orbeItem.Click += (s, ev) => AlternarOrbe(orbeItem.IsChecked);
+            _itemDoOrbe = orbeItem;
 
             // ANDAIME — sai quando o vigia de e-mail existir de verdade. Ate la e o unico
             // jeito de ver o pulso, o anel de varredura e a lista do balao na tela, e a §-1 da

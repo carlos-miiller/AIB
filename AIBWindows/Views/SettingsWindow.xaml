@@ -419,6 +419,25 @@
                             </StackPanel>
                         </RadioButton>
 
+                        <RadioButton x:Name="NavShadow" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <!-- Um olho: é o que o orbe faz, olhar. A pupila são dois
+                                     semicírculos exatos, e não um arco de volta inteira com
+                                     extremos coincidentes — esse último é degenerado e o WPF
+                                     desenha qualquer coisa com ele. -->
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M2.2,10 C4.6,5.8 7.2,4 10,4 C12.8,4 15.4,5.8 17.8,10
+                                            C15.4,14.2 12.8,16 10,16 C7.2,16 4.6,14.2 2.2,10 Z
+                                            M12.4,10 A2.4,2.4 0 0 1 7.6,10 A2.4,2.4 0 0 1 12.4,10 Z"/>
+                                <TextBlock Text="Shadow" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
+
                         <RadioButton x:Name="NavAvancado" GroupName="Paginas"
                                      Style="{StaticResource NavItem}" Checked="Nav_Checked">
                             <StackPanel Orientation="Horizontal">
@@ -824,6 +843,76 @@
                         </Grid>
 
                         <!-- ─────────── PÁGINA 4 — Avançado ─────────── -->
+                        <!-- ─────────── PÁGINA 4 — Shadow Assistant ─────────── -->
+                        <Grid x:Name="PaginaShadow" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Shadow Assistant" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="O orbe que fica sobre a área de trabalho."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+
+                                    <!-- CAMPO — o orbe em si -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Mostrar o orbe no desktop"
+                                                           Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Fica sempre à vista, fora da janela de conversa. O mesmo interruptor da bandeja."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="ShadowAssistantSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="ShadowSwitch_Mudou"
+                                                          Unchecked="ShadowSwitch_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- CAMPO — a triagem de e-mail.
+                                         Chave SEPARADA da do orbe: querer a bola no desktop não
+                                         é querer que ela abra a caixa de entrada. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Deixar o orbe tratar os e-mails"
+                                                           Style="{StaticResource FieldLabelText}"/>
+                                                <!-- O texto sai do ESTADO, não é constante: sem
+                                                     orbe, sem caixa conectada e com tudo pronto
+                                                     são três situações diferentes, e uma frase
+                                                     só mentiria em duas delas. -->
+                                                <TextBlock x:Name="ShadowMailAjuda"
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="ShadowMailSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou"
+                                                          Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
                         <Grid x:Name="PaginaAvancado" Visibility="Collapsed">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>

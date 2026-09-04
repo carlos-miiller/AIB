@@ -15,6 +15,7 @@ public enum PaginaDeConfiguracoes
     Identidade,
     Conexao,
     Email,
+    Shadow,
     Avancado
 }
 
@@ -144,6 +145,10 @@ public partial class SettingsWindow : Window
             SendSystemPromptSwitch.IsChecked = _currentSettings.SendSystemPrompt;
             VerboseLoggingSwitch.IsChecked = _currentSettings.VerboseConsoleLogging;
 
+            ShadowAssistantSwitch.IsChecked = _currentSettings.ShadowAssistantEnabled;
+            ShadowMailSwitch.IsChecked = _currentSettings.ShadowHandlesMail;
+            AtualizarAjudaDoShadow();
+
             SelecionarKeepAlive(_currentSettings.KeepAlive);
             RefreshKeyTextBoxLabel();
             CarregarContas();
@@ -250,6 +255,7 @@ public partial class SettingsWindow : Window
         {
             PaginaDeConfiguracoes.Conexao => NavConexao,
             PaginaDeConfiguracoes.Email => NavEmail,
+            PaginaDeConfiguracoes.Shadow => NavShadow,
             PaginaDeConfiguracoes.Avancado => NavAvancado,
             _ => NavIdentidade
         };
@@ -261,6 +267,7 @@ public partial class SettingsWindow : Window
     public PaginaDeConfiguracoes PaginaAtiva =>
         NavConexao.IsChecked == true ? PaginaDeConfiguracoes.Conexao :
         NavEmail.IsChecked == true ? PaginaDeConfiguracoes.Email :
+        NavShadow.IsChecked == true ? PaginaDeConfiguracoes.Shadow :
         NavAvancado.IsChecked == true ? PaginaDeConfiguracoes.Avancado :
         PaginaDeConfiguracoes.Identidade;
 
@@ -277,7 +284,13 @@ public partial class SettingsWindow : Window
         PaginaIdentidade.Visibility = Visibilidade(NavIdentidade);
         PaginaConexao.Visibility = Visibilidade(NavConexao);
         PaginaEmail.Visibility = Visibilidade(NavEmail);
+        PaginaShadow.Visibility = Visibilidade(NavShadow);
         PaginaAvancado.Visibility = Visibilidade(NavAvancado);
+
+        // A página Shadow depende de coisa que muda em OUTRA página: conectar uma caixa
+        // acontece em E-mail. Reavaliar ao entrar é o que faz a ajuda parar de dizer "nenhuma
+        // caixa conectada" assim que ela passa a existir, sem fechar e reabrir a tela.
+        if (NavShadow.IsChecked == true) AtualizarAjudaDoShadow();
     }
 
     private static Visibility Visibilidade(System.Windows.Controls.Primitives.ToggleButton botao) =>
@@ -742,6 +755,47 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void Campo_Mudou(object sender, RoutedEventArgs e) => MarcarSujo();
 
+    /// <summary>Ligar ou desligar o orbe muda o que a linha da triagem pode prometer.</summary>
+    private void ShadowSwitch_Mudou(object sender, RoutedEventArgs e)
+    {
+        MarcarSujo();
+        AtualizarAjudaDoShadow();
+    }
+
+    /// <summary>
+    /// A linha de ajuda da triagem de e-mail, derivada do estado real.
+    /// <para>
+    /// Uma frase fixa aqui mentiria em dois dos três casos: com o orbe desligado ela promete um
+    /// trabalho que ninguém vai fazer; sem caixa conectada, promete leitura de uma caixa que
+    /// não existe. É o mesmo defeito da linha de estado da conta, que já anunciou uma leitura
+    /// que nunca poderia acontecer — a frase tem de ser função do estado, não constante.
+    /// </para>
+    /// </summary>
+    public void AtualizarAjudaDoShadow()
+    {
+        if (ShadowMailAjuda == null) return;
+
+        bool orbeLigado = ShadowAssistantSwitch.IsChecked == true;
+        bool temCaixa = MailAccountList.AlgumaCaixaPronta(
+            _currentSettings.MailAccounts, _cofre);
+
+        // Sem orbe não há onde o aviso aparecer: a chave fica de pé, mas inerte e dizendo por quê.
+        ShadowMailSwitch.IsEnabled = orbeLigado;
+
+        ShadowMailAjuda.Text =
+            !orbeLigado ? "Ligue o orbe acima para usar."
+            : !temCaixa ? "Nenhuma caixa conectada — conecte uma na página E-mail."
+            : TextoDaTriagem;
+    }
+
+    /// <summary>
+    /// O que a triagem faz HOJE. Enquanto o vigia não existe, a varredura só conta mensagens —
+    /// nenhum assunto ou remetente desce do servidor —, e prometer resumo seria vender o que
+    /// ainda não há.
+    /// </summary>
+    public const string TextoDaTriagem =
+        "Por ora o orbe só conta as mensagens; a triagem que resume e prioriza ainda não existe.";
+
     private void MarcarSujo()
     {
         if (_carregando) return;
@@ -898,11 +952,18 @@ public partial class SettingsWindow : Window
         _currentSettings.SendSystemPrompt = SendSystemPromptSwitch.IsChecked ?? true;
         _currentSettings.VerboseConsoleLogging = VerboseLoggingSwitch.IsChecked ?? false;
 
+        _currentSettings.ShadowAssistantEnabled = ShadowAssistantSwitch.IsChecked ?? false;
+        _currentSettings.ShadowHandlesMail = ShadowMailSwitch.IsChecked ?? false;
+
         _settingsService.SaveSettings(_currentSettings);
         MarcarLimpo();
 
         var chat = System.Windows.Application.Current.Windows.OfType<ChatWindow>().FirstOrDefault();
         chat?.ApplyCharacterUI();
+
+        // Uma chave que grava e não faz nada até o próximo arranque se lê como quebrada. O orbe
+        // aparece ou some agora, e o visto da bandeja acompanha.
+        App.AplicarEstadoDoOrbe();
 
         Close();
     }

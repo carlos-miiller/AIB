@@ -24,6 +24,17 @@ public sealed class UserAppSettings
     // Opt-in: a funcionalidade Shadow Assistant fica desligada por default.
     // Quando ligado, o botão do olho aparece no chat e o usuário decide quando ativar.
     public bool ShadowAssistantEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Se o orbe pode ler e triar a caixa de entrada.
+    /// <para>
+    /// Opt-in pelo mesmo motivo que o orbe: ninguém ganha um programa lendo o próprio e-mail
+    /// por ter atualizado. E é uma chave SEPARADA da do orbe de propósito — querer a bola no
+    /// desktop não é querer que ela abra a caixa de entrada, e amarrar as duas tiraria do
+    /// usuário a única decisão que ele realmente precisa tomar aqui.
+    /// </para>
+    /// </summary>
+    public bool ShadowHandlesMail { get; set; } = false;
     // Quando ativo, o console mostra logs detalhados do streaming ReAct
     // (STREAM-DBG, contadores de updates, classificação de chunks).
     // Útil para diagnosticar respostas vazias ou comportamento estranho do modelo.
