@@ -925,11 +925,10 @@ namespace AIB.Tests
             /// <summary>
             /// A tela de configuracoes nunca le conteudo: ela conta. Quem le e o vigia.
             /// </summary>
-            public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MensagemDeEmail>> LerAsync(
+            public System.Threading.Tasks.Task<LeituraDaCaixa> LerAsync(
                 string endereco, string senhaDeApp, ImapEndpoint endpoint, DateTime desdeUtc,
                 EstadoDaCaixa? guardado, string enderecoDoUsuario, System.Threading.CancellationToken ct)
-                => System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<MensagemDeEmail>>(
-                    System.Array.Empty<MensagemDeEmail>());
+                => System.Threading.Tasks.Task.FromResult(LeituraDaCaixa.Nada);
 
             /// <summary>A tela nunca olha a pasta de enviados: quem faz isso e o vigia.</summary>
             public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<ThreadRespondida>> ThreadsRespondidasAsync(
@@ -959,11 +958,10 @@ namespace AIB.Tests
             /// <summary>
             /// A tela de configuracoes nunca le conteudo: ela conta. Quem le e o vigia.
             /// </summary>
-            public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MensagemDeEmail>> LerAsync(
+            public System.Threading.Tasks.Task<LeituraDaCaixa> LerAsync(
                 string endereco, string senhaDeApp, ImapEndpoint endpoint, DateTime desdeUtc,
                 EstadoDaCaixa? guardado, string enderecoDoUsuario, System.Threading.CancellationToken ct)
-                => System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<MensagemDeEmail>>(
-                    System.Array.Empty<MensagemDeEmail>());
+                => System.Threading.Tasks.Task.FromResult(LeituraDaCaixa.Nada);
 
             /// <summary>A tela nunca olha a pasta de enviados: quem faz isso e o vigia.</summary>
             public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<ThreadRespondida>> ThreadsRespondidasAsync(

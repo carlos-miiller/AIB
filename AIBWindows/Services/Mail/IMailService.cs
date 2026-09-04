@@ -85,7 +85,7 @@ public interface IMailService
     /// Para separar quem foi destinatário de quem só recebeu cópia. Cópia é notificação;
     /// destinatário é pedido, e o funil trata os dois de forma diferente.
     /// </param>
-    Task<IReadOnlyList<MensagemDeEmail>> LerAsync(
+    Task<LeituraDaCaixa> LerAsync(
         string endereco,
         string senhaDeApp,
         ImapEndpoint endpoint,
@@ -134,6 +134,20 @@ public interface IMailService
 /// </param>
 /// <param name="UidValidity">Selo de validade dos UIDs. Mudou? o último UID guardado virou lixo.</param>
 /// <param name="UltimoUid">Maior UID visto, ou zero quando a busca não trouxe nada.</param>
+/// <summary>
+/// O que uma leitura trouxe.
+/// <para>
+/// O <paramref name="UidValidity"/> vem junto porque quem grava o progresso precisa dele: sem o
+/// selo, o ponteiro de triagem gravado nunca casaria com o da caixa e toda leitura recomeçaria
+/// pela data, retriando as mesmas mensagens para sempre.
+/// </para>
+/// </summary>
+public readonly record struct LeituraDaCaixa(
+    IReadOnlyList<MensagemDeEmail> Mensagens, uint UidValidity)
+{
+    public static LeituraDaCaixa Nada => new(Array.Empty<MensagemDeEmail>(), 0);
+}
+
 public readonly record struct MailScanResult(
     bool Ok,
     int Mensagens,
@@ -169,10 +183,10 @@ public sealed class MailServiceStub : IMailService
         DateTime desdeUtc, EstadoDaCaixa? guardado, CancellationToken ct)
         => Task.FromResult(new MailScanResult(false, 0, 0, false, 0, 0, TextoPendente));
 
-    public Task<IReadOnlyList<MensagemDeEmail>> LerAsync(
+    public Task<LeituraDaCaixa> LerAsync(
         string endereco, string senhaDeApp, ImapEndpoint endpoint,
         DateTime desdeUtc, EstadoDaCaixa? guardado, string enderecoDoUsuario, CancellationToken ct)
-        => Task.FromResult<IReadOnlyList<MensagemDeEmail>>(Array.Empty<MensagemDeEmail>());
+        => Task.FromResult(LeituraDaCaixa.Nada);
 
     public Task<IReadOnlyList<ThreadRespondida>> ThreadsRespondidasAsync(
         string endereco, string senhaDeApp, ImapEndpoint endpoint,

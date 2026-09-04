@@ -626,7 +626,7 @@
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                                 <TextBlock Text="Modelo do Shadow" Style="{StaticResource FieldLabelText}"/>
-                                                <TextBlock Text="O modelo que o Shadow usa para triar. Era escolhido só no primeiro arranque e nunca mais." Style="{StaticResource FieldHelpText}"/>
+                                                <TextBlock Text="Reservado para o filtro barato que ainda não existe. A triagem de hoje usa o modelo principal — um modelo pequeno decidindo prioridade erra com confiança." Style="{StaticResource FieldHelpText}"/>
                                             </StackPanel>
                                             <Grid Grid.Column="1">
                                                 <ComboBox x:Name="ShadowModelComboBox" IsEditable="True"

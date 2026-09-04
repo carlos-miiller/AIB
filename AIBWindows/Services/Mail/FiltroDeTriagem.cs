@@ -71,12 +71,22 @@ public static class FiltroDeTriagem
         if (categoria != null)
             return new DecisaoDoFunil(false, $"o Gmail classificou como {Legivel(categoria)}");
 
-        // Degrau 1: destinatário é pedido, cópia é notificação.
+        // Degrau 1: caixa que não lê resposta não está pedindo nada.
+        //
+        // A checagem vem ANTES do "endereçada a você", e isso corrige um defeito visto em
+        // produção: um e-mail de marketing da Wellhub, de no-reply@, endereçado diretamente ao
+        // usuário, subia sem passar por aqui — e o modelo ainda o classificou como MÁXIMA. Ser
+        // destinatário de um robô não é ser destinatário de um pedido.
+        //
+        // As três portas de fuga acima continuam abertas: conversa vigiada, fonte de alerta do
+        // regras.md e \Important passam antes desta linha. É por elas que o alerta do firewall
+        // e o aviso do banco continuam subindo.
+        if (EhAutomatico(msg.De))
+            return new DecisaoDoFunil(false, "remetente automático, que não espera resposta");
+
+        // Destinatário é pedido, cópia é notificação.
         if (msg.Direto)
             return new DecisaoDoFunil(true, "endereçada a você, não em cópia");
-
-        if (EhAutomatico(msg.De))
-            return new DecisaoDoFunil(false, "remetente automático e você só em cópia");
 
         // Sobra o que não se sabe. Regra 5: sobe.
         return new DecisaoDoFunil(true, "em cópia, mas de remetente que fala com gente");

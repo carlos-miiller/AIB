@@ -51,12 +51,12 @@ public sealed class MailDigestService : IDisposable
     private readonly Func<DateTime> _agora;
     private readonly string _caminhoDasRegras;
     private readonly VigiasDoEmail _vigias;
+    private readonly MarcoDoVigia _marco;
 
     private readonly CancellationTokenSource _parada = new();
     private Timer? _relogio;
     private int _trabalhando;
 
-    private DateTime? _ultimoDigest;
     private DateTime? _ultimaSondagem;
 
     public MailDigestService(
@@ -67,7 +67,8 @@ public sealed class MailDigestService : IDisposable
         EstadoDasCaixas? estado = null,
         Func<DateTime>? agora = null,
         string? caminhoDasRegras = null,
-        VigiasDoEmail? vigias = null)
+        VigiasDoEmail? vigias = null,
+        string? raizDeDados = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _email = email ?? throw new ArgumentNullException(nameof(email));
@@ -77,6 +78,7 @@ public sealed class MailDigestService : IDisposable
         _agora = agora ?? (() => DateTime.Now);
         _caminhoDasRegras = caminhoDasRegras ?? RegrasDoVigia.CaminhoPadrao();
         _vigias = vigias ?? new VigiasDoEmail();
+        _marco = new MarcoDoVigia(raizDeDados);
     }
 
     /// <summary>Um digest ficou pronto e tem algo a dizer.</summary>
@@ -126,9 +128,11 @@ public sealed class MailDigestService : IDisposable
 
             var agora = _agora();
 
-            if (AgendaDoVigia.HoraDoDigest(agora, _ultimoDigest))
+            if (AgendaDoVigia.HoraDoDigest(agora, _marco.UltimoDigest))
             {
-                _ultimoDigest = agora;
+                // Gravado ANTES de rodar. Se o digest falhar no meio, ele não fica repetindo a
+                // cada minuto até dar certo — espera o próximo horário, como faria alguém.
+                _marco.GravarDigest(agora);
                 _ultimaSondagem = agora;
                 await ExecutarAsync(comModelo: true, _parada.Token).ConfigureAwait(false);
                 return;
@@ -188,13 +192,13 @@ public sealed class MailDigestService : IDisposable
             var endpoint = new ImapEndpoint(caixa.ImapHost, caixa.ImapPort, caixa.UseSsl);
             var guardado = _estado.Ler(caixa.Address);
 
-            var doServidor = await _email.LerAsync(
+            var leitura = await _email.LerAsync(
                 caixa.Address, senha, endpoint,
                 DateTime.UtcNow.AddDays(-config.MailWindowDays),
                 guardado, caixa.Address, ct).ConfigureAwait(false);
 
-            lidas.AddRange(doServidor);
-            GravarProgresso(caixa.Address, guardado, doServidor);
+            lidas.AddRange(leitura.Mensagens);
+            GravarProgresso(caixa.Address, guardado, leitura);
 
             // A pasta de enviados diz em que conversas ELE escreveu. Sai de graça, sem modelo,
             // e é o que sustenta "quem responde geralmente espera retorno".
@@ -301,7 +305,12 @@ public sealed class MailDigestService : IDisposable
 
         try
         {
-            var provider = _provedores.GetProvider(ParaOModeloDoShadow(config));
+            // O MODELO PRINCIPAL, e não o do Shadow. Visto em produção: com um 0.8b no campo, a
+            // triagem classificou um cupom de marketing como MÁXIMA e escreveu um resumo que
+            // não estava em lugar nenhum da mensagem. É exatamente o que a §"O degrau 2 é
+            // invertido de propósito" prevê — modelo pequeno é confiante até quando erra, e por
+            // isso ele nunca decide o que sobe. O degrau 3 é do 9B.
+            var provider = _provedores.GetProvider(config);
             vereditos = await new TriadorDeEmail(provider).TriarAsync(lote, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -326,39 +335,41 @@ public sealed class MailDigestService : IDisposable
     }
 
     /// <summary>
-    /// As configurações com o modelo do Shadow no lugar do principal.
+    /// Guarda até onde o VIGIA triou, sem tocar no ponteiro da contagem.
     /// <para>
-    /// A triagem é trabalho de fundo e pode rodar num modelo menor que o da conversa. Trocar o
-    /// campo numa CÓPIA, e não no objeto do cache, evita que uma triagem em andamento mude o
-    /// modelo da conversa que o usuário está tendo.
+    /// Os dois ponteiros são separados por um defeito visto em produção: eram o mesmo campo, e
+    /// abrir a tela de configurações — que só conta — avançava o marcador. O vigia, rodando
+    /// depois, encontrava a caixa "em dia" e não triava nada. Setecentas mensagens por ler
+    /// viraram uma.
+    /// </para>
+    /// <para>
+    /// Selo trocado descarta o ponteiro em vez de preservar o maior: numeração nova não se
+    /// compara com a antiga. Leitura vazia não zera nada.
     /// </para>
     /// </summary>
-    private static UserAppSettings ParaOModeloDoShadow(UserAppSettings config)
+    private void GravarProgresso(string endereco, EstadoDaCaixa? guardado, LeituraDaCaixa leitura)
     {
-        var copia = config.Clone();
+        if (leitura.UidValidity == 0) return;
 
-        if (!string.IsNullOrWhiteSpace(copia.ShadowModelName))
-            copia.ModelName = copia.ShadowModelName;
+        bool renumerou = guardado != null && guardado.UidValidity != leitura.UidValidity;
 
-        return copia;
-    }
+        uint maiorVisto = leitura.Mensagens.Count == 0 ? 0 : leitura.Mensagens.Max(m => m.Uid);
 
-    /// <summary>
-    /// Guarda até onde se leu, com a mesma regra da tela de configurações: janela vazia não
-    /// zera o progresso, e selo trocado descarta o UID guardado em vez de preservar o maior.
-    /// </summary>
-    private void GravarProgresso(
-        string endereco, EstadoDaCaixa? guardado, IReadOnlyList<MensagemDeEmail> doServidor)
-    {
-        if (doServidor.Count == 0) return;
-
-        uint maior = doServidor.Max(m => m.Uid);
+        uint triado = renumerou || guardado == null
+            ? maiorVisto
+            : Math.Max(guardado.LastTriagedUid, maiorVisto);
 
         _estado.Gravar(endereco, new EstadoDaCaixa
         {
-            UidValidity = guardado?.UidValidity ?? 0,
-            LastUid = guardado == null ? maior : Math.Max(guardado.LastUid, maior),
-            LastReadUtc = DateTime.UtcNow
+            UidValidity = leitura.UidValidity,
+
+            // O ponteiro da CONTAGEM é da tela; o vigia o carrega adiante sem alterá-lo, a não
+            // ser que o selo tenha trocado — aí ele não vale mais para ninguém.
+            LastUid = renumerou ? 0 : guardado?.LastUid ?? 0,
+            LastReadUtc = guardado?.LastReadUtc,
+
+            LastTriagedUid = triado,
+            LastTriageUtc = DateTime.UtcNow
         });
     }
 

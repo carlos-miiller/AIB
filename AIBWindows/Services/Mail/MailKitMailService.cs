@@ -252,13 +252,23 @@ public sealed class MailKitMailService : IMailService
     /// heurística de newsletter aqui.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// De quantas mensagens o corpo é baixado numa passada, das mais recentes para trás.
+    /// <para>
+    /// Não é economia de disco: é o tempo até o primeiro digest sair. Baixar corpo de tudo o
+    /// que se acumulou desde a última leitura deixaria o vigia minutos preso no IMAP antes de
+    /// acordar o modelo. E o que não desce não pode vazar.
+    /// </para>
+    /// </summary>
+    public const int TetoDeCorpos = 40;
+
     private const MessageSummaryItems ItensDaTriagem =
         MessageSummaryItems.UniqueId | MessageSummaryItems.Flags |
         MessageSummaryItems.InternalDate | MessageSummaryItems.Envelope |
         MessageSummaryItems.BodyStructure |
         MessageSummaryItems.GMailThreadId | MessageSummaryItems.GMailLabels;
 
-    public async Task<IReadOnlyList<MensagemDeEmail>> LerAsync(
+    public async Task<LeituraDaCaixa> LerAsync(
         string endereco,
         string senhaDeApp,
         ImapEndpoint endpoint,
@@ -280,36 +290,60 @@ public sealed class MailKitMailService : IMailService
             var inbox = cliente.Inbox;
             await inbox.OpenAsync(FolderAccess.ReadOnly, ct).ConfigureAwait(false);
 
-            bool incremental = guardado != null && guardado.ServeParaPartir(inbox.UidValidity);
+            // Parte do ponteiro da TRIAGEM, não do da contagem. Eram o mesmo campo, e o
+            // resultado era que abrir a tela de configurações contava as mensagens, avançava o
+            // marcador e o vigia encontrava a caixa "em dia" sem ter triado nada.
+            bool incremental = guardado != null && guardado.ServeParaTriar(inbox.UidValidity);
 
             var uids = incremental
-                ? await inbox.SearchAsync(AcimaDe(guardado!.LastUid), ct).ConfigureAwait(false)
+                ? await inbox.SearchAsync(AcimaDe(guardado!.LastTriagedUid), ct).ConfigureAwait(false)
                 : await inbox.SearchAsync(SearchQuery.DeliveredAfter(desdeUtc.Date.AddDays(-1)), ct)
                     .ConfigureAwait(false);
 
             if (uids.Count == 0)
             {
                 await DesconectarAsync(cliente).ConfigureAwait(false);
-                return Array.Empty<MensagemDeEmail>();
+                return new LeituraDaCaixa(Array.Empty<MensagemDeEmail>(), inbox.UidValidity);
             }
 
             var resumos = await inbox.FetchAsync(uids, ItensDaTriagem, ct).ConfigureAwait(false);
 
+            var candidatas = resumos
+                .Where(r => incremental || NaJanela(r.InternalDate, desdeUtc))
+                .OrderByDescending(r => r.InternalDate ?? DateTimeOffset.MinValue)
+                .ToList();
+
             var lidas = new List<MensagemDeEmail>();
             string eu = (enderecoDoUsuario ?? endereco ?? "").Trim().ToLowerInvariant();
+            int comCorpo = 0;
 
-            foreach (var r in resumos)
+            foreach (var r in candidatas)
             {
                 ct.ThrowIfCancellationRequested();
 
-                if (!incremental && !NaJanela(r.InternalDate, desdeUtc)) continue;
+                // O CORPO só desce das mais recentes. Uma caixa com 700 mensagens acumuladas
+                // significaria 700 downloads antes de qualquer triagem começar — minutos de
+                // IMAP para um lote que, no fim, leva 25 mensagens ao modelo. As demais entram
+                // com envelope e flags, que é o que o funil usa para decidir; se alguma delas
+                // subir, ela chega ao modelo com assunto e remetente, sem corpo.
+                string corpo = comCorpo < TetoDeCorpos
+                    ? await CorpoAsync(inbox, r, ct).ConfigureAwait(false)
+                    : "";
 
-                string corpo = await CorpoAsync(inbox, r, ct).ConfigureAwait(false);
+                if (corpo.Length > 0) comCorpo++;
                 lidas.Add(Converter(r, eu, corpo));
             }
 
+            uint validade = inbox.UidValidity;
             await DesconectarAsync(cliente).ConfigureAwait(false);
-            return lidas;
+
+            Console.WriteLine($"[VIGIA] {endereco}: {lidas.Count} mensagem(ns) para triar, " +
+                              $"{comCorpo} com corpo. " +
+                              (incremental
+                                  ? $"a partir do UID {guardado!.LastTriagedUid}."
+                                  : "primeira triagem, pela data."));
+
+            return new LeituraDaCaixa(lidas, validade);
         }
         catch (OperationCanceledException)
         {
@@ -322,7 +356,7 @@ public sealed class MailKitMailService : IMailService
             // caminho de erro, que é onde é mais fácil esquecer dela.
             Console.WriteLine($"[VIGIA] {endereco}: leitura falhou — {ex.GetType().Name}: {ex.Message}");
             await DesconectarAsync(cliente).ConfigureAwait(false);
-            return Array.Empty<MensagemDeEmail>();
+            return LeituraDaCaixa.Nada;
         }
     }
 

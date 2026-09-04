@@ -24,6 +24,9 @@ namespace AIB.Tests
     /// </summary>
     public class VigiaDeEmailTests
     {
+        /// <summary>A fabrica montada pelo ultimo MontarCompleto. Serve so aos ensaios.</summary>
+        private static FabricaFixa? UltimaFabrica;
+
         private static MensagemDeEmail Msg(
             uint uid = 1, string de = "ana@empresa.com", string assunto = "assunto",
             bool direto = true, bool importante = false, string[]? rotulos = null,
@@ -579,6 +582,119 @@ namespace AIB.Tests
         }
 
         // ─────────────────────────────────────────────────────────────────
+        // Defeitos vistos em producao (04/09/2026)
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void CONTAR_NaoCONSOME_OQueFaltaTriar()
+        {
+            // Defeito real: os dois progressos dividiam o mesmo campo. A tela de configuracoes
+            // contava as mensagens, avancava o marcador, e o vigia — rodando depois —
+            // encontrava a caixa "em dia". Setecentas e dez por triar viraram uma.
+            var depoisDaContagem = new EstadoDaCaixa
+            {
+                UidValidity = 651454841,
+                LastUid = 27711,        // a TELA contou ate aqui
+                LastTriagedUid = 0      // o VIGIA nao triou nada ainda
+            };
+
+            depoisDaContagem.ServeParaPartir(651454841).Should().BeTrue("a contagem sabe onde parou");
+            depoisDaContagem.ServeParaTriar(651454841).Should().BeFalse(
+                "a triagem nao pode herdar o progresso de quem so contou");
+        }
+
+        [Fact]
+        public async Task ODigest_GRAVA_OProgressoDaTriagem_SemMexerNoDaContagem()
+        {
+            var (vigia, _, email, pasta) = MontarComPasta(
+                lidas: new[] { Msg(uid: 500, assunto: "Contrato") },
+                resposta: "[{\"uid\":500,\"urgencia\":\"media\",\"resumo\":\"responder\"}]");
+
+            var estado = new EstadoDasCaixas(pasta);
+            estado.Gravar("eu@empresa.com", new EstadoDaCaixa
+            {
+                UidValidity = 1, LastUid = 9999, LastTriagedUid = 0
+            });
+
+            await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            var depois = estado.Ler("eu@empresa.com")!;
+            depois.LastTriagedUid.Should().Be(500, "o vigia marcou ate onde triou");
+            depois.LastUid.Should().Be(9999, "e nao mexeu no marcador da tela");
+        }
+
+        [Fact]
+        public void MarketingENDERECADO_AVoce_CONTINUA_Marketing()
+        {
+            // Defeito real: um e-mail da Wellhub, de no-reply@, endereçado diretamente ao
+            // usuario, subiu porque "endereçada a voce" era checado ANTES de "remetente
+            // automatico" — e o modelo ainda o classificou como MAXIMA. Ser destinatario de um
+            // robo nao e ser destinatario de um pedido.
+            var promo = new MensagemDeEmail(
+                27711, "thr", "no-reply@mail.wellhub.com", "Wellhub",
+                "Ganhe R$75 de desconto", DateTime.UtcNow,
+                Direto: true, Importante: false, Array.Empty<string>(), true, "indique e ganhe");
+
+            FiltroDeTriagem.Avaliar(promo, RegrasDoVigia.Vazias).Sobe.Should().BeFalse();
+        }
+
+        [Fact]
+        public void RoboIMPORTANTE_OuVIGIADO_ContinuaSUBINDO()
+        {
+            // As portas de fuga que impedem a correcao acima de calar o alerta do firewall e o
+            // aviso do banco.
+            var doBanco = new MensagemDeEmail(
+                1, "thr", "noreply@banco.com", "Banco", "Transacao suspeita", DateTime.UtcNow,
+                Direto: true, Importante: true, Array.Empty<string>(), true, "");
+
+            FiltroDeTriagem.Avaliar(doBanco, RegrasDoVigia.Vazias).Sobe.Should().BeTrue(
+                "o Gmail marcou como importante");
+
+            var resposta = new MensagemDeEmail(
+                2, "17ab", "noreply@sistema.com", "Sistema", "Re: chamado", DateTime.UtcNow,
+                Direto: true, Importante: false, Array.Empty<string>(), true, "");
+
+            FiltroDeTriagem.Avaliar(resposta, RegrasDoVigia.Vazias,
+                                    new HashSet<string> { "17ab" })
+                .Sobe.Should().BeTrue("e uma conversa que voce comecou");
+        }
+
+        [Fact]
+        public async Task ATriagem_USA_OModeloPRINCIPAL_NaoODoShadow()
+        {
+            // Defeito real: com um 0.8b no campo "Modelo do Shadow", a triagem classificou um
+            // cupom de marketing como MAXIMA e escreveu um resumo que nao estava em lugar
+            // nenhum da mensagem. O documento e explicito: o degrau 3 e do 9B, e modelo pequeno
+            // nunca decide o que sobe — ele e confiante ate quando erra.
+            var (vigia, _, _, _) = MontarComPasta(
+                lidas: new[] { Msg(uid: 1, assunto: "Contrato") },
+                resposta: "[{\"uid\":1,\"urgencia\":\"media\",\"resumo\":\"x\"}]");
+
+            await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            UltimaFabrica!.Ultimas!.ModelName.Should().Be("qwen3.5:9b");
+        }
+
+        [Fact]
+        public void OMarcoDoDigest_SOBREVIVE_AoFechamentoDoPrograma()
+        {
+            // Defeito real: o marcador vivia em memoria, entao TODO arranque depois das 8h25
+            // disparava um digest. Abrir e fechar a AIB tres vezes numa manha custava tres
+            // leituras da caixa e tres chamadas ao modelo, dizendo a mesma coisa.
+            string pasta = Path.Combine(Path.GetTempPath(), "aib-marco-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(pasta);
+
+            var quando = new DateTime(2026, 9, 4, 13, 0, 0, DateTimeKind.Local);
+            new MarcoDoVigia(pasta).GravarDigest(quando);
+
+            var depoisDeReabrir = new MarcoDoVigia(pasta).UltimoDigest;
+
+            depoisDeReabrir.Should().NotBeNull();
+            AgendaDoVigia.HoraDoDigest(new DateTime(2026, 9, 4, 13, 5, 0), depoisDeReabrir)
+                .Should().BeFalse("o digest das 12h55 ja rodou, mesmo com o programa reiniciado");
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         // Andaimes
         // ─────────────────────────────────────────────────────────────────
 
@@ -612,6 +728,11 @@ namespace AIB.Tests
             var settings = new SettingsService(Path.Combine(pasta, "settings.json"));
             var config = settings.LoadSettings();
             config.ShadowHandlesMail = triagemLigada;
+
+            // O par que reproduz o defeito de producao: um 9B na conversa e um 0.8b no campo
+            // do Shadow. A triagem tem de escolher o primeiro.
+            config.ModelName = "qwen3.5:9b";
+            config.ShadowModelName = "qwen3.5:0.8b";
             config.MailAccounts = new List<MailAccountSettings>
             {
                 new() { Address = "eu@empresa.com", ImapHost = "imap.gmail.com", ImapPort = 993, IsPrimary = true }
@@ -623,13 +744,15 @@ namespace AIB.Tests
 
             var email = new EmailFalso(lidas);
             var provider = new ProviderFalso(resposta, modeloQuebra);
+            UltimaFabrica = new FabricaFixa(provider);
 
             var vigia = new MailDigestService(
-                settings, email, new FabricaFixa(provider),
+                settings, email, UltimaFabrica,
                 cofre, new EstadoDasCaixas(pasta),
                 agora: () => new DateTime(2026, 9, 4, 13, 0, 0),
                 caminhoDasRegras: Path.Combine(pasta, "regras.md"),
-                vigias: new VigiasDoEmail(pasta));
+                vigias: new VigiasDoEmail(pasta),
+                raizDeDados: pasta);
 
             return (vigia, provider, email);
         }
@@ -650,13 +773,16 @@ namespace AIB.Tests
                 string e, string s, ImapEndpoint ep, DateTime d, EstadoDaCaixa? g, CancellationToken ct) =>
                 Task.FromResult(new MailScanResult(true, 0, 0, false, 1, 0, ""));
 
-            public Task<IReadOnlyList<MensagemDeEmail>> LerAsync(
+            public Task<LeituraDaCaixa> LerAsync(
                 string e, string s, ImapEndpoint ep, DateTime d, EstadoDaCaixa? g,
                 string eu, CancellationToken ct)
             {
                 Chamadas++;
-                return Task.FromResult(_lidas);
+                return Task.FromResult(new LeituraDaCaixa(_lidas, UidValidity));
             }
+
+            /// <summary>Selo da caixa, para o ensaio poder simular renumeracao.</summary>
+            public uint UidValidity { get; set; } = 1;
 
             /// <summary>As conversas em que o usuario escreveu, ditadas pelo ensaio.</summary>
             public IReadOnlyList<ThreadRespondida> Respondidas { get; set; } =
@@ -706,7 +832,15 @@ namespace AIB.Tests
         {
             private readonly IChatProvider _provider;
             public FabricaFixa(IChatProvider provider) => _provider = provider;
-            public IChatProvider GetProvider(UserAppSettings settings) => _provider;
+
+            /// <summary>As configuracoes da ultima vez que alguem pediu um provider.</summary>
+            public UserAppSettings? Ultimas { get; private set; }
+
+            public IChatProvider GetProvider(UserAppSettings settings)
+            {
+                Ultimas = settings;
+                return _provider;
+            }
         }
     }
 }

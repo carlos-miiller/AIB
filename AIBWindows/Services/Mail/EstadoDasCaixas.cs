@@ -15,8 +15,24 @@ public sealed class EstadoDaCaixa
     /// </summary>
     public uint UidValidity { get; set; }
 
-    /// <summary>Maior UID já visto. Zero quando nunca se leu nada.</summary>
+    /// <summary>
+    /// Maior UID já CONTADO pela tela de configurações. Zero quando nunca se contou nada.
+    /// </summary>
     public uint LastUid { get; set; }
+
+    /// <summary>
+    /// Maior UID já TRIADO pelo vigia. Separado do <see cref="LastUid"/> por um defeito real:
+    /// a tela de configurações contava as mensagens e avançava o ponteiro, e o vigia — que roda
+    /// depois — encontrava a caixa "em dia" e não triava nada. Abrir as configurações consumia
+    /// a fila de trabalho do vigia sem ler mensagem nenhuma.
+    /// <para>
+    /// Contar e triar são progressos diferentes e não podem dividir o mesmo marcador.
+    /// </para>
+    /// </summary>
+    public uint LastTriagedUid { get; set; }
+
+    /// <summary>Quando o vigia triou pela última vez.</summary>
+    public DateTime? LastTriageUtc { get; set; }
 
     public DateTime? LastReadUtc { get; set; }
 
@@ -31,6 +47,10 @@ public sealed class EstadoDaCaixa
     /// </summary>
     public bool ServeParaPartir(uint uidValidityAtual)
         => LastUid > 0 && UidValidity == uidValidityAtual;
+
+    /// <summary>O mesmo, para o ponteiro da TRIAGEM.</summary>
+    public bool ServeParaTriar(uint uidValidityAtual)
+        => LastTriagedUid > 0 && UidValidity == uidValidityAtual;
 }
 
 /// <summary>
