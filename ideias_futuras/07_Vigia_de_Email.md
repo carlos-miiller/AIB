@@ -1,6 +1,8 @@
 # 7. Vigia de E-mail (triagem em dois modelos)
 
-> Discutido em 01/09/2026. Nada implementado ainda — este arquivo é o rastro da decisão.
+> Discutido em 01/09/2026. **Parte da V1 aterrissou em 03–04/09/2026** — ver
+> [O que já existe em código](#o-que-já-existe-em-código). O resto deste arquivo continua sendo
+> o rastro da decisão, e o que ele descreve no futuro do presente ainda não foi escrito.
 > Encosta na ideia [01 (Aspirador Matinal)](01_Aspirador_Matinal_RAG.md), que também fala em
 > ler e-mail corporativo. A diferença: lá o e-mail é fonte de conhecimento para RAG; aqui ele
 > é fila de trabalho a ser triada.
@@ -212,19 +214,27 @@ envelhece para "provavelmente resolvido".
 ```
 
 ```jsonc
-// estado.json — um arquivo só, uma entrada por caixa, chaveada pelo ENDEREÇO.
-// Chavear por endereço e não por rótulo evita a classe de bug em que renomear a
-// caixa na tela faz o vigia perder o lastUid e retriar semanas de mensagem.
+// estado.json COMO ELE ESTÁ HOJE — um arquivo só, uma entrada por caixa, chaveada
+// pelo ENDEREÇO em minúsculas. Chavear por endereço e não por rótulo evita a classe
+// de bug em que renomear a caixa na tela faz o vigia perder o lastUid e retriar
+// semanas de mensagem.
+//
+// NÃO tem envelope "caixas": o dicionário é a raiz. E não tem "abertos" — a lista
+// que envelhece é da V2, e só nasce quando o degrau 2 existir.
 {
-  "caixas": {
-    "nome@empresa.com.br": {
-      "uidValidity": 8271,   // mudou? o lastUid virou lixo: resemeia por data
-      "lastUid": 91043,
-      "abertos": [ { "thrid":"…", "de":"…", "pedido":"…", "desde":"…" } ]
-    }
+  "nome@empresa.com.br": {
+    "uidValidity": 8271,        // mudou? o lastUid virou lixo: resemeia por data
+    "lastUid": 91043,
+    "lastReadUtc": "2026-09-04T13:22:41.7Z"
   }
 }
 ```
+
+**Gravar `lastUid` é mais delicado do que parece.** Uma varredura sem nada na janela não viu
+UID nenhum, e gravar o zero que ela devolve apaga até onde já se leu — um fim de semana quieto
+faria a caixa inteira voltar a parecer novidade na segunda. Guarda-se o maior entre o guardado e
+o visto. **Salvo** quando o `uidValidity` trocou: aí o guardado é de outra numeração, o maior
+não quer dizer o mais recente, e o número novo vence mesmo sendo menor.
 
 `regras.md` mínimo — lista de fontes de alerta, com limiares que só o usuário sabe:
 
@@ -239,6 +249,10 @@ nobreak@empresa.com.br    → rajada a partir de 2 em 15 min
 
 1. **`BODY.PEEK[]`, sempre.** `FETCH BODY[]` marca a mensagem como lida. Isso não seria um bug —
    seria a AIB destruindo o estado da caixa do usuário, que é o sinal que ele usa para se achar.
+   **Na prática a garantia ficou um nível acima:** a INBOX é aberta com `FolderAccess.ReadOnly`,
+   que manda `EXAMINE` em vez de `SELECT`. Num EXAMINE o servidor não altera flag nenhuma, então
+   nem um `BODY[]` escrito por engano marcaria mensagem como lida. A regra sai de "temos de
+   lembrar" para "o servidor não deixa".
 2. **V1 é estritamente somente leitura.** Não envia, não arquiva, não marca, não apaga.
 3. **Conteúdo de e-mail nunca entra no `raw.jsonl` nem vira capítulo.** Só o veredito. Sem isso,
    o resumidor lê e-mail corporativo e ele reaparece num prompt semanas depois.
@@ -327,6 +341,39 @@ tiver defeito, a permissão não segura.
 Mitigação: DPAPI `CurrentUser` (só este usuário do Windows, nesta máquina, decifra) e nada sai
 da máquina, porque o Ollama é localhost.
 
+## O que já existe em código
+
+Escrito em 03–04/09/2026. É o **encanamento** da V1, não a V1: lê a caixa e conta, mas ainda
+não triou nada. Nenhum modelo foi acordado, nenhum degrau do funil roda.
+
+| O que | Onde | Estado |
+|---|---|---|
+| Conta de e-mail (endereço, host, porta, principal) | `Services/Mail/MailAccount.cs` | pronto |
+| Dedução do servidor a partir do domínio | `Services/Mail/ImapHostGuesser.cs` | pronto |
+| Senha de app cifrada em `~/.AIB/credentials/mail/` | `Services/Mail/MailVault.cs` | pronto, DPAPI `CurrentUser` |
+| Invariantes da lista (única principal, não remover a última) | `Services/Mail/MailAccountList.cs` | pronto |
+| Cliente IMAP: login verificado e varredura | `Services/Mail/MailKitMailService.cs` | pronto, somente leitura |
+| `estado.json` por caixa | `Services/Mail/EstadoDasCaixas.cs` | pronto |
+| Tela de configuração, página E-mail | `Views/SettingsWindow.xaml` | pronto |
+| Degraus 0/1/2/3 do funil | — | **não existe** |
+| Digest 3×/dia, rajada, aba "Atenção" | — | **não existe** |
+| `regras.md`, `vigias.json` | — | **não existe** |
+
+**A varredura de hoje só conta.** Ela roda `FETCH (UID FLAGS INTERNALDATE)` — nem corpo, nem
+assunto, nem remetente descem do servidor. Daí a linha da tela saber quantas mensagens e
+quantas por ler, e nada mais. A regra 3 ainda não teve chance de ser violada porque não há
+conteúdo em lugar nenhum para violar com.
+
+**A dedução de servidor tem um furo conhecido.** Um Workspace em domínio próprio não responde
+em `imap.{dominio}` nem em `mail.{dominio}` — o host dele é `imap.gmail.com`, e quem sabe disso
+é o registro MX, não o nome do domínio. Hoje o Gmail entra como terceiro candidato da escada,
+o que resolve o caso do usuário por sorte estrutural. A resposta certa a prazo é consultar o MX.
+
+**A janela de arranque é de 3 dias e agora é mesmo de 3 dias.** O `SINCE` do IMAP conta em dias
+e compara pela hora do servidor, então a busca sai de propósito com 24h de folga; o corte fino
+é feito depois, pelo `INTERNALDATE`. Sem esse corte a tela anunciava "3d" mostrando a contagem
+de quase cinco.
+
 ## Bloqueios em Aberto
 
 1. **Pré-voo das senhas de app** (só o usuário pode fazer) — em **cada** caixa, na ordem:
@@ -335,12 +382,20 @@ da máquina, porque o Ollama é localhost.
    Workspace pode bloquear qualquer um dos três numa caixa gerenciada.
    - Como a configuração é uma lista, isso deixou de ser um bloqueio tudo-ou-nada: entra a
      caixa que passou no pré-voo, e a que não passou entra depois pelo mesmo formulário.
+   - **A caixa pessoal já passou** (04/09/2026): login verificado e varredura lendo de verdade.
+     Falta a corporativa, que é justamente a que o admin pode barrar nos três pontos acima.
    - Nenhuma passou → plano B: OAuth com a Gmail API, projeto no Google Cloud, refresh token no
      mesmo DPAPI. Mais trabalho, e o admin também pode barrar.
 2. **`ollama pull qwen3.5:0.8b`** (~600 MB) — só para a V2.
 3. **Confirmar `MAX_LOADED=2` no processo do Ollama**, não só na variável de usuário.
-4. **Interface** — a discutir: onde o digest aparece, como é a aba "Atenção", como a rajada
-   interrompe sem virar a interrupção que o sistema existe para evitar.
+4. **Interface** — a página de configuração está de pé; segue em aberto onde o digest aparece,
+   como é a aba "Atenção" e como a rajada interrompe sem virar a interrupção que o sistema
+   existe para evitar.
+5. **A regra 3 ainda não foi endereçada no compactador.** Enquanto a varredura só conta, não há
+   conteúdo para vazar. No dia em que o resumo de uma mensagem ocupar token de prompt, ele
+   precisa sair EXPLÍCITO da capitulação — senão e-mail corporativo reaparece num prompt semanas
+   depois, que é exatamente o que a regra 3 proíbe. É o furo a fechar ANTES da triagem, não
+   depois.
 
 ## Consideração Não-Técnica
 
