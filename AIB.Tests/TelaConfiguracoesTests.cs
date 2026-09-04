@@ -880,6 +880,51 @@ namespace AIB.Tests
             });
         }
 
+        [Fact]
+        public void ResetarLeitura_APAGA_OProgresso_SemTocarNaConta()
+        {
+            // Nasceu de necessidade de teste: sem isto, experimentar a triagem depende de
+            // chegar e-mail novo, e a caixa de quem ja rodou o digest fica "em dia" o resto do
+            // dia. O que some e o NOSSO marcador — a conta e a senha ficam onde estavam.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                string pasta = PastaTemporaria();
+                string caminho = System.IO.Path.Combine(pasta, "settings.json");
+                var cofre = new MailVault(pasta);
+                var estado = new EstadoDasCaixas(pasta);
+
+                var janela = new SettingsWindow(
+                    new SettingsService(caminho), PaginaDeConfiguracoes.Email,
+                    new ServicoQueVarre(mensagens: 5, naoLidas: 2, uidValidity: 8271, ultimoUid: 91043),
+                    cofre, estado);
+
+                Clicar(janela, "BotaoAdicionarConta");
+                Digitar(janela, "ana@gmail.com", "abcdefghijklmnop");
+                Clicar(janela, "BotaoConectarConta");
+                Bombear();
+
+                estado.Ler("ana@gmail.com").Should().NotBeNull("a conexao ja gravou progresso");
+
+                var conta = janela.Contas.Contas[0];
+                janela.GetType()
+                    .GetMethod("ResetarLeitura_Click",
+                               System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                    .Invoke(janela, new object[]
+                    {
+                        new System.Windows.Controls.Button { DataContext = conta },
+                        new RoutedEventArgs()
+                    });
+
+                estado.Ler("ana@gmail.com").Should().BeNull("o progresso foi esquecido");
+                janela.Contas.Contas.Should().HaveCount(1, "a conta continua na lista");
+                cofre.Existe("ana@gmail.com").Should().BeTrue("e a senha continua no cofre");
+                conta.StatusText.Should().Contain("zerada");
+
+                janela.Close();
+            });
+        }
+
         /// <summary>Serviço que conecta e devolve uma varredura com números fixos.</summary>
         private sealed class ServicoQueVarre : IMailService
         {

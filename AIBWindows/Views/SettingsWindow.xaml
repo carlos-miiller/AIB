@@ -775,6 +775,20 @@
                                                                             M7,9 L7,6.5 A3,3 0 0 1 13,6.5 L13,9"/>
                                                             </Button>
 
+                                                            <!-- Seta em circulo: esquecer o que ja
+                                                                 foi lido e voltar ao comeco da
+                                                                 janela. Nao mexe na caixa do
+                                                                 usuario, so no nosso marcador. -->
+                                                            <Button Style="{StaticResource AcctButton}"
+                                                                    Margin="0,0,4,0"
+                                                                    Click="ResetarLeitura_Click"
+                                                                    ToolTip="Esquecer o que ja foi lido e triar tudo de novo">
+                                                                <Path Style="{StaticResource AcctIcon}"
+                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                      Data="M15.5,7.5 A6,6 0 1 0 16,11.2
+                                                                            M15.5,4 L15.5,7.5 L12,7.5"/>
+                                                            </Button>
+
                                                             <Button x:Name="BotaoRemoverConta"
                                                                     Style="{StaticResource AcctDangerButton}"
                                                                     Click="RemoverConta_Click"

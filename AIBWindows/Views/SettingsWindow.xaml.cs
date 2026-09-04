@@ -584,6 +584,31 @@ public partial class SettingsWindow : Window
         PersistirContas();
     }
 
+    /// <summary>
+    /// Esquece até onde já se leu e triou nesta caixa.
+    /// <para>
+    /// Nasceu de uma necessidade de teste: sem isto, experimentar a triagem depende de chegar
+    /// e-mail novo, e a caixa de quem já rodou o digest fica "em dia" o resto do dia. Apagar o
+    /// marcador faz a próxima leitura voltar a varrer a janela inteira por data.
+    /// </para>
+    /// <para>
+    /// Não toca na caixa do usuário: o que some é o NOSSO registro de progresso. Nenhuma
+    /// mensagem é marcada, movida ou apagada — a leitura sempre foi em EXAMINE.
+    /// </para>
+    /// </summary>
+    private void ResetarLeitura_Click(object sender, RoutedEventArgs e)
+    {
+        if (ContaDoBotao(sender) is not MailAccount conta) return;
+
+        _estado.Remover(conta.Address);
+
+        conta.Status = MailAccountStatus.Checking;
+        conta.StatusText = $"{conta.ImapHost}:{conta.ImapPort} · leitura zerada — a próxima varre tudo";
+
+        Console.WriteLine($"[EMAIL] {conta.Address}: progresso de leitura e triagem apagado; " +
+                          "a próxima passada recomeça pela data.");
+    }
+
     private void RemoverConta_Click(object sender, RoutedEventArgs e)
     {
         if (ContaDoBotao(sender) is not MailAccount conta) return;
