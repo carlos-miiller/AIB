@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -8,7 +8,12 @@ namespace AIB.Services.Mail;
 /// <param name="De">Remetente. É o suficiente para o usuário reconhecer o que perdeu.</param>
 /// <param name="Assunto">Assunto, como veio.</param>
 /// <param name="Motivo">O degrau que a descartou.</param>
-public sealed record Descartada(string De, string Assunto, string Motivo);
+/// <param name="Quantas">
+/// Quantas mensagens esta linha representa. Quase sempre uma — mas a triagem devolve UMA linha
+/// para todas as que o modelo leu e achou irrelevantes, e sem este campo contar as linhas
+/// dizia "18 descartadas" quando tinham sido 27.
+/// </param>
+public sealed record Descartada(string De, string Assunto, string Motivo, int Quantas = 1);
 
 /// <summary>
 /// O resultado de uma passada do vigia.
@@ -29,6 +34,12 @@ public sealed record DigestoDeEmail(
     IReadOnlyList<Rajada> Rajadas,
     DateTime QuandoUtc)
 {
+    /// <summary>
+    /// Quantas MENSAGENS ficaram de fora — somando o peso de cada linha, e não contando linhas.
+    /// Derivado, e não escrito: o número que se escreve à mão é o que envelhece errado.
+    /// </summary>
+    public int MensagensDescartadas => Descartadas?.Sum(d => d.Quantas) ?? 0;
+
     public static DigestoDeEmail Vazio => new(
         Array.Empty<MailSummary>(), 0, Array.Empty<Descartada>(),
         Array.Empty<Rajada>(), DateTime.UtcNow);

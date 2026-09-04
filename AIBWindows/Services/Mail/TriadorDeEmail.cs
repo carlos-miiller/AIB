@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
@@ -134,10 +134,12 @@ public sealed class TriadorDeEmail
                 if (item.ValueKind != JsonValueKind.Object) continue;
                 if (!LerUid(item, out uint uid)) continue;
 
-                string resumo = Texto(item, "resumo");
+                string resumo = Texto(item, "resumo", "summary", "acao", "ação");
                 if (resumo.Length == 0) continue;
 
-                vereditos.Add(new VereditoDeEmail(uid, Nivel(Texto(item, "urgencia")), resumo));
+                string urgencia = Texto(item, "urgencia", "urgência", "urgency", "prioridade");
+
+                vereditos.Add(new VereditoDeEmail(uid, Nivel(urgencia), resumo));
             }
 
             return vereditos;
@@ -172,10 +174,28 @@ public sealed class TriadorDeEmail
         return campo.ValueKind == JsonValueKind.String && uint.TryParse(campo.GetString(), out uid);
     }
 
-    private static string Texto(JsonElement item, string nome) =>
-        item.TryGetProperty(nome, out var campo) && campo.ValueKind == JsonValueKind.String
-            ? (campo.GetString() ?? "").Trim()
-            : "";
+    /// <summary>
+    /// O primeiro dos nomes que existir e for texto.
+    /// <para>
+    /// Aceita sinônimo porque o modelo troca o nome do campo. Visto em produção: no meio de
+    /// catorze objetos certos veio um <c>"urgency"</c> em inglês, o campo "faltou", a leitura
+    /// caiu no padrão MÉDIA da regra 5 e um anúncio da Netflix foi parar na tela. O prompt pede
+    /// <c>urgencia</c>; ler o sinônimo custa nada e não afrouxa nada.
+    /// </para>
+    /// </summary>
+    private static string Texto(JsonElement item, params string[] nomes)
+    {
+        foreach (string nome in nomes)
+        {
+            if (item.TryGetProperty(nome, out var campo) && campo.ValueKind == JsonValueKind.String)
+            {
+                string valor = (campo.GetString() ?? "").Trim();
+                if (valor.Length > 0) return valor;
+            }
+        }
+
+        return "";
+    }
 
     /// <summary>
     /// Nível a partir do que o modelo escreveu. Palavra desconhecida vira MÉDIA, e não baixa:

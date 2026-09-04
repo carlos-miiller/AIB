@@ -12,9 +12,16 @@ public readonly record struct DecisaoDoFunil(bool Sobe, string Motivo);
 /// <summary>
 /// Degraus 0 e 1 do funil — Gmail e regras. Custo zero, nenhum modelo.
 /// <para>
-/// O degrau 0 é o achado que mais economiza trabalho: as categorias do Gmail (Promoções,
-/// Social, Atualizações, Fóruns) e o marcador <c>\Important</c> já são calculados no servidor,
-/// de graça. Não há por que reimplementar heurística de newsletter.
+/// O degrau 0 aproveita o que o servidor já calculou: o marcador <c>\Important</c> do Gmail e
+/// os headers de lista que o próprio disparador põe. Nenhum dos dois custa uma linha de
+/// heurística.
+/// </para>
+/// <para>
+/// O QUE ELE NÃO TEM, e a primeira versão achou que tinha: as abas de categoria do Gmail.
+/// Elas não existem sobre IMAP — o X-GM-LABELS traz <c>\Important</c>, <c>\Starred</c> e as
+/// etiquetas do usuário, e nunca <c>CATEGORY_PROMOTIONS</c>. Aquele ramo passou uma execução
+/// inteira sem disparar uma vez enquanto catorze mala-diretas subiam ao modelo. Quem faz o
+/// trabalho agora é <see cref="MensagemDeEmail.EnvioEmMassa"/>.
 /// </para>
 /// <para>
 /// ENVIESADO PARA RECALL, regra 5 do vigia: na dúvida, sobe. Um e-mail chato subindo custa três
@@ -24,7 +31,14 @@ public readonly record struct DecisaoDoFunil(bool Sobe, string Motivo);
 /// </summary>
 public static class FiltroDeTriagem
 {
-    /// <summary>Categorias do Gmail que o usuário não pediu para ver.</summary>
+    /// <summary>
+    /// Categorias do Gmail que o usuário não pediu para ver.
+    /// <para>
+    /// NÃO CHEGAM POR IMAP — ver a nota da classe. Ficam porque a API do Gmail as entrega com
+    /// exatamente estes nomes, e o dia em que a leitura passar por ela o degrau volta a
+    /// funcionar sozinho. Enquanto isso, quem descarta mala-direta é o header de lista.
+    /// </para>
+    /// </summary>
     private static readonly string[] CategoriasDescartaveis =
     {
         "category_promotions", "category_social", "category_updates", "category_forums"
@@ -72,6 +86,14 @@ public static class FiltroDeTriagem
         string? categoria = rotulos.FirstOrDefault(r => CategoriasDescartaveis.Contains(r));
         if (categoria != null)
             return new DecisaoDoFunil(false, $"o Gmail classificou como {Legivel(categoria)}");
+
+        // Degrau 0: o disparador se identificou. List-Unsubscribe é assinatura de mala-direta
+        // — quem escreve para uma pessoa não oferece descadastro. Medido em produção: catorze
+        // newsletters (Netflix, Udemy, Localiza, PicPay, 99, Patreon…) subiam ao modelo e
+        // custavam 2.400 tokens de prefill, e nenhuma delas tinha marca no endereço: o sinal
+        // estava no domínio e no header, nunca no local-part.
+        if (msg.EnvioEmMassa)
+            return new DecisaoDoFunil(false, "disparo para lista, com link de descadastro");
 
         // Degrau 1: caixa que não lê resposta não está pedindo nada.
         //

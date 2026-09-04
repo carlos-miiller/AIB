@@ -31,12 +31,35 @@ namespace AIB.Services.Mail;
 /// </param>
 /// <param name="Importante">O marcador \Important do Gmail — o degrau 0, calculado no servidor.</param>
 /// <param name="Rotulos">
-/// Os X-GM-LABELS. Trazem as categorias do Gmail (Promoções, Social, Atualizações, Fóruns), que
-/// já vêm classificadas de graça: não há por que reimplementar heurística de newsletter.
+/// Os X-GM-LABELS. Trazem <c>\Important</c>, <c>\Starred</c> e as etiquetas que o usuário
+/// criou.
+/// <para>
+/// O QUE ELES NÃO TRAZEM: as abas de categoria do Gmail (Promoções, Social, Atualizações,
+/// Fóruns). Elas existem só na interface e na API do Gmail; sobre IMAP o servidor não as
+/// expõe em X-GM-LABELS. Medido em produção — catorze mala-diretas passaram pelo funil sem
+/// que um único rótulo de categoria chegasse. Quem substitui esse degrau é
+/// <see cref="EnvioEmMassa"/>, que vem de header e não depende do Gmail.
+/// </para>
 /// </param>
 /// <param name="NaoLida">Se ainda está por ler na caixa do usuário.</param>
 /// <param name="Corpo">
 /// Texto da mensagem, já truncado. Existe só para o degrau 3 ler e resumir; nunca é gravado.
+/// </param>
+/// <param name="EnvioEmMassa">
+/// A mensagem foi disparada para uma lista, e não escrita para uma pessoa.
+/// <para>
+/// Vem de <c>List-Unsubscribe</c> (RFC 2369), <c>List-Id</c> ou <c>Precedence: bulk</c>. É o
+/// sinal mais limpo que existe para isto: quem dispara mala-direta é OBRIGADO a oferecer
+/// descadastro, e quem escreve para uma pessoa nunca põe esse header. Não depende do domínio
+/// nem de lista de palavras — <c>picpay@marketing.picpay.com</c> e
+/// <c>hello@students.udemy.com</c> não têm marca nenhuma no local-part, e os dois têm o
+/// header.
+/// </para>
+/// <para>
+/// Não basta sozinho: as portas de fuga do funil (conversa vigiada, fonte do regras.md,
+/// <c>\Important</c>) passam antes dele, porque uma lista interna da empresa também tem
+/// List-Id e ainda assim pode carregar o aviso que importa.
+/// </para>
 /// </param>
 public sealed record MensagemDeEmail(
     uint Uid,
@@ -49,7 +72,8 @@ public sealed record MensagemDeEmail(
     bool Importante,
     string[] Rotulos,
     bool NaoLida,
-    string Corpo)
+    string Corpo,
+    bool EnvioEmMassa = false)
 {
     /// <summary>
     /// Quanto do corpo, JÁ LIMPO, é oferecido ao modelo. Menor que antes porque agora são 600
@@ -81,7 +105,11 @@ public sealed record MensagemDeEmail(
         t = Regex.Replace(t, @"<(style|script)[^>]*>.*?</\1>", " ",
                           RegexOptions.Singleline | RegexOptions.IgnoreCase);
         t = Regex.Replace(t, @"<!--.*?-->", " ", RegexOptions.Singleline);
-        t = Regex.Replace(t, @"<[^>]{0,400}>", " ");
+        // O teto era 400 e vazava: medido em produção, a <a> de um e-mail do Patreon tinha
+        // mais de 400 caracteres só no atributo style, não casava, e sobrevivia inteira dentro
+        // do prompt. Mil e duzentos cobre a tag mais gorda que se vê em mala-direta, e o teto
+        // continua existindo para que um "<" solto no meio de uma frase não coma o parágrafo.
+        t = Regex.Replace(t, @"<[^>]{0,1200}>", " ");
 
         // CSS solto, em DUAS etapas. A tentacao e comer "seletor + bloco" de uma vez, mas o
         // seletor pode ser composto ("#outlook a{...}") e uma regra gulosa o bastante para

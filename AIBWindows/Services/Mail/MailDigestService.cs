@@ -238,7 +238,8 @@ public sealed class MailDigestService : IDisposable
         if (_ignoradasPeloModelo > 0)
             descartadas.Add(new Descartada("(triagem)",
                 $"{_ignoradasPeloModelo} mensagem(ns) lida(s) e sem pedido",
-                "o modelo leu e concluiu que não pedem nada agora"));
+                "o modelo leu e concluiu que não pedem nada agora",
+                _ignoradasPeloModelo));
 
         return Publicar(new DigestoDeEmail(itens, lidas.Count, descartadas, rajadas, DateTime.UtcNow));
     }
@@ -396,8 +397,10 @@ public sealed class MailDigestService : IDisposable
 
     private DigestoDeEmail Publicar(DigestoDeEmail digesto)
     {
+        // MensagensDescartadas, e não Descartadas.Count: a linha da triagem vale por dezenas.
         Console.WriteLine($"[VIGIA] {digesto.Lidas} lida(s), {digesto.Itens.Count} na tela, " +
-                          $"{digesto.Descartadas.Count} descartada(s), {digesto.Rajadas.Count} rajada(s).");
+                          $"{digesto.MensagensDescartadas} descartada(s) em " +
+                          $"{digesto.Descartadas.Count} linha(s), {digesto.Rajadas.Count} rajada(s).");
 
         // Sondagem sem novidade não apaga o digest da manhã: o painel continua mostrando o
         // que ainda não foi tratado, em vez de esvaziar sozinho às 9h20.

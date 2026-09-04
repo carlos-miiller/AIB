@@ -268,6 +268,28 @@ public sealed class MailKitMailService : IMailService
         MessageSummaryItems.BodyStructure |
         MessageSummaryItems.GMailThreadId | MessageSummaryItems.GMailLabels;
 
+    /// <summary>
+    /// O FETCH da triagem, com os três headers que denunciam disparo para lista.
+    /// <para>
+    /// Pede header POR NOME, e não <see cref="MessageSummaryItems.Headers"/>: nomeados viram um
+    /// <c>BODY.PEEK[HEADER.FIELDS (...)]</c>, que traz três linhas; o outro baixaria o cabeçalho
+    /// inteiro de cada mensagem — dezenas de linhas de Received e DKIM que ninguém lê.
+    /// </para>
+    /// <para>
+    /// Continua PEEK, continua dentro do EXAMINE: nada é marcado como lido.
+    /// </para>
+    /// </summary>
+    private static FetchRequest PedidoDaTriagem()
+    {
+        var pedido = new FetchRequest(ItensDaTriagem);
+
+        pedido.Headers.Add(HeaderId.ListUnsubscribe);
+        pedido.Headers.Add(HeaderId.ListId);
+        pedido.Headers.Add(HeaderId.Precedence);
+
+        return pedido;
+    }
+
     public async Task<LeituraDaCaixa> LerAsync(
         string endereco,
         string senhaDeApp,
@@ -306,7 +328,7 @@ public sealed class MailKitMailService : IMailService
                 return new LeituraDaCaixa(Array.Empty<MensagemDeEmail>(), inbox.UidValidity);
             }
 
-            var resumos = await inbox.FetchAsync(uids, ItensDaTriagem, ct).ConfigureAwait(false);
+            var resumos = await inbox.FetchAsync(uids, PedidoDaTriagem(), ct).ConfigureAwait(false);
 
             var candidatas = resumos
                 .Where(r => incremental || NaJanela(r.InternalDate, desdeUtc))
@@ -440,7 +462,28 @@ public sealed class MailKitMailService : IMailService
             Importante: rotulos.Any(l => string.Equals(l, "\\Important", StringComparison.OrdinalIgnoreCase)),
             Rotulos: rotulos,
             NaoLida: r.Flags.HasValue && !r.Flags.Value.HasFlag(MessageFlags.Seen),
-            Corpo: corpo);
+            Corpo: corpo,
+            EnvioEmMassa: EhDeLista(r.Headers));
+    }
+
+    /// <summary>
+    /// Se os headers dizem que a mensagem saiu de um disparador, e não de um teclado.
+    /// <para>
+    /// <c>List-Unsubscribe</c> é o sinal forte: nenhuma pessoa o escreve, e todo disparador o
+    /// põe — a maioria das plataformas por obrigação legal. <c>List-Id</c> pega lista de
+    /// discussão, e <c>Precedence: bulk</c>/<c>list</c> pega o que é antigo o bastante para não
+    /// usar nenhum dos dois.
+    /// </para>
+    /// </summary>
+    public static bool EhDeLista(HeaderList? headers)
+    {
+        if (headers == null) return false;
+
+        if (headers.Contains(HeaderId.ListUnsubscribe)) return true;
+        if (headers.Contains(HeaderId.ListId)) return true;
+
+        string precedencia = (headers[HeaderId.Precedence] ?? "").Trim().ToLowerInvariant();
+        return precedencia is "bulk" or "list" or "junk";
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -472,6 +515,11 @@ public sealed class MailKitMailService : IMailService
             var enviados = cliente.GetFolder(SpecialFolder.Sent);
             if (enviados == null)
             {
+                // Sem esta linha o vigia ficava sem conversas vigiadas E sem diagnóstico: o
+                // vigias.json vazio parecia "ninguém respondeu nada", quando o que houve foi
+                // um servidor que não anuncia SPECIAL-USE.
+                Console.WriteLine($"[VIGIA] {endereco}: o servidor não expõe a pasta de enviados " +
+                                  "(sem SPECIAL-USE). Sem ela não há conversa vigiada.");
                 await DesconectarAsync(cliente).ConfigureAwait(false);
                 return Array.Empty<ThreadRespondida>();
             }
@@ -484,6 +532,8 @@ public sealed class MailKitMailService : IMailService
 
             if (uids.Count == 0)
             {
+                Console.WriteLine($"[VIGIA] {endereco}: nada enviado em {VigiasDoEmail.DiasDeVigia} " +
+                                  $"dia(s) na pasta {enviados.FullName}. Nenhuma conversa a vigiar.");
                 await DesconectarAsync(cliente).ConfigureAwait(false);
                 return Array.Empty<ThreadRespondida>();
             }
@@ -502,6 +552,9 @@ public sealed class MailKitMailService : IMailService
                     r.GMailThreadId!.Value.ToString(),
                     r.InternalDate?.UtcDateTime ?? DateTime.UtcNow))
                 .ToList();
+
+            Console.WriteLine($"[VIGIA] {endereco}: {respondidas.Count} conversa(s) em que você " +
+                              $"escreveu, de {uids.Count} enviada(s) em {enviados.FullName}.");
 
             await DesconectarAsync(cliente).ConfigureAwait(false);
             return respondidas;

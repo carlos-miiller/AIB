@@ -8,6 +8,7 @@ using AIB.Services;
 using AIB.Services.Ai;
 using AIB.Services.Mail;
 using FluentAssertions;
+using MimeKit;
 using OpenAI.Chat;
 using Xunit;
 
@@ -30,9 +31,17 @@ namespace AIB.Tests
         private static MensagemDeEmail Msg(
             uint uid = 1, string de = "ana@empresa.com", string assunto = "assunto",
             bool direto = true, bool importante = false, string[]? rotulos = null,
-            DateTime? quando = null, string corpo = "")
+            DateTime? quando = null, string corpo = "", bool emMassa = false)
             => new(uid, "thr", de, "Ana", assunto, quando ?? DateTime.UtcNow,
-                   direto, importante, rotulos ?? Array.Empty<string>(), true, corpo);
+                   direto, importante, rotulos ?? Array.Empty<string>(), true, corpo, emMassa);
+
+        /// <summary>Um cabeçalho com os headers pedidos, como o FETCH devolveria.</summary>
+        private static HeaderList Cabecalho(params (string Nome, string Valor)[] campos)
+        {
+            var lista = new HeaderList();
+            foreach (var (nome, valor) in campos) lista.Add(nome, valor);
+            return lista;
+        }
 
         // ─────────────────────────────────────────────────────────────────
         // regras.md
@@ -581,6 +590,170 @@ namespace AIB.Tests
 
             new VigiasDoEmail(pasta).Ler()
                 .Should().ContainSingle(v => v.Thrid == "17ab");
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Disparo para lista — o degrau que substitui a categoria do Gmail
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void AsCategoriasDoGmail_NUNCA_ChegamPorImap()
+        {
+            // Este ensaio existe como LEMBRETE, e nao para provar codigo. O funil procurava
+            // "category_promotions" nos X-GM-LABELS e passou uma execucao inteira sem disparar
+            // uma vez: sobre IMAP o Gmail entrega \Important, \Starred e as etiquetas do
+            // usuario, e as abas de categoria ficam so na interface e na API.
+            //
+            // Uma mensagem com os rotulos que o IMAP REALMENTE manda nao e descartada por eles.
+            var comRotulosReais = Msg(rotulos: new[] { "\\Inbox", "\\Starred", "Trabalho" });
+
+            FiltroDeTriagem.Avaliar(comRotulosReais, RegrasDoVigia.Vazias).Sobe.Should().BeTrue();
+        }
+
+        [Theory]
+        [InlineData("List-Unsubscribe", "<https://x.com/u/1>, <mailto:u@x.com>")]
+        [InlineData("List-Id", "<novidades.exemplo.com>")]
+        [InlineData("Precedence", "bulk")]
+        [InlineData("Precedence", "list")]
+        public void OsHeadersDeLista_DENUNCIAM_ODisparador(string nome, string valor)
+        {
+            MailKitMailService.EhDeLista(Cabecalho((nome, valor))).Should().BeTrue();
+        }
+
+        [Fact]
+        public void SemHeaderDeLista_NaoEh_Disparo()
+        {
+            MailKitMailService.EhDeLista(Cabecalho(("Subject", "Contrato")))
+                .Should().BeFalse("uma pessoa nao oferece descadastro");
+
+            MailKitMailService.EhDeLista(null).Should().BeFalse();
+        }
+
+        [Fact]
+        public void MalaDireta_CAI_MesmoEnderecadaEDeDominioLimpo()
+        {
+            // Os catorze remetentes que subiram em producao. NENHUM tem marca no local-part —
+            // o sinal estava no dominio e no header, e o funil so olhava o local-part.
+            string[] passaramBatido =
+            {
+                "info@join.netflix.com", "hello@students.udemy.com",
+                "centralderelacionamentosn@e.localiza.com", "picpay@marketing.picpay.com",
+                "99entrega@mkt-cc-mail.99app.com", "nlch@creator.patreon.com",
+                "marco@samplefocus.com", "email@email.playstation.com"
+            };
+
+            foreach (string remetente in passaramBatido)
+            {
+                var promo = Msg(de: remetente, direto: true, emMassa: true);
+
+                FiltroDeTriagem.Avaliar(promo, RegrasDoVigia.Vazias).Sobe
+                    .Should().BeFalse($"{remetente} disparou para uma lista");
+            }
+        }
+
+        [Fact]
+        public void ListaINTERNA_Importante_OuVIGIADA_CONTINUA_Subindo()
+        {
+            // A lista de avisos da empresa tambem tem List-Id, e o aviso que importa pode vir
+            // por ela. As portas de fuga vem ANTES do degrau novo.
+            var avisoDaEmpresa = Msg(de: "avisos@empresa.com", importante: true, emMassa: true);
+
+            FiltroDeTriagem.Avaliar(avisoDaEmpresa, RegrasDoVigia.Vazias).Sobe
+                .Should().BeTrue("o Gmail marcou como importante");
+
+            var naConversa = Msg(de: "suporte@fornecedor.com", emMassa: true);
+
+            FiltroDeTriagem.Avaliar(naConversa, RegrasDoVigia.Vazias,
+                                    new HashSet<string> { "thr" })
+                .Sobe.Should().BeTrue("e uma conversa que voce comecou");
+
+            var fonte = RegrasDoVigia.Interpretar(new[]
+            {
+                "avisos@empresa.com -> rajada a partir de 3 em 30 min"
+            });
+
+            FiltroDeTriagem.Avaliar(Msg(de: "avisos@empresa.com", emMassa: true), fonte).Sobe
+                .Should().BeTrue("o usuario declarou o remetente no regras.md");
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Limpeza do corpo — a tag gorda
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void TagMAIOR_QueOTetoAntigo_SAI_DoCorpo()
+        {
+            // Copiada do prompt que foi para o modelo em producao. O teto de 400 caracteres nao
+            // casava com ela, entao a tag inteira desceu para o prefill.
+            string tagGorda =
+                "<a class=\"dys-button-a\" href=\"https://patreon.com/x\" rel=\"noopener noreferrer\" " +
+                "style=\"background:transparent;border-radius:50px;color: ;display:inline-block;" +
+                "font-family:'SF Pro Display', -apple-system, system-ui, BlinkMacSystemFont, " +
+                "'Inter', Roboto, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', " +
+                "'Segoe UI Symbol';font-size:16px;font-weight:600;line-height:16px;margin:0;" +
+                "mso-padding-alt:0px;padding:8px;text-decoration:none;text-transform:none;\" " +
+                "target=\"_blank\">";
+
+            tagGorda.Length.Should().BeGreaterThan(400, "e por isso que o teto antigo a deixava passar");
+
+            string limpo = MensagemDeEmail.Limpar("Version 1.3 WIP " + tagGorda + " Sep 2, 2026");
+
+            limpo.Should().NotContain("dys-button-a");
+            limpo.Should().NotContain("mso-padding-alt");
+            limpo.Should().Contain("Version 1.3 WIP");
+            limpo.Should().Contain("Sep 2, 2026");
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Leitura do veredito
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void OVeredito_ACEITA_ONomeDoCampoEmIngles()
+        {
+            // Linha copiada da resposta real: no meio de catorze objetos certos, um veio com
+            // "urgency". O campo "faltava", a leitura caia no padrao MEDIA da regra 5, e um
+            // anuncio da Netflix ia para a tela.
+            var lidos = TriadorDeEmail.Interpretar(
+                "[{\"uid\":27702,\"urgency\":\"baixa\",\"resumo\":\"nova temporada\"}]");
+
+            lidos.Should().HaveCount(1);
+            lidos[0].Urgencia.Should().Be(MailUrgency.Baixa);
+        }
+
+        [Fact]
+        public void UrgenciaDESCONHECIDA_CONTINUA_VirandoMedia()
+        {
+            // A regra 5 nao mudou: palavra que ninguem reconhece ainda sobe. O que mudou foi so
+            // deixar de confundir "o modelo escreveu outro nome de campo" com "o modelo
+            // escreveu uma palavra estranha".
+            var lidos = TriadorDeEmail.Interpretar(
+                "[{\"uid\":9,\"urgencia\":\"talvez\",\"resumo\":\"x\"}]");
+
+            lidos[0].Urgencia.Should().Be(MailUrgency.Media);
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // As contas do log
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void ODescarte_CONTA_Mensagens_NaoLinhasDaLista()
+        {
+            // Em producao o log dizia "18 descartada(s)" quando tinham sido 27: dezessete linhas
+            // do funil mais UMA linha que representava as dez que o modelo leu e dispensou.
+            var descartadas = new List<Descartada>
+            {
+                new("a@x.com", "promo", "disparo para lista"),
+                new("b@x.com", "promo", "disparo para lista"),
+                new("(triagem)", "10 mensagem(ns) lida(s) e sem pedido", "o modelo dispensou", 10)
+            };
+
+            var digesto = new DigestoDeEmail(
+                Array.Empty<MailSummary>(), 31, descartadas, Array.Empty<Rajada>(), DateTime.UtcNow);
+
+            digesto.Descartadas.Count.Should().Be(3, "sao tres linhas");
+            digesto.MensagensDescartadas.Should().Be(12, "mas doze mensagens");
         }
 
         // ─────────────────────────────────────────────────────────────────
