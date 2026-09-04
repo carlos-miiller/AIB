@@ -930,6 +930,13 @@ namespace AIB.Tests
                 EstadoDaCaixa? guardado, string enderecoDoUsuario, System.Threading.CancellationToken ct)
                 => System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<MensagemDeEmail>>(
                     System.Array.Empty<MensagemDeEmail>());
+
+            /// <summary>A tela nunca olha a pasta de enviados: quem faz isso e o vigia.</summary>
+            public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<ThreadRespondida>> ThreadsRespondidasAsync(
+                string endereco, string senhaDeApp, ImapEndpoint endpoint, DateTime desdeUtc,
+                System.Threading.CancellationToken ct)
+                => System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<ThreadRespondida>>(
+                    System.Array.Empty<ThreadRespondida>());
         }
 
         /// <summary>Serviço que recusa qualquer login, para o caminho de erro do formulário.</summary>
@@ -957,6 +964,13 @@ namespace AIB.Tests
                 EstadoDaCaixa? guardado, string enderecoDoUsuario, System.Threading.CancellationToken ct)
                 => System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<MensagemDeEmail>>(
                     System.Array.Empty<MensagemDeEmail>());
+
+            /// <summary>A tela nunca olha a pasta de enviados: quem faz isso e o vigia.</summary>
+            public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<ThreadRespondida>> ThreadsRespondidasAsync(
+                string endereco, string senhaDeApp, ImapEndpoint endpoint, DateTime desdeUtc,
+                System.Threading.CancellationToken ct)
+                => System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<ThreadRespondida>>(
+                    System.Array.Empty<ThreadRespondida>());
         }
     }
 }

@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace AIB.Services.Mail;
@@ -39,9 +40,18 @@ public static class FiltroDeTriagem
         "bounce", "notifications", "notificacao"
     };
 
-    public static DecisaoDoFunil Avaliar(MensagemDeEmail msg, RegrasDoVigia regras)
+    /// <param name="vigiadas">
+    /// Conversas em que o usuário escreveu e ainda espera retorno. Uma resposta que chega numa
+    /// delas passa na frente de qualquer regra barata: ele MESMO puxou aquele assunto, e um
+    /// filtro que a descartasse estaria descartando a resposta que ele foi buscar.
+    /// </param>
+    public static DecisaoDoFunil Avaliar(
+        MensagemDeEmail msg, RegrasDoVigia regras, ISet<string>? vigiadas = null)
     {
         if (msg == null) return new DecisaoDoFunil(true, "mensagem sem dados: na dúvida, sobe");
+
+        if (vigiadas != null && msg.ThreadId.Length > 0 && vigiadas.Contains(msg.ThreadId))
+            return new DecisaoDoFunil(true, "resposta numa conversa que você começou");
 
         // Fonte de alerta declarada pelo usuário nunca é descartada pela forma. Uma sozinha
         // ainda é ruído, mas quem decide isso é a contagem da rajada, não este degrau.

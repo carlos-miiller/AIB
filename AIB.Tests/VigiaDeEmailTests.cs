@@ -435,6 +435,150 @@ namespace AIB.Tests
         }
 
         // ─────────────────────────────────────────────────────────────────
+        // Conversas vigiadas
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void ResponderUmaConversa_ACOLOCA_SobVigia()
+        {
+            // Quem responde geralmente espera retorno. Detectar isso e IMAP puro — mensagem na
+            // pasta de enviados com a mesma X-GM-THRID —, e por isso nao passa por modelo
+            // nenhum: a decisao de interromper fica inteira na parte que nao alucina.
+            var agora = new DateTime(2026, 9, 4, 12, 0, 0, DateTimeKind.Utc);
+
+            var vigias = VigiasDoEmail.Atualizar(
+                Array.Empty<VigiaDeThread>(),
+                new[] { new ThreadRespondida("17ab", agora.AddHours(-2)) },
+                agora);
+
+            vigias.Should().HaveCount(1);
+            vigias[0].Thrid.Should().Be("17ab");
+            vigias[0].Ate.Should().BeAfter(agora);
+            vigias[0].Porque.Should().NotBeNullOrWhiteSpace("o arquivo tem de ser auditavel");
+        }
+
+        [Fact]
+        public void VigiaVENCIDA_MORRE_Sozinha()
+        {
+            // Sem prazo a lista so cresce, e em um mes toda a caixa estaria vigiada — que e o
+            // mesmo que nenhuma estar.
+            var agora = new DateTime(2026, 9, 20, 12, 0, 0, DateTimeKind.Utc);
+
+            var velha = new VigiaDeThread
+            {
+                Thrid = "antiga",
+                Ate = new DateTime(2026, 9, 10, 0, 0, 0, DateTimeKind.Utc)
+            };
+
+            VigiasDoEmail.Atualizar(new[] { velha }, Array.Empty<ThreadRespondida>(), agora)
+                .Should().BeEmpty();
+        }
+
+        [Fact]
+        public void ResponderDeNOVO_RENOVA_EmVezDeDuplicar()
+        {
+            var agora = new DateTime(2026, 9, 4, 12, 0, 0, DateTimeKind.Utc);
+
+            var antiga = new VigiaDeThread
+            {
+                Thrid = "17ab",
+                RespondidaEm = agora.AddDays(-5),
+                Ate = agora.AddDays(2)
+            };
+
+            var vigias = VigiasDoEmail.Atualizar(
+                new[] { antiga },
+                new[] { new ThreadRespondida("17ab", agora) },
+                agora);
+
+            vigias.Should().HaveCount(1, "continuar respondendo e continuar esperando retorno");
+            vigias[0].Ate.Should().BeAfter(antiga.Ate);
+        }
+
+        [Fact]
+        public void RespostaNumaConversaVIGIADA_SOBE_ContraTudo()
+        {
+            // Ele MESMO puxou aquele assunto. Um filtro que descartasse a resposta estaria
+            // descartando justamente o que ele foi buscar.
+            var vigiadas = new HashSet<string> { "17ab" };
+
+            var msg = new MensagemDeEmail(
+                1, "17ab", "noreply@sistema.com", "Sistema", "Re: chamado",
+                DateTime.UtcNow, Direto: false, Importante: false,
+                new[] { "CATEGORY_UPDATES" }, true, "");
+
+            FiltroDeTriagem.Avaliar(msg, RegrasDoVigia.Vazias, vigiadas)
+                .Sobe.Should().BeTrue();
+        }
+
+        [Fact]
+        public void OVigiasJson_VAI_EVOLTA_DoDisco()
+        {
+            string pasta = Path.Combine(Path.GetTempPath(), "aib-vigias-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(pasta);
+            var arquivo = new VigiasDoEmail(pasta);
+
+            arquivo.Gravar(new[]
+            {
+                new VigiaDeThread
+                {
+                    Thrid = "17ab", Porque = "voce respondeu",
+                    Ate = new DateTime(2026, 9, 11), Acorda9b = true
+                }
+            });
+
+            var lidas = arquivo.Ler();
+            lidas.Should().HaveCount(1);
+            lidas[0].Thrid.Should().Be("17ab");
+            lidas[0].Acorda9b.Should().BeTrue();
+        }
+
+        [Fact]
+        public void SondagemACORDA_OModelo_SoQuandoAVigiaMANDA()
+        {
+            // O campo acorda9b existe para essa decisao ser um DADO conferivel no arquivo, e
+            // nao uma frase que o modelo interpretaria de um jeito hoje e de outro amanha.
+            var msg = new MensagemDeEmail(1, "17ab", "x@y.com", "X", "Re:", DateTime.UtcNow,
+                                          true, false, Array.Empty<string>(), true, "");
+
+            var calada = new VigiaDeThread { Thrid = "17ab", Acorda9b = false };
+            var barulhenta = new VigiaDeThread { Thrid = "17ab", Acorda9b = true };
+
+            MailDigestService.Urgente(new[] { calada }, new[] { msg }, Array.Empty<Rajada>())
+                .Should().BeFalse("responder nao e emergencia");
+
+            MailDigestService.Urgente(new[] { barulhenta }, new[] { msg }, Array.Empty<Rajada>())
+                .Should().BeTrue();
+        }
+
+        [Fact]
+        public void RAJADA_SempreACORDA_ASondagem()
+        {
+            var rajada = new Rajada("firewall@x.com", "Firewall", 12,
+                                    DateTime.UtcNow.AddMinutes(-40), DateTime.UtcNow,
+                                    Array.Empty<string>());
+
+            MailDigestService.Urgente(
+                Array.Empty<VigiaDeThread>(), Array.Empty<MensagemDeEmail>(), new[] { rajada })
+                .Should().BeTrue("um incidente as 9h14 no digest das 12h55 nao vale nada");
+        }
+
+        [Fact]
+        public async Task ODigest_GRAVA_AsConversasRespondidas()
+        {
+            var (vigia, _, email, pasta) = MontarComPasta(
+                lidas: new[] { Msg(uid: 1, assunto: "Contrato") },
+                resposta: "[{\"uid\":1,\"urgencia\":\"media\",\"resumo\":\"responder\"}]");
+
+            email.Respondidas = new[] { new ThreadRespondida("17ab", DateTime.UtcNow.AddDays(-1)) };
+
+            await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            new VigiasDoEmail(pasta).Ler()
+                .Should().ContainSingle(v => v.Thrid == "17ab");
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         // Andaimes
         // ─────────────────────────────────────────────────────────────────
 
@@ -445,12 +589,25 @@ namespace AIB.Tests
             return (vigia, provider);
         }
 
+        private static (MailDigestService, ProviderFalso, EmailFalso, string) MontarComPasta(
+            IReadOnlyList<MensagemDeEmail> lidas, string? resposta, bool modeloQuebra = false)
+        {
+            var (v, prov, mail) = MontarCompleto(true, lidas, resposta, modeloQuebra, out string pasta);
+            return (v, prov, mail, pasta);
+        }
+
         private static (MailDigestService, ProviderFalso, EmailFalso) MontarCompleto(
             bool triagemLigada, IReadOnlyList<MensagemDeEmail> lidas, string? resposta,
             bool modeloQuebra = false)
+            => MontarCompleto(triagemLigada, lidas, resposta, modeloQuebra, out _);
+
+        private static (MailDigestService, ProviderFalso, EmailFalso) MontarCompleto(
+            bool triagemLigada, IReadOnlyList<MensagemDeEmail> lidas, string? resposta,
+            bool modeloQuebra, out string pastaUsada)
         {
             string pasta = Path.Combine(Path.GetTempPath(), "aib-vigia-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(pasta);
+            pastaUsada = pasta;
 
             var settings = new SettingsService(Path.Combine(pasta, "settings.json"));
             var config = settings.LoadSettings();
@@ -471,7 +628,8 @@ namespace AIB.Tests
                 settings, email, new FabricaFixa(provider),
                 cofre, new EstadoDasCaixas(pasta),
                 agora: () => new DateTime(2026, 9, 4, 13, 0, 0),
-                caminhoDasRegras: Path.Combine(pasta, "regras.md"));
+                caminhoDasRegras: Path.Combine(pasta, "regras.md"),
+                vigias: new VigiasDoEmail(pasta));
 
             return (vigia, provider, email);
         }
@@ -499,6 +657,14 @@ namespace AIB.Tests
                 Chamadas++;
                 return Task.FromResult(_lidas);
             }
+
+            /// <summary>As conversas em que o usuario escreveu, ditadas pelo ensaio.</summary>
+            public IReadOnlyList<ThreadRespondida> Respondidas { get; set; } =
+                Array.Empty<ThreadRespondida>();
+
+            public Task<IReadOnlyList<ThreadRespondida>> ThreadsRespondidasAsync(
+                string e, string s, ImapEndpoint ep, DateTime d, CancellationToken ct) =>
+                Task.FromResult(Respondidas);
         }
 
         private sealed class ProviderFalso : IChatProvider

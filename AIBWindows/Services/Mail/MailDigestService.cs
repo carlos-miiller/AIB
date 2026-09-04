@@ -50,6 +50,7 @@ public sealed class MailDigestService : IDisposable
     private readonly IChatProviderFactory _provedores;
     private readonly Func<DateTime> _agora;
     private readonly string _caminhoDasRegras;
+    private readonly VigiasDoEmail _vigias;
 
     private readonly CancellationTokenSource _parada = new();
     private Timer? _relogio;
@@ -65,7 +66,8 @@ public sealed class MailDigestService : IDisposable
         MailVault? cofre = null,
         EstadoDasCaixas? estado = null,
         Func<DateTime>? agora = null,
-        string? caminhoDasRegras = null)
+        string? caminhoDasRegras = null,
+        VigiasDoEmail? vigias = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _email = email ?? throw new ArgumentNullException(nameof(email));
@@ -74,6 +76,7 @@ public sealed class MailDigestService : IDisposable
         _estado = estado ?? new EstadoDasCaixas();
         _agora = agora ?? (() => DateTime.Now);
         _caminhoDasRegras = caminhoDasRegras ?? RegrasDoVigia.CaminhoPadrao();
+        _vigias = vigias ?? new VigiasDoEmail();
     }
 
     /// <summary>Um digest ficou pronto e tem algo a dizer.</summary>
@@ -173,6 +176,7 @@ public sealed class MailDigestService : IDisposable
 
         var regras = RegrasDoVigia.Ler(_caminhoDasRegras);
         var lidas = new List<MensagemDeEmail>();
+        var respondidas = new List<ThreadRespondida>();
 
         foreach (var caixa in caixas)
         {
@@ -181,27 +185,38 @@ public sealed class MailDigestService : IDisposable
             string? senha = _cofre.Ler(caixa.Address);
             if (string.IsNullOrEmpty(senha)) continue;
 
+            var endpoint = new ImapEndpoint(caixa.ImapHost, caixa.ImapPort, caixa.UseSsl);
             var guardado = _estado.Ler(caixa.Address);
 
             var doServidor = await _email.LerAsync(
-                caixa.Address, senha,
-                new ImapEndpoint(caixa.ImapHost, caixa.ImapPort, caixa.UseSsl),
+                caixa.Address, senha, endpoint,
                 DateTime.UtcNow.AddDays(-config.MailWindowDays),
                 guardado, caixa.Address, ct).ConfigureAwait(false);
 
             lidas.AddRange(doServidor);
             GravarProgresso(caixa.Address, guardado, doServidor);
+
+            // A pasta de enviados diz em que conversas ELE escreveu. Sai de graça, sem modelo,
+            // e é o que sustenta "quem responde geralmente espera retorno".
+            respondidas.AddRange(await _email.ThreadsRespondidasAsync(
+                caixa.Address, senha, endpoint,
+                DateTime.UtcNow.AddDays(-VigiasDoEmail.DiasDeVigia), ct).ConfigureAwait(false));
         }
+
+        var vigiadas = VigiasDoEmail.Atualizar(_vigias.Ler(), respondidas, DateTime.UtcNow);
+        _vigias.Gravar(vigiadas);
+
+        var threadsVigiadas = new HashSet<string>(vigiadas.Select(v => v.Thrid), StringComparer.Ordinal);
 
         // A rajada é vista sobre o conjunto, e não caixa a caixa: o mesmo firewall pode estar
         // mandando para as duas contas, e contar separado esconderia metade do incidente.
         var rajadas = DetectorDeRajada.Encontrar(lidas, regras);
 
-        var (sobem, descartadas) = PassarPeloFunil(lidas, regras);
+        var (sobem, descartadas) = PassarPeloFunil(lidas, regras, threadsVigiadas);
 
         // Sondagem sem rajada não tem por que acordar ninguém nem falar com o usuário: no
         // estado estável ela não encontra nada, e é justamente por isso que ela é barata.
-        if (!comModelo)
+        if (!comModelo && !Urgente(vigiadas, lidas, rajadas))
         {
             return rajadas.Count > 0
                 ? Publicar(new DigestoDeEmail(Array.Empty<MailSummary>(), lidas.Count,
@@ -218,6 +233,28 @@ public sealed class MailDigestService : IDisposable
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
+    /// Se esta sondagem merece acordar o modelo antes da hora.
+    /// <para>
+    /// Rajada, sempre: um incidente às 9h14 descoberto no digest das 12h55 não vale nada. E
+    /// resposta chegando numa conversa marcada com <c>acorda9b</c> — o campo existe para que
+    /// essa decisão seja um DADO no arquivo, conferível, e não uma frase que o modelo
+    /// interpretaria de um jeito hoje e de outro amanhã.
+    /// </para>
+    /// </summary>
+    public static bool Urgente(
+        IReadOnlyList<VigiaDeThread> vigiadas,
+        IReadOnlyList<MensagemDeEmail> lidas,
+        IReadOnlyList<Rajada> rajadas)
+    {
+        if (rajadas.Count > 0) return true;
+
+        var acordam = new HashSet<string>(
+            vigiadas.Where(v => v.Acorda9b).Select(v => v.Thrid), StringComparer.Ordinal);
+
+        return acordam.Count > 0 && lidas.Any(m => acordam.Contains(m.ThreadId));
+    }
+
+    /// <summary>
     /// Degraus 0 e 1, sobre a lista inteira.
     /// <para>
     /// Separa o que sobe do que cai e guarda o porquê de cada queda. A lista de descartados é o
@@ -225,14 +262,15 @@ public sealed class MailDigestService : IDisposable
     /// </para>
     /// </summary>
     public static (List<MensagemDeEmail> Sobem, List<Descartada> Caem) PassarPeloFunil(
-        IEnumerable<MensagemDeEmail> mensagens, RegrasDoVigia regras)
+        IEnumerable<MensagemDeEmail> mensagens, RegrasDoVigia regras,
+        ISet<string>? vigiadas = null)
     {
         var sobem = new List<MensagemDeEmail>();
         var caem = new List<Descartada>();
 
         foreach (var m in mensagens ?? Array.Empty<MensagemDeEmail>())
         {
-            var decisao = FiltroDeTriagem.Avaliar(m, regras);
+            var decisao = FiltroDeTriagem.Avaliar(m, regras, vigiadas);
 
             if (decisao.Sobe) sobem.Add(m);
             else caem.Add(new Descartada(m.De, m.Assunto, decisao.Motivo));

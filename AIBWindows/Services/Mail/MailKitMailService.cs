@@ -410,6 +410,84 @@ public sealed class MailKitMailService : IMailService
 
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // A pasta de enviados — quem espera retorno
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public async Task<IReadOnlyList<ThreadRespondida>> ThreadsRespondidasAsync(
+        string endereco,
+        string senhaDeApp,
+        ImapEndpoint endpoint,
+        DateTime desdeUtc,
+        CancellationToken ct)
+    {
+        using var cliente = NovoCliente();
+
+        try
+        {
+            await cliente.ConnectAsync(endpoint.Host, endpoint.Port,
+                endpoint.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls, ct)
+                .ConfigureAwait(false);
+
+            await cliente.AuthenticateAsync(endereco, senhaDeApp, ct).ConfigureAwait(false);
+
+            // A pasta de enviados é pedida pelo PAPEL dela, e não pelo nome. "[Gmail]/Sent Mail"
+            // muda com o idioma da conta — em português é "[Gmail]/E-mails enviados" —, e
+            // procurar pelo nome quebraria em toda caixa que não estivesse em inglês.
+            var enviados = cliente.GetFolder(SpecialFolder.Sent);
+            if (enviados == null)
+            {
+                await DesconectarAsync(cliente).ConfigureAwait(false);
+                return Array.Empty<ThreadRespondida>();
+            }
+
+            await enviados.OpenAsync(FolderAccess.ReadOnly, ct).ConfigureAwait(false);
+
+            var uids = await enviados
+                .SearchAsync(SearchQuery.DeliveredAfter(desdeUtc.Date.AddDays(-1)), ct)
+                .ConfigureAwait(false);
+
+            if (uids.Count == 0)
+            {
+                await DesconectarAsync(cliente).ConfigureAwait(false);
+                return Array.Empty<ThreadRespondida>();
+            }
+
+            // Só a conversa e a data. Nem assunto, nem destinatário, nem corpo: para saber que
+            // ele respondeu, nada disso é necessário — e o que não desce não vaza.
+            var resumos = await enviados.FetchAsync(
+                uids,
+                MessageSummaryItems.UniqueId | MessageSummaryItems.InternalDate |
+                MessageSummaryItems.GMailThreadId,
+                ct).ConfigureAwait(false);
+
+            var respondidas = resumos
+                .Where(r => r.GMailThreadId.HasValue)
+                .Select(r => new ThreadRespondida(
+                    r.GMailThreadId!.Value.ToString(),
+                    r.InternalDate?.UtcDateTime ?? DateTime.UtcNow))
+                .ToList();
+
+            await DesconectarAsync(cliente).ConfigureAwait(false);
+            return respondidas;
+        }
+        catch (OperationCanceledException)
+        {
+            await DesconectarAsync(cliente).ConfigureAwait(false);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Sem a pasta de enviados o vigia perde as conversas vigiadas, não a triagem. Uma
+            // caixa que não expõe SPECIAL-USE continua sendo triada normalmente.
+            Console.WriteLine($"[VIGIA] {endereco}: enviados ilegíveis — {ex.GetType().Name}: {ex.Message}");
+            await DesconectarAsync(cliente).ConfigureAwait(false);
+            return Array.Empty<ThreadRespondida>();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
     /// A busca dos UIDs acima do último já lido — <c>SEARCH UID {n+1}:*</c>.
     /// <para>
     /// É o que faz a segunda visita à mesma caixa custar quase nada: sem isto, abrir a tela de

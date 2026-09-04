@@ -93,6 +93,26 @@ public interface IMailService
         EstadoDaCaixa? guardado,
         string enderecoDoUsuario,
         CancellationToken ct);
+
+    /// <summary>
+    /// As conversas em que o USUÁRIO escreveu, lidas da pasta de enviados.
+    /// <para>
+    /// Sai de graça e sem modelo nenhum: mensagem em <c>[Gmail]/Sent</c> traz a mesma
+    /// <c>X-GM-THRID</c> da conversa. É o que sustenta a regra "quem responde geralmente espera
+    /// retorno" — e é por ser IMAP puro que a decisão de interromper o usuário fica inteira na
+    /// parte que não alucina.
+    /// </para>
+    /// <para>
+    /// Desce apenas o identificador da conversa e a data. Nem assunto, nem corpo, nem
+    /// destinatário: para saber que ele respondeu, nada disso é necessário.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<ThreadRespondida>> ThreadsRespondidasAsync(
+        string endereco,
+        string senhaDeApp,
+        ImapEndpoint endpoint,
+        DateTime desdeUtc,
+        CancellationToken ct);
 }
 
 /// <summary>
@@ -153,6 +173,11 @@ public sealed class MailServiceStub : IMailService
         string endereco, string senhaDeApp, ImapEndpoint endpoint,
         DateTime desdeUtc, EstadoDaCaixa? guardado, string enderecoDoUsuario, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<MensagemDeEmail>>(Array.Empty<MensagemDeEmail>());
+
+    public Task<IReadOnlyList<ThreadRespondida>> ThreadsRespondidasAsync(
+        string endereco, string senhaDeApp, ImapEndpoint endpoint,
+        DateTime desdeUtc, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<ThreadRespondida>>(Array.Empty<ThreadRespondida>());
 
     public Task<MailLoginResult> TestLoginAsync(string endereco, string senhaDeApp, CancellationToken ct)
     {
