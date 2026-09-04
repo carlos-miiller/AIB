@@ -593,6 +593,94 @@ namespace AIB.Tests
         }
 
         // ─────────────────────────────────────────────────────────────────
+        // O anel do Shadow — quem acende tem que apagar
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task PassadaCALADA_AindaAssim_AVISA_QueTerminou()
+        {
+            // Defeito real: o anel do Shadow girava para sempre. Trabalhando disparava em toda
+            // passada; Pronto so dispara quando o digest TEM ALGO A DIZER. "1 lida(s), 0 na
+            // tela, 0 rajada(s)" acendia o anel e nunca o apagava.
+            var (vigia, _, _, _) = MontarComPasta(
+                lidas: new[] { Msg(uid: 1, de: "promo@loja.com", emMassa: true) },
+                resposta: "[]");
+
+            int acendeu = 0, apagou = 0, falou = 0;
+            vigia.Trabalhando += () => acendeu++;
+            vigia.Terminou += () => apagou++;
+            vigia.Pronto += _ => falou++;
+
+            await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            acendeu.Should().Be(1);
+            falou.Should().Be(0, "nao havia o que dizer");
+            apagou.Should().Be(1, "e mesmo assim a passada acabou");
+        }
+
+        [Fact]
+        public async Task SondagemSEM_Rajada_TambemAvisaQueTerminou()
+        {
+            // A sondagem de 20 min nem chega ao Publicar quando nao acha rajada: ela volta
+            // Vazio de dentro do meio da passada. Era a saida mais silenciosa das quatro.
+            var (vigia, _, _, _) = MontarComPasta(
+                lidas: new[] { Msg(uid: 1, de: "promo@loja.com", emMassa: true) },
+                resposta: "[]");
+
+            int acendeu = 0, apagou = 0;
+            vigia.Trabalhando += () => acendeu++;
+            vigia.Terminou += () => apagou++;
+
+            await vigia.ExecutarAsync(comModelo: false, CancellationToken.None);
+
+            acendeu.Should().Be(1);
+            apagou.Should().Be(1);
+        }
+
+        [Fact]
+        public async Task LeituraQueESTOURA_TambemApagaOAnel()
+        {
+            // O NullReferenceException do FetchRequest deixou o anel girando junto com a caixa
+            // vazia. Quem acende tem que apagar inclusive quando da errado — por isso o aviso
+            // sai de um finally, e nao do fim feliz.
+            var (vigia, _, email, _) = MontarComPasta(
+                lidas: new[] { Msg(uid: 1) },
+                resposta: "[]");
+
+            email.Explode = true;
+
+            int acendeu = 0, apagou = 0;
+            vigia.Trabalhando += () => acendeu++;
+            vigia.Terminou += () => apagou++;
+
+            Func<Task> passada = () => vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            await passada.Should().ThrowAsync<InvalidOperationException>();
+
+            acendeu.Should().Be(1);
+            apagou.Should().Be(1, "o finally vale para a excecao tambem");
+        }
+
+        [Fact]
+        public async Task DigestoCHEIO_Fala_EDepoisAvisaQueTerminou()
+        {
+            // A ordem importa: o Pronto entrega os e-mails, e o Terminou chega depois. Se o
+            // Terminou mexesse no que o Pronto deixou, ele apagaria a lista.
+            var (vigia, _, _, _) = MontarComPasta(
+                lidas: new[] { Msg(uid: 1, assunto: "Contrato") },
+                resposta: "[{\"uid\":1,\"urgencia\":\"maxima\",\"resumo\":\"assinar hoje\"}]");
+
+            var ordem = new List<string>();
+            vigia.Trabalhando += () => ordem.Add("acendeu");
+            vigia.Pronto += _ => ordem.Add("falou");
+            vigia.Terminou += () => ordem.Add("apagou");
+
+            await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            ordem.Should().Equal("acendeu", "falou", "apagou");
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         // Disparo para lista — o degrau que substitui a categoria do Gmail
         // ─────────────────────────────────────────────────────────────────
 
@@ -1097,11 +1185,15 @@ namespace AIB.Tests
                 string e, string s, ImapEndpoint ep, DateTime d, EstadoDaCaixa? g, CancellationToken ct) =>
                 Task.FromResult(new MailScanResult(true, 0, 0, false, 1, 0, ""));
 
+            /// <summary>Faz a leitura estourar, para o ensaio do caminho de erro.</summary>
+            public bool Explode { get; set; }
+
             public Task<LeituraDaCaixa> LerAsync(
                 string e, string s, ImapEndpoint ep, DateTime d, EstadoDaCaixa? g,
                 string eu, CancellationToken ct)
             {
                 Chamadas++;
+                if (Explode) throw new InvalidOperationException("caixa fora do ar");
                 return Task.FromResult(new LeituraDaCaixa(_lidas, UidValidity));
             }
 

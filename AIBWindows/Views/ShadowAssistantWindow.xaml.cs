@@ -479,18 +479,35 @@ public partial class ShadowAssistantWindow : Window
     public void TerminarDeProcessarEmail(string? relatorio = null, IReadOnlyList<MailSummary>? emails = null,
                                          bool urgente = false)
     {
-        ProcessandoEmail = false;
-        Glyph.Visibility = Visibility.Visible;
-        IconeDeInbox.Visibility = Visibility.Collapsed;
-        AjustarCelulaAoConteudo();
-        Casca.ToolTip = null;
-        PararDeTrabalhar();
+        PararDeProcessarEmail();
 
         _emailsPendentes = emails;
 
         // A varredura é proativa por definição: SEMPRE enfileira e pulsa, mesmo com a barra
         // aberta. Ninguém pediu por ela, então ela não tem direito de ocupar a tela.
         if (!string.IsNullOrWhiteSpace(relatorio)) EnfileirarFala(relatorio!, urgente);
+    }
+
+    /// <summary>
+    /// Volta do estado de varredura, e NADA MAIS.
+    /// <para>
+    /// Separado do <see cref="TerminarDeProcessarEmail"/> porque o vigia agora avisa o fim de
+    /// toda passada, inclusive das que não têm o que mostrar. Se esse aviso caísse no outro
+    /// método, ele chegaria com relatório nulo depois de um digest cheio e apagaria a lista de
+    /// e-mails que o digest tinha acabado de entregar.
+    /// </para>
+    /// <para>
+    /// Idempotente de propósito: chamar duas vezes é o caso normal, não o erro.
+    /// </para>
+    /// </summary>
+    public void PararDeProcessarEmail()
+    {
+        ProcessandoEmail = false;
+        Glyph.Visibility = Visibility.Visible;
+        IconeDeInbox.Visibility = Visibility.Collapsed;
+        AjustarCelulaAoConteudo();
+        Casca.ToolTip = null;
+        PararDeTrabalhar();
     }
 
     private IReadOnlyList<MailSummary>? _emailsPendentes;

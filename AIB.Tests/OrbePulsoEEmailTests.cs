@@ -710,6 +710,54 @@ namespace AIB.Tests
             });
         }
 
+        [Fact]
+        public void PararDeProcessar_NAO_ApagaOsEmailsQueORelatorioEntregou()
+        {
+            // O vigia avisa o fim de TODA passada, inclusive das que falaram. O aviso chega
+            // depois do relatorio, entao ele nao pode carregar relatorio nulo para o mesmo
+            // metodo — faria a lista de e-mails sumir logo depois de ser entregue.
+            WpfHost.EmSta(() =>
+            {
+                var janela = new ShadowAssistantWindow();
+
+                janela.ComecarAProcessarEmail();
+                janela.TerminarDeProcessarEmail("3 precisam de voce", Caixa(3));
+                janela.PararDeProcessarEmail();
+
+                janela.ProcessandoEmail.Should().BeFalse();
+                janela.Trabalhando.Should().BeFalse();
+
+                janela.AbrirBarra();
+
+                var fala = (FalaDaIA)janela.Falas[^1];
+                fala.Emails.Count.Should().Be(3, "o aviso de fim nao mexe no que o relatorio deixou");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void PararDeProcessar_SOZINHO_DevolveOOrbeAoRepouso()
+        {
+            WpfHost.EmSta(() =>
+            {
+                var janela = new ShadowAssistantWindow();
+
+                janela.ComecarAProcessarEmail();
+                janela.ProcessandoEmail.Should().BeTrue();
+
+                janela.PararDeProcessarEmail();
+                janela.PararDeProcessarEmail();   // idempotente: o caso normal é chamar duas vezes
+
+                janela.ProcessandoEmail.Should().BeFalse();
+                janela.Trabalhando.Should().BeFalse();
+                janela.Pulsando.Should().BeFalse("nada foi enfileirado");
+                ((TextBlock)janela.FindName("Glyph")).Visibility.Should().Be(Visibility.Visible);
+
+                janela.Close();
+            });
+        }
+
         // ─────────────────────────────────────────────────────────────────────
         // §5.7  Relatório
         // ─────────────────────────────────────────────────────────────────────

@@ -90,6 +90,21 @@ public sealed class MailDigestService : IDisposable
     /// <summary>Começou a trabalhar — o Shadow acende o anel enquanto isso dura.</summary>
     public event Action? Trabalhando;
 
+    /// <summary>
+    /// A passada acabou, tendo ela achado algo ou não.
+    /// <para>
+    /// Existe porque <see cref="Pronto"/> não serve para apagar o anel: ele só dispara quando o
+    /// digest TEM ALGO A DIZER, e a passada silenciosa é o caso comum — uma sondagem sem rajada
+    /// nem chega a publicar. Visto em produção: "1 lida(s), 0 na tela, 0 rajada(s)" e o anel do
+    /// Shadow girando para sempre, porque o começo era incondicional e o fim não.
+    /// </para>
+    /// <para>
+    /// Dispara no <c>finally</c>, e por isso vale também quando a leitura estoura no meio.
+    /// Quem acende tem que apagar, inclusive quando dá errado.
+    /// </para>
+    /// </summary>
+    public event Action? Terminou;
+
     /// <summary>Diagnóstico e ensaio: quantas vezes o laço acordou o modelo.</summary>
     public int DigestosFeitos { get; private set; }
 
@@ -181,6 +196,25 @@ public sealed class MailDigestService : IDisposable
 
         Trabalhando?.Invoke();
 
+        try
+        {
+            return await PassadaAsync(config, caixas, comModelo, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            // O par do Invoke acima. Num finally porque a passada tem quatro saídas — sondagem
+            // sem rajada, digest vazio, digest cheio e exceção — e três delas não passam pelo
+            // Publicar.
+            Terminou?.Invoke();
+        }
+    }
+
+    private async Task<DigestoDeEmail> PassadaAsync(
+        UserAppSettings config,
+        IReadOnlyList<MailAccountSettings> caixas,
+        bool comModelo,
+        CancellationToken ct)
+    {
         var regras = RegrasDoVigia.Ler(_caminhoDasRegras);
         var lidas = new List<MensagemDeEmail>();
         var respondidas = new List<ThreadRespondida>();

@@ -302,6 +302,12 @@ public partial class App : System.Windows.Application
                 Dispatcher.BeginInvoke(new Action(() =>
                     _orbe?.TerminarDeProcessarEmail(digesto.Frase(), digesto.Itens)));
 
+            // Pronto não apaga o anel: ele só fala quando há o que dizer, e a passada calada é
+            // o caso comum. Este é o par do Trabalhando, e chega DEPOIS do Pronto quando os
+            // dois disparam — por isso ele não pode mexer no que o Pronto deixou.
+            _vigia.Terminou += () =>
+                Dispatcher.BeginInvoke(new Action(() => _orbe?.PararDeProcessarEmail()));
+
             // A aba de e-mails do painel mostra o último digest. A conversa não conhece o
             // vigia: ela só repassa a função.
             _chatWindow.FonteDeEmails = () => _vigia?.Ultimo.Itens
