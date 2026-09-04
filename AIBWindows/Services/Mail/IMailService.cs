@@ -1,4 +1,6 @@
-﻿using System.Threading;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace AIB.Services.Mail;
@@ -65,6 +67,32 @@ public interface IMailService
         DateTime desdeUtc,
         EstadoDaCaixa? guardado,
         CancellationToken ct);
+
+    /// <summary>
+    /// Traz as mensagens COM conteúdo, para a triagem ler.
+    /// <para>
+    /// É a única porta por onde assunto, remetente e corpo entram no programa, e existe
+    /// separada da varredura de propósito: a tela de configurações só conta, e contar não pode
+    /// custar o download de nada. Quem chama isto é o vigia, e só quando o usuário ligou a
+    /// triagem.
+    /// </para>
+    /// <para>
+    /// Continua SOMENTE LEITURA: a INBOX abre em <c>EXAMINE</c> e os corpos descem com
+    /// <c>BODY.PEEK</c>. Nada é marcado como lido.
+    /// </para>
+    /// </summary>
+    /// <param name="enderecoDoUsuario">
+    /// Para separar quem foi destinatário de quem só recebeu cópia. Cópia é notificação;
+    /// destinatário é pedido, e o funil trata os dois de forma diferente.
+    /// </param>
+    Task<IReadOnlyList<MensagemDeEmail>> LerAsync(
+        string endereco,
+        string senhaDeApp,
+        ImapEndpoint endpoint,
+        DateTime desdeUtc,
+        EstadoDaCaixa? guardado,
+        string enderecoDoUsuario,
+        CancellationToken ct);
 }
 
 /// <summary>
@@ -120,6 +148,11 @@ public sealed class MailServiceStub : IMailService
         string endereco, string senhaDeApp, ImapEndpoint endpoint,
         DateTime desdeUtc, EstadoDaCaixa? guardado, CancellationToken ct)
         => Task.FromResult(new MailScanResult(false, 0, 0, false, 0, 0, TextoPendente));
+
+    public Task<IReadOnlyList<MensagemDeEmail>> LerAsync(
+        string endereco, string senhaDeApp, ImapEndpoint endpoint,
+        DateTime desdeUtc, EstadoDaCaixa? guardado, string enderecoDoUsuario, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<MensagemDeEmail>>(Array.Empty<MensagemDeEmail>());
 
     public Task<MailLoginResult> TestLoginAsync(string endereco, string senhaDeApp, CancellationToken ct)
     {

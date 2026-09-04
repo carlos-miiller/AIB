@@ -921,6 +921,15 @@ namespace AIB.Tests
                 return System.Threading.Tasks.Task.FromResult(new MailScanResult(
                     true, _mensagens, _naoLidas, incremental, _uidValidity, _ultimoUid, ""));
             }
+
+            /// <summary>
+            /// A tela de configuracoes nunca le conteudo: ela conta. Quem le e o vigia.
+            /// </summary>
+            public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MensagemDeEmail>> LerAsync(
+                string endereco, string senhaDeApp, ImapEndpoint endpoint, DateTime desdeUtc,
+                EstadoDaCaixa? guardado, string enderecoDoUsuario, System.Threading.CancellationToken ct)
+                => System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<MensagemDeEmail>>(
+                    System.Array.Empty<MensagemDeEmail>());
         }
 
         /// <summary>Serviço que recusa qualquer login, para o caminho de erro do formulário.</summary>
@@ -939,6 +948,15 @@ namespace AIB.Tests
                 string endereco, string senhaDeApp, System.Threading.CancellationToken ct) =>
                 System.Threading.Tasks.Task.FromResult(new MailLoginResult(
                     false, default, "senha de app recusada — altere a senha", false));
+
+            /// <summary>
+            /// A tela de configuracoes nunca le conteudo: ela conta. Quem le e o vigia.
+            /// </summary>
+            public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<MensagemDeEmail>> LerAsync(
+                string endereco, string senhaDeApp, ImapEndpoint endpoint, DateTime desdeUtc,
+                EstadoDaCaixa? guardado, string enderecoDoUsuario, System.Threading.CancellationToken ct)
+                => System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<MensagemDeEmail>>(
+                    System.Array.Empty<MensagemDeEmail>());
         }
     }
 }

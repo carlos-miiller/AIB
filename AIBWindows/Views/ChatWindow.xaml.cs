@@ -37,6 +37,12 @@ public partial class ChatWindow : Window
     /// precisa saber se existe caixa pronta, e essa é toda a pergunta.
     /// </summary>
     private readonly MailVault _cofreDeEmail = new();
+
+    /// <summary>
+    /// De onde a aba de e-mails do painel tira a lista. Quem preenche é o App, que é dono do
+    /// vigia; a conversa não conhece o serviço e não precisa conhecer — ela repassa.
+    /// </summary>
+    public Func<IReadOnlyList<MailSummary>>? FonteDeEmails { get; set; }
     private readonly VoiceService _voiceService;
 
     private bool _voiceReady = false;
@@ -1711,10 +1717,7 @@ public partial class ChatWindow : Window
             _painel = new SidePanelWindow(
                 RecuperarChat, AbrirChat, ExcluirChat, () => _conversation.SessionId,
                 emailConfigurado: HaCaixaDeEmailPronta,
-                // A triagem ainda não existe: a varredura de hoje só CONTA mensagens, sem
-                // baixar assunto nem remetente. Até ela chegar, a aba mostra o vazio honesto
-                // de §6.2.1 (b) em vez de dados inventados.
-                emails: () => Array.Empty<MailSummary>(),
+                emails: () => FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>(),
                 aoConfigurarEmail: AbrirConfiguracoesDeEmail)
             {
                 Owner = this

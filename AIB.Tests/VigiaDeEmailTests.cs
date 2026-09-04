@@ -1,0 +1,546 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using AIB.Services;
+using AIB.Services.Ai;
+using AIB.Services.Mail;
+using FluentAssertions;
+using OpenAI.Chat;
+using Xunit;
+
+namespace AIB.Tests
+{
+    /// <summary>
+    /// O vigia de e-mail — ideias_futuras/07, o funil, a rajada e o digest.
+    /// <para>
+    /// Tudo aqui é sobre o que acontece SEM ninguém olhando: o vigia roda com a janela fechada,
+    /// e é a única parte do programa que vê conteúdo de e-mail. Os erros dele são caros porque
+    /// são invisíveis — uma mensagem descartada por engano não aparece em lugar nenhum, e o
+    /// produto inteiro se apoia no número de descartados ser confiável.
+    /// </para>
+    /// </summary>
+    public class VigiaDeEmailTests
+    {
+        private static MensagemDeEmail Msg(
+            uint uid = 1, string de = "ana@empresa.com", string assunto = "assunto",
+            bool direto = true, bool importante = false, string[]? rotulos = null,
+            DateTime? quando = null, string corpo = "")
+            => new(uid, "thr", de, "Ana", assunto, quando ?? DateTime.UtcNow,
+                   direto, importante, rotulos ?? Array.Empty<string>(), true, corpo);
+
+        // ─────────────────────────────────────────────────────────────────
+        // regras.md
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void ORegrasMd_LE_AsFontesDeAlerta()
+        {
+            var regras = RegrasDoVigia.Interpretar(new[]
+            {
+                "# fontes de alerta",
+                "firewall@empresa.com.br   → rajada a partir de 3 em 30 min",
+                "nobreak@empresa.com.br    -> rajada a partir de 2 em 15 min"
+            });
+
+            regras.Fontes.Should().HaveCount(2);
+            regras.Fonte("firewall@empresa.com.br")!.Minimo.Should().Be(3);
+            regras.Fonte("firewall@empresa.com.br")!.Janela.Should().Be(TimeSpan.FromMinutes(30));
+            regras.Fonte("NOBREAK@EMPRESA.COM.BR")!.Minimo.Should().Be(2);
+        }
+
+        [Fact]
+        public void LinhaTORTA_NaoCALA_AsOutras()
+        {
+            // É um arquivo que o usuário edita à mão. Um erro de digitação numa linha não pode
+            // fazer o vigia esquecer as fontes de alerta que estavam certas.
+            var regras = RegrasDoVigia.Interpretar(new[]
+            {
+                "isto não é uma regra",
+                "sem-arroba → rajada a partir de 3 em 30 min",
+                "firewall@empresa.com.br → rajada a partir de 3 em 30 min",
+                "outro@x.com → alguma outra coisa"
+            });
+
+            regras.Fontes.Should().HaveCount(1);
+            regras.Fonte("firewall@empresa.com.br").Should().NotBeNull();
+        }
+
+        [Fact]
+        public void JanelaEmHORAS_TambemVale()
+        {
+            RegrasDoVigia.Interpretar(new[] { "x@y.com → rajada a partir de 5 em 2 horas" })
+                .Fonte("x@y.com")!.Janela.Should().Be(TimeSpan.FromHours(2));
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Degraus 0 e 1
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void OGmailJaClassificou_EIssoBASTA()
+        {
+            // Degrau 0: as categorias saem calculadas do servidor, de graça. Não há por que
+            // reimplementar heurística de newsletter.
+            FiltroDeTriagem.Avaliar(
+                Msg(rotulos: new[] { "CATEGORY_PROMOTIONS" }, direto: false),
+                RegrasDoVigia.Vazias).Sobe.Should().BeFalse();
+        }
+
+        [Fact]
+        public void MarcadaComoImportante_SOBE_MesmoEmCopia()
+        {
+            FiltroDeTriagem.Avaliar(
+                Msg(importante: true, direto: false, rotulos: new[] { "CATEGORY_UPDATES" }),
+                RegrasDoVigia.Vazias).Sobe.Should().BeTrue("o Google já disse que importa");
+        }
+
+        [Fact]
+        public void FonteDeAlerta_NUNCA_ECortadaPelaForma()
+        {
+            // O firewall manda de noreply@, automático e repetitivo — tudo o que os filtros
+            // baratos matam. Foi a coisa mais urgente do dia 01/09.
+            var regras = RegrasDoVigia.Interpretar(
+                new[] { "firewall@empresa.com.br → rajada a partir de 3 em 30 min" });
+
+            FiltroDeTriagem.Avaliar(
+                Msg(de: "firewall@empresa.com.br", direto: false,
+                    rotulos: new[] { "CATEGORY_UPDATES" }),
+                regras).Sobe.Should().BeTrue();
+        }
+
+        [Fact]
+        public void EmCopiaEDeRobo_CAI()
+        {
+            FiltroDeTriagem.Avaliar(Msg(de: "noreply@loja.com", direto: false), RegrasDoVigia.Vazias)
+                .Sobe.Should().BeFalse();
+        }
+
+        [Fact]
+        public void NaDUVIDA_SOBE()
+        {
+            // Regra 5 do vigia. Um e-mail chato subindo custa três segundos; um importante
+            // sumindo custa o que já se perde hoje — e some sem aparecer em lugar nenhum.
+            FiltroDeTriagem.Avaliar(Msg(de: "pessoa@parceiro.com", direto: false), RegrasDoVigia.Vazias)
+                .Sobe.Should().BeTrue();
+        }
+
+        [Fact]
+        public void DominioChamadoNoreply_NaoTornaTudoAutomatico()
+        {
+            // A checagem é da parte ANTES do arroba. Um domínio "noreply.com.br" não faz de
+            // toda pessoa que escreve de lá um robô.
+            FiltroDeTriagem.EhAutomatico("carlos@noreply.com.br").Should().BeFalse();
+            FiltroDeTriagem.EhAutomatico("no-reply@empresa.com").Should().BeTrue();
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Rajada
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void DozeEmQuarentaMinutos_EUmIncidente()
+        {
+            var regras = RegrasDoVigia.Interpretar(
+                new[] { "firewall@empresa.com.br → rajada a partir de 3 em 30 min" });
+
+            var inicio = new DateTime(2026, 9, 4, 9, 14, 0, DateTimeKind.Utc);
+            var alertas = Enumerable.Range(0, 12)
+                .Select(i => Msg(uid: (uint)i, de: "firewall@empresa.com.br",
+                                 assunto: $"WAN2 perda {i}", quando: inicio.AddMinutes(i * 2)))
+                .ToList();
+
+            var rajadas = DetectorDeRajada.Encontrar(alertas, regras);
+
+            rajadas.Should().HaveCount(1);
+            rajadas[0].Quantas.Should().BeGreaterThanOrEqualTo(3);
+            rajadas[0].Assuntos.Should().NotBeEmpty("o modelo escreve por cima destes fatos");
+        }
+
+        [Fact]
+        public void AsMESMAS_Espalhadas_NaoSaoRajada()
+        {
+            // O sinal não está em nenhuma mensagem: está no volume E no ritmo. Seis alertas em
+            // seis horas é a vida normal de um firewall.
+            var regras = RegrasDoVigia.Interpretar(
+                new[] { "firewall@empresa.com.br → rajada a partir de 3 em 30 min" });
+
+            var inicio = new DateTime(2026, 9, 4, 8, 0, 0, DateTimeKind.Utc);
+            var espalhados = Enumerable.Range(0, 6)
+                .Select(i => Msg(uid: (uint)i, de: "firewall@empresa.com.br",
+                                 quando: inicio.AddHours(i)))
+                .ToList();
+
+            DetectorDeRajada.Encontrar(espalhados, regras).Should().BeEmpty();
+        }
+
+        [Fact]
+        public void RemetenteNaoDECLARADO_NaoViraRajada()
+        {
+            // Quem decide o que é fonte de alerta é o usuário, no regras.md. Sem isso, uma
+            // newsletter diária viraria incidente.
+            var muitas = Enumerable.Range(0, 20)
+                .Select(i => Msg(uid: (uint)i, de: "news@site.com",
+                                 quando: DateTime.UtcNow.AddMinutes(i)))
+                .ToList();
+
+            DetectorDeRajada.Encontrar(muitas, RegrasDoVigia.Vazias).Should().BeEmpty();
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // O que o modelo devolve
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void JSON_LimpoEInterpretado()
+        {
+            var v = TriadorDeEmail.Interpretar(
+                """[{"uid":91043,"urgencia":"maxima","resumo":"assinar o aditivo até 18h"}]""");
+
+            v.Should().HaveCount(1);
+            v[0].Uid.Should().Be(91043);
+            v[0].Urgencia.Should().Be(MailUrgency.Maxima);
+            v[0].Resumo.Should().Contain("aditivo");
+        }
+
+        [Fact]
+        public void CercaDeCodigo_EFraseDeApresentacao_NaoAtrapalham()
+        {
+            // O modelo faz isso o tempo todo, por mais claro que o prompt seja.
+            var v = TriadorDeEmail.Interpretar(
+                "Claro! Aqui está:\n```json\n[{\"uid\":\"7\",\"urgencia\":\"MÉDIA\",\"resumo\":\"responder\"}]\n```");
+
+            v.Should().HaveCount(1);
+            v[0].Uid.Should().Be(7, "uid como texto ainda é um uid");
+            v[0].Urgencia.Should().Be(MailUrgency.Media);
+        }
+
+        [Fact]
+        public void UrgenciaINVENTADA_ViraMEDIA_NaoBaixa()
+        {
+            // Regra 5 de novo: na dúvida, sinaliza. Cair para baixa esconderia a mensagem no
+            // fim da lista por causa de uma palavra que o modelo escolheu mal.
+            TriadorDeEmail.Nivel("crítica-total").Should().Be(MailUrgency.Media);
+            TriadorDeEmail.Nivel("").Should().Be(MailUrgency.Media);
+            TriadorDeEmail.Nivel("urgente").Should().Be(MailUrgency.Maxima);
+            TriadorDeEmail.Nivel("informativo").Should().Be(MailUrgency.Baixa);
+        }
+
+        [Fact]
+        public void RespostaIMPRESTAVEL_DevolveVazio_NaoChuta()
+        {
+            TriadorDeEmail.Interpretar("desculpe, não consegui").Should().BeEmpty();
+            TriadorDeEmail.Interpretar("[isto não é json").Should().BeEmpty();
+            TriadorDeEmail.Interpretar(null).Should().BeEmpty();
+        }
+
+        [Fact]
+        public void OPromptNaoLEVA_MaisDoQuePrecisa()
+        {
+            // O corpo desce truncado, e nada além do que o modelo precisa para decidir. Um lote
+            // com trinta mensagens inteiras passaria de vinte mil tokens de prefill.
+            string texto = TriadorDeEmail.Montar(new[]
+            {
+                Msg(uid: 5, assunto: "Contrato", corpo: "precisa da sua assinatura")
+            });
+
+            texto.Should().Contain("[5]").And.Contain("Contrato").And.Contain("assinatura");
+        }
+
+        [Fact]
+        public void OCorpoDESCE_Truncado()
+        {
+            string longo = new string('x', 5000);
+            string curto = MensagemDeEmail.Encurtar(longo);
+
+            curto.Length.Should().BeLessThan(longo.Length);
+            curto.Should().EndWith("…");
+        }
+
+        [Fact]
+        public void HTML_PerdeAsTags_AntesDeIrAoModelo()
+        {
+            MailKitMailService.SemMarcacao("<p>oi <b>Carlo</b></p>")
+                .Should().Be("oi Carlo");
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Agenda
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void AntesDoPrimeiroHorario_NaoRodaNada()
+        {
+            // Às 7h da manhã não há digest atrasado a recuperar: o dia não começou, e disparar
+            // agora mostraria a caixa de ontem como novidade.
+            AgendaDoVigia.HoraDoDigest(new DateTime(2026, 9, 4, 7, 0, 0), null)
+                .Should().BeFalse();
+        }
+
+        [Fact]
+        public void LigarOComputadorTARDE_NaoPERDE_ODigestDaManha()
+        {
+            // A comparação é "passou do horário e ainda não rodou depois dele", não "o relógio
+            // marca exatamente 8:25". Máquina suspensa, desligada ou um minuto perdido pelo
+            // laço não podem custar o dia inteiro.
+            AgendaDoVigia.HoraDoDigest(new DateTime(2026, 9, 4, 10, 30, 0), null)
+                .Should().BeTrue();
+        }
+
+        [Fact]
+        public void JaRODOU_DepoisDoHorario_NaoRepete()
+        {
+            var agora = new DateTime(2026, 9, 4, 10, 30, 0);
+            var rodou = new DateTime(2026, 9, 4, 9, 0, 0);
+
+            AgendaDoVigia.HoraDoDigest(agora, rodou).Should().BeFalse();
+        }
+
+        [Fact]
+        public void OHorarioSEGUINTE_DISPARA_DeNovo()
+        {
+            var rodouDeManha = new DateTime(2026, 9, 4, 8, 30, 0);
+
+            AgendaDoVigia.HoraDoDigest(new DateTime(2026, 9, 4, 12, 56, 0), rodouDeManha)
+                .Should().BeTrue();
+        }
+
+        [Fact]
+        public void ASondagemRespeita_OIntervalo()
+        {
+            var agora = new DateTime(2026, 9, 4, 10, 0, 0);
+
+            AgendaDoVigia.HoraDaSondagem(agora, agora.AddMinutes(-5)).Should().BeFalse();
+            AgendaDoVigia.HoraDaSondagem(agora, agora.AddMinutes(-21)).Should().BeTrue();
+            AgendaDoVigia.HoraDaSondagem(agora, null).Should().BeTrue();
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // O laço inteiro
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task ODigest_LE_TRIA_ENTREGA()
+        {
+            var (vigia, _) = Montar(
+                lidas: new[]
+                {
+                    Msg(uid: 1, assunto: "Contrato Vertex", corpo: "assinar até 18h"),
+                    Msg(uid: 2, de: "noreply@loja.com", assunto: "Promoção", direto: false)
+                },
+                resposta: """[{"uid":1,"urgencia":"maxima","resumo":"assinar o aditivo até 18h"}]""");
+
+            var digesto = await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            digesto.Lidas.Should().Be(2);
+            digesto.Itens.Should().HaveCount(1);
+            digesto.Itens[0].Urgency.Should().Be(MailUrgency.Maxima);
+            digesto.Descartadas.Should().HaveCount(1, "a promoção caiu, e o porquê fica registrado");
+            digesto.Descartadas[0].Motivo.Should().NotBeNullOrWhiteSpace();
+        }
+
+        [Fact]
+        public async Task MensagemSEM_Veredito_NaoSOME_DaTela()
+        {
+            // O modelo esquecer uma linha do JSON não pode ser o mesmo que a mensagem não
+            // existir: é exatamente o falso negativo invisível que a regra 5 proíbe.
+            var (vigia, _) = Montar(
+                lidas: new[] { Msg(uid: 1, assunto: "A"), Msg(uid: 2, assunto: "B") },
+                resposta: """[{"uid":1,"urgencia":"baixa","resumo":"nada urgente"}]""");
+
+            var digesto = await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            digesto.Itens.Should().HaveCount(2);
+            digesto.Itens.Should().Contain(i => i.Name == "B");
+        }
+
+        [Fact]
+        public async Task ModeloFORA_DoAr_NaoAPAGA_ACaixaDaTela()
+        {
+            var (vigia, _) = Montar(
+                lidas: new[] { Msg(uid: 1, assunto: "Contrato") },
+                resposta: null,
+                modeloQuebra: true);
+
+            var digesto = await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            digesto.Itens.Should().HaveCount(1, "sem modelo, ainda dá para dizer o que chegou");
+            digesto.Itens[0].Urgency.Should().Be(MailUrgency.Media);
+        }
+
+        [Fact]
+        public async Task ASondagem_NaoACORDA_OModelo()
+        {
+            // No estado estável ela não encontra nada, e é por isso que ela é barata. Acordar o
+            // 9B de vinte em vinte minutos deixaria a máquina ocupada o dia inteiro à toa.
+            var (vigia, provider) = Montar(
+                lidas: new[] { Msg(uid: 1, assunto: "Contrato") },
+                resposta: """[{"uid":1,"urgencia":"maxima","resumo":"x"}]""");
+
+            await vigia.ExecutarAsync(comModelo: false, CancellationToken.None);
+
+            provider.Chamadas.Should().Be(0);
+            vigia.DigestosFeitos.Should().Be(0);
+        }
+
+        [Fact]
+        public async Task ChaveDESLIGADA_NaoLE_Nada()
+        {
+            // A triagem é opt-in. Ninguém ganha um programa lendo o próprio e-mail por ter
+            // atualizado a versão.
+            var (vigia, provider, email) = MontarCompleto(
+                triagemLigada: false,
+                lidas: new[] { Msg(uid: 1) },
+                resposta: "[]");
+
+            await vigia.BaterAsync();
+
+            email.Chamadas.Should().Be(0);
+            provider.Chamadas.Should().Be(0);
+        }
+
+        [Fact]
+        public void AFraseDoShadow_SAI_DoCodigo_NaoDoModelo()
+        {
+            // Os números são exatos porque não passaram pelo modelo. Se o 9B alucinar, alucina
+            // no resumo de uma mensagem, não na contagem que abre o aviso.
+            var digesto = new DigestoDeEmail(
+                new[]
+                {
+                    new MailSummary("a", "b", MailUrgency.Maxima),
+                    new MailSummary("c", "d", MailUrgency.Baixa)
+                },
+                Lidas: 34, Array.Empty<Descartada>(), Array.Empty<Rajada>(), DateTime.UtcNow);
+
+            digesto.Frase().Should().Contain("34").And.Contain("1 precisa");
+        }
+
+        [Fact]
+        public void ComRAJADA_AFraseFALA_DoIncidente()
+        {
+            var digesto = new DigestoDeEmail(
+                Array.Empty<MailSummary>(), 12, Array.Empty<Descartada>(),
+                new[]
+                {
+                    new Rajada("firewall@x.com", "Firewall", 12,
+                               new DateTime(2026, 9, 4, 9, 14, 0, DateTimeKind.Utc),
+                               new DateTime(2026, 9, 4, 10, 1, 0, DateTimeKind.Utc),
+                               Array.Empty<string>())
+                },
+                DateTime.UtcNow);
+
+            digesto.Frase().Should().Contain("12 alertas").And.Contain("Firewall");
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Andaimes
+        // ─────────────────────────────────────────────────────────────────
+
+        private static (MailDigestService, ProviderFalso) Montar(
+            IReadOnlyList<MensagemDeEmail> lidas, string? resposta, bool modeloQuebra = false)
+        {
+            var (vigia, provider, _) = MontarCompleto(true, lidas, resposta, modeloQuebra);
+            return (vigia, provider);
+        }
+
+        private static (MailDigestService, ProviderFalso, EmailFalso) MontarCompleto(
+            bool triagemLigada, IReadOnlyList<MensagemDeEmail> lidas, string? resposta,
+            bool modeloQuebra = false)
+        {
+            string pasta = Path.Combine(Path.GetTempPath(), "aib-vigia-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(pasta);
+
+            var settings = new SettingsService(Path.Combine(pasta, "settings.json"));
+            var config = settings.LoadSettings();
+            config.ShadowHandlesMail = triagemLigada;
+            config.MailAccounts = new List<MailAccountSettings>
+            {
+                new() { Address = "eu@empresa.com", ImapHost = "imap.gmail.com", ImapPort = 993, IsPrimary = true }
+            };
+            settings.SaveSettings(config);
+
+            var cofre = new MailVault(pasta);
+            cofre.Guardar("eu@empresa.com", "abcdefghijklmnop");
+
+            var email = new EmailFalso(lidas);
+            var provider = new ProviderFalso(resposta, modeloQuebra);
+
+            var vigia = new MailDigestService(
+                settings, email, new FabricaFixa(provider),
+                cofre, new EstadoDasCaixas(pasta),
+                agora: () => new DateTime(2026, 9, 4, 13, 0, 0),
+                caminhoDasRegras: Path.Combine(pasta, "regras.md"));
+
+            return (vigia, provider, email);
+        }
+
+        private sealed class EmailFalso : IMailService
+        {
+            private readonly IReadOnlyList<MensagemDeEmail> _lidas;
+            public EmailFalso(IReadOnlyList<MensagemDeEmail> lidas) => _lidas = lidas;
+
+            public int Chamadas { get; private set; }
+            public bool Disponivel => true;
+            public string MotivoDaIndisponibilidade => "";
+
+            public Task<MailLoginResult> TestLoginAsync(string e, string s, CancellationToken ct) =>
+                Task.FromResult(new MailLoginResult(true, default, "", true));
+
+            public Task<MailScanResult> VarrerAsync(
+                string e, string s, ImapEndpoint ep, DateTime d, EstadoDaCaixa? g, CancellationToken ct) =>
+                Task.FromResult(new MailScanResult(true, 0, 0, false, 1, 0, ""));
+
+            public Task<IReadOnlyList<MensagemDeEmail>> LerAsync(
+                string e, string s, ImapEndpoint ep, DateTime d, EstadoDaCaixa? g,
+                string eu, CancellationToken ct)
+            {
+                Chamadas++;
+                return Task.FromResult(_lidas);
+            }
+        }
+
+        private sealed class ProviderFalso : IChatProvider
+        {
+            private readonly string? _resposta;
+            private readonly bool _quebra;
+
+            public ProviderFalso(string? resposta, bool quebra)
+            {
+                _resposta = resposta;
+                _quebra = quebra;
+            }
+
+            public int Chamadas { get; private set; }
+            public string Name => "falso";
+            public string Model => "modelo-de-teste";
+
+            public async IAsyncEnumerable<StreamChunk> StreamAsync(
+                IReadOnlyList<ChatMessage> m, IReadOnlyList<ChatTool> t, ChatRequestOptions o,
+                [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+            {
+                await Task.CompletedTask;
+                yield break;
+            }
+
+            public Task<ChatCompletionResult> CompleteAsync(
+                IReadOnlyList<ChatMessage> m, IReadOnlyList<ChatTool> t,
+                ChatRequestOptions o, CancellationToken ct)
+            {
+                Chamadas++;
+                if (_quebra) throw new InvalidOperationException("provedor fora do ar");
+                return Task.FromResult(new ChatCompletionResult(_resposta ?? "", null, null));
+            }
+
+            public Task WarmupAsync(CancellationToken ct) => Task.CompletedTask;
+        }
+
+        private sealed class FabricaFixa : IChatProviderFactory
+        {
+            private readonly IChatProvider _provider;
+            public FabricaFixa(IChatProvider provider) => _provider = provider;
+            public IChatProvider GetProvider(UserAppSettings settings) => _provider;
+        }
+    }
+}

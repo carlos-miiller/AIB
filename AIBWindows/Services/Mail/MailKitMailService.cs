@@ -7,6 +7,7 @@ using MailKit;
 using MailKit.Net.Imap;
 using MailKit.Search;
 using MailKit.Security;
+using MimeKit;
 
 namespace AIB.Services.Mail;
 
@@ -237,6 +238,178 @@ public sealed class MailKitMailService : IMailService
     }
 
     /// <summary>
+    // ─────────────────────────────────────────────────────────────────────────
+    // Leitura com conteúdo — o que a triagem lê
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// O que desce quando o vigia vai TRIAR: além de identificador, flags e data, o envelope
+    /// (remetente, destinatários, assunto), a estrutura do corpo e os dois campos que o Gmail
+    /// dá de graça — a conversa e os rótulos.
+    /// <para>
+    /// Os rótulos são o degrau 0 do funil: Promoções, Social, Atualizações e Fóruns já vêm
+    /// classificados pelo servidor, e o <c>\Important</c> também. Não há por que reimplementar
+    /// heurística de newsletter aqui.
+    /// </para>
+    /// </summary>
+    private const MessageSummaryItems ItensDaTriagem =
+        MessageSummaryItems.UniqueId | MessageSummaryItems.Flags |
+        MessageSummaryItems.InternalDate | MessageSummaryItems.Envelope |
+        MessageSummaryItems.BodyStructure |
+        MessageSummaryItems.GMailThreadId | MessageSummaryItems.GMailLabels;
+
+    public async Task<IReadOnlyList<MensagemDeEmail>> LerAsync(
+        string endereco,
+        string senhaDeApp,
+        ImapEndpoint endpoint,
+        DateTime desdeUtc,
+        EstadoDaCaixa? guardado,
+        string enderecoDoUsuario,
+        CancellationToken ct)
+    {
+        using var cliente = NovoCliente();
+
+        try
+        {
+            await cliente.ConnectAsync(endpoint.Host, endpoint.Port,
+                endpoint.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls, ct)
+                .ConfigureAwait(false);
+
+            await cliente.AuthenticateAsync(endereco, senhaDeApp, ct).ConfigureAwait(false);
+
+            var inbox = cliente.Inbox;
+            await inbox.OpenAsync(FolderAccess.ReadOnly, ct).ConfigureAwait(false);
+
+            bool incremental = guardado != null && guardado.ServeParaPartir(inbox.UidValidity);
+
+            var uids = incremental
+                ? await inbox.SearchAsync(AcimaDe(guardado!.LastUid), ct).ConfigureAwait(false)
+                : await inbox.SearchAsync(SearchQuery.DeliveredAfter(desdeUtc.Date.AddDays(-1)), ct)
+                    .ConfigureAwait(false);
+
+            if (uids.Count == 0)
+            {
+                await DesconectarAsync(cliente).ConfigureAwait(false);
+                return Array.Empty<MensagemDeEmail>();
+            }
+
+            var resumos = await inbox.FetchAsync(uids, ItensDaTriagem, ct).ConfigureAwait(false);
+
+            var lidas = new List<MensagemDeEmail>();
+            string eu = (enderecoDoUsuario ?? endereco ?? "").Trim().ToLowerInvariant();
+
+            foreach (var r in resumos)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (!incremental && !NaJanela(r.InternalDate, desdeUtc)) continue;
+
+                string corpo = await CorpoAsync(inbox, r, ct).ConfigureAwait(false);
+                lidas.Add(Converter(r, eu, corpo));
+            }
+
+            await DesconectarAsync(cliente).ConfigureAwait(false);
+            return lidas;
+        }
+        catch (OperationCanceledException)
+        {
+            await DesconectarAsync(cliente).ConfigureAwait(false);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // O ENDEREÇO vai para o log; o conteúdo nunca. Regra 3 do vigia vale também para o
+            // caminho de erro, que é onde é mais fácil esquecer dela.
+            Console.WriteLine($"[VIGIA] {endereco}: leitura falhou — {ex.GetType().Name}: {ex.Message}");
+            await DesconectarAsync(cliente).ConfigureAwait(false);
+            return Array.Empty<MensagemDeEmail>();
+        }
+    }
+
+    /// <summary>
+    /// O texto da mensagem, já encurtado.
+    /// <para>
+    /// Busca a parte de TEXTO, nunca o HTML nem os anexos: um e-mail de marketing tem 300 KB de
+    /// HTML e nada dentro, e baixar anexo de uma caixa inteira para resumir seria trocar a
+    /// leitura por um download.
+    /// </para>
+    /// <para>
+    /// O MailKit pede a parte com <c>BODY.PEEK</c>, e a pasta já está em EXAMINE: dois níveis
+    /// garantindo que ler não marque nada como lido.
+    /// </para>
+    /// </summary>
+    private static async Task<string> CorpoAsync(IMailFolder inbox, IMessageSummary r, CancellationToken ct)
+    {
+        var parte = r.TextBody ?? r.HtmlBody;
+        if (parte == null) return "";
+
+        try
+        {
+            var entidade = await inbox.GetBodyPartAsync(r.UniqueId, parte, ct).ConfigureAwait(false);
+            if (entidade is not TextPart texto) return "";
+
+            string bruto = texto.IsHtml ? SemMarcacao(texto.Text) : texto.Text;
+            return MensagemDeEmail.Encurtar(bruto);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Corpo ilegível não pode derrubar a triagem das outras: a mensagem sobe só com
+            // assunto e remetente, que já é mais do que não subir.
+            return "";
+        }
+    }
+
+    /// <summary>
+    /// Tira as tags de um corpo em HTML. Grosseiro de propósito: o destino é um modelo que vai
+    /// resumir, não um renderizador.
+    /// </summary>
+    public static string SemMarcacao(string? html)
+    {
+        string h = html ?? "";
+        var sb = new System.Text.StringBuilder(h.Length);
+        bool dentroDeTag = false;
+
+        foreach (char c in h)
+        {
+            if (c == '<') { dentroDeTag = true; continue; }
+            if (c == '>') { dentroDeTag = false; sb.Append(' '); continue; }
+            if (!dentroDeTag) sb.Append(c);
+        }
+
+        // Espaço em excesso vira token em excesso, e o prefill é o que custa caro aqui.
+        return System.Text.RegularExpressions.Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
+    }
+
+    private static MensagemDeEmail Converter(IMessageSummary r, string enderecoDoUsuario, string corpo)
+    {
+        var de = r.Envelope?.From?.Mailboxes?.FirstOrDefault();
+
+        bool direto = r.Envelope?.To?.Mailboxes?
+            .Any(m => string.Equals(m.Address, enderecoDoUsuario, StringComparison.OrdinalIgnoreCase))
+            ?? false;
+
+        var rotulos = r.GMailLabels?.ToArray() ?? Array.Empty<string>();
+
+        return new MensagemDeEmail(
+            Uid: r.UniqueId.Id,
+            ThreadId: r.GMailThreadId?.ToString() ?? "",
+            De: (de?.Address ?? "").Trim().ToLowerInvariant(),
+            NomeDoRemetente: string.IsNullOrWhiteSpace(de?.Name) ? (de?.Address ?? "?") : de!.Name,
+            Assunto: r.Envelope?.Subject ?? "(sem assunto)",
+            RecebidaUtc: r.InternalDate?.UtcDateTime ?? DateTime.UtcNow,
+            Direto: direto,
+            Importante: rotulos.Any(l => string.Equals(l, "\\Important", StringComparison.OrdinalIgnoreCase)),
+            Rotulos: rotulos,
+            NaoLida: r.Flags.HasValue && !r.Flags.Value.HasFlag(MessageFlags.Seen),
+            Corpo: corpo);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
     /// A busca dos UIDs acima do último já lido — <c>SEARCH UID {n+1}:*</c>.
     /// <para>
     /// É o que faz a segunda visita à mesma caixa custar quase nada: sem isto, abrir a tela de

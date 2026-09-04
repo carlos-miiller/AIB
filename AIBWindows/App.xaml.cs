@@ -22,6 +22,12 @@ public partial class App : System.Windows.Application
     /// <summary>O item da bandeja que liga o orbe. Guardado para não sair de sincronia.</summary>
     private System.Windows.Controls.MenuItem? _itemDoOrbe;
 
+    /// <summary>
+    /// O vigia de e-mail. Vive enquanto o programa vive e decide sozinho quando trabalhar — a
+    /// chave que o liga é lida a cada batida, não capturada aqui.
+    /// </summary>
+    private Services.Mail.MailDigestService? _vigia;
+
     // Composition root: os serviços são construídos aqui, uma única vez, e injetados.
     // O SettingsService precisa nascer DEPOIS de EnsureDirectories para enxergar o caminho certo.
     private readonly System.Net.Http.HttpClient _httpClient = new() { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
@@ -115,8 +121,32 @@ public partial class App : System.Windows.Application
     }
 
     /// <summary>
-    /// ANDAIME de demonstracao: enfileira um digest falso para o orbe. Some quando o
-    /// MailDigestService existir.
+    /// Roda um digest agora, a pedido. Mesmo caminho do laço — nada de uma segunda
+    /// implementação que divergiria em qual das duas grava o progresso.
+    /// </summary>
+    private async System.Threading.Tasks.Task RodarDigestAgoraAsync()
+    {
+        if (_vigia == null) return;
+
+        if (!_settingsService.LoadSettings().ShadowHandlesMail)
+        {
+            ShowNotification("AIB", "Ligue a triagem de e-mail em Configurações > Shadow.");
+            return;
+        }
+
+        try
+        {
+            await _vigia.ExecutarAsync(comModelo: true, System.Threading.CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[VIGIA] digest sob demanda falhou — {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// ANDAIME de demonstracao: enfileira um digest falso para o orbe. Segue aqui porque ainda
+    /// e o unico jeito de ver a rajada e a lista cheia sem uma caixa de verdade na frente.
     /// </summary>
     private void SimularDigest()
     {
@@ -242,6 +272,33 @@ public partial class App : System.Windows.Application
             // FirstRunWindow já fechada, e definir Owner como janela fechada lança.
             MainWindow = _chatWindow;
 
+            // ── O vigia de e-mail ────────────────────────────────────────
+            // Ele é quem faz a leitura virar produto: roda com a janela fechada, três vezes ao
+            // dia com o modelo e de vinte em vinte minutos só com código. Nasce sempre; quem
+            // decide se ele trabalha é a chave "Deixar o Shadow tratar os e-mails", lida a cada
+            // batida. Ligá-lo condicionalmente aqui faria a chave só valer no próximo arranque.
+            _vigia = new Services.Mail.MailDigestService(
+                _settingsService,
+                new Services.Mail.MailKitMailService(settings.MailTimeoutSeconds),
+                _providerFactory);
+
+            // Os eventos chegam do relógio, fora da thread de interface.
+            _vigia.Trabalhando += () =>
+                Dispatcher.BeginInvoke(new Action(() => _orbe?.ComecarAProcessarEmail()));
+
+            _vigia.Pronto += digesto =>
+                Dispatcher.BeginInvoke(new Action(() =>
+                    _orbe?.TerminarDeProcessarEmail(digesto.Frase(), digesto.Itens)));
+
+            // A aba de e-mails do painel mostra o último digest. A conversa não conhece o
+            // vigia: ela só repassa a função.
+            _chatWindow.FonteDeEmails = () => _vigia?.Ultimo.Itens
+                                              ?? (System.Collections.Generic.IReadOnlyList<MailSummary>)
+                                                 Array.Empty<MailSummary>();
+
+            _vigia.Iniciar();
+            Exit += (_, _) => _vigia?.Dispose();
+
             // O orbe do Shadow Assistant. Opt-in: a setting ja nascia false, e ela continua
             // mandando — quem nao ligou nao ganha uma bola nova sobre o desktop depois de
             // atualizar. Ligar/desligar em tempo de execucao vem junto com o resto do estado
@@ -272,18 +329,17 @@ public partial class App : System.Windows.Application
             orbeItem.Click += (s, ev) => AlternarOrbe(orbeItem.IsChecked);
             _itemDoOrbe = orbeItem;
 
-            // ANDAIME — sai quando o vigia de e-mail existir de verdade. Ate la e o unico
-            // jeito de ver o pulso, o anel de varredura e a lista do balao na tela, e a §-1 da
-            // spec pede que cada passo seja verificavel isolado.
-            var exemploItem = new System.Windows.Controls.MenuItem { Header = "Ver exemplo de aviso" };
-            exemploItem.Click += (s, ev) => SimularDigest();
+            // Era um andaime que simulava um digest. Agora o vigia existe, e o gesto passa a
+            // rodar o digest DE VERDADE — quem não quer esperar as 12h55 tem por onde pedir.
+            var digestItem = new System.Windows.Controls.MenuItem { Header = "Ler os e-mails agora" };
+            digestItem.Click += (s, ev) => _ = RodarDigestAgoraAsync();
 
             var exitItem = new System.Windows.Controls.MenuItem { Header = "Sair" };
             exitItem.Click += (s, ev) => Current.Shutdown();
 
             contextMenu.Items.Add(openItem);
             contextMenu.Items.Add(orbeItem);
-            contextMenu.Items.Add(exemploItem);
+            contextMenu.Items.Add(digestItem);
             contextMenu.Items.Add(new System.Windows.Controls.Separator());
             contextMenu.Items.Add(exitItem);
 
