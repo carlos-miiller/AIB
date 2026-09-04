@@ -1,8 +1,8 @@
 # 7. Vigia de E-mail (triagem em dois modelos)
 
-> Discutido em 01/09/2026. **Parte da V1 aterrissou em 03–04/09/2026** — ver
-> [O que já existe em código](#o-que-já-existe-em-código). O resto deste arquivo continua sendo
-> o rastro da decisão, e o que ele descreve no futuro do presente ainda não foi escrito.
+> Discutido em 01/09/2026. **A V1 aterrissou em 03–04/09/2026** — ver
+> [O que já existe em código](#o-que-já-existe-em-código). O que sobra de futuro neste arquivo
+> é a V2 em diante: o 0.8b, a lista aberta que envelhece e o `regras.md` completo.
 > Encosta na ideia [01 (Aspirador Matinal)](01_Aspirador_Matinal_RAG.md), que também fala em
 > ler e-mail corporativo. A diferença: lá o e-mail é fonte de conhecimento para RAG; aqui ele
 > é fila de trabalho a ser triada.
@@ -247,6 +247,9 @@ nobreak@empresa.com.br    → rajada a partir de 2 em 15 min
 
 ## Regras Invioláveis
 
+0. **Onde cada regra é aplicada hoje:** 1 e 2 no `MailKitMailService`, 3 no
+   `MailDigestService`, 5 no `FiltroDeTriagem` e no `TriadorDeEmail`, 6 no `DigestoDeEmail`. A
+   4 não tem onde ser violada ainda — nada escreve rascunho.
 1. **`BODY.PEEK[]`, sempre.** `FETCH BODY[]` marca a mensagem como lida. Isso não seria um bug —
    seria a AIB destruindo o estado da caixa do usuário, que é o sinal que ele usa para se achar.
    **Na prática a garantia ficou um nível acima:** a INBOX é aberta com `FolderAccess.ReadOnly`,
@@ -343,8 +346,8 @@ da máquina, porque o Ollama é localhost.
 
 ## O que já existe em código
 
-Escrito em 03–04/09/2026. É o **encanamento** da V1, não a V1: lê a caixa e conta, mas ainda
-não triou nada. Nenhum modelo foi acordado, nenhum degrau do funil roda.
+Escrito em 03–04/09/2026. **A V1 do documento está de pé**, menos o degrau 2, que sempre foi da
+V2. O vigia roda com a janela fechada e é a única parte do programa que vê conteúdo de e-mail.
 
 | O que | Onde | Estado |
 |---|---|---|
@@ -352,17 +355,41 @@ não triou nada. Nenhum modelo foi acordado, nenhum degrau do funil roda.
 | Dedução do servidor a partir do domínio | `Services/Mail/ImapHostGuesser.cs` | pronto |
 | Senha de app cifrada em `~/.AIB/credentials/mail/` | `Services/Mail/MailVault.cs` | pronto, DPAPI `CurrentUser` |
 | Invariantes da lista (única principal, não remover a última) | `Services/Mail/MailAccountList.cs` | pronto |
-| Cliente IMAP: login verificado e varredura | `Services/Mail/MailKitMailService.cs` | pronto, somente leitura |
+| Cliente IMAP: login, varredura, leitura e enviados | `Services/Mail/MailKitMailService.cs` | pronto, somente leitura |
 | `estado.json` por caixa | `Services/Mail/EstadoDasCaixas.cs` | pronto |
-| Tela de configuração, página E-mail | `Views/SettingsWindow.xaml` | pronto |
-| Degraus 0/1/2/3 do funil | — | **não existe** |
-| Digest 3×/dia, rajada, aba "Atenção" | — | **não existe** |
-| `regras.md`, `vigias.json` | — | **não existe** |
+| Degrau 0 (Gmail) e degrau 1 (regras) | `Services/Mail/FiltroDeTriagem.cs` | pronto |
+| Degrau 3 (o 9B lê o lote) | `Services/Mail/TriadorDeEmail.cs` | pronto |
+| Rajada, por janela deslizante | `Services/Mail/DetectorDeRajada.cs` | pronto |
+| `regras.md` | `Services/Mail/RegrasDoVigia.cs` | pronto |
+| `vigias.json` e conversas vigiadas | `Services/Mail/VigiasDoEmail.cs` | pronto, escrito por CÓDIGO |
+| Laço: digest 3×/dia + sondagem de 20 min | `Services/Mail/MailDigestService.cs` | pronto |
+| Aba "Atenção" no painel do chat | `Views/SidePanelWindow.xaml` | pronto |
+| Chaves de ligar/desligar | `Views/SettingsWindow.xaml`, página Shadow | pronto |
+| **Degrau 2 (0.8b)** | — | V2, por decisão |
+| **Lista aberta que envelhece** | — | V2 |
+| **Correção com um clique ("isso importava")** | — | V3 |
 
-**A varredura de hoje só conta.** Ela roda `FETCH (UID FLAGS INTERNALDATE)` — nem corpo, nem
-assunto, nem remetente descem do servidor. Daí a linha da tela saber quantas mensagens e
-quantas por ler, e nada mais. A regra 3 ainda não teve chance de ser violada porque não há
-conteúdo em lugar nenhum para violar com.
+**A varredura da TELA continua só contando.** Ela roda `FETCH (UID FLAGS INTERNALDATE)` — nem
+corpo, nem assunto, nem remetente. Quem lê conteúdo é só o vigia, e só quando o usuário liga a
+chave *Deixar o Shadow tratar os e-mails*, que nasce desligada.
+
+**Onde a regra 3 é aplicada, agora que há conteúdo para violá-la:** o conteúdo entra pelo
+`LerAsync`, é oferecido ao triador numa chamada FORA DE BANDA — sem passar pela conversa — e
+morre no fim do método. O digest fica em memória e some com o programa. O único arquivo desta
+feature que persiste conteúdo é o `vigias.json`, e nele entram identificador de conversa, uma
+frase de motivo e duas datas.
+
+**Três decisões contra o falso negativo invisível**, que é o erro caro aqui porque não aparece
+em lugar nenhum:
+
+- mensagem sem veredito não some da tela — ganha um resumo de código;
+- urgência que o modelo inventou vira **média**, não baixa;
+- modelo fora do ar não apaga a caixa da tela.
+
+**O que o documento atribui ao 9B e ficou com o código:** o texto do *porquê* de cada vigia.
+Hoje é derivado — "você respondeu em dd/MM; aguarda retorno" —, o que é verdadeiro e barato. O
+formato do arquivo já é o desta spec, então trocar essa frase por uma escrita pelo modelo não
+muda nada em volta.
 
 **A dedução de servidor tem um furo conhecido.** Um Workspace em domínio próprio não responde
 em `imap.{dominio}` nem em `mail.{dominio}` — o host dele é `imap.gmail.com`, e quem sabe disso
@@ -388,14 +415,19 @@ de quase cinco.
      mesmo DPAPI. Mais trabalho, e o admin também pode barrar.
 2. **`ollama pull qwen3.5:0.8b`** (~600 MB) — só para a V2.
 3. **Confirmar `MAX_LOADED=2` no processo do Ollama**, não só na variável de usuário.
-4. **Interface** — a página de configuração está de pé; segue em aberto onde o digest aparece,
-   como é a aba "Atenção" e como a rajada interrompe sem virar a interrupção que o sistema
-   existe para evitar.
-5. **A regra 3 ainda não foi endereçada no compactador.** Enquanto a varredura só conta, não há
-   conteúdo para vazar. No dia em que o resumo de uma mensagem ocupar token de prompt, ele
-   precisa sair EXPLÍCITO da capitulação — senão e-mail corporativo reaparece num prompt semanas
-   depois, que é exatamente o que a regra 3 proíbe. É o furo a fechar ANTES da triagem, não
-   depois.
+4. **Interface** — a página de configuração, a fala do Shadow e a aba de e-mails do painel
+   estão de pé. Segue em aberto **como a rajada interrompe**: hoje ela sobe pelo mesmo caminho
+   do digest, e o toast em tempo real que a §Rajada pede ainda não existe. É o único ponto em
+   que o vigia pode virar a interrupção que o sistema existe para evitar, e por isso é o que
+   menos deve ser feito às pressas.
+5. **A regra 3 continua sem fechamento no compactador — e agora HÁ conteúdo.** Hoje ela não é
+   violada por um motivo específico: os resumos vão para a tela e para o balão do Shadow, e
+   nunca entram num prompt. A chamada de triagem é fora de banda e não passa pela conversa.
+   - **O dia em que isso muda** é o dia em que alguém fizer o Shadow *conversar* sobre os
+     e-mails, ou implementar o rodapé de "N tokens" da §6.2 da spec de chat, que significa
+     resumos ocupando espaço no prompt. Aí eles precisam sair EXPLÍCITOS da capitulação, senão
+     e-mail corporativo reaparece num prompt semanas depois.
+   - Continua sendo furo a fechar **antes** desse passo, não depois.
 
 ## Consideração Não-Técnica
 
