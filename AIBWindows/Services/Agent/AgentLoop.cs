@@ -19,11 +19,11 @@ namespace AIB.Services.Agent;
 public sealed class AgentLoop
 {
     /// <summary>
-    /// Teto de iterações ReAct. 18 permite tarefas multi-passo (antes eram 5, restritivo
-    /// demais: "ler 6 arquivos antes de decidir" já abortava). Com gemma4:e2b a coerência
-    /// se mantém por cerca de 20 iterações.
+    /// Teto de iterações ReAct — o PADRÃO, hoje ajustável em Avançado. 18 permite tarefas
+    /// multi-passo (antes eram 5, restritivo demais: "ler 6 arquivos antes de decidir" já
+    /// abortava). Com gemma4:e2b a coerência se mantém por cerca de 20 iterações.
     /// </summary>
-    public const int MaxIterations = 18;
+    public const int MaxIterations = UserAppSettings.PadraoDeIteracoes;
 
     /// <summary>
     /// De quantos em quantos chunks o contador de tokens da UI é reemitido durante o stream.
@@ -80,7 +80,12 @@ public sealed class AgentLoop
         var store = request.Store;
         int maxTokens = LevelService.GetMaxTokensForLevel(request.UserLevel);
 
-        for (int iteration = 1; iteration <= MaxIterations; iteration++)
+        // O teto é lido UMA vez, antes do laço. Reler a cada iteração deixaria o limite mudar
+        // no meio de um turno se o usuário salvasse as configurações — um turno com regra
+        // trocada na metade é pior de depurar que um turno com a regra velha.
+        int teto = _settingsService.LoadSettings().MaxTurnIterations;
+
+        for (int iteration = 1; iteration <= teto; iteration++)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -306,7 +311,7 @@ public sealed class AgentLoop
         // histórico não podado e com o contador de tokens da UI defasado.
         request.Store.Trim(request.UserLevel);
         request.Store.NotifyTokenCount(request.UserLevel);
-        yield return new AgentEvent.Completed(TurnOutcome.IterationLimitReached, MaxIterations);
+        yield return new AgentEvent.Completed(TurnOutcome.IterationLimitReached, teto);
     }
 
     private async Task<(ToolCallAccumulator Tc, string Result)> ExecuteToolPairedAsync(ToolCallAccumulator tc, int userLevel)

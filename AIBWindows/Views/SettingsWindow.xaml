@@ -501,6 +501,12 @@
                                                   Style="{StaticResource ControlComboBox}"
                                                   SelectionChanged="Campo_Mudou"/>
                                     </Grid>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Identidade" Click="Restaurar_Click"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>
@@ -610,6 +616,31 @@
                                                        IsHitTestVisible="False"/>
                                         </Grid>
                                     </Grid>
+
+                                    <!-- Modelo do Shadow -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Modelo do Shadow" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="O modelo que o Shadow usa para triar. Era escolhido só no primeiro arranque e nunca mais." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="ShadowModelTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. Um botão único
+                                         para a tela inteira faria quem quer voltar um número
+                                         atrás perder de quebra o provedor e o modelo. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Conexao" Click="Restaurar_Click"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>
@@ -838,11 +869,52 @@
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
+
+                                    <!-- Janela de leitura (dias) -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Janela de leitura (dias)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Quantos dias para trás a varredura olha. Triar backlog é trabalho jogado fora." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MailWindowTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Tempo limite por caixa (segundos) -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Tempo limite por caixa (segundos)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Quanto esperar antes de desistir de um servidor mudo." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MailTimeoutTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. Um botão único
+                                         para a tela inteira faria quem quer voltar um número de
+                                         e-mail atrás perder de quebra o provedor e o modelo. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Email" Click="Restaurar_Click"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>
 
-                        <!-- ─────────── PÁGINA 4 — Avançado ─────────── -->
                         <!-- ─────────── PÁGINA 4 — Shadow Assistant ─────────── -->
                         <Grid x:Name="PaginaShadow" Visibility="Collapsed">
                             <Grid.RowDefinitions>
@@ -855,7 +927,7 @@
                                     BorderThickness="1" CornerRadius="0" Padding="16,12">
                                 <StackPanel>
                                     <TextBlock Text="Shadow Assistant" Style="{StaticResource PageTitle}"/>
-                                    <TextBlock Text="O orbe que fica sobre a área de trabalho."
+                                    <TextBlock Text="O assistente que fica sobre a área de trabalho."
                                                Style="{StaticResource PageSubtitle}"/>
                                 </StackPanel>
                             </Border>
@@ -864,7 +936,7 @@
                                           HorizontalScrollBarVisibility="Disabled">
                                 <StackPanel Margin="40,0,24,20">
 
-                                    <!-- CAMPO — o orbe em si -->
+                                    <!-- CAMPO — o Shadow em si -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">
                                             <Grid.ColumnDefinitions>
@@ -872,7 +944,7 @@
                                                 <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                                <TextBlock Text="Mostrar o orbe no desktop"
+                                                <TextBlock Text="Mostrar o Shadow no desktop"
                                                            Style="{StaticResource FieldLabelText}"/>
                                                 <TextBlock Text="Fica sempre à vista, fora da janela de conversa. O mesmo interruptor da bandeja."
                                                            Style="{StaticResource FieldHelpText}"/>
@@ -885,8 +957,8 @@
                                     </Border>
 
                                     <!-- CAMPO — a triagem de e-mail.
-                                         Chave SEPARADA da do orbe: querer a bola no desktop não
-                                         é querer que ela abra a caixa de entrada. -->
+                                         Chave SEPARADA da do Shadow: querer a bola no desktop
+                                         não é querer que ela abra a caixa de entrada. -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">
                                             <Grid.ColumnDefinitions>
@@ -894,10 +966,10 @@
                                                 <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                                <TextBlock Text="Deixar o orbe tratar os e-mails"
+                                                <TextBlock Text="Deixar o Shadow tratar os e-mails"
                                                            Style="{StaticResource FieldLabelText}"/>
                                                 <!-- O texto sai do ESTADO, não é constante: sem
-                                                     orbe, sem caixa conectada e com tudo pronto
+                                                     Shadow, sem caixa conectada e com tudo pronto
                                                      são três situações diferentes, e uma frase
                                                      só mentiria em duas delas. -->
                                                 <TextBlock x:Name="ShadowMailAjuda"
@@ -909,10 +981,36 @@
                                                           Unchecked="Campo_Mudou"/>
                                         </Grid>
                                     </Border>
+
+                                    <!-- E-mails mostrados na fala -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="E-mails mostrados na fala" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Quantos cabem antes de o resto virar uma linha de texto. Uma caixa de entrada inteira sobre o desktop não é o produto." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="ShadowMailPreviewTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. Um botão único
+                                         para a tela inteira faria quem quer voltar um número de
+                                         e-mail atrás perder de quebra o provedor e o modelo. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Shadow" Click="Restaurar_Click"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>
 
+                        <!-- ─────────── PÁGINA 5 — Avançado ─────────── -->
                         <Grid x:Name="PaginaAvancado" Visibility="Collapsed">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -1011,6 +1109,101 @@
                                                       Style="{StaticResource Switch}"
                                                       Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
                                     </Grid>
+
+                                    <!-- Ferramentas inteligentes -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Ferramentas inteligentes" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Desligado, a IA responde sem poder ler, escrever nem executar nada — chat puro, e bem mais rápido." Style="{StaticResource FieldHelpText}"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="IntelligentToolsSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Confirmar comandos perigosos -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Confirmar comandos perigosos" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Segunda camada além do modal de confirmação, abaixo do Nível 9. Estava fixada em ligada, sem como ver nem mudar." Style="{StaticResource FieldHelpText}"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="ConfirmDangerousSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Máximo de etapas por turno -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Máximo de etapas por turno" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Teto do laço de ferramentas. Ao estourar, a resposta é cortada e o corte aparece na conversa." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MaxIterationsTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Compactar a partir de (% da conversa) -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Compactar a partir de (% da conversa)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Precisa disparar ANTES do estouro, senão a poda de emergência come o que o capítulo iria resumir." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="CompactionTriggerTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Fatia do contexto para memória (%) -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Fatia do contexto para memória (%)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Quanto do que sobra é reservado para fatos, atos e capítulos." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MemoryFractionTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. Um botão único
+                                         para a tela inteira faria quem quer voltar um número
+                                         atrás perder de quebra o provedor e o modelo. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Avancado" Click="Restaurar_Click"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>

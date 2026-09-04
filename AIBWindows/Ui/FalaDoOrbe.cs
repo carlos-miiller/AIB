@@ -42,13 +42,20 @@ public sealed class FalaDoUsuario : FalaDoOrbe
 public sealed class FalaDaIA : FalaDoOrbe
 {
     /// <summary>A11 — no máximo três itens e SEM rolagem; o resto vira uma linha de texto.</summary>
-    public const int TetoDeEmails = 3;
+    public const int TetoDeEmails = AIB.Services.UserAppSettings.PadraoDeEmailsNoShadow;
 
-    public FalaDaIA(string texto, IReadOnlyList<MailSummary>? emails = null) : base(texto)
+    /// <param name="teto">
+    /// Quantos e-mails cabem. Parâmetro com padrão, e não leitura de configuração aqui: este é
+    /// um modelo de exibição, e um modelo que lê disco não se constrói num ensaio sem DPAPI.
+    /// </param>
+    public FalaDaIA(string texto, IReadOnlyList<MailSummary>? emails = null, int teto = TetoDeEmails)
+        : base(texto)
     {
+        if (teto < 1) teto = 1;
+
         var mostrados = new List<MailSummary>();
         if (emails != null)
-            for (int i = 0; i < emails.Count && i < TetoDeEmails; i++)
+            for (int i = 0; i < emails.Count && i < teto; i++)
                 mostrados.Add(emails[i]);
 
         Emails = mostrados;

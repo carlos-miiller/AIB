@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace AIB.Services.Memory;
 
@@ -35,8 +35,12 @@ public static class MemoryBudget
     /// </summary>
     public const int MinimumAvailable = 2000;
 
-    /// <summary>Fatia do que sobra destinada à memória.</summary>
-    public const double MemoryFraction = 0.25;
+    /// <summary>
+    /// Fatia do que sobra destinada à memória — o PADRÃO. Virou configurável porque numa
+    /// máquina de 3 tok/s a diferença entre 0,25 e 0,15 é a diferença entre esperar minutos
+    /// por uma compactação e não esperar.
+    /// </summary>
+    public const double MemoryFraction = UserAppSettings.PadraoDaFatiaDeMemoria;
 
     private const double FactsShare = 0.20;
     private const double ActsShare = 0.30;
@@ -47,11 +51,17 @@ public static class MemoryBudget
     /// precisa disparar ANTES do estouro, senão a poda de emergência entra primeiro e come as
     /// mensagens que o capítulo iria resumir.
     /// </summary>
-    public const double CompactionTrigger = 0.85;
+    public const double CompactionTrigger = UserAppSettings.PadraoDoGatilhoDeCompactacao;
 
     /// <param name="levelBudget">Teto de tokens do nível do usuário.</param>
     /// <param name="fixedPrefixTokens">SOUL + prompt base: o que existe antes de qualquer conversa.</param>
-    public static MemoryQuota Compute(int levelBudget, int fixedPrefixTokens)
+    /// <param name="memoryFraction">
+    /// Quanto do que sobra vai para memória. Parâmetro com padrão, e não leitura de
+    /// configuração aqui dentro: esta classe é aritmética pura, e é o que permite os ensaios
+    /// dela não precisarem de disco nem de DPAPI.
+    /// </param>
+    public static MemoryQuota Compute(
+        int levelBudget, int fixedPrefixTokens, double memoryFraction = MemoryFraction)
     {
         int disponivel = levelBudget - Math.Max(0, fixedPrefixTokens);
 
@@ -62,7 +72,7 @@ public static class MemoryBudget
         if (disponivel < MinimumAvailable)
             return new MemoryQuota(0, 0, 0, disponivel);
 
-        int memoria = (int)(disponivel * MemoryFraction);
+        int memoria = (int)(disponivel * memoryFraction);
 
         int fatos = (int)(memoria * FactsShare);
         int atos = (int)(memoria * ActsShare);
@@ -75,6 +85,6 @@ public static class MemoryBudget
     }
 
     /// <summary>Tokens de conversa viva a partir dos quais compensa compactar.</summary>
-    public static int CompactionThreshold(MemoryQuota quota) =>
-        (int)(quota.Live * CompactionTrigger);
+    public static int CompactionThreshold(MemoryQuota quota, double gatilho = CompactionTrigger) =>
+        (int)(quota.Live * gatilho);
 }

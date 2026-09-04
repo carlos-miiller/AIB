@@ -28,7 +28,17 @@ namespace AIB.Services.Mail;
 public sealed class MailKitMailService : IMailService
 {
     /// <summary>§9 passo 4: quinze segundos por caixa. Servidor mudo não segura a tela.</summary>
-    private static readonly TimeSpan Paciencia = TimeSpan.FromSeconds(15);
+    private readonly TimeSpan _paciencia;
+
+    /// <param name="segundosDeEspera">
+    /// Quanto esperar por caixa. Configurável porque só importa em rede ruim — e é exatamente
+    /// em rede ruim que quinze segundos deixam de bastar.
+    /// </param>
+    public MailKitMailService(int segundosDeEspera = UserAppSettings.PadraoDoTempoLimiteImapEmSegundos)
+    {
+        if (segundosDeEspera < 1) segundosDeEspera = 1;
+        _paciencia = TimeSpan.FromSeconds(segundosDeEspera);
+    }
 
     /// <summary>
     /// O que desce do servidor: identificador, flags e data de chegada —
@@ -265,9 +275,9 @@ public sealed class MailKitMailService : IMailService
 
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static ImapClient NovoCliente() => new()
+    private ImapClient NovoCliente() => new()
     {
-        Timeout = (int)Paciencia.TotalMilliseconds
+        Timeout = (int)_paciencia.TotalMilliseconds
     };
 
     /// <summary>

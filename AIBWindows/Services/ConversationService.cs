@@ -589,7 +589,8 @@ public sealed class ConversationService : IMessageStore
             if (quota.IsOff) return;
 
             int vivo = LiveTokens();
-            int gatilho = MemoryBudget.CompactionThreshold(quota);
+            int gatilho = MemoryBudget.CompactionThreshold(
+                quota, _settingsService.LoadSettings().CompactionTrigger);
             if (vivo <= gatilho) return;
 
             var candidatos = SelectTurnsToCompact(quota, vivo);
@@ -830,7 +831,9 @@ public sealed class ConversationService : IMessageStore
                 : 0;
         }
 
-        return MemoryBudget.Compute(LevelService.GetMaxTokensForLevel(userLevel), prefixo);
+        return MemoryBudget.Compute(
+            LevelService.GetMaxTokensForLevel(userLevel), prefixo,
+            _settingsService.LoadSettings().MemoryFraction);
     }
 
     /// <summary>Tokens da conversa viva: tudo menos as mensagens de sistema do começo.</summary>
@@ -1058,10 +1061,13 @@ public sealed class ConversationService : IMessageStore
                     case AgentEvent.Completed completed
                         when completed.Outcome == TurnOutcome.IterationLimitReached:
                         // O teto do ReAct nunca vira sucesso silencioso: o usuário vê o corte.
+                        // O número vem do EVENTO, não de uma constante: o teto virou
+                        // configuração, e uma constante aqui anunciaria 18 para quem tivesse
+                        // configurado 30 — errando justamente na frase que explica o corte.
                         RaiseTechnical(onTechnicalContent,
-                            $"[LOOP] Teto de {AgentLoop.MaxIterations} iterações atingido — turno encerrado incompleto.");
+                            $"[LOOP] Teto de {completed.IterationsUsed} iterações atingido — turno encerrado incompleto.");
                         yield return new ChatStreamItem.Text(
-                            $"\n\n⚠️ Limite de {AgentLoop.MaxIterations} etapas atingido — a tarefa ficou incompleta. Peça para continuar.");
+                            $"\n\n⚠️ Limite de {completed.IterationsUsed} etapas atingido — a tarefa ficou incompleta. Peça para continuar.");
                         break;
                 }
             }

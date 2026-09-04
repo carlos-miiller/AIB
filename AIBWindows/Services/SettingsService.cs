@@ -46,7 +46,6 @@ public sealed class UserAppSettings
     public string TempDirectory { get; set; } = "";
 
     // Avançado
-    public int MaxContextTokens { get; set; } = 30000;
 
     /// <summary>
     /// Controla apenas o denylist pós-modal de <c>run_command</c>; NÃO controla o modal em si.
@@ -60,8 +59,59 @@ public sealed class UserAppSettings
     /// automaticamente via <see cref="System.Text.Json.JsonSerializer"/>.
     /// </summary>
     public bool ConfirmDangerousCommands { get; set; } = true;
-    public bool EphemeralSkillContext { get; set; } = true;
-    public string SearchEngine { get; set; } = "DuckDuckGo"; // Google, DuckDuckGo, Bing
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Valores que eram constantes no código
+    //
+    // Cada um traz o padrão como const NOMEADA, e não como literal solto no
+    // inicializador. O botão "Restaurar padrões" de cada página, os ensaios e o
+    // texto de ajuda leem a MESMA const — três lugares que, com o número
+    // digitado em cada um, sairiam de sincronia na primeira mudança.
+    // ─────────────────────────────────────────────────────────────────────
+
+    public const int PadraoDeIteracoes = 18;
+
+    /// <summary>
+    /// Teto de passos do laço ReAct num turno. Estourar não é sucesso silencioso: o usuário vê
+    /// o corte. 18 permite tarefas multi-passo — com 5 já abortava em "ler 6 arquivos antes de
+    /// decidir" — e por volta de 20 a coerência do modelo pequeno começa a cair.
+    /// </summary>
+    public int MaxTurnIterations { get; set; } = PadraoDeIteracoes;
+
+    public const double PadraoDoGatilhoDeCompactacao = 0.85;
+
+    /// <summary>
+    /// Fração da cota viva a partir da qual a conversa é compactada. Não é 1,0 de propósito: o
+    /// gatilho precisa disparar ANTES do estouro, senão a poda de emergência entra primeiro e
+    /// come as mensagens que o capítulo iria resumir.
+    /// </summary>
+    public double CompactionTrigger { get; set; } = PadraoDoGatilhoDeCompactacao;
+
+    public const double PadraoDaFatiaDeMemoria = 0.25;
+
+    /// <summary>Quanto do contexto disponível é reservado para memória.</summary>
+    public double MemoryFraction { get; set; } = PadraoDaFatiaDeMemoria;
+
+    public const int PadraoDeEmailsNoShadow = 3;
+
+    /// <summary>
+    /// Quantos e-mails cabem na fala do Shadow antes de o resto virar uma linha de texto. Uma
+    /// caixa de entrada inteira flutuando sobre o desktop não é o produto.
+    /// </summary>
+    public int ShadowMailPreviewCount { get; set; } = PadraoDeEmailsNoShadow;
+
+    public const int PadraoDaJanelaDeEmailEmDias = 3;
+
+    /// <summary>
+    /// Quantos dias para trás a varredura olha. Triar backlog é trabalho jogado fora: ninguém
+    /// lê 300 pendências de três meses.
+    /// </summary>
+    public int MailWindowDays { get; set; } = PadraoDaJanelaDeEmailEmDias;
+
+    public const int PadraoDoTempoLimiteImapEmSegundos = 15;
+
+    /// <summary>Quanto se espera por caixa antes de desistir. Servidor mudo não segura a tela.</summary>
+    public int MailTimeoutSeconds { get; set; } = PadraoDoTempoLimiteImapEmSegundos;
 
     // Gamificação / Sistema de Níveis
     public int MessageCount { get; set; } = 0;
@@ -85,6 +135,37 @@ public sealed class UserAppSettings
     /// mexesse na lista recebida estaria mexendo na lista do cache — e na das outras janelas.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Põe os números dentro de faixas em que o programa ainda funciona.
+    /// <para>
+    /// O arquivo é editável à mão e agora carrega valores que, errados, quebram coisas de
+    /// verdade: fração de memória em 0,99 não deixa espaço para conversar, gatilho de
+    /// compactação em 0 compacta a cada turno, zero iterações não roda turno nenhum. Corrigir
+    /// aqui, na entrada, é mais barato que espalhar defesa por cada consumidor — e nenhum deles
+    /// tem contexto para saber o que fazer com um valor absurdo.
+    /// </para>
+    /// <para>
+    /// SANEIA, não recusa: um número fora da faixa vira o mais próximo válido, e o usuário
+    /// perde o exagero, não as configurações inteiras.
+    /// </para>
+    /// </summary>
+    public UserAppSettings Sanear()
+    {
+        MaxTurnIterations = Entre(MaxTurnIterations, 1, 60);
+        CompactionTrigger = Entre(CompactionTrigger, 0.50, 0.99);
+        MemoryFraction = Entre(MemoryFraction, 0.05, 0.60);
+        ShadowMailPreviewCount = Entre(ShadowMailPreviewCount, 1, 10);
+        MailWindowDays = Entre(MailWindowDays, 1, 30);
+        MailTimeoutSeconds = Entre(MailTimeoutSeconds, 5, 120);
+        return this;
+    }
+
+    private static int Entre(int valor, int minimo, int maximo) =>
+        valor < minimo ? minimo : valor > maximo ? maximo : valor;
+
+    private static double Entre(double valor, double minimo, double maximo) =>
+        double.IsNaN(valor) || valor < minimo ? minimo : valor > maximo ? maximo : valor;
+
     public UserAppSettings Clone()
     {
         var copia = (UserAppSettings)MemberwiseClone();
@@ -184,7 +265,7 @@ public sealed class SettingsService
             byte[] encryptedBytes = File.ReadAllBytes(path);
             byte[] decryptedBytes = ProtectedData.Unprotect(encryptedBytes, null, DataProtectionScope.CurrentUser);
             string json = Encoding.UTF8.GetString(decryptedBytes);
-            return JsonSerializer.Deserialize<UserAppSettings>(json) ?? new UserAppSettings();
+            return (JsonSerializer.Deserialize<UserAppSettings>(json) ?? new UserAppSettings()).Sanear();
         }
         catch
         {
@@ -192,7 +273,8 @@ public sealed class SettingsService
             try
             {
                 string json = File.ReadAllText(path);
-                var settings = JsonSerializer.Deserialize<UserAppSettings>(json) ?? new UserAppSettings();
+                var settings = (JsonSerializer.Deserialize<UserAppSettings>(json)
+                                ?? new UserAppSettings()).Sanear();
                 SaveSettings(settings); // Re-salva criptografado
                 return settings;
             }

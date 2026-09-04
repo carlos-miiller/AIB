@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -15,7 +15,7 @@ namespace AIB.Tests
     /// <summary>
     /// A página Shadow da tela de configurações.
     /// <para>
-    /// Até aqui o orbe só ligava pela bandeja, e a triagem de e-mail não tinha interruptor
+    /// Até aqui o Shadow só ligava pela bandeja, e a triagem de e-mail não tinha interruptor
     /// nenhum. As duas coisas passam a ser configuração; o que esta suíte trava é que elas
     /// sejam configuração DE VERDADE — a chave grava, muda a tela na hora, e a linha de ajuda
     /// não promete o que não existe.
@@ -140,7 +140,7 @@ namespace AIB.Tests
         [Fact]
         public void ATriagemNASCE_DESLIGADA()
         {
-            // Opt-in, pelo mesmo motivo do orbe: ninguém ganha um programa lendo o próprio
+            // Opt-in, pelo mesmo motivo do Shadow: ninguém ganha um programa lendo o próprio
             // e-mail por ter atualizado a versão.
             new UserAppSettings().ShadowHandlesMail.Should().BeFalse();
             new UserAppSettings().ShadowAssistantEnabled.Should().BeFalse();
@@ -161,7 +161,7 @@ namespace AIB.Tests
                     new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
 
                 var gravado = new SettingsService(caminho).LoadSettings();
-                gravado.ShadowAssistantEnabled.Should().BeTrue("o orbe continua ligado");
+                gravado.ShadowAssistantEnabled.Should().BeTrue("o Shadow continua ligado");
                 gravado.ShadowHandlesMail.Should().BeFalse("e ainda assim não lê e-mail");
             });
         }
@@ -171,7 +171,7 @@ namespace AIB.Tests
         // ─────────────────────────────────────────────────────────────────
 
         [Fact]
-        public void ORBE_DESLIGADO_DesabilitaATriagem_EDizPorQue()
+        public void SHADOW_DESLIGADO_DesabilitaATriagem_EDizPorQue()
         {
             // Uma chave ligável que não tem onde agir é a mesma armadilha do ponto âmbar sem
             // saída: parece que funciona, não funciona, e nada na tela explica.
@@ -181,7 +181,7 @@ namespace AIB.Tests
                 var (janela, _, _) = Nova(s => s.ShadowAssistantEnabled = false);
 
                 Achar<ToggleButton>(janela, "ShadowMailSwitch").IsEnabled.Should().BeFalse();
-                Achar<TextBlock>(janela, "ShadowMailAjuda").Text.Should().Contain("Ligue o orbe");
+                Achar<TextBlock>(janela, "ShadowMailAjuda").Text.Should().Contain("Ligue o Shadow");
 
                 janela.Close();
             });
@@ -205,7 +205,7 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void COM_Caixa_E_Orbe_AAjudaDIZ_OQueATriagemFazHoje()
+        public void COM_Caixa_E_Shadow_AAjudaDIZ_OQueATriagemFazHoje()
         {
             // A triagem que resume e prioriza não existe: a varredura de hoje só conta
             // mensagens. Prometer resumo aqui venderia o que ainda não há.
@@ -238,10 +238,10 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void DesligarOOrbe_ATUALIZA_AAjudaNaHora()
+        public void DesligarOShadow_ATUALIZA_AAjudaNaHora()
         {
             // Sem isso a linha continuaria prometendo triagem depois de o usuário desligar o
-            // orbe, e só se corrigiria ao reabrir a tela.
+            // Shadow, e só se corrigiria ao reabrir a tela.
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
@@ -249,7 +249,7 @@ namespace AIB.Tests
 
                 Achar<ToggleButton>(janela, "ShadowAssistantSwitch").IsChecked = false;
 
-                Achar<TextBlock>(janela, "ShadowMailAjuda").Text.Should().Contain("Ligue o orbe");
+                Achar<TextBlock>(janela, "ShadowMailAjuda").Text.Should().Contain("Ligue o Shadow");
                 Achar<ToggleButton>(janela, "ShadowMailSwitch").IsEnabled.Should().BeFalse();
 
                 janela.Close();

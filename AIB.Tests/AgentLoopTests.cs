@@ -222,6 +222,28 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task OTetoCONFIGURADO_MandaMaisQueOPadrao()
+        {
+            // O teto virou configuração. Se o laço continuasse lendo a constante, a chave
+            // gravaria e não mudaria nada — e o aviso de corte anunciaria 18 para quem tivesse
+            // pedido 4, errando justamente na frase que explica por que a resposta parou.
+            var atual = _settings.LoadSettings();
+            atual.MaxTurnIterations = 4;
+            _settings.SaveSettings(atual);
+            _settings.InvalidateCache();
+
+            var provider = new ScriptedProvider(ToolTurn(("k0", "id0", "ferramenta_inexistente", "{}")));
+            var store = new RecordingStore();
+
+            var events = await DrainAsync(BuildLoop(provider).RunAsync(Request(store), CancellationToken.None));
+
+            var completed = events.OfType<AgentEvent.Completed>().Single();
+            completed.Outcome.Should().Be(TurnOutcome.IterationLimitReached);
+            completed.IterationsUsed.Should().Be(4);
+            provider.Calls.Should().Be(4, "quatro passos pedidos, quatro passos rodados");
+        }
+
+        [Fact]
         public async Task TurnoComFerramenta_TambemPodaOHistorico()
         {
             var provider = new ScriptedProvider(

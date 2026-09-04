@@ -86,6 +86,13 @@ public partial class ShadowAssistantWindow : Window
     private string _nomeDoAgente = "AIB";
 
     /// <summary>
+    /// Quantos e-mails cabem na fala antes de o resto virar uma linha de texto. Vem de fora
+    /// pelo mesmo motivo do nome: a janela desenha, e quem sabe o que está configurado é quem
+    /// a criou.
+    /// </summary>
+    public int TetoDeEmails { get; set; } = Ui.FalaDaIA.TetoDeEmails;
+
+    /// <summary>
     /// Texto enviado pela barra. §5.3: a conversa continua na janela de chat, não aqui — a
     /// barra é porta de entrada, não um segundo chat.
     /// </summary>
@@ -616,7 +623,7 @@ public partial class ShadowAssistantWindow : Window
         _falasPendentes.Clear();
 
         // §5.7 — mesmo estado Speaking; o que muda é o balão levar a lista abaixo do texto.
-        AdicionarFala(new FalaDaIA(texto, _emailsPendentes));
+        AdicionarFala(new FalaDaIA(texto, _emailsPendentes, TetoDeEmails));
         _emailsPendentes = null;
     }
 

@@ -88,9 +88,12 @@ public partial class App : System.Windows.Application
     /// </summary>
     private ShadowAssistantWindow CriarOrbe()
     {
+        var configuracoes = _settingsService.LoadSettings();
+
         var orbe = new ShadowAssistantWindow
         {
-            NomeDoAgente = _settingsService.LoadSettings().ActiveCharacter
+            NomeDoAgente = configuracoes.ActiveCharacter,
+            TetoDeEmails = configuracoes.ShadowMailPreviewCount
         };
 
         // O orbe manda a mensagem e a janela de chat roda o turno inteiro ESCONDIDA: laco de
@@ -251,7 +254,7 @@ public partial class App : System.Windows.Application
 
             var orbeItem = new System.Windows.Controls.MenuItem
             {
-                Header = "✦ Orbe no desktop",
+                Header = "✦ Shadow no desktop",
                 IsCheckable = true,
                 IsChecked = _orbe != null
             };

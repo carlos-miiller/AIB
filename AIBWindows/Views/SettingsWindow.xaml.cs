@@ -72,8 +72,13 @@ public partial class SettingsWindow : Window
     /// <summary>
     /// Janela de arranque, em dias — §Decisões do vigia: triar backlog é trabalho jogado fora,
     /// ninguém lê 300 pendências de três meses. Backlog vira comando manual explícito.
+    /// <para>
+    /// Sai da configuração e é lida A CADA varredura, não guardada no construtor: quem muda o
+    /// número é a própria tela, e um valor capturado na abertura faria a varredura seguinte
+    /// olhar uma janela que já não é a que a linha da conta anuncia.
+    /// </para>
     /// </summary>
-    private const int JanelaDeArranqueEmDias = 3;
+    private int JanelaDeArranqueEmDias => _currentSettings.MailWindowDays;
 
     /// <summary>§9 passo 4: no máximo três caixas lidas ao mesmo tempo.</summary>
     private const int CaixasEmParalelo = 3;
@@ -106,7 +111,8 @@ public partial class SettingsWindow : Window
 
         // Injetáveis para os ensaios. O cofre real fica em ~/.AIB/credentials/mail, e um
         // ensaio que escrevesse lá mexeria nas senhas de verdade do usuário.
-        _servicoDeEmail = servicoDeEmail ?? new MailKitMailService();
+        _servicoDeEmail = servicoDeEmail
+            ?? new MailKitMailService(_currentSettings.MailTimeoutSeconds);
         _cofre = cofre ?? new MailVault();
         _estado = estado ?? new EstadoDasCaixas();
 
@@ -148,6 +154,17 @@ public partial class SettingsWindow : Window
             ShadowAssistantSwitch.IsChecked = _currentSettings.ShadowAssistantEnabled;
             ShadowMailSwitch.IsChecked = _currentSettings.ShadowHandlesMail;
             AtualizarAjudaDoShadow();
+
+            IntelligentToolsSwitch.IsChecked = _currentSettings.EnableIntelligentTools;
+            ConfirmDangerousSwitch.IsChecked = _currentSettings.ConfirmDangerousCommands;
+
+            ShadowModelTextBox.Text = _currentSettings.ShadowModelName;
+            ShadowMailPreviewTextBox.Text = _currentSettings.ShadowMailPreviewCount.ToString();
+            MailWindowTextBox.Text = _currentSettings.MailWindowDays.ToString();
+            MailTimeoutTextBox.Text = _currentSettings.MailTimeoutSeconds.ToString();
+            MaxIterationsTextBox.Text = _currentSettings.MaxTurnIterations.ToString();
+            CompactionTriggerTextBox.Text = ParaPorcento(_currentSettings.CompactionTrigger);
+            MemoryFractionTextBox.Text = ParaPorcento(_currentSettings.MemoryFraction);
 
             SelecionarKeepAlive(_currentSettings.KeepAlive);
             RefreshKeyTextBoxLabel();
@@ -720,7 +737,7 @@ public partial class SettingsWindow : Window
     /// última vez — e "0 em 3d" numa caixa cheia seria simplesmente falso.
     /// </para>
     /// </summary>
-    private static string ResumoDaVarredura(MailScanResult r)
+    private string ResumoDaVarredura(MailScanResult r)
     {
         if (!r.Incremental)
             return $"{r.Mensagens} em {JanelaDeArranqueEmDias}d, {r.NaoLidas} por ler";
@@ -755,7 +772,96 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void Campo_Mudou(object sender, RoutedEventArgs e) => MarcarSujo();
 
-    /// <summary>Ligar ou desligar o orbe muda o que a linha da triagem pode prometer.</summary>
+    // ─────────────────────────────────────────────────────────────────────
+    // Restaurar padrões
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Devolve aos padrões os campos da página que pediu.
+    /// <para>
+    /// POR PÁGINA, e não um botão só para a tela: quem quer voltar um número de e-mail atrás
+    /// não quer perder de quebra o provedor, o modelo e o personagem. E o padrão vem de um
+    /// <c>UserAppSettings</c> recém-criado, que é a definição de padrão que já existe — uma
+    /// segunda lista de valores aqui sairia de sincronia na primeira mudança.
+    /// </para>
+    /// <para>
+    /// Restaura os controles, NÃO grava: sair sem salvar continua desfazendo, como em qualquer
+    /// outra edição da tela.
+    /// </para>
+    /// </summary>
+    private void Restaurar_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string alvo) return;
+        if (!Enum.TryParse<PaginaDeConfiguracoes>(alvo, out var pagina)) return;
+
+        var padrao = new UserAppSettings();
+
+        switch (pagina)
+        {
+            case PaginaDeConfiguracoes.Identidade:
+                if (CharacterComboBox.ItemsSource is System.Collections.IEnumerable itens)
+                    foreach (var item in itens)
+                        if (string.Equals(item?.ToString(), padrao.ActiveCharacter, StringComparison.Ordinal))
+                            CharacterComboBox.SelectedItem = item;
+                break;
+
+            case PaginaDeConfiguracoes.Conexao:
+                // O PROVEDOR e a CHAVE ficam de fora. O padrão do provedor é vazio, que não é
+                // uma preferência: é o sinal de "ainda não passou pelo primeiro arranque", e
+                // restaurá-lo deixaria o programa sem saber com quem falar. A chave é do
+                // FirstRunWindow e nem editável aqui é.
+                UrlTextBox.Text = padrao.ApiUrl;
+                ModelComboBox.Text = padrao.ModelName;
+                ShadowModelTextBox.Text = padrao.ShadowModelName;
+                break;
+
+            case PaginaDeConfiguracoes.Email:
+                // As CONTAS ficam de fora. "Restaurar padrões" não é "apagar minhas caixas e
+                // as senhas do cofre" — remover conta tem botão próprio, com confirmação.
+                MailWindowTextBox.Text = padrao.MailWindowDays.ToString();
+                MailTimeoutTextBox.Text = padrao.MailTimeoutSeconds.ToString();
+                break;
+
+            case PaginaDeConfiguracoes.Shadow:
+                ShadowAssistantSwitch.IsChecked = padrao.ShadowAssistantEnabled;
+                ShadowMailSwitch.IsChecked = padrao.ShadowHandlesMail;
+                ShadowMailPreviewTextBox.Text = padrao.ShadowMailPreviewCount.ToString();
+                AtualizarAjudaDoShadow();
+                break;
+
+            case PaginaDeConfiguracoes.Avancado:
+                SelecionarKeepAlive(padrao.KeepAlive);
+                SendSystemPromptSwitch.IsChecked = padrao.SendSystemPrompt;
+                VerboseLoggingSwitch.IsChecked = padrao.VerboseConsoleLogging;
+                IntelligentToolsSwitch.IsChecked = padrao.EnableIntelligentTools;
+                ConfirmDangerousSwitch.IsChecked = padrao.ConfirmDangerousCommands;
+                MaxIterationsTextBox.Text = padrao.MaxTurnIterations.ToString();
+                CompactionTriggerTextBox.Text = ParaPorcento(padrao.CompactionTrigger);
+                MemoryFractionTextBox.Text = ParaPorcento(padrao.MemoryFraction);
+                break;
+        }
+
+        MarcarSujo();
+    }
+
+    /// <summary>
+    /// Fração para o número que o usuário lê. 0,85 na configuração é "85" na tela: ninguém
+    /// pensa em fração de conversa, pensa em porcentagem.
+    /// </summary>
+    public static string ParaPorcento(double fracao) =>
+        Math.Round(fracao * 100).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Lê um número da caixa; texto ilegível mantém o valor que já estava. Zerar em silêncio
+    /// seria trocar a configuração do usuário porque ele apagou o campo para redigitar.
+    /// </summary>
+    private static int Numero(System.Windows.Controls.TextBox caixa, int seDerErrado) =>
+        int.TryParse((caixa.Text ?? "").Trim(), out int n) ? n : seDerErrado;
+
+    private static double DePorcento(System.Windows.Controls.TextBox caixa, double seDerErrado) =>
+        int.TryParse((caixa.Text ?? "").Trim(), out int n) ? n / 100.0 : seDerErrado;
+
+    /// <summary>Ligar ou desligar o Shadow muda o que a linha da triagem pode prometer.</summary>
     private void ShadowSwitch_Mudou(object sender, RoutedEventArgs e)
     {
         MarcarSujo();
@@ -765,8 +871,8 @@ public partial class SettingsWindow : Window
     /// <summary>
     /// A linha de ajuda da triagem de e-mail, derivada do estado real.
     /// <para>
-    /// Uma frase fixa aqui mentiria em dois dos três casos: com o orbe desligado ela promete um
-    /// trabalho que ninguém vai fazer; sem caixa conectada, promete leitura de uma caixa que
+    /// Uma frase fixa aqui mentiria em dois dos três casos: com o Shadow desligado ela promete
+    /// um trabalho que ninguém vai fazer; sem caixa conectada, promete leitura de uma caixa que
     /// não existe. É o mesmo defeito da linha de estado da conta, que já anunciou uma leitura
     /// que nunca poderia acontecer — a frase tem de ser função do estado, não constante.
     /// </para>
@@ -775,15 +881,16 @@ public partial class SettingsWindow : Window
     {
         if (ShadowMailAjuda == null) return;
 
-        bool orbeLigado = ShadowAssistantSwitch.IsChecked == true;
+        bool shadowLigado = ShadowAssistantSwitch.IsChecked == true;
         bool temCaixa = MailAccountList.AlgumaCaixaPronta(
             _currentSettings.MailAccounts, _cofre);
 
-        // Sem orbe não há onde o aviso aparecer: a chave fica de pé, mas inerte e dizendo por quê.
-        ShadowMailSwitch.IsEnabled = orbeLigado;
+        // Sem Shadow não há onde o aviso aparecer: a chave fica de pé, mas inerte e dizendo
+        // por quê.
+        ShadowMailSwitch.IsEnabled = shadowLigado;
 
         ShadowMailAjuda.Text =
-            !orbeLigado ? "Ligue o orbe acima para usar."
+            !shadowLigado ? "Ligue o Shadow acima para usar."
             : !temCaixa ? "Nenhuma caixa conectada — conecte uma na página E-mail."
             : TextoDaTriagem;
     }
@@ -794,7 +901,7 @@ public partial class SettingsWindow : Window
     /// ainda não há.
     /// </summary>
     public const string TextoDaTriagem =
-        "Por ora o orbe só conta as mensagens; a triagem que resume e prioriza ainda não existe.";
+        "Por ora o Shadow só conta as mensagens; a triagem que resume e prioriza ainda não existe.";
 
     private void MarcarSujo()
     {
@@ -955,14 +1062,30 @@ public partial class SettingsWindow : Window
         _currentSettings.ShadowAssistantEnabled = ShadowAssistantSwitch.IsChecked ?? false;
         _currentSettings.ShadowHandlesMail = ShadowMailSwitch.IsChecked ?? false;
 
+        _currentSettings.EnableIntelligentTools = IntelligentToolsSwitch.IsChecked ?? true;
+        _currentSettings.ConfirmDangerousCommands = ConfirmDangerousSwitch.IsChecked ?? true;
+
+        _currentSettings.ShadowModelName = ShadowModelTextBox.Text.Trim();
+        _currentSettings.ShadowMailPreviewCount =
+            Numero(ShadowMailPreviewTextBox, _currentSettings.ShadowMailPreviewCount);
+        _currentSettings.MailWindowDays = Numero(MailWindowTextBox, _currentSettings.MailWindowDays);
+        _currentSettings.MailTimeoutSeconds = Numero(MailTimeoutTextBox, _currentSettings.MailTimeoutSeconds);
+        _currentSettings.MaxTurnIterations = Numero(MaxIterationsTextBox, _currentSettings.MaxTurnIterations);
+        _currentSettings.CompactionTrigger = DePorcento(CompactionTriggerTextBox, _currentSettings.CompactionTrigger);
+        _currentSettings.MemoryFraction = DePorcento(MemoryFractionTextBox, _currentSettings.MemoryFraction);
+
+        // Saneia ANTES de gravar. O usuário pode digitar 900% e o que for absurdo vira o mais
+        // próximo válido — ele perde o exagero, não as configurações inteiras.
+        _currentSettings.Sanear();
+
         _settingsService.SaveSettings(_currentSettings);
         MarcarLimpo();
 
         var chat = System.Windows.Application.Current.Windows.OfType<ChatWindow>().FirstOrDefault();
         chat?.ApplyCharacterUI();
 
-        // Uma chave que grava e não faz nada até o próximo arranque se lê como quebrada. O orbe
-        // aparece ou some agora, e o visto da bandeja acompanha.
+        // Uma chave que grava e não faz nada até o próximo arranque se lê como quebrada. O
+        // Shadow aparece ou some agora, e o visto da bandeja acompanha.
         App.AplicarEstadoDoOrbe();
 
         Close();
