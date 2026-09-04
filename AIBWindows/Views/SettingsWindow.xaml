@@ -628,9 +628,22 @@
                                                 <TextBlock Text="Modelo do Shadow" Style="{StaticResource FieldLabelText}"/>
                                                 <TextBlock Text="O modelo que o Shadow usa para triar. Era escolhido só no primeiro arranque e nunca mais." Style="{StaticResource FieldHelpText}"/>
                                             </StackPanel>
-                                            <TextBox x:Name="ShadowModelTextBox" Grid.Column="1"
-                                                     Style="{StaticResource ControlTextBoxMono}"
-                                                     TextChanged="Campo_Mudou"/>
+                                            <Grid Grid.Column="1">
+                                                <ComboBox x:Name="ShadowModelComboBox" IsEditable="True"
+                                                          Style="{StaticResource ControlComboBoxMono}"
+                                                          SelectionChanged="Campo_Mudou"/>
+                                                <!-- O mesmo aviso de carga do campo acima: os
+                                                     dois enchem da MESMA consulta, e um deles
+                                                     ficando mudo enquanto o outro avisa daria a
+                                                     impressão de que só um está carregando. -->
+                                                <TextBlock x:Name="ShadowLoadingProgress" Text="carregando…"
+                                                           FontSize="{StaticResource FontSizeHelp}"
+                                                           FontFamily="{StaticResource MonoFontFamily}"
+                                                           Foreground="{StaticResource TextMutedBrush}"
+                                                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                           Margin="0,0,34,0" Visibility="Collapsed"
+                                                           IsHitTestVisible="False"/>
+                                            </Grid>
                                         </Grid>
                                     </Border>
 

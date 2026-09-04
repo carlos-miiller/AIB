@@ -158,7 +158,7 @@ public partial class SettingsWindow : Window
             IntelligentToolsSwitch.IsChecked = _currentSettings.EnableIntelligentTools;
             ConfirmDangerousSwitch.IsChecked = _currentSettings.ConfirmDangerousCommands;
 
-            ShadowModelTextBox.Text = _currentSettings.ShadowModelName;
+            ShadowModelComboBox.Text = _currentSettings.ShadowModelName;
             ShadowMailPreviewTextBox.Text = _currentSettings.ShadowMailPreviewCount.ToString();
             MailWindowTextBox.Text = _currentSettings.MailWindowDays.ToString();
             MailTimeoutTextBox.Text = _currentSettings.MailTimeoutSeconds.ToString();
@@ -812,7 +812,7 @@ public partial class SettingsWindow : Window
                 // FirstRunWindow e nem editável aqui é.
                 UrlTextBox.Text = padrao.ApiUrl;
                 ModelComboBox.Text = padrao.ModelName;
-                ShadowModelTextBox.Text = padrao.ShadowModelName;
+                ShadowModelComboBox.Text = padrao.ShadowModelName;
                 break;
 
             case PaginaDeConfiguracoes.Email:
@@ -992,22 +992,39 @@ public partial class SettingsWindow : Window
 
     private void UrlTextBox_LostFocus(object sender, RoutedEventArgs e) => _ = RefreshModelsAsync();
 
+    /// <summary>
+    /// Enche as DUAS listas de modelo — a principal e a do Shadow — com uma consulta só.
+    /// <para>
+    /// Cada uma recebe a sua PRÓPRIA cópia da lista. Duas ComboBox apontando para a mesma
+    /// instância de coleção compartilham a CollectionView padrão do WPF, e com ela a
+    /// "currency": mexer numa move a seleção da outra. Copiar é barato e mata a classe inteira
+    /// de bug.
+    /// </para>
+    /// </summary>
     private async System.Threading.Tasks.Task RefreshModelsAsync()
     {
         LoadingProgress.Visibility = Visibility.Visible;
+        ShadowLoadingProgress.Visibility = Visibility.Visible;
         try
         {
             var modelos = await _settingsService.GetOllamaModelsAsync(UrlTextBox.Text);
             if (modelos.Any())
             {
                 string atual = ModelComboBox.Text;
+                string atualDoShadow = ShadowModelComboBox.Text;
 
                 bool antes = _carregando;
                 _carregando = true;
                 try
                 {
-                    ModelComboBox.ItemsSource = modelos;
+                    ModelComboBox.ItemsSource = modelos.ToList();
                     ModelComboBox.Text = atual;
+
+                    // O que o usuário digitou à mão sobrevive à chegada da lista, aqui como
+                    // no campo de cima: um modelo que o Ollama ainda não baixou continua
+                    // sendo uma escolha legítima.
+                    ShadowModelComboBox.ItemsSource = modelos.ToList();
+                    ShadowModelComboBox.Text = atualDoShadow;
                 }
                 finally
                 {
@@ -1022,6 +1039,7 @@ public partial class SettingsWindow : Window
         finally
         {
             LoadingProgress.Visibility = Visibility.Collapsed;
+            ShadowLoadingProgress.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -1065,7 +1083,7 @@ public partial class SettingsWindow : Window
         _currentSettings.EnableIntelligentTools = IntelligentToolsSwitch.IsChecked ?? true;
         _currentSettings.ConfirmDangerousCommands = ConfirmDangerousSwitch.IsChecked ?? true;
 
-        _currentSettings.ShadowModelName = ShadowModelTextBox.Text.Trim();
+        _currentSettings.ShadowModelName = ShadowModelComboBox.Text.Trim();
         _currentSettings.ShadowMailPreviewCount =
             Numero(ShadowMailPreviewTextBox, _currentSettings.ShadowMailPreviewCount);
         _currentSettings.MailWindowDays = Numero(MailWindowTextBox, _currentSettings.MailWindowDays);

@@ -225,6 +225,49 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void OModeloDoShadow_EUmaLISTA_ComoADoModeloPrincipal()
+        {
+            // Era caixa de texto: sabia-se o nome de cor ou nao se escolhia. Vira lista
+            // editavel, igual a do modelo principal — a mesma consulta enche as duas.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova(PastaTemporaria(), PaginaDeConfiguracoes.Conexao,
+                                  s => s.ShadowModelName = "qwen2.5:7b");
+
+                var lista = Achar<ComboBox>(janela, "ShadowModelComboBox");
+
+                lista.IsEditable.Should().BeTrue(
+                    "um modelo ainda nao baixado continua sendo escolha legitima");
+                lista.Text.Should().Be("qwen2.5:7b");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void AsDuasListasDeModelo_NaoCOMPARTILHAM_AColecao()
+        {
+            // Duas ComboBox apontando para a MESMA instancia de colecao dividem a
+            // CollectionView padrao do WPF, e com ela a "currency": mexer numa move a selecao
+            // da outra. Cada uma recebe a propria copia.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova(PastaTemporaria(), PaginaDeConfiguracoes.Conexao);
+
+                var principal = Achar<ComboBox>(janela, "ModelComboBox");
+                var shadow = Achar<ComboBox>(janela, "ShadowModelComboBox");
+
+                if (principal.ItemsSource != null || shadow.ItemsSource != null)
+                    ReferenceEquals(principal.ItemsSource, shadow.ItemsSource)
+                        .Should().BeFalse("colecao compartilhada sincroniza a selecao das duas");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void RestaurarNoShadow_NaoTOCA_NasOutrasPaginas()
         {
             // O botão é POR PÁGINA justamente por isto: quem quer voltar um número de e-mail
