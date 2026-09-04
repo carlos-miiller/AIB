@@ -124,6 +124,24 @@ public sealed class UserAppSettings
     /// <summary>Quanto se espera por caixa antes de desistir. Servidor mudo não segura a tela.</summary>
     public int MailTimeoutSeconds { get; set; } = PadraoDoTempoLimiteImapEmSegundos;
 
+    public const int PadraoDeDiasDeDiario = 7;
+
+    /// <summary>
+    /// Por quantos dias o que a triagem decidiu fica gravado, para a conversa poder consultar.
+    /// <para>
+    /// É o mostrador da regra 3. Em ZERO, nada do e-mail toca o disco e a ferramenta
+    /// <c>consultar_emails</c> não tem o que responder — a conversa volta a não saber nada
+    /// sobre a caixa, que era o comportamento original. Acima de zero, ficam gravados
+    /// remetente, assunto e o resumo de uma frase, que são os mesmos campos que já apareciam na
+    /// tela do Shadow e no painel.
+    /// </para>
+    /// <para>
+    /// O CORPO da mensagem nunca é gravado, em nenhum valor deste campo. Isso não é
+    /// configurável, e é o que sobrou da regra 3 como regra.
+    /// </para>
+    /// </summary>
+    public int MailJournalDays { get; set; } = PadraoDeDiasDeDiario;
+
     // Gamificação / Sistema de Níveis
     public int MessageCount { get; set; } = 0;
 
@@ -168,6 +186,7 @@ public sealed class UserAppSettings
         ShadowMailPreviewCount = Entre(ShadowMailPreviewCount, 1, 10);
         MailWindowDays = Entre(MailWindowDays, 1, 30);
         MailTimeoutSeconds = Entre(MailTimeoutSeconds, 5, 120);
+        MailJournalDays = Entre(MailJournalDays, 0, 90);
         return this;
     }
 

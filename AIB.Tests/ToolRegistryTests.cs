@@ -122,9 +122,13 @@ namespace AIB.Tests
 
             var names = registry.GetActiveTools(9).Select(t => t.FunctionName).OrderBy(n => n).ToList();
 
-            // As três estão registradas. run_command e write_file só executam depois do
+            // As quatro estão registradas. run_command e write_file só executam depois do
             // portão de confirmação — ver ToolRegistryTests do gate.
-            names.Should().Equal("read_file", "run_command", "write_file");
+            //
+            // consultar_emails entra mesmo com a triagem desligada, ao contrário da
+            // execute_skill: sem ela o modelo não sabe que "tem algo urgente?" tem resposta
+            // possível e responde de memória. Desligada, ela responde exatamente isso.
+            names.Should().Equal("consultar_emails", "read_file", "run_command", "write_file");
         }
 
         [Fact]
@@ -188,7 +192,7 @@ namespace AIB.Tests
 
             var (natives, dynamics) = registry.GetCategorizedTools();
 
-            natives.Should().HaveCount(3);
+            natives.Should().HaveCount(4);
             dynamics.Should().BeEmpty("no lazy loading as skills não entram no registry");
         }
 

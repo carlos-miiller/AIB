@@ -45,6 +45,10 @@ namespace AIB.Services.Mail;
 /// <param name="Corpo">
 /// Texto da mensagem, já truncado. Existe só para o degrau 3 ler e resumir; nunca é gravado.
 /// </param>
+/// <param name="Conta">
+/// A caixa em que ela chegou. Com duas contas configuradas, dizer "chegou um urgente" sem
+/// dizer ONDE obriga o usuário a procurar nas duas.
+/// </param>
 /// <param name="EnvioEmMassa">
 /// A mensagem foi disparada para uma lista, e não escrita para uma pessoa.
 /// <para>
@@ -73,7 +77,8 @@ public sealed record MensagemDeEmail(
     string[] Rotulos,
     bool NaoLida,
     string Corpo,
-    bool EnvioEmMassa = false)
+    bool EnvioEmMassa = false,
+    string Conta = "")
 {
     /// <summary>
     /// Quanto do corpo, JÁ LIMPO, é oferecido ao modelo. Menor que antes porque agora são 600

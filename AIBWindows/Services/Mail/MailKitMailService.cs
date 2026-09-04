@@ -476,7 +476,8 @@ public sealed class MailKitMailService : IMailService
             Rotulos: rotulos,
             NaoLida: r.Flags.HasValue && !r.Flags.Value.HasFlag(MessageFlags.Seen),
             Corpo: corpo,
-            EnvioEmMassa: EhDeLista(r.Headers));
+            EnvioEmMassa: EhDeLista(r.Headers),
+            Conta: enderecoDoUsuario);
     }
 
     /// <summary>

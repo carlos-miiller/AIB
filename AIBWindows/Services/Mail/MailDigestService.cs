@@ -52,6 +52,7 @@ public sealed class MailDigestService : IDisposable
     private readonly string _caminhoDasRegras;
     private readonly VigiasDoEmail _vigias;
     private readonly MarcoDoVigia _marco;
+    private readonly DiarioDeTriagem _diario;
 
     private readonly CancellationTokenSource _parada = new();
     private Timer? _relogio;
@@ -62,6 +63,13 @@ public sealed class MailDigestService : IDisposable
     /// <summary>Quantas o modelo marcou como baixa na última passada. Vira linha auditável.</summary>
     private int _ignoradasPeloModelo;
 
+    /// <summary>
+    /// TODAS as triadas da última passada, inclusive as de urgência baixa. A tela recebe só o
+    /// que pede ação; o diário recebe o conjunto inteiro, porque "quantos foram tratados hoje"
+    /// é uma pergunta sobre o trabalho feito, e não sobre o que sobrou na tela.
+    /// </summary>
+    private IReadOnlyList<EmailTriado> _anotados = Array.Empty<EmailTriado>();
+
     public MailDigestService(
         SettingsService settings,
         IMailService email,
@@ -71,7 +79,8 @@ public sealed class MailDigestService : IDisposable
         Func<DateTime>? agora = null,
         string? caminhoDasRegras = null,
         VigiasDoEmail? vigias = null,
-        string? raizDeDados = null)
+        string? raizDeDados = null,
+        DiarioDeTriagem? diario = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _email = email ?? throw new ArgumentNullException(nameof(email));
@@ -81,6 +90,7 @@ public sealed class MailDigestService : IDisposable
         _agora = agora ?? (() => DateTime.Now);
         _caminhoDasRegras = caminhoDasRegras ?? RegrasDoVigia.CaminhoPadrao();
         _vigias = vigias ?? new VigiasDoEmail();
+        _diario = diario ?? new DiarioDeTriagem(raizDeDados);
         _marco = new MarcoDoVigia(raizDeDados);
     }
 
@@ -275,6 +285,16 @@ public sealed class MailDigestService : IDisposable
                 "o modelo leu e concluiu que não pedem nada agora",
                 _ignoradasPeloModelo));
 
+        // Anota ANTES de publicar. Publicar dispara evento de interface; anotar é disco, e o
+        // que a conversa vai consultar depois não pode depender de a tela ter aceitado o aviso.
+        _diario.Gravar(
+            new PassadaAnotada(
+                DateTime.UtcNow.ToString("o"),
+                lidas.Count,
+                descartadas.Where(d => d.De != "(triagem)").Sum(d => d.Quantas),
+                _anotados),
+            config.MailJournalDays);
+
         return Publicar(new DigestoDeEmail(itens, lidas.Count, descartadas, rajadas, DateTime.UtcNow));
     }
 
@@ -387,7 +407,32 @@ public sealed class MailDigestService : IDisposable
         // tão conferível quanto a do funil.
         _ignoradasPeloModelo = todos.Count(i => i.Urgency == MailUrgency.Baixa);
 
+        // O diário fica com o lote INTEIRO — a de urgência baixa foi trabalho feito tanto
+        // quanto a máxima, e sem ela a resposta a "quantos e-mails você tratou hoje" seria
+        // menor que a verdade.
+        _anotados = lote.Select(m => Anotar(m, porUid)).ToList();
+
         return todos.Where(i => i.Urgency != MailUrgency.Baixa).ToList();
+    }
+
+    /// <summary>
+    /// A linha do diário de uma mensagem. Sem corpo — nunca. É a única coisa que sobrou da
+    /// regra 3 como regra absoluta, e ela vive aqui: o objeto que vai para o disco não tem o
+    /// campo, então não há descuido possível.
+    /// </summary>
+    private static EmailTriado Anotar(
+        MensagemDeEmail m, IReadOnlyDictionary<uint, VereditoDeEmail> porUid)
+    {
+        bool teveVeredito = porUid.TryGetValue(m.Uid, out var v);
+
+        return new EmailTriado(
+            Remetente: m.De,
+            Nome: m.NomeDoRemetente,
+            Assunto: m.Assunto,
+            Resumo: teveVeredito ? v.Resumo : "o resumo não saiu desta vez",
+            Urgencia: (teveVeredito ? v.Urgencia : MailUrgency.Media).ToString().ToLowerInvariant(),
+            Conta: m.Conta,
+            RecebidaUtc: m.RecebidaUtc.ToString("o"));
     }
 
     /// <summary>

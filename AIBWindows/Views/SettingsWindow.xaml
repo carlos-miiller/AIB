@@ -931,6 +931,24 @@
                                         </Grid>
                                     </Border>
 
+                                    <!-- Dias de diário da triagem -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Guardar o que foi triado (dias)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Permite perguntar no chat &quot;quantos e-mails hoje&quot; ou &quot;tem algo urgente&quot;. Grava remetente, assunto e o resumo de uma linha — nunca o corpo. Em 0, nada fica gravado e o chat não sabe nada sobre a caixa."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MailJournalTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
                                     <!-- RESTAURAR — só os campos DESTA página. Um botão único
                                          para a tela inteira faria quem quer voltar um número de
                                          e-mail atrás perder de quebra o provedor e o modelo. -->

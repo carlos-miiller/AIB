@@ -151,7 +151,12 @@ public class ToolRegistry
         {
             new ReadFileTool(),
             new RunCommandTool(),
-            new WriteFileTool()
+            new WriteFileTool(),
+
+            // Registrada SEMPRE, e não só quando a triagem está ligada. Com ela fora, o modelo
+            // não sabe que a pergunta tem resposta possível e chuta — e chutar sobre a caixa de
+            // entrada de alguém é o pior desfecho. Desligada, ela responde exatamente isso.
+            new ConsultarEmailsTool(_settingsService)
         };
 
         foreach (var tool in nativeTools)

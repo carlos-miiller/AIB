@@ -1,11 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using AIB.Services.Agent;
 using AIB.Services.Ai;
+using AIB.Services.Mail;
 using AIB.Services.Memory;
 using OpenAI.Chat;
 
@@ -53,6 +56,12 @@ public sealed class ConversationService : IMessageStore
 
     private readonly SettingsService _settingsService;
     private readonly ToolRegistry _toolRegistry;
+
+    /// <summary>
+    /// O registro das triagens, só para LER. A conversa não conhece o vigia — ela lê o que ele
+    /// deixou escrito, e por isso continua funcionando quando ele nunca rodou.
+    /// </summary>
+    private readonly Mail.DiarioDeTriagem _diarioDeTriagem = new();
     private readonly AgentLoop _agentLoop;
     private readonly TokenCounter _tokenCounter;
     private readonly IChatProviderFactory _providerFactory;
@@ -1401,6 +1410,8 @@ public sealed class ConversationService : IMessageStore
         var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var contextualPrompt = SYSTEM_PROMPT + $"\n\nContexto Local:\n- Diretório Home do Usuário (Raiz): {userHome}";
 
+        contextualPrompt += EstadoDoVigia(settings, _diarioDeTriagem, DateTime.Now);
+
         // A alma do personagem ativo vem ANTES das instruções operacionais: é ela que define
         // quem responde, e o resto do prompt define o que ele pode fazer.
         var soul = LoadActiveCharacterSoul(settings.ActiveCharacter);
@@ -1424,6 +1435,59 @@ public sealed class ConversationService : IMessageStore
         catch { }
 
         return contextualPrompt;
+    }
+
+    /// <summary>
+    /// O que a triagem automática já fez, em NÚMEROS, para o modelo não precisar perguntar nem
+    /// chutar quando alguém diz "quantos e-mails hoje".
+    /// <para>
+    /// Só contagens e horários. Nenhum remetente, nenhum assunto, nenhum resumo — o system
+    /// prompt entra em TODA requisição e é o texto que a compactação carrega para dentro dos
+    /// capítulos; conteúdo de e-mail aqui criaria a raiz permanente que a regra 3 evita. Quem
+    /// tem os detalhes é a ferramenta <c>consultar_emails</c>, chamada só quando perguntam.
+    /// </para>
+    /// <para>
+    /// Pública e estática para os ensaios: é texto que vai ao modelo em toda conversa, e o
+    /// custo dele em prefill é pago sempre.
+    /// </para>
+    /// </summary>
+    public static string EstadoDoVigia(UserAppSettings settings, DiarioDeTriagem diario, DateTime agora)
+    {
+        if (settings == null || !settings.ShadowHandlesMail) return "";
+
+        var horarios = string.Join(", ", AgendaDoVigia.Horarios.Select(h => h.ToString(@"hh\:mm")));
+
+        var sb = new StringBuilder();
+        sb.Append("\n- Vigia de e-mail: LIGADO, digests às ").Append(horarios).Append('.');
+
+        if (settings.MailJournalDays <= 0)
+        {
+            sb.Append(" O registro das triagens está desligado, então não há histórico a consultar.");
+            return sb.ToString();
+        }
+
+        var hoje = diario?.Ler(agora) ?? Array.Empty<PassadaAnotada>();
+
+        if (hoje.Count == 0)
+        {
+            sb.Append(" Nenhuma triagem hoje ainda — o que chegou desde ontem não foi lido.");
+        }
+        else
+        {
+            var todos = hoje.SelectMany(p => p.Triados ?? Array.Empty<EmailTriado>()).ToList();
+            int maximas = todos.Count(t => string.Equals(t.Urgencia, "maxima", StringComparison.OrdinalIgnoreCase));
+
+            var ultima = hoje.Select(p => DiarioDeTriagem.Quando(p.QuandoUtc).ToLocalTime()).Max();
+
+            sb.Append($" Hoje: {hoje.Count} passada(s), {hoje.Sum(p => p.Lidas)} lida(s), ")
+              .Append($"{todos.Count} triada(s) pelo modelo, {maximas} de urgência máxima. ")
+              .Append($"Última às {ultima:HH:mm}.");
+        }
+
+        sb.Append(" Para detalhes, filtros ou qualquer pergunta sobre e-mail, chame " +
+                  "'consultar_emails' — não responda de memória nem invente números.");
+
+        return sb.ToString();
     }
 
     /// <summary>

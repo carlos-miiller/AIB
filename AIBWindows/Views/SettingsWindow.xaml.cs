@@ -163,6 +163,7 @@ public partial class SettingsWindow : Window
             ShadowMailPreviewTextBox.Text = _currentSettings.ShadowMailPreviewCount.ToString();
             MailWindowTextBox.Text = _currentSettings.MailWindowDays.ToString();
             MailTimeoutTextBox.Text = _currentSettings.MailTimeoutSeconds.ToString();
+        MailJournalTextBox.Text = _currentSettings.MailJournalDays.ToString();
             MaxIterationsTextBox.Text = _currentSettings.MaxTurnIterations.ToString();
             CompactionTriggerTextBox.Text = ParaPorcento(_currentSettings.CompactionTrigger);
             MemoryFractionTextBox.Text = ParaPorcento(_currentSettings.MemoryFraction);
@@ -846,6 +847,7 @@ public partial class SettingsWindow : Window
                 // as senhas do cofre" — remover conta tem botão próprio, com confirmação.
                 MailWindowTextBox.Text = padrao.MailWindowDays.ToString();
                 MailTimeoutTextBox.Text = padrao.MailTimeoutSeconds.ToString();
+                MailJournalTextBox.Text = padrao.MailJournalDays.ToString();
                 break;
 
             case PaginaDeConfiguracoes.Shadow:
@@ -1116,6 +1118,7 @@ public partial class SettingsWindow : Window
             Numero(ShadowMailPreviewTextBox, _currentSettings.ShadowMailPreviewCount);
         _currentSettings.MailWindowDays = Numero(MailWindowTextBox, _currentSettings.MailWindowDays);
         _currentSettings.MailTimeoutSeconds = Numero(MailTimeoutTextBox, _currentSettings.MailTimeoutSeconds);
+        _currentSettings.MailJournalDays = Numero(MailJournalTextBox, _currentSettings.MailJournalDays);
         _currentSettings.MaxTurnIterations = Numero(MaxIterationsTextBox, _currentSettings.MaxTurnIterations);
         _currentSettings.CompactionTrigger = DePorcento(CompactionTriggerTextBox, _currentSettings.CompactionTrigger);
         _currentSettings.MemoryFraction = DePorcento(MemoryFractionTextBox, _currentSettings.MemoryFraction);
