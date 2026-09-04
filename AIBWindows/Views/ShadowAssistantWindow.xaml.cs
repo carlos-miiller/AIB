@@ -93,6 +93,21 @@ public partial class ShadowAssistantWindow : Window
     public int TetoDeEmails { get; set; } = Ui.FalaDaIA.TetoDeEmails;
 
     /// <summary>
+    /// Se o Shadow deve estar na tela agora.
+    /// <para>
+    /// Ele some enquanto a conversa está aberta. Os dois juntos disputam a mesma atenção e o
+    /// mesmo canto da tela, e o Shadow existe justamente para as horas em que a conversa NÃO
+    /// está aberta — é a porta de entrada, não um segundo lugar para falar com a mesma IA.
+    /// </para>
+    /// <para>
+    /// Função pura porque a decisão é chamada de três lugares diferentes — o atalho global, a
+    /// chave das configurações e o visto da bandeja — e três cópias da mesma condição
+    /// divergiriam na primeira correção feita num deles.
+    /// </para>
+    /// </summary>
+    public static bool DeveAparecer(bool ligado, bool conversaNaTela) => ligado && !conversaNaTela;
+
+    /// <summary>
     /// Texto enviado pela barra. §5.3: a conversa continua na janela de chat, não aqui — a
     /// barra é porta de entrada, não um segundo chat.
     /// </summary>

@@ -67,18 +67,24 @@ public partial class App : System.Windows.Application
     {
         bool ligado = _settingsService.LoadSettings().ShadowAssistantEnabled;
 
-        if (ligado)
-        {
-            _orbe ??= CriarOrbe();
-            _orbe.Show();
-        }
-        else
+        if (!ligado)
         {
             _orbe?.Close();
             _orbe = null;
+            if (_itemDoOrbe != null) _itemDoOrbe.IsChecked = false;
+            return;
         }
 
-        if (_itemDoOrbe != null) _itemDoOrbe.IsChecked = ligado;
+        _orbe ??= CriarOrbe();
+
+        // Esconder, e não fechar: fechado, o Shadow perderia a pilha de falas e a posição que o
+        // usuário escolheu, e voltaria zerado toda vez que a conversa fosse aberta.
+        if (ShadowAssistantWindow.DeveAparecer(true, _chatWindow?.IsVisible == true))
+            _orbe.Show();
+        else
+            _orbe.Hide();
+
+        if (_itemDoOrbe != null) _itemDoOrbe.IsChecked = true;
     }
 
     /// <summary>
@@ -222,6 +228,11 @@ public partial class App : System.Windows.Application
 
             _chatWindow = new ChatWindow(_conversation, _settingsService);
 
+            // O Shadow some enquanto a conversa está na tela e volta quando ela sai — pelo
+            // atalho global, pela bandeja ou por perder o foco. Escutar a VISIBILIDADE, e não
+            // cada um desses gestos, é o que garante que os três caminhos concordem.
+            _chatWindow.IsVisibleChanged += (_, _) => SincronizarOrbe();
+
             // A partir daqui o portão tem onde perguntar. Antes desta linha, e depois que a
             // janela morrer, ele recusa por padrão.
             _confirmationPrompt.Conectar(_chatWindow.PerguntarConfirmacaoAsync);
@@ -238,7 +249,7 @@ public partial class App : System.Windows.Application
             if (settings.ShadowAssistantEnabled)
             {
                 _orbe = CriarOrbe();
-                _orbe.Show();
+                SincronizarOrbe();
             }
 
             _notifyIcon = new TaskbarIcon
