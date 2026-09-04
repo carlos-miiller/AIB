@@ -350,12 +350,34 @@
                             </ToggleButton.Template>
                         </ToggleButton>
 
-                        <ContentPresenter IsHitTestVisible="False"
+                        <ContentPresenter x:Name="Selecionado" IsHitTestVisible="False"
                                           Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                           ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                                           VerticalAlignment="Center"
                                           Margin="12,0,32,0"/>
+
+                        <!-- A caixa de digitação da ComboBox EDITÁVEL.
+                             O WPF procura este nome exato; sem ele, IsEditable="True" fica sem
+                             onde desenhar nem onde receber texto — o campo aparece vazio e não
+                             aceita digitação, e o que o usuário vê é o que o sistema desenhar
+                             por conta própria, na cor dele, escura sobre este fundo.
+                             As cores vêm do TemplatedParent para não haver uma segunda paleta
+                             aqui dentro: a do texto, a do cursor e a da seleção. -->
+                        <TextBox x:Name="PART_EditableTextBox"
+                                 Visibility="Collapsed"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Padding="0"
+                                 Foreground="{TemplateBinding Foreground}"
+                                 CaretBrush="{TemplateBinding Foreground}"
+                                 SelectionBrush="{StaticResource AccentLilacBrush}"
+                                 FontFamily="{TemplateBinding FontFamily}"
+                                 FontSize="{TemplateBinding FontSize}"
+                                 VerticalContentAlignment="Center"
+                                 VerticalAlignment="Stretch"
+                                 Margin="12,0,32,0"
+                                 IsReadOnly="{TemplateBinding IsReadOnly}"/>
 
                         <!-- Chevron desenhado: 10px, stroke 1.6, viewBox 0 0 12 12. -->
                         <Path Data="M2.6,4.4 L6,7.8 L9.4,4.4"
@@ -387,6 +409,13 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Toggle" Property="BorderBrush" Value="{StaticResource AccentFocusBrush}"/>
+                        </Trigger>
+
+                        <!-- Editável mostra a caixa de digitação; fixa mostra o item escolhido.
+                             Os dois nunca ao mesmo tempo: sobrepostos, o texto sairia dobrado. -->
+                        <Trigger Property="IsEditable" Value="True">
+                            <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="Selecionado" Property="Visibility" Value="Collapsed"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
