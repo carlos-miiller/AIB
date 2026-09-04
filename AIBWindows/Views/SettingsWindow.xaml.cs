@@ -157,6 +157,7 @@ public partial class SettingsWindow : Window
 
             IntelligentToolsSwitch.IsChecked = _currentSettings.EnableIntelligentTools;
             ConfirmDangerousSwitch.IsChecked = _currentSettings.ConfirmDangerousCommands;
+            ExecutionLogSwitch.IsChecked = _currentSettings.ExecutionLogging;
 
             ShadowModelComboBox.Text = _currentSettings.ShadowModelName;
             ShadowMailPreviewTextBox.Text = _currentSettings.ShadowMailPreviewCount.ToString();
@@ -835,6 +836,7 @@ public partial class SettingsWindow : Window
                 VerboseLoggingSwitch.IsChecked = padrao.VerboseConsoleLogging;
                 IntelligentToolsSwitch.IsChecked = padrao.EnableIntelligentTools;
                 ConfirmDangerousSwitch.IsChecked = padrao.ConfirmDangerousCommands;
+                ExecutionLogSwitch.IsChecked = padrao.ExecutionLogging;
                 MaxIterationsTextBox.Text = padrao.MaxTurnIterations.ToString();
                 CompactionTriggerTextBox.Text = ParaPorcento(padrao.CompactionTrigger);
                 MemoryFractionTextBox.Text = ParaPorcento(padrao.MemoryFraction);
@@ -1082,6 +1084,7 @@ public partial class SettingsWindow : Window
 
         _currentSettings.EnableIntelligentTools = IntelligentToolsSwitch.IsChecked ?? true;
         _currentSettings.ConfirmDangerousCommands = ConfirmDangerousSwitch.IsChecked ?? true;
+        _currentSettings.ExecutionLogging = ExecutionLogSwitch.IsChecked ?? false;
 
         _currentSettings.ShadowModelName = ShadowModelComboBox.Text.Trim();
         _currentSettings.ShadowMailPreviewCount =

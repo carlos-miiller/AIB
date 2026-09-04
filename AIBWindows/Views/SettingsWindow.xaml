@@ -1210,6 +1210,26 @@
                                         </Grid>
                                     </Border>
 
+
+                                    <!-- Registro de execução em arquivo -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Gravar registro de execução"
+                                                           Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Um arquivo por execução em ~/.AIB/logs/. Grava TUDO o que sai no terminal, inclusive os prompts com o conteúdo dos seus e-mails — confira antes de compartilhar."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="ExecutionLogSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
                                     <!-- RESTAURAR — só os campos DESTA página. Um botão único
                                          para a tela inteira faria quem quer voltar um número
                                          atrás perder de quebra o provedor e o modelo. -->

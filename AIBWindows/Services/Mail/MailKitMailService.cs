@@ -382,8 +382,9 @@ public sealed class MailKitMailService : IMailService
             var entidade = await inbox.GetBodyPartAsync(r.UniqueId, parte, ct).ConfigureAwait(false);
             if (entidade is not TextPart texto) return "";
 
-            string bruto = texto.IsHtml ? SemMarcacao(texto.Text) : texto.Text;
-            return MensagemDeEmail.Encurtar(bruto);
+            // A limpeza vale para os DOIS: a parte de texto de um e-mail de marketing também
+            // vem cheia de URL de rastreamento e de moldura de tabela em ASCII.
+            return MensagemDeEmail.Encurtar(texto.Text);
         }
         catch (OperationCanceledException)
         {

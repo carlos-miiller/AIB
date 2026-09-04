@@ -59,6 +59,9 @@ public sealed class MailDigestService : IDisposable
 
     private DateTime? _ultimaSondagem;
 
+    /// <summary>Quantas o modelo marcou como baixa na última passada. Vira linha auditável.</summary>
+    private int _ignoradasPeloModelo;
+
     public MailDigestService(
         SettingsService settings,
         IMailService email,
@@ -228,8 +231,14 @@ public sealed class MailDigestService : IDisposable
                 : DigestoDeEmail.Vazio;
         }
 
+        _ignoradasPeloModelo = 0;
         var itens = await ResumirAsync(sobem, config, ct).ConfigureAwait(false);
         DigestosFeitos++;
+
+        if (_ignoradasPeloModelo > 0)
+            descartadas.Add(new Descartada("(triagem)",
+                $"{_ignoradasPeloModelo} mensagem(ns) lida(s) e sem pedido",
+                "o modelo leu e concluiu que não pedem nada agora"));
 
         return Publicar(new DigestoDeEmail(itens, lidas.Count, descartadas, rajadas, DateTime.UtcNow));
     }
@@ -326,12 +335,24 @@ public sealed class MailDigestService : IDisposable
 
         var porUid = vereditos.GroupBy(v => v.Uid).ToDictionary(g => g.Key, g => g.First());
 
-        return lote
+        var todos = lote
             .Select(m => porUid.TryGetValue(m.Uid, out var v)
                 ? new MailSummary(m.Assunto, v.Resumo, v.Urgencia, "", m.De)
                 : new MailSummary(m.Assunto, $"De {m.NomeDoRemetente}. O resumo não saiu desta vez.",
                                   MailUrgency.Media, "", m.De))
             .ToList();
+
+        // BAIXA não vai para a tela. Visto em produção: de 21 mensagens triadas, o modelo
+        // marcou 20 como baixa e acertou — e as 20 foram para o painel assim mesmo. Mostrar
+        // tudo o que se leu é o oposto de triar; quem faz o trabalho e depois entrega a pilha
+        // inteira de volta não entregou nada.
+        //
+        // Elas continuam CONTADAS e vão para a lista auditável: a regra 6 pede poder conferir
+        // o que a triagem deixou de fora, e "o modelo achou que não pedia nada" é uma decisão
+        // tão conferível quanto a do funil.
+        _ignoradasPeloModelo = todos.Count(i => i.Urgency == MailUrgency.Baixa);
+
+        return todos.Where(i => i.Urgency != MailUrgency.Baixa).ToList();
     }
 
     /// <summary>

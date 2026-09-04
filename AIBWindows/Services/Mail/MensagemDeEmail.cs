@@ -1,4 +1,6 @@
-using System;
+﻿using System;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace AIB.Services.Mail;
 
@@ -49,20 +51,90 @@ public sealed record MensagemDeEmail(
     bool NaoLida,
     string Corpo)
 {
-    /// <summary>Quanto do corpo desce e é oferecido ao modelo.</summary>
-    public const int TetoDoCorpo = 1200;
+    /// <summary>
+    /// Quanto do corpo, JÁ LIMPO, é oferecido ao modelo. Menor que antes porque agora são 600
+    /// caracteres de frase, e não 1200 de folha de estilo.
+    /// </summary>
+    public const int TetoDoCorpo = 600;
 
     /// <summary>
-    /// Corta o corpo no teto, sem cortar palavra pela metade quando dá para evitar.
+    /// Tira do corpo o que não é texto para ler.
     /// <para>
-    /// O teto não é economia de disco — é economia de PREFILL. Numa máquina de ~34 tok/s de
-    /// prefill, trinta mensagens inteiras num lote passariam de vinte mil tokens e o digest
-    /// levaria dez minutos para começar a sair.
+    /// Medido em produção: um lote de 21 mensagens virou 11.223 tokens de prompt, e o modelo
+    /// levou ONZE MINUTOS só no prefill. O que ocupava esse espaço não era conteúdo — era
+    /// folha de estilo (<c>#outlook a{padding: 0;} .ReadMsgBody{width: 100%;}…</c>) e parede
+    /// de URL de rastreamento de trezentos caracteres cada.
+    /// </para>
+    /// <para>
+    /// Some, nesta ordem: blocos de estilo e script inteiros, comentários, tags, URLs,
+    /// entidades HTML e os caracteres invisíveis que os disparadores usam para esticar a
+    /// pré-visualização. O que sobra é a frase que alguém escreveu.
+    /// </para>
+    /// </summary>
+    public static string Limpar(string? bruto)
+    {
+        string t = bruto ?? "";
+        if (t.Length == 0) return "";
+
+        // Estilo e script primeiro: dentro deles há chaves e dois-pontos que confundiriam
+        // qualquer limpeza feita depois.
+        t = Regex.Replace(t, @"<(style|script)[^>]*>.*?</\1>", " ",
+                          RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        t = Regex.Replace(t, @"<!--.*?-->", " ", RegexOptions.Singleline);
+        t = Regex.Replace(t, @"<[^>]{0,400}>", " ");
+
+        // CSS solto, em DUAS etapas. A tentacao e comer "seletor + bloco" de uma vez, mas o
+        // seletor pode ser composto ("#outlook a{...}") e uma regra gulosa o bastante para
+        // pega-lo engole a frase que vinha antes — medido: "Asaba #outlook a{...}" virava
+        // string vazia.
+        //
+        // Primeiro o bloco entre chaves, que e inequivoco.
+        t = Regex.Replace(t, @"\{[^{}]{0,600}\}", " ");
+
+        // Depois o que sobrou do seletor: so o que TEM cara de seletor, e nunca uma palavra
+        // comum. "#outlook" e ".ReadMsgBody" saem; "Asaba" fica.
+        t = Regex.Replace(t, @"(?<![\w])[#.][\w-]{2,40}", " ");
+
+        // URLs. Um e-mail de marketing tem dez delas, cada uma com trezentos caracteres de
+        // parâmetro de rastreamento e zero informação.
+        t = Regex.Replace(t, @"https?://\S+", " ");
+
+        t = Entidades(t);
+
+        // Invisíveis: espaço de largura zero, hífen suave, junções — os disparadores enchem a
+        // mensagem com centenas deles para esticar a pré-visualização na caixa de entrada.
+        t = Regex.Replace(t, @"[\u00AD\u200B-\u200F\u2060\uFEFF\u034F]+", "");
+
+        // Sobra de pontuação de layout: linhas de asteriscos, traços e barras que sobravam das
+        // molduras de tabela.
+        t = Regex.Replace(t, @"[*_=~|-]{3,}", " ");
+
+        return Regex.Replace(t, @"\s+", " ").Trim();
+    }
+
+    private static string Entidades(string texto)
+    {
+        var sb = new StringBuilder(texto.Length);
+        sb.Append(texto);
+
+        sb.Replace("&nbsp;", " ").Replace("&zwnj;", "").Replace("&amp;", "&")
+          .Replace("&lt;", "<").Replace("&gt;", ">").Replace("&quot;", "\"")
+          .Replace("&#39;", "'").Replace("&apos;", "'");
+
+        return Regex.Replace(sb.ToString(), @"&[#\w]{1,8};", " ");
+    }
+
+    /// <summary>
+    /// Limpa e corta no teto, sem partir palavra quando dá para evitar.
+    /// <para>
+    /// O teto não é economia de disco — é economia de PREFILL. Nesta máquina o prefill despenca
+    /// de ~430 para ~17 tokens por segundo quando o prompt passa de uns poucos milhares de
+    /// tokens: o custo não cresce, ele desaba.
     /// </para>
     /// </summary>
     public static string Encurtar(string? texto, int teto = TetoDoCorpo)
     {
-        string limpo = (texto ?? "").Replace("\r", "").Trim();
+        string limpo = Limpar(texto);
         if (limpo.Length <= teto) return limpo;
 
         int corte = limpo.LastIndexOf(' ', Math.Min(teto, limpo.Length - 1));

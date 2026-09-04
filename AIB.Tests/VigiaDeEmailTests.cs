@@ -355,8 +355,10 @@ namespace AIB.Tests
 
             var digesto = await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
 
-            digesto.Itens.Should().HaveCount(2);
-            digesto.Itens.Should().Contain(i => i.Name == "B");
+            // A "A" saiu da tela porque o modelo disse baixa; a "B", que ele esqueceu, entra
+            // com o resumo de codigo e urgencia media. Esquecer uma linha do JSON nao pode
+            // equivaler a mensagem nao existir.
+            digesto.Itens.Should().ContainSingle(i => i.Name == "B");
         }
 
         [Fact]
@@ -692,6 +694,131 @@ namespace AIB.Tests
             depoisDeReabrir.Should().NotBeNull();
             AgendaDoVigia.HoraDoDigest(new DateTime(2026, 9, 4, 13, 5, 0), depoisDeReabrir)
                 .Should().BeFalse("o digest das 12h55 ja rodou, mesmo com o programa reiniciado");
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // A limpeza do corpo (medida na caixa real, 04/09)
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void FolhaDeEstilo_NaoVAI_ParaOModelo()
+        {
+            // Corpo real do log: o e-mail do Patreon e CSS do comeco ao fim. Vinte e uma
+            // mensagens assim viraram 11.223 tokens e ONZE MINUTOS de prefill.
+            string patreon = "Asaba #outlook a{padding: 0;} .ReadMsgBody{width: 100%;} " +
+                             ".ExternalClass{width: 100%;} body{margin: 0; padding: 0;}";
+
+            string limpo = MensagemDeEmail.Limpar(patreon);
+
+            // Sobram palavras soltas de seletor ("a", "body") — inofensivas e curtas. O que
+            // nao pode sobrar e a folha de estilo, que e o que ocupava o prompt.
+            limpo.Should().StartWith("Asaba", "a frase de verdade sobrevive");
+            limpo.Should().NotContain("ReadMsgBody").And.NotContain("padding")
+                 .And.NotContain("width").And.NotContain("{");
+            limpo.Length.Should().BeLessThan(patreon.Length / 3);
+        }
+
+        [Fact]
+        public void ParedeDeURL_NaoVAI_ParaOModelo()
+        {
+            // O e-mail da Localiza traz quatro links de rastreamento de ~300 caracteres cada.
+            // Nenhum deles diz nada ao modelo.
+            string localiza = "Ola, Carlos https://click.e.localiza.com/?qs=ABB7InYiOjEsImQiOjQ5" +
+                              "ODh9AAcAAAAABh_hLoy1lzqU8_wKXf9aJvMiF3uGyMASRQjrqpy9 " +
+                              "Tem economia na pista.";
+
+            string limpo = MensagemDeEmail.Limpar(localiza);
+
+            limpo.Should().NotContain("http");
+            limpo.Should().Contain("Ola, Carlos").And.Contain("Tem economia na pista.");
+        }
+
+        [Fact]
+        public void InvisiveisDeDisparador_SOMEM()
+        {
+            // O Growth Supplements enche a mensagem de U+034F e hifen suave para esticar a
+            // pre-visualizacao na caixa de entrada. Sao centenas deles, e viram tokens.
+            string sujo = "Ofertas͏͏͏­­​ do mes";
+
+            MensagemDeEmail.Limpar(sujo).Should().Be("Ofertas do mes");
+        }
+
+        [Fact]
+        public void EntidadesHTML_VIRAM_Texto()
+        {
+            MensagemDeEmail.Limpar("Pix&nbsp;no&nbsp;Cr&#233;dito&zwnj;")
+                .Should().Contain("Pix no Cr");
+        }
+
+        [Fact]
+        public void OTetoCONTA_DepoisDaLimpeza()
+        {
+            // Antes o teto de 1200 era gasto com folha de estilo. Agora sao 600 caracteres de
+            // frase — menos caracteres, muito mais conteudo.
+            string frase = "Confirme sua presenca na reuniao de quinta.";
+            string css = frase + " " + string.Concat(System.Linq.Enumerable.Repeat(
+                ".classe" + " {padding: 0; margin: 13px 0; line-height: 100%;} ", 60));
+
+            string curto = MensagemDeEmail.Encurtar(css);
+
+            curto.Should().StartWith(frase);
+            curto.Length.Should().BeLessThan(css.Length / 4);
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // O reconhecedor de remetente automatico
+        // ─────────────────────────────────────────────────────────────────
+
+        [Theory]
+        [InlineData("messages-noreply@linkedin.com")]
+        [InlineData("updates-noreply@linkedin.com")]
+        [InlineData("newsletter@nuuvem.com")]
+        [InlineData("marketing@digitra.com")]
+        public void MarcaNoMEIO_DoEndereco_TambemCONTA(string endereco)
+        {
+            // Visto em producao: a checagem era StartsWith, entao "messages-noreply" passava
+            // batido porque comeca com "messages". A marca estava la, no meio.
+            FiltroDeTriagem.EhAutomatico(endereco).Should().BeTrue();
+        }
+
+        [Theory]
+        [InlineData("picpay@marketing.picpay.com")]   // a marca esta no DOMINIO, nao na parte local
+        [InlineData("carlos@noreply.com.br")]
+        [InlineData("ana@empresa.com")]
+        [InlineData("joao.silva@cliente.com.br")]
+        public void PessoaCONTINUA_Pessoa(string endereco)
+        {
+            FiltroDeTriagem.EhAutomatico(endereco).Should().BeFalse();
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // O que chega a tela
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task BAIXA_NaoVAI_ParaATela_MasCONTINUA_Auditavel()
+        {
+            // Visto em producao: de 21 triadas o modelo marcou 20 como baixa, acertou, e as 20
+            // foram para o painel assim mesmo. Fazer o trabalho e devolver a pilha inteira nao
+            // e triar.
+            var (vigia, _, _, _) = MontarComPasta(
+                lidas: new[]
+                {
+                    Msg(uid: 1, assunto: "Contrato"),
+                    Msg(uid: 2, assunto: "Newsletter"),
+                    Msg(uid: 3, assunto: "Promo")
+                },
+                resposta: "[{\"uid\":1,\"urgencia\":\"maxima\",\"resumo\":\"assinar hoje\"}," +
+                          "{\"uid\":2,\"urgencia\":\"baixa\",\"resumo\":\"ler depois\"}," +
+                          "{\"uid\":3,\"urgencia\":\"baixa\",\"resumo\":\"ignorar\"}]");
+
+            var digesto = await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            digesto.Itens.Should().HaveCount(1, "so o que pede alguma coisa");
+            digesto.Itens[0].Urgency.Should().Be(MailUrgency.Maxima);
+            digesto.Lidas.Should().Be(3, "a contagem continua inteira");
+            digesto.Descartadas.Should().Contain(d => d.Motivo.Contains("nao pedem nada")
+                                                   || d.Motivo.Contains("não pedem nada"));
         }
 
         // ─────────────────────────────────────────────────────────────────

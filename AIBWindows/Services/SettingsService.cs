@@ -39,6 +39,17 @@ public sealed class UserAppSettings
     // (STREAM-DBG, contadores de updates, classificação de chunks).
     // Útil para diagnosticar respostas vazias ou comportamento estranho do modelo.
     public bool VerboseConsoleLogging { get; set; } = false;
+
+    /// <summary>
+    /// Espelha o console num arquivo por execução, em <c>~/.AIB/logs/</c>.
+    /// <para>
+    /// Nasce desligada. Ligada, ela GRAVA EM DISCO tudo o que sai no terminal — inclusive os
+    /// prompts mandados ao modelo, e o da triagem carrega assunto, remetente e corpo dos
+    /// e-mails. É o oposto do que a regra 3 do vigia faz no resto do programa, e por isso é
+    /// escolha explícita do usuário, com aviso no cabeçalho do próprio arquivo.
+    /// </para>
+    /// </summary>
+    public bool ExecutionLogging { get; set; } = false;
     public string DataDir { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AIB");
 
     // Diretórios

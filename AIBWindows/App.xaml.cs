@@ -28,6 +28,12 @@ public partial class App : System.Windows.Application
     /// </summary>
     private Services.Mail.MailDigestService? _vigia;
 
+    /// <summary>
+    /// O espelho do console em arquivo. Ligado o mais cedo possível: o que interessa depurar
+    /// costuma acontecer no arranque, e um registro que começa depois perde justamente isso.
+    /// </summary>
+    private RegistroDeExecucao? _registro;
+
     // Composition root: os serviços são construídos aqui, uma única vez, e injetados.
     // O SettingsService precisa nascer DEPOIS de EnsureDirectories para enxergar o caminho certo.
     private readonly System.Net.Http.HttpClient _httpClient = new() { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
@@ -211,6 +217,12 @@ public partial class App : System.Windows.Application
             GibberishVoiceService.Initialize();
             DirectoryService.EnsureDirectories();
             _settingsService = new SettingsService();
+
+            // Antes de qualquer coisa interessante acontecer. O que se precisa depurar mora no
+            // arranque — carga de modelo, registro de ferramentas, primeira leitura da caixa —,
+            // e um registro que comeca depois perde justamente isso.
+            _registro = RegistroDeExecucao.Iniciar(_settingsService.LoadSettings());
+            Exit += (_, _) => _registro?.Dispose();
 
             if (e.Args.Length > 0)
             {

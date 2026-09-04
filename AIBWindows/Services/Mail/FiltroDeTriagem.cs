@@ -31,13 +31,15 @@ public static class FiltroDeTriagem
     };
 
     /// <summary>
-    /// Prefixos de remetente que não esperam resposta. Não bastam sozinhos: o firewall manda de
-    /// <c>noreply@</c> e foi a coisa mais urgente do dia. Quem trata isso é a rajada.
+    /// Marcas de caixa que não lê resposta. Não bastam sozinhas: o firewall manda de
+    /// <c>noreply@</c> e foi a coisa mais urgente do dia. Quem trata isso é a rajada, e as
+    /// portas de fuga do <see cref="Avaliar"/> vêm antes desta checagem.
     /// </summary>
-    private static readonly string[] PrefixosAutomaticos =
+    private static readonly string[] MarcasAutomaticas =
     {
-        "noreply", "no-reply", "nao-responda", "naoresponda", "donotreply", "mailer-daemon",
-        "bounce", "notifications", "notificacao"
+        "noreply", "no-reply", "nao-responda", "naoresponda", "donotreply", "do-not-reply",
+        "mailer-daemon", "bounce", "notification", "notificacao", "newsletter", "marketing",
+        "no_reply", "unsubscribe"
     };
 
     /// <param name="vigiadas">
@@ -93,8 +95,17 @@ public static class FiltroDeTriagem
     }
 
     /// <summary>
-    /// Se o endereço é de caixa que não lê resposta. Olha só a parte ANTES do arroba: um
-    /// domínio chamado <c>noreply.com.br</c> não faz de toda mensagem dele automática.
+    /// Se o endereço é de caixa que não lê resposta.
+    /// <para>
+    /// Procura a marca EM QUALQUER LUGAR da parte local, e não só no começo. Visto em
+    /// produção: <c>messages-noreply@linkedin.com</c> e <c>updates-noreply@linkedin.com</c>
+    /// passavam batido porque o endereço começa com "messages" e "updates" — a marca estava
+    /// lá, no meio, e a checagem só olhava a primeira letra.
+    /// </para>
+    /// <para>
+    /// Olha só a parte ANTES do arroba: um domínio chamado <c>noreply.com.br</c> não faz de
+    /// toda mensagem dele automática, e uma pessoa que escreve de lá continua sendo uma pessoa.
+    /// </para>
     /// </summary>
     public static bool EhAutomatico(string? endereco)
     {
@@ -102,7 +113,7 @@ public static class FiltroDeTriagem
         int arroba = e.IndexOf('@');
         string local = arroba > 0 ? e.Substring(0, arroba) : e;
 
-        return PrefixosAutomaticos.Any(p => local.StartsWith(p, StringComparison.Ordinal));
+        return MarcasAutomaticas.Any(m => local.Contains(m, StringComparison.Ordinal));
     }
 
     private static string Legivel(string categoria) => categoria switch
