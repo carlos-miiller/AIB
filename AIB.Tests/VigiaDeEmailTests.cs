@@ -610,6 +610,30 @@ namespace AIB.Tests
             FiltroDeTriagem.Avaliar(comRotulosReais, RegrasDoVigia.Vazias).Sobe.Should().BeTrue();
         }
 
+        [Fact]
+        public void OPedidoDaTriagem_PEDE_OsTresHeaders()
+        {
+            // Este ensaio nasce de um NullReferenceException em producao. FetchRequest.Headers
+            // nasce NULL no MailKit — os dois construtores deixam a propriedade sem instancia —,
+            // e chamar Add() nela estourava antes de tocar o servidor: a caixa voltava vazia com
+            // "leitura falhou", e ninguem tinha lido nada.
+            //
+            // O metodo e puro e nao precisa de servidor. Nao havia como o resto da suite pegar
+            // isto, porque tudo o que exercita a leitura usa dublê e nunca constroi o pedido.
+            var pedido = MailKitMailService.PedidoDaTriagem();
+
+            pedido.Headers.Should().NotBeNull("Add() numa propriedade nula estoura");
+            pedido.Headers.Contains(HeaderId.ListUnsubscribe).Should().BeTrue();
+            pedido.Headers.Contains(HeaderId.ListId).Should().BeTrue();
+            pedido.Headers.Contains(HeaderId.Precedence).Should().BeTrue();
+
+            pedido.Headers.Exclude.Should().BeFalse(
+                "a lista diz o que TRAZER; excluindo, viria o cabecalho inteiro");
+
+            pedido.Items.HasFlag(MailKit.MessageSummaryItems.GMailThreadId).Should().BeTrue(
+                "o thread id continua sendo o que liga a resposta ao que voce enviou");
+        }
+
         [Theory]
         [InlineData("List-Unsubscribe", "<https://x.com/u/1>, <mailto:u@x.com>")]
         [InlineData("List-Id", "<novidades.exemplo.com>")]

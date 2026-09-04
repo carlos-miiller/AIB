@@ -278,14 +278,27 @@ public sealed class MailKitMailService : IMailService
     /// <para>
     /// Continua PEEK, continua dentro do EXAMINE: nada é marcado como lido.
     /// </para>
+    /// <para>
+    /// Público porque é puro e não precisa de servidor: é o único jeito de um ensaio conferir
+    /// que o pedido sai montado, e foi exatamente aqui que um NullReferenceException derrubou
+    /// a leitura de uma caixa inteira sem que a suíte visse.
+    /// </para>
     /// </summary>
-    private static FetchRequest PedidoDaTriagem()
+    public static FetchRequest PedidoDaTriagem()
     {
-        var pedido = new FetchRequest(ItensDaTriagem);
-
-        pedido.Headers.Add(HeaderId.ListUnsubscribe);
-        pedido.Headers.Add(HeaderId.ListId);
-        pedido.Headers.Add(HeaderId.Precedence);
+        // O HeaderSet e CONSTRUIDO aqui, e nao presumido. FetchRequest.Headers nasce null nos
+        // dois construtores do MailKit 4.17 — verificado por reflexao —, e a versao anterior
+        // deste metodo chamava Add() direto na propriedade. O NullReferenceException estourava
+        // antes de tocar o servidor, e a caixa inteira voltava vazia com "leitura falhou".
+        var pedido = new FetchRequest(ItensDaTriagem)
+        {
+            Headers = new HeaderSet
+            {
+                HeaderId.ListUnsubscribe,
+                HeaderId.ListId,
+                HeaderId.Precedence
+            }
+        };
 
         return pedido;
     }
