@@ -477,24 +477,6 @@ public partial class ShadowAssistantWindow : Window
     /// Clique num item abre a mensagem. As duas caixas do usuário são webmail, então é uma URL
     /// no navegador padrão — não há cliente de e-mail para invocar.
     /// </summary>
-    private void ItemDeEmail_Click(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement item || item.DataContext is not MailSummary email) return;
-        if (string.IsNullOrWhiteSpace(email.Url)) return;
-
-        try
-        {
-            System.Diagnostics.Process.Start(
-                new System.Diagnostics.ProcessStartInfo(email.Url) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            // Abrir o navegador é conveniência. Falhar aqui não pode derrubar o orbe, que
-            // continua sendo a única coisa entre o usuário e a lista que ele acabou de ler.
-            Console.WriteLine($"[ORBE] Não abriu '{email.Url}': {ex.Message}");
-        }
-    }
-
     // ─────────────────────────────────────────────────────────────────────────
     // §5.2  Pulso
     // ─────────────────────────────────────────────────────────────────────────

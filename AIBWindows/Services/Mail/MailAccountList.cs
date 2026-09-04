@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -32,6 +32,28 @@ public sealed class MailAccountList
     /// Há pelo menos uma caixa com senha no cofre. É o que liga a aba de e-mails da janela de
     /// chat (tela-chat-v3 §6.2.1).
     /// </summary>
+    /// <summary>
+    /// Se alguma caixa GRAVADA tem senha no cofre — a pergunta que a aba de e-mails do painel
+    /// faz para escolher entre o convite e a lista (tela-chat-v3 §6.2.1).
+    /// <para>
+    /// Conta gravada sem senha no cofre NÃO vale: é o estado em que o arquivo de configurações
+    /// foi copiado para outra máquina, onde o DPAPI não abre nada. Tratá-la como pronta faria
+    /// a aba prometer uma lista que nunca chegaria, que é exatamente o beco sem saída de que a
+    /// linha de estado da conta já sofreu uma vez.
+    /// </para>
+    /// </summary>
+    public static bool AlgumaCaixaPronta(
+        System.Collections.Generic.IEnumerable<MailAccountSettings>? gravadas, MailVault cofre)
+    {
+        if (gravadas == null) return false;
+
+        foreach (var conta in gravadas)
+            if (!string.IsNullOrWhiteSpace(conta.Address) && cofre.Existe(conta.Address))
+                return true;
+
+        return false;
+    }
+
     public bool Configurado => _contas.Any(c => c.HasPassword);
 
     public MailAccount? Principal => _contas.FirstOrDefault(c => c.IsPrimary);

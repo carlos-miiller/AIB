@@ -6,6 +6,7 @@ using System.Windows.Media;
 using AIB.Services;
 
 // WinForms entra junto com o WPF em net8.0-windows e traz homonimos.
+using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
 using ColorConverter = System.Windows.Media.ColorConverter;
 
@@ -46,6 +47,16 @@ public sealed class UrgenciaConverter : IValueConverter
             _ => Pincel(Cor(nivel))
         };
     }
+
+    /// <summary>
+    /// A cor sólida de um nível, para quem precisa dela FORA de um Binding — o rótulo de
+    /// urgentes no rodapé do painel, por exemplo, que muda de cor por código.
+    /// <para>
+    /// Existe para que essa cor continue vindo daqui. Um <c>#E8A33D</c> digitado na View seria
+    /// a quarta cópia do mesmo âmbar, e a primeira a não acompanhar uma correção.
+    /// </para>
+    /// </summary>
+    public static Brush CorDe(MailUrgency nivel) => Pincel(Cor(nivel));
 
     private static string Rotulo(MailUrgency nivel) => nivel switch
     {

@@ -1,0 +1,106 @@
+<UserControl x:Class="AIB.Views.MailListItem"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:AIB.Ui"
+             Cursor="Hand"
+             MouseLeftButtonUp="Item_Click">
+
+    <!--
+        PROVISÓRIO — tela-chat-v3 §6.6 E3 diz, com todas as letras, que este layout
+        de item vai ser revisto. Ele existe como controle próprio para que a revisão
+        seja em UM lugar; não espalhar estes estilos pelas panes.
+
+        É o item de e-mail das DUAS telas: a pilha do orbe (shadow-assistant §4.8) e
+        a aba de e-mails do painel (§6.2). A spec manda reusar o mesmo controle, e a
+        razão é dura: são o mesmo dado com a mesma leitura de relance, e duas cópias
+        divergiriam na primeira correção feita só de um lado.
+
+        As únicas diferenças permitidas estão em duas propriedades:
+          CornerRadius  12 no orbe, 14 no painel (casa com os outros itens de lá);
+          RealceLilas   hover lilás no painel; no orbe o item não tem hover.
+    -->
+
+    <UserControl.Resources>
+        <ui:UrgenciaConverter x:Key="CorDaUrgencia"    Modo="Cor"/>
+        <ui:UrgenciaConverter x:Key="FundoDaUrgencia"  Modo="Fundo"/>
+        <ui:UrgenciaConverter x:Key="RotuloDaUrgencia" Modo="Rotulo"/>
+    </UserControl.Resources>
+
+    <Border Padding="9,9,11,10"
+            BorderThickness="1"
+            CornerRadius="{Binding CornerRadius, RelativeSource={RelativeSource AncestorType=UserControl}}">
+
+        <Border.Style>
+            <Style TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource ReadFill05Brush}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+                <Style.Triggers>
+                    <!-- O hover é do PAINEL. No orbe o item não reage ao mouse: lá a
+                         pilha é leitura de passagem, e um realce a cada item sob o
+                         cursor viraria ruído sobre o desktop. -->
+                    <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding RealceLilas, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True"/>
+                            <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="Background" Value="{StaticResource AccentFill08Brush}"/>
+                        <Setter Property="BorderBrush" Value="{StaticResource AccentBorderStrongBrush}"/>
+                    </MultiDataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- A barra de urgência é o que se lê de relance, antes de qualquer texto. -->
+            <Border Grid.Column="0" Grid.RowSpan="2"
+                    Width="3" CornerRadius="2"
+                    Background="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+
+            <TextBlock Grid.Column="1" Grid.Row="0"
+                       Margin="10,0,0,0"
+                       Text="{Binding Name}"
+                       FontSize="12.5" FontWeight="SemiBold"
+                       Foreground="{StaticResource TextStrongBrush}"
+                       TextTrimming="CharacterEllipsis"/>
+
+            <!-- A13 — o resumo vem da IA e pode vir longo. Duas linhas e ponto: sem o
+                 teto, o balão estica e cobre a tela. -->
+            <TextBlock Grid.Column="1" Grid.Row="1"
+                       Margin="10,3,0,0"
+                       Text="{Binding Description}"
+                       FontSize="11.5" LineHeight="16.7"
+                       MaxHeight="34"
+                       TextWrapping="Wrap"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
+
+            <!-- A12 — a cor é o sinal de relance, mas o rótulo de texto fica junto:
+                 daltonismo e captura de tela em tons de cinza. -->
+            <Border Grid.Column="2" Grid.Row="0"
+                    Margin="10,0,0,0"
+                    Padding="6,3,8,3"
+                    CornerRadius="{StaticResource RadiusPill}"
+                    Background="{Binding Urgency, Converter={StaticResource FundoDaUrgencia}}">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="5" Height="5"
+                             VerticalAlignment="Center"
+                             Fill="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+                    <TextBlock Margin="5,0,0,0"
+                               Text="{Binding Urgency, Converter={StaticResource RotuloDaUrgencia}}"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

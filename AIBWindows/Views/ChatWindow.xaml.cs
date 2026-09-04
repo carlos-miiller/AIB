@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
 using AIB.Services;
+using AIB.Services.Mail;
 using Markdig.Wpf;
 
 // Aliases para eliminar ambiguidade entre System.Drawing e System.Windows.Media
@@ -30,6 +31,12 @@ public partial class ChatWindow : Window
     private int _activeScreenIndex = -1;
     private bool _isShadowModeEnabled = false;
     private readonly SettingsService _settingsService;
+
+    /// <summary>
+    /// Só para PERGUNTAR se há senha guardada. A conversa nunca lê senha de e-mail: o painel
+    /// precisa saber se existe caixa pronta, e essa é toda a pergunta.
+    /// </summary>
+    private readonly MailVault _cofreDeEmail = new();
     private readonly VoiceService _voiceService;
 
     private bool _voiceReady = false;
@@ -1450,6 +1457,37 @@ public partial class ChatWindow : Window
         if (e.LeftButton == MouseButtonState.Pressed) this.DragMove();
     }
 
+    /// <summary>Se existe caixa com senha no cofre — §6.2.1 escolhe por isto.</summary>
+    private bool HaCaixaDeEmailPronta() =>
+        MailAccountList.AlgumaCaixaPronta(
+            _settingsService.LoadSettings().MailAccounts, _cofreDeEmail);
+
+    /// <summary>
+    /// O botão "Configurar e-mail" do painel. §6.2.1 mandava abrir o modal de §6.5, mas a
+    /// página de e-mail da tela de configurações passou a fazer o mesmo e mais — várias caixas,
+    /// troca de senha, remoção, teste de conexão. Um modal agora seria uma segunda porta para a
+    /// mesma sala, com sua própria cópia do cofre e da validação.
+    /// </summary>
+    private void AbrirConfiguracoesDeEmail()
+    {
+        // O painel é Topmost. Sem baixá-lo, o diálogo modal abre ATRÁS dele e a tela parece
+        // travada: o clique não responde e não há nada visível explicando por quê.
+        bool painelNoTopo = _painel?.Topmost ?? false;
+        if (_painel != null) _painel.Topmost = false;
+
+        this.Deactivated -= Window_Deactivated;
+        var janela = new SettingsWindow(_settingsService, PaginaDeConfiguracoes.Email)
+        {
+            Owner = this
+        };
+        janela.ShowDialog();
+        this.Deactivated += Window_Deactivated;
+
+        if (_painel != null) _painel.Topmost = painelNoTopo;
+
+        ApplyShadowAssistantSetting();
+    }
+
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         this.Deactivated -= Window_Deactivated; // Previne esconder o chat
@@ -1671,7 +1709,13 @@ public partial class ChatWindow : Window
         if (_painel == null)
         {
             _painel = new SidePanelWindow(
-                RecuperarChat, AbrirChat, ExcluirChat, () => _conversation.SessionId)
+                RecuperarChat, AbrirChat, ExcluirChat, () => _conversation.SessionId,
+                emailConfigurado: HaCaixaDeEmailPronta,
+                // A triagem ainda não existe: a varredura de hoje só CONTA mensagens, sem
+                // baixar assunto nem remetente. Até ela chegar, a aba mostra o vazio honesto
+                // de §6.2.1 (b) em vez de dados inventados.
+                emails: () => Array.Empty<MailSummary>(),
+                aoConfigurarEmail: AbrirConfiguracoesDeEmail)
             {
                 Owner = this
             };

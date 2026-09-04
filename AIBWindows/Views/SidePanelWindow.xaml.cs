@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Linq;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -43,17 +45,41 @@ public partial class SidePanelWindow : Window
     /// </summary>
     private readonly Func<string?>? _sessaoAtiva;
 
+    /// <summary>
+    /// Se existe caixa conectada. Função, e não valor: o usuário pode conectar uma conta pela
+    /// tela de configurações com o painel aberto, e um bool capturado na construção deixaria a
+    /// aba presa no convite para sempre.
+    /// </summary>
+    private readonly Func<bool>? _emailConfigurado;
+
+    /// <summary>
+    /// Os e-mails já triados. Hoje volta vazio em toda chamada — a triagem ainda não existe, e
+    /// a varredura de §6.2 só CONTA mensagens, sem baixar assunto nem remetente. A aba mostra o
+    /// vazio honesto de §6.2.1 (b) até que haja o que mostrar.
+    /// </summary>
+    private readonly Func<IReadOnlyList<MailSummary>>? _emails;
+
+    private readonly Action? _aoConfigurarEmail;
+
+    private readonly TokenCounter _contadorDeTokens = new();
+
     public SidePanelWindow(
         Action<ChatSession>? aoRecuperarChat = null,
         Action<ChatSession>? aoAbrirChat = null,
         Action<ChatSession>? aoExcluirChat = null,
-        Func<string?>? sessaoAtiva = null)
+        Func<string?>? sessaoAtiva = null,
+        Func<bool>? emailConfigurado = null,
+        Func<IReadOnlyList<MailSummary>>? emails = null,
+        Action? aoConfigurarEmail = null)
     {
         InitializeComponent();
         _aoRecuperarChat = aoRecuperarChat;
         _aoAbrirChat = aoAbrirChat;
         _aoExcluirChat = aoExcluirChat;
         _sessaoAtiva = sessaoAtiva;
+        _emailConfigurado = emailConfigurado;
+        _emails = emails;
+        _aoConfigurarEmail = aoConfigurarEmail;
 
         // As listas são observáveis: o painel acompanha sem consultar. Sem isto, abrir o painel
         // mostraria o estado do momento da abertura e congelaria.
@@ -75,10 +101,11 @@ public partial class SidePanelWindow : Window
     private void Acoes_Mudaram(object? s, NotifyCollectionChangedEventArgs e) =>
         Dispatcher.BeginInvoke(new Action(MontarAcoes));
 
-    /// <summary>Remonta as três abas.</summary>
+    /// <summary>Remonta as quatro abas.</summary>
     public void Recarregar()
     {
         MontarHistorico();
+        MontarEmails();
         MontarArquivos();
         MontarAcoes();
     }
@@ -177,8 +204,81 @@ public partial class SidePanelWindow : Window
         if (PaneHistorico == null) return;
 
         PaneHistorico.Visibility = AbaHistorico.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        PaneEmails.Visibility = AbaEmails.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         PaneArquivos.Visibility = AbaArquivos.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         PaneAcoes.Visibility = AbaAcoes.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
+        // A aba de e-mails é a única que pode ter mudado de estado por fora: conectar uma conta
+        // acontece na tela de configurações, não aqui. Remontar ao entrar nela é o que troca o
+        // convite pela lista sem o usuário ter de fechar e reabrir o painel.
+        if (AbaEmails.IsChecked == true) MontarEmails();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // §6.2  E-mails
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Monta a aba de e-mails e escolhe entre os TRÊS estados de §6.2.1.
+    /// <para>
+    /// A17 pede um gatilho só governando lista, rodapé e convite, e a razão é que os três
+    /// mentem se saírem de sincronia: rodapé visível sem conta anuncia "0 e-mails" como se
+    /// fosse caixa vazia, quando na verdade não se olhou caixa nenhuma. Aqui esse gatilho é
+    /// este método, e nada mais toca na visibilidade dos três.
+    /// </para>
+    /// </summary>
+    private void MontarEmails()
+    {
+        bool configurado = _emailConfigurado?.Invoke() ?? false;
+        var lista = configurado
+            ? _emails?.Invoke() ?? Array.Empty<MailSummary>()
+            : Array.Empty<MailSummary>();
+
+        // (a) sem conta -> convite, sem lista e sem rodapé.
+        ConviteDeEmail.Visibility = configurado ? Visibility.Collapsed : Visibility.Visible;
+        RoloDeEmails.Visibility = configurado ? Visibility.Visible : Visibility.Collapsed;
+        EmailsRodapeCaixa.Visibility = configurado ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!configurado)
+        {
+            ListaEmails.ItemsSource = null;
+            return;
+        }
+
+        // Urgência decrescente; dentro do mesmo nível, a ordem em que veio — que já é a mais
+        // recente primeiro. OrderByDescending é estável, então não é preciso desempatar à mão.
+        ListaEmails.ItemsSource = lista.OrderByDescending(e => e.Urgency).ToList();
+
+        // (b) conta conectada e nada para mostrar -> lista vazia de verdade, não convite.
+        EmailsVazio.Visibility = lista.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        int urgentes = lista.Count(e => e.Urgency != MailUrgency.Baixa);
+        int tokens = lista.Sum(e => _contadorDeTokens.CountText(e.Name + " " + e.Description));
+
+        EmailsRodape.Text = $"{lista.Count} e-mail{(lista.Count == 1 ? "" : "s")}"
+                            + $" • {urgentes} urgente{(urgentes == 1 ? "" : "s")}"
+                            + $" • {tokens} token{(tokens == 1 ? "" : "s")}";
+
+        // A cor da medida do meio segue o que ela mede: âmbar quando há urgência, cinza quando
+        // não há. "0 urgentes" em cor de alerta chamaria atenção para a ausência de alerta.
+        EmailsRodape.Foreground = urgentes > 0
+            ? UrgenciaConverter.CorDe(MailUrgency.Media)
+            : (Brush)FindResource("TextMutedBrush");
+    }
+
+    /// <summary>
+    /// O botão do convite. §6.2.1 mandava abrir o modal de §6.5; ele foi SUPERSEDIDO pela
+    /// página de e-mail da tela de configurações, que faz o mesmo e mais — várias caixas,
+    /// troca de senha, remoção. Construir o modal agora seria uma segunda porta para a mesma
+    /// sala, com sua própria cópia do cofre e da validação.
+    /// </summary>
+    private void ConfigurarEmail_Click(object sender, RoutedEventArgs e)
+    {
+        _aoConfigurarEmail?.Invoke();
+
+        // Voltando das configurações a conta pode existir. Remontar aqui é o que faz o convite
+        // dar lugar à lista sem exigir que o usuário troque de aba para "acordar" a tela.
+        MontarEmails();
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -261,6 +361,13 @@ public partial class SidePanelWindow : Window
         }
 
         HistoricoVazio.Visibility = ListaHistorico.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // E10 — o rodapé some junto com a lista: "0 chats • 0 B" ao lado de "Nenhum chat
+        // salvo." é a mesma frase dita duas vezes, uma delas em números.
+        var (chats, bytes) = ChatHistoryService.Peso();
+        HistoricoRodapeCaixa.Visibility = chats == 0 ? Visibility.Collapsed : Visibility.Visible;
+        HistoricoRodape.Text = $"{chats} chat{(chats == 1 ? "" : "s")}"
+                               + $" • {ContextService.Humanizar(bytes)} em disco";
     }
 
     /// <summary>

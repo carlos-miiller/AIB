@@ -747,6 +747,14 @@ namespace AIB.Tests
                 var lista = (ItemsControl)janela.ElementoDaFala(0, "ListaDeEmails")!;
                 lista.Items.Count.Should().Be(3, "o que o modelo diz precisa chegar à tela");
 
+                // E3 de tela-chat §6.6 — o item é o MESMO controle da aba de e-mails do
+                // painel, com o ajuste do orbe: raio 12 e sem hover. A pilha aqui é leitura
+                // de passagem sobre o desktop, e um realce a cada item sob o cursor viraria
+                // ruído. Duas cópias do item divergiriam na primeira correção de um lado só.
+                var item = (AIB.Views.MailListItem)lista.ItemTemplate.LoadContent();
+                item.CornerRadius.Should().Be(new CornerRadius(12));
+                item.RealceLilas.Should().BeFalse();
+
                 janela.Close();
             });
         }

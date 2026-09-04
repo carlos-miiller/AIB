@@ -254,6 +254,56 @@ namespace AIB.Services
             return falas;
         }
 
+        /// <summary>
+        /// Quantas conversas salvas e quanto elas pesam em disco — §6.6 E10.
+        /// <para>
+        /// O cálculo vive AQUI, e não na View, porque quem sabe onde cada pedaço de uma
+        /// conversa mora é a persistência. Uma View que somasse arquivos precisaria conhecer o
+        /// formato da memória, e passaria a mentir na primeira vez que ele mudasse.
+        /// </para>
+        /// <para>
+        /// Entram o arquivo do histórico e, por conversa, os CAPÍTULOS e os ATOS gerados pela
+        /// compressão de contexto. O <c>raw.jsonl</c> fica de fora de propósito: ele guarda os
+        /// mesmos turnos que já estão no arquivo do histórico, em outro formato, e somar os
+        /// dois contaria a mesma conversa duas vezes.
+        /// </para>
+        /// </summary>
+        public static (int Chats, long Bytes) Peso()
+        {
+            var sessoes = LoadHistory();
+            long bytes = Tamanho(HistoryFilePath);
+
+            foreach (var sessao in sessoes)
+            {
+                if (string.IsNullOrWhiteSpace(sessao.MemorySessionId)) continue;
+
+                try
+                {
+                    var memoria = new Memory.SessionMemory(sessao.MemorySessionId);
+                    bytes += Tamanho(memoria.ChaptersPath) + Tamanho(memoria.ActsPath);
+                }
+                catch
+                {
+                    // Id inválido numa conversa antiga não pode derrubar a contagem das outras.
+                }
+            }
+
+            return (sessoes.Count, bytes);
+        }
+
+        private static long Tamanho(string caminho)
+        {
+            try
+            {
+                var arquivo = new FileInfo(caminho);
+                return arquivo.Exists ? arquivo.Length : 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
         public static void DeleteSession(string sessionId)
         {
             lock (Trava)
