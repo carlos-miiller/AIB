@@ -41,7 +41,14 @@ public class ToolRegistry
         return (_tools.Values.ToList(), new List<ITool>());
     }
 
-    public async Task<string> ExecuteToolAsync(string toolName, string argumentsJson, int userLevel)
+    /// <param name="aoEsperarHumano">
+    /// Recebe os milissegundos que a ferramenta passou parada no modal, esperando o usuário
+    /// decidir. Sem isto o tempo de gente vira tempo de máquina: um <c>Get-Content</c> trivial
+    /// apareceu no log como "ok em 7299,6s" porque ninguém tinha clicado em autorizar por duas
+    /// horas.
+    /// </param>
+    public async Task<string> ExecuteToolAsync(
+        string toolName, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null)
     {
         if (_tools.TryGetValue(toolName, out var tool))
         {
@@ -50,7 +57,7 @@ public class ToolRegistry
 
             if (tool.RequiresConfirmation)
             {
-                var (autorizado, motivo) = await AuthorizeAsync(tool, argumentsJson, userLevel);
+                var (autorizado, motivo) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano);
                 if (!autorizado) return motivo!;
             }
 
@@ -77,7 +84,7 @@ public class ToolRegistry
     /// A auditoria grava ANTES da execução, em todos os desfechos.
     /// </summary>
     private async Task<(bool Autorizado, string? Motivo)> AuthorizeAsync(
-        ITool tool, string argumentsJson, int userLevel)
+        ITool tool, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null)
     {
         var ctx = tool.BuildConfirmationContext(argumentsJson, userLevel);
         if (ctx == null)
@@ -102,7 +109,16 @@ public class ToolRegistry
                 return (false, $"ACESSO NEGADO: '{tool.Name}' exige confirmação do usuário e não há interface disponível para pedi-la.");
             }
 
+            Console.WriteLine($"[REGISTRY] {tool.Name}: esperando você autorizar...");
+
+            var cronometro = System.Diagnostics.Stopwatch.StartNew();
             var (permitido, sempre) = await _confirmationPrompt.AskAsync(ctx);
+            cronometro.Stop();
+
+            aoEsperarHumano?.Invoke(cronometro.ElapsedMilliseconds);
+
+            Console.WriteLine($"[REGISTRY] {tool.Name}: {(permitido ? "autorizado" : "recusado")} " +
+                              $"depois de {cronometro.Elapsed.TotalSeconds:0.0}s de espera sua.");
 
             await AuditLogService.AppendAsync(new
             {

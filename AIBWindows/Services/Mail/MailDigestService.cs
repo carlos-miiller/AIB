@@ -60,6 +60,21 @@ public sealed class MailDigestService : IDisposable
 
     private DateTime? _ultimaSondagem;
 
+    /// <summary>
+    /// Por que a última batida não fez nada. Só vira linha de log quando MUDA.
+    /// <para>
+    /// Existe por um dia inteiro perdido: em sete horas o vigia não deu uma passada, com a chave
+    /// ligada e dois horários de digest dentro da janela, e o registro de execução não tinha uma
+    /// única linha explicando. Deu para provar pelos arquivos de estado que ele não rodou, e não
+    /// deu para saber por quê — as três saídas de <see cref="BaterAsync"/> eram todas mudas.
+    /// </para>
+    /// <para>
+    /// Uma linha por MUDANÇA de estado, e não por batida: a batida é de minuto em minuto, e
+    /// anunciar "nada a fazer" 1.440 vezes por dia afogaria o log que ela deveria salvar.
+    /// </para>
+    /// </summary>
+    private string _porqueParado = "";
+
     /// <summary>Quantas o modelo marcou como baixa na última passada. Vira linha auditável.</summary>
     private int _ignoradasPeloModelo;
 
@@ -147,16 +162,40 @@ public sealed class MailDigestService : IDisposable
     {
         // Uma passada por vez. Uma leitura demorada não pode acumular batidas atrás dela e
         // disparar três triagens em fila quando a primeira terminar.
-        if (Interlocked.Exchange(ref _trabalhando, 1) == 1) return;
+        if (Interlocked.Exchange(ref _trabalhando, 1) == 1)
+        {
+            // Passada anterior ainda de pé. Se for uma leitura demorada, é normal; se for uma
+            // que travou, esta linha é o ÚNICO aviso de que o vigia emudeceu de vez.
+            Anotar("a passada anterior ainda não terminou");
+            return;
+        }
 
         try
         {
             var config = _settings.LoadSettings();
-            if (!config.ShadowHandlesMail) return;
+            if (!config.ShadowHandlesMail)
+            {
+                Anotar("a chave 'Deixar o Shadow tratar os e-mails' está desligada");
+                return;
+            }
 
             var agora = _agora();
 
-            if (AgendaDoVigia.HoraDoDigest(agora, _marco.UltimoDigest))
+            // Uma leitura só do marco: ele é um arquivo em disco, e a batida é de minuto a
+            // minuto.
+            bool digest = AgendaDoVigia.HoraDoDigest(agora, _marco.UltimoDigest);
+            bool sondagem = AgendaDoVigia.HoraDaSondagem(agora, _ultimaSondagem);
+
+            if (!digest && !sondagem)
+            {
+                var proximo = _ultimaSondagem + AgendaDoVigia.IntervaloDaSondagem;
+                Anotar($"fora de hora; próxima sondagem por volta de {proximo:HH:mm}");
+                return;
+            }
+
+            Anotar("");
+
+            if (digest)
             {
                 // Gravado ANTES de rodar. Se o digest falhar no meio, ele não fica repetindo a
                 // cada minuto até dar certo — espera o próximo horário, como faria alguém.
@@ -166,7 +205,7 @@ public sealed class MailDigestService : IDisposable
                 return;
             }
 
-            if (AgendaDoVigia.HoraDaSondagem(agora, _ultimaSondagem))
+            if (sondagem)
             {
                 _ultimaSondagem = agora;
                 await ExecutarAsync(comModelo: false, _parada.Token).ConfigureAwait(false);
@@ -185,6 +224,18 @@ public sealed class MailDigestService : IDisposable
         {
             Interlocked.Exchange(ref _trabalhando, 0);
         }
+    }
+
+    /// <summary>
+    /// Registra por que o vigia está parado, uma vez por mudança de motivo. Motivo vazio quer
+    /// dizer "vai trabalhar agora", e volta a permitir o próximo aviso.
+    /// </summary>
+    private void Anotar(string motivo)
+    {
+        if (motivo == _porqueParado) return;
+
+        _porqueParado = motivo;
+        if (motivo.Length > 0) Console.WriteLine($"[VIGIA] parado: {motivo}.");
     }
 
     /// <summary>

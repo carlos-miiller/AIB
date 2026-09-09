@@ -124,6 +124,25 @@ public sealed class UserAppSettings
     /// <summary>Quanto se espera por caixa antes de desistir. Servidor mudo não segura a tela.</summary>
     public int MailTimeoutSeconds { get; set; } = PadraoDoTempoLimiteImapEmSegundos;
 
+    public const bool PadraoDoRaciocinio = false;
+
+    /// <summary>
+    /// Deixar o modelo raciocinar antes de responder, nas conversas.
+    /// <para>
+    /// NASCE DESLIGADO por medição, não por gosto. Nesta máquina o Ollama roda 100% em CPU — não
+    /// há GPU utilizável —, e a geração fica em 1,1 a 3,1 tokens por segundo. Numa sessão real
+    /// de oito turnos, TODOS terminaram com <c>content=0</c>: o modelo só pensou e chamou
+    /// ferramenta. Um único turno gastou 953 tokens de raciocínio em 726 segundos — doze minutos
+    /// para produzir zero texto na tela.
+    /// </para>
+    /// <para>
+    /// Ligado, o campo <c>think</c> não é enviado e o modelo usa o padrão dele. Desligado, vai
+    /// <c>think:false</c> — que é o que a triagem de e-mail e o compactador já faziam por conta
+    /// própria, pelo mesmo motivo.
+    /// </para>
+    /// </summary>
+    public bool ModelThinking { get; set; } = PadraoDoRaciocinio;
+
     public const int PadraoDeDiasDeDiario = 7;
 
     /// <summary>

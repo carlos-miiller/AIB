@@ -1243,6 +1243,25 @@
                                     </Border>
 
 
+
+                                    <!-- Raciocinio do modelo -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Deixar o modelo raciocinar" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O modelo pensa antes de responder. O raciocínio nunca aparece na tela e, sem GPU, custa minutos por turno — medido: 953 tokens de pensamento em 12 minutos para produzir zero texto. Ligue só para depurar."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="ModelThinkingSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
                                     <!-- Registro de execução em arquivo -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">

@@ -163,17 +163,71 @@ public sealed class ChannelSplitter
         //    pensamento.
         else if (_thinkBuffer.Length > 0 && !_anyFinal && !anyToolCallSeen)
         {
-            int before = output.Count;
-            EmitFinal(_thinkBuffer.ToString(), output);
-            if (output.Count > before)
+            string pensamento = _thinkBuffer.ToString();
+
+            // Nem todo pensamento é resposta. Visto em produção: o modelo escreveu a chamada de
+            // ferramenta COMO TEXTO, em XML de outro dialeto, dentro do canal de raciocínio — e
+            // o fallback despejou isso na tela do usuário como se fosse a resposta:
+            //
+            //     <parameter=command>
+            //     powershell -ExecutionPolicy Bypass -File "...\gerar_sigs.ps1"
+            //     </parameter>
+            //     </function>
+            //     </tool_call>
+            //
+            // Nada foi executado, e o que apareceu não era português. Melhor uma frase honesta
+            // que o esqueleto de uma chamada que não aconteceu.
+            if (ChamadaMalformada(pensamento))
             {
                 Console.WriteLine(
-                    "[STREAM-END] Fallback: o turno só raciocinou; emitindo o pensamento como resposta.");
+                    "[STREAM-END] Fallback DESCARTADO: o pensamento era uma chamada de ferramenta "
+                    + "malformada, escrita como texto. Nada foi executado.");
+
+                EmitFinal(RecadoDeChamadaMalformada, output);
+            }
+            else
+            {
+                int before = output.Count;
+                EmitFinal(pensamento, output);
+                if (output.Count > before)
+                {
+                    Console.WriteLine(
+                        "[STREAM-END] Fallback: o turno só raciocinou; emitindo o pensamento como resposta.");
+                }
             }
         }
 
         _thinkBuffer.Clear();
         return output;
+    }
+
+    /// <summary>O que o usuário lê quando o modelo errou a sintaxe da ferramenta.</summary>
+    public const string RecadoDeChamadaMalformada =
+        "Tentei usar uma ferramenta, mas escrevi a chamada como texto em vez de executá-la. "
+        + "Nada foi executado. Pode pedir de novo?";
+
+    /// <summary>
+    /// Se o texto é o esqueleto de uma chamada de ferramenta em vez de prosa.
+    /// <para>
+    /// Procura as marcas dos dialetos que os modelos abertos emitem quando erram o formato —
+    /// Hermes e ChatML de função. São sequências que não aparecem numa frase escrita para gente.
+    /// </para>
+    /// </summary>
+    public static bool ChamadaMalformada(string? texto)
+    {
+        string t = texto ?? "";
+        if (t.Length == 0) return false;
+
+        foreach (string marca in new[]
+                 {
+                     "<tool_call", "</tool_call", "<function=", "</function", "<parameter=",
+                     "</parameter", "<|tool_call", "<invoke name="
+                 })
+        {
+            if (t.Contains(marca, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+
+        return false;
     }
 
     private void Consume(string remaining, List<StreamChunk.TextDelta> output)

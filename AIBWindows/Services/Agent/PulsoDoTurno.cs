@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
 
@@ -60,6 +61,14 @@ public sealed class PulsoDoTurno : IDisposable
     private long _milissegundosDaFerramenta;
     private int _ferramentasExecutadas;
     private int _encerrado;
+
+    /// <summary>
+    /// Quanto cada ferramenta passou parada no modal, esperando o usuário. Por NOME e não um
+    /// total, porque as ferramentas de um turno rodam em paralelo.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, long> _esperaHumana = new();
+
+    private long _esperaHumanaTotal;
 
     /// <param name="iteracao">Volta do laço do agente. Um turno com ferramenta tem várias.</param>
     /// <param name="modelo">Modelo efetivo do provider, não o das configurações.</param>
@@ -131,6 +140,23 @@ public sealed class PulsoDoTurno : IDisposable
         Linha($"~ ferramenta {nome} — executando");
     }
 
+    /// <summary>
+    /// Anota que a ferramenta ficou parada esperando o usuário decidir no modal.
+    /// <para>
+    /// Existe porque o log dizia "ferramenta run_command — ok em 7299,6s" para um
+    /// <c>Get-Content</c> trivial: as duas horas eram do modal aberto, não da execução. Misturar
+    /// as duas coisas faz o registro afirmar que a máquina é lenta quando ela estava parada
+    /// esperando gente.
+    /// </para>
+    /// </summary>
+    public void EsperaHumana(string ferramenta, long milissegundos)
+    {
+        if (milissegundos <= 0) return;
+
+        _esperaHumana.AddOrUpdate(ferramenta ?? "", milissegundos, (_, antes) => antes + milissegundos);
+        Interlocked.Add(ref _esperaHumanaTotal, milissegundos);
+    }
+
     public void FerramentaTerminou(string nome, bool falhou)
     {
         long duracao = _relogio.ElapsedMilliseconds - Interlocked.Read(ref _milissegundosDaFerramenta);
@@ -138,7 +164,13 @@ public sealed class PulsoDoTurno : IDisposable
         Interlocked.Exchange(ref _ferramenta, "");
         Interlocked.Exchange(ref _fase, (int)Fase.Prefill);
 
-        Linha($"~ ferramenta {nome} — {(falhou ? "FALHOU" : "ok")} em {Segundos(duracao)}");
+        _esperaHumana.TryRemove(nome ?? "", out long esperou);
+
+        string sufixo = esperou > 0
+            ? $" em {Segundos(Math.Max(0, duracao - esperou))} (+ {Duracao(esperou)} esperando você)"
+            : $" em {Segundos(duracao)}";
+
+        Linha($"~ ferramenta {nome} — {(falhou ? "FALHOU" : "ok")}{sufixo}");
 
         // Depois da ferramenta vem outra ida ao modelo, com outro prefill. Voltar a Prefill faz
         // a próxima espera ser anunciada como espera, e não como "escrevendo" congelado.
@@ -153,7 +185,13 @@ public sealed class PulsoDoTurno : IDisposable
         _relogio.Stop();
 
         long total = _relogio.ElapsedMilliseconds;
+        long espera = Interlocked.Read(ref _esperaHumanaTotal);
         long prefill = Interlocked.Read(ref _milissegundosDoPrimeiroToken);
+
+        // O tempo de gente sai do total antes de qualquer taxa ser calculada: com ele dentro,
+        // um turno de 7.648s dividia 463 caracteres e anunciava "0,1 car/s", como se o modelo
+        // estivesse agonizando.
+        total = Math.Max(1, total - espera);
         int caracteres = _caracteresDeTexto + _caracteresDeRaciocinio;
 
         var resumo = $"< {desfecho} em {Segundos(total)}";
@@ -174,6 +212,7 @@ public sealed class PulsoDoTurno : IDisposable
         }
 
         if (_ferramentasExecutadas > 0) resumo += $" · {_ferramentasExecutadas} ferramenta(s)";
+        if (espera > 0) resumo += $" · {Duracao(espera)} esperando você";
 
         Linha(resumo);
     }
@@ -217,4 +256,18 @@ public sealed class PulsoDoTurno : IDisposable
     private void Linha(string texto) => _escrever($"[TURNO {_iteracao}] {texto}");
 
     private static string Segundos(long milissegundos) => $"{milissegundos / 1000.0:0.0}s";
+
+    /// <summary>
+    /// Duração legível para esperas longas. "7299,6s" é um número que ninguém converte de
+    /// cabeça; "2h01min" se lê de relance, e a espera humana é justamente a que fica grande.
+    /// </summary>
+    public static string Duracao(long milissegundos)
+    {
+        double s = milissegundos / 1000.0;
+
+        if (s < 90) return $"{s:0.0}s";
+        if (s < 3600) return $"{(int)(s / 60)}min{(int)(s % 60):00}s";
+
+        return $"{(int)(s / 3600)}h{((int)s % 3600) / 60:00}min";
+    }
 }

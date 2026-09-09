@@ -252,7 +252,7 @@ public sealed class AgentLoop
                 // EXECUÇÃO PARALELA: dispara todas e espera o conjunto. Em CPU lenta, três
                 // leituras de arquivo independentes rodam concorrentes em vez de seriadas.
                 var results = await Task.WhenAll(
-                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel))).ConfigureAwait(false);
+                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel, pulso))).ConfigureAwait(false);
 
                 // Resultados na ordem original, mesmo que tenham terminado fora de ordem.
                 foreach (var (tc, result) in results)
@@ -314,10 +314,14 @@ public sealed class AgentLoop
         yield return new AgentEvent.Completed(TurnOutcome.IterationLimitReached, teto);
     }
 
-    private async Task<(ToolCallAccumulator Tc, string Result)> ExecuteToolPairedAsync(ToolCallAccumulator tc, int userLevel)
+    private async Task<(ToolCallAccumulator Tc, string Result)> ExecuteToolPairedAsync(
+        ToolCallAccumulator tc, int userLevel, PulsoDoTurno pulso)
     {
+        // O pulso recebe a espera humana POR FERRAMENTA, e não um total do turno: elas rodam em
+        // paralelo, e um total não teria como dizer qual delas ficou parada no modal.
         string result = await _toolRegistry
-            .ExecuteToolAsync(tc.Name, tc.ArgumentsOrEmpty(), userLevel)
+            .ExecuteToolAsync(tc.Name, tc.ArgumentsOrEmpty(), userLevel,
+                              ms => pulso.EsperaHumana(tc.Name, ms))
             .ConfigureAwait(false);
         return (tc, result);
     }

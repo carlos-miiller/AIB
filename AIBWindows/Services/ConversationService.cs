@@ -1017,7 +1017,13 @@ public sealed class ConversationService : IMessageStore
                 this,
                 _toolRegistry.GetActiveTools(userLevel),
                 userLevel,
-                ChatRequestOptions.Default,
+                // Think null = não manda o campo e o modelo decide; false = manda desligado.
+                // Ver ModelThinking: em CPU, raciocínio custa minutos por turno e nada dele
+                // chega à tela.
+                ChatRequestOptions.Default with
+                {
+                    Think = settings.ModelThinking ? (bool?)null : false
+                },
                 settings.VerboseConsoleLogging);
 
             await foreach (var evt in _agentLoop.RunAsync(request, ct).WithCancellation(ct).ConfigureAwait(false))
