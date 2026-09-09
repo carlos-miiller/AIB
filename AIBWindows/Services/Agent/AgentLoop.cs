@@ -85,6 +85,11 @@ public sealed class AgentLoop
         // trocada na metade é pior de depurar que um turno com a regra velha.
         int teto = _settingsService.LoadSettings().MaxTurnIterations;
 
+        // Chamadas que já falharam NESTE turno, e o erro de cada uma. Vive fora do laço porque
+        // a repetição acontece ENTRE iterações: o modelo lê o erro, raciocina, e pede
+        // exatamente a mesma coisa na volta seguinte.
+        var jaFalharam = new Dictionary<string, string>(StringComparer.Ordinal);
+
         for (int iteration = 1; iteration <= teto; iteration++)
         {
             ct.ThrowIfCancellationRequested();
@@ -252,7 +257,8 @@ public sealed class AgentLoop
                 // EXECUÇÃO PARALELA: dispara todas e espera o conjunto. Em CPU lenta, três
                 // leituras de arquivo independentes rodam concorrentes em vez de seriadas.
                 var results = await Task.WhenAll(
-                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel, pulso))).ConfigureAwait(false);
+                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel, pulso, jaFalharam)))
+                    .ConfigureAwait(false);
 
                 // Resultados na ordem original, mesmo que tenham terminado fora de ordem.
                 foreach (var (tc, result) in results)
@@ -314,16 +320,66 @@ public sealed class AgentLoop
         yield return new AgentEvent.Completed(TurnOutcome.IterationLimitReached, teto);
     }
 
+    /// <summary>
+    /// Como uma chamada já tentada é reconhecida: nome da ferramenta mais os argumentos, letra
+    /// por letra. Argumento diferente é tentativa diferente, e essa passa.
+    /// </summary>
+    public static string Assinatura(string nome, string? argumentos) =>
+        nome + "\u0000" + (argumentos ?? "");
+
+    /// <summary>
+    /// A chamada bloqueada por repetição, com o erro anterior junto. Pública porque é ela que o
+    /// ensaio confere: o texto É o comportamento — quem lê isto é quem decide a próxima jogada.
+    /// </summary>
+    public static string RecadoDeRepeticao(string ferramenta, string erroAnterior) =>
+        $"ERRO: esta chamada exata a '{ferramenta}' já foi feita neste turno e falhou com:\n"
+        + $"{erroAnterior}\n"
+        + "Não repita. Mude os argumentos, use outra ferramenta, ou explique ao usuário o que "
+        + "está faltando.";
+
     private async Task<(ToolCallAccumulator Tc, string Result)> ExecuteToolPairedAsync(
-        ToolCallAccumulator tc, int userLevel, PulsoDoTurno pulso)
+        ToolCallAccumulator tc, int userLevel, PulsoDoTurno pulso,
+        Dictionary<string, string> jaFalharam)
     {
+        // REPETIÇÃO. Visto em produção: quatro chamadas idênticas a ler-planilha com o mesmo
+        // caminho inexistente, cada uma custando um modal e um turno inteiro. O prompt de
+        // sistema manda "tente mais UMA vez" e nada fazia cumprir.
+        //
+        // O escopo é o TURNO. Cruzar mensagens do usuário seria arriscado: ele pode ter mudado
+        // o mundo entre uma e outra — foi exatamente o que aconteceu, ele trocou o arquivo de
+        // .xls para .csv — e bloquear ali impediria a tentativa que agora daria certo.
+        string assinatura = Assinatura(tc.Name, tc.ArgumentsOrEmpty());
+
+        if (jaFalharam.TryGetValue(assinatura, out string? antes))
+        {
+            Console.WriteLine($"[REGISTRY] {tc.Name}: repetição bloqueada.");
+            return (tc, RecadoDeRepeticao(tc.Name, antes));
+        }
+
         // O pulso recebe a espera humana POR FERRAMENTA, e não um total do turno: elas rodam em
         // paralelo, e um total não teria como dizer qual delas ficou parada no modal.
         string result = await _toolRegistry
             .ExecuteToolAsync(tc.Name, tc.ArgumentsOrEmpty(), userLevel,
                               ms => pulso.EsperaHumana(tc.Name, ms))
             .ConfigureAwait(false);
+
+        if (Memory.ArtifactExtractor.Falhou(result)) jaFalharam[assinatura] = Resumir(result);
+
         return (tc, result);
+    }
+
+    /// <summary>
+    /// O erro anterior, curto. Repetir o manual inteiro da habilidade a cada bloqueio desfaria a
+    /// economia de contexto que o bloqueio existe para fazer.
+    /// </summary>
+    public static string Resumir(string? erro)
+    {
+        string t = (erro ?? "").Trim();
+
+        int quebra = t.IndexOf('\n');
+        if (quebra > 0) t = t.Substring(0, quebra).TrimEnd();
+
+        return t.Length > 300 ? t.Substring(0, 300) + "…" : t;
     }
 
     /// <summary>Mantém a lista de arquivos recentes acessados pelo agente.</summary>

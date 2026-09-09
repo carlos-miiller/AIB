@@ -34,6 +34,23 @@ public class ExecuteSkillTool : ITool
 
     private const int MaxSaida = 8000;
 
+    /// <summary>
+    /// Habilidades cujo manual já foi mandado ao modelo. Uma vez basta.
+    /// <para>
+    /// O manual tem quase mil caracteres. Em produção ele foi anexado a QUATRO falhas seguidas
+    /// da mesma habilidade — quatro mil caracteres do mesmo texto empurrados para dentro do
+    /// contexto, num prompt que já estava perto do ponto em que o modelo começou a errar
+    /// sintaxe e a emitir chamada de ferramenta como texto. A ajuda estava alimentando o
+    /// problema que ela existia para resolver.
+    /// </para>
+    /// <para>
+    /// Zerado quando a habilidade finalmente roda: se ela voltar a falhar depois de um sucesso,
+    /// o assunto é outro e o manual volta a valer.
+    /// </para>
+    /// </summary>
+    private readonly System.Collections.Generic.HashSet<string> _manualEnviado =
+        new(StringComparer.OrdinalIgnoreCase);
+
     public string Name => "execute_skill";
 
     public string Description =>
@@ -102,6 +119,33 @@ public class ExecuteSkillTool : ITool
         """)
     );
 
+    /// <summary>
+    /// Confere o caminho citado nos argumentos antes de gastar um modal e um turno com uma
+    /// chamada que não tem como funcionar. Ver <see cref="PreVooDeCaminho"/>.
+    /// </summary>
+    public string? Validar(string argumentsJson)
+    {
+        try
+        {
+            var args = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
+
+            string nome = args.TryGetProperty("skill_name", out var n) ? n.GetString() ?? "" : "";
+            string extra = args.TryGetProperty("arguments", out var a) ? a.GetString() ?? "" : "";
+
+            if (extra.Length == 0) return null;
+
+            var skill = SkillService.Find(nome);
+
+            // Habilidade inexistente é problema do ExecuteAsync, que já responde com a lista do
+            // que existe. Aqui só se confere caminho.
+            return PreVooDeCaminho.Conferir(extra, skill?.Accepts);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
         string nome;
@@ -145,7 +189,7 @@ public class ExecuteSkillTool : ITool
         return await RodarAsync(skill, extra);
     }
 
-    private static async Task<string> RodarAsync(LocalSkill skill, string argumentos)
+    private async Task<string> RodarAsync(LocalSkill skill, string argumentos)
     {
         var (executavel, prefixo) = skill.Interpreter.ToLowerInvariant() switch
         {
@@ -220,8 +264,18 @@ public class ExecuteSkillTool : ITool
             // recebia de volta um erro sem nenhuma pista da forma certa - foram tres
             // tentativas cegas seguidas. Mandar as instrucoes sempre custaria contexto em
             // toda chamada bem-sucedida; manda-las no erro custa so quando servem.
-            if (processo.ExitCode != 0 && skill.Instructions.Length > 0)
-                texto += $"\n\n--- Como usar a habilidade '{skill.Name}' ---\n{skill.Instructions}";
+            if (processo.ExitCode == 0)
+            {
+                // Funcionou: se falhar de novo mais tarde, o assunto é outro e o manual volta.
+                _manualEnviado.Remove(skill.Name);
+            }
+            else if (skill.Instructions.Length > 0)
+            {
+                texto += _manualEnviado.Add(skill.Name)
+                    ? $"\n\n--- Como usar a habilidade '{skill.Name}' ---\n{skill.Instructions}"
+                    : $"\n\n(o manual de '{skill.Name}' já foi enviado nesta sessão — releia acima "
+                      + "em vez de repetir a mesma chamada.)";
+            }
 
             if (texto.Length == 0)
             {

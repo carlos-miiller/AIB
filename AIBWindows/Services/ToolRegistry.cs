@@ -55,6 +55,14 @@ public class ToolRegistry
             if (tool.RequiredLevel > userLevel)
                 return $"ACESSO NEGADO: A ferramenta '{toolName}' exige Nível {tool.RequiredLevel}, mas o seu nível atual é {userLevel}.";
 
+            // ANTES do portão humano: chamada impossível não vira pergunta. Ver ITool.Validar.
+            string? recusa = tool.Validar(argumentsJson);
+            if (recusa != null)
+            {
+                Console.WriteLine($"[REGISTRY] {toolName} recusada no pré-voo.");
+                return recusa;
+            }
+
             if (tool.RequiresConfirmation)
             {
                 var (autorizado, motivo) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano);

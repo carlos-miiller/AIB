@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -27,6 +27,16 @@ public class LocalSkill
 
     /// <summary>Corpo do SKILL.md depois do cabeçalho — instruções de uso, para o modelo ler.</summary>
     public string Instructions { get; set; } = "";
+
+    /// <summary>
+    /// Extensões que a habilidade sabe abrir, declaradas em <c>accepts:</c>. Vazio aceita tudo.
+    /// <para>
+    /// Existe porque <c>.xls</c> e <c>.xlsx</c> são formatos diferentes por dentro — um é OLE2
+    /// binário, o outro um ZIP de XML — e a habilidade que lê um devolve lixo ou erro no outro.
+    /// Sem declarar, a incompatibilidade só aparecia como uma falha genérica depois de rodar.
+    /// </para>
+    /// </summary>
+    public List<string> Accepts { get; set; } = new();
 }
 
 /// <summary>
@@ -123,7 +133,8 @@ public static class SkillService
                 Interpreter = Valor(cabecalho, "interpreter"),
                 ScriptPath = File.Exists(caminhoScript) ? caminhoScript : "",
                 Folder = pasta,
-                Instructions = corpo.Trim()
+                Instructions = corpo.Trim(),
+                Accepts = Extensoes(Valor(cabecalho, "accepts"))
             };
         }
         catch (Exception ex)
@@ -141,6 +152,23 @@ public static class SkillService
     /// pediu, num arquivo que o usuário escreve à mão.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Lê a lista do <c>accepts:</c>. Aceita "xlsx", ".xlsx" e "*.xlsx" — quem escreve o
+    /// cabeçalho não deve ter de adivinhar a forma, e as três significam a mesma coisa.
+    /// </summary>
+    public static List<string> Extensoes(string? declarado)
+    {
+        if (string.IsNullOrWhiteSpace(declarado)) return new List<string>();
+
+        return declarado
+            .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(e => e.Trim().TrimStart('*'))
+            .Select(e => e.StartsWith('.') ? e : "." + e)
+            .Where(e => e.Length > 1)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private static (List<string> Cabecalho, string Corpo) SepararCabecalho(string texto)
     {
         var linhas = texto.Replace("\r\n", "\n").Split('\n');

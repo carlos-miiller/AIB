@@ -1,4 +1,4 @@
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using OpenAI.Chat;
 
 namespace AIB.Services;
@@ -38,6 +38,22 @@ public interface ITool
     /// Default falso: só ferramentas que alteram a máquina do usuário sobrescrevem.
     /// </summary>
     bool RequiresConfirmation => false;
+
+    /// <summary>
+    /// Confere os argumentos ANTES de qualquer coisa acontecer. Devolver texto RECUSA a
+    /// execução, e o texto vai ao modelo como resultado.
+    /// <para>
+    /// Roda antes do portão de confirmação, de propósito: uma chamada que não pode dar certo
+    /// não deve virar pergunta para o usuário. Visto em produção — o modelo pediu uma planilha
+    /// num caminho inexistente quatro vezes, e cada uma abriu um modal pedindo autorização para
+    /// executar algo que ia falhar de qualquer jeito.
+    /// </para>
+    /// <para>
+    /// Default null: quem não tem o que conferir não confere nada, e o comportamento é o de
+    /// antes. Recusar aqui é sempre seguro — é um "não".
+    /// </para>
+    /// </summary>
+    string? Validar(string argumentsJson) => null;
 
     /// <summary>
     /// Monta o que o modal mostra ao usuário. Fica na ferramenta porque só ela sabe interpretar
