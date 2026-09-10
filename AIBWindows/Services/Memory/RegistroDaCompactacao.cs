@@ -131,6 +131,20 @@ public sealed class RegistroDaCompactacao
     /// <summary>Nada a fazer — registrado porque "não compactou" tem causas diferentes.</summary>
     public void Pulou(string porque) => Escrever("PULOU", porque);
 
+    /// <summary>
+    /// A poda de emergência: o corte cego que age quando a compactação não deu conta.
+    /// <para>
+    /// Não é compactação, mas é o que acontece NO LUGAR dela, e por isso mora no mesmo diário.
+    /// A poda descarta sem substituto — o que ela come não vira capítulo, não vira artefato e
+    /// não vira nada: some. Uma conversa que anda na poda em vez de na compactação está
+    /// perdendo material de verdade, e até aqui isso não deixava rastro nenhum.
+    /// </para>
+    /// </summary>
+    public void Podou(int mensagens, int antes, int depois, int teto) =>
+        Escrever("PODA",
+            $"{mensagens} mensagem(ns) cortada(s) sem substituto, "
+            + $"{Numero(antes)} → {Numero(depois)} token(s) (teto {Numero(teto)})");
+
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>

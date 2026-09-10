@@ -464,7 +464,29 @@ public sealed class ConversationService : IMessageStore
         try
         {
             var turnos = TurnSplitter.Split(Snapshot());
-            if (turnos.Count == 0) return;
+
+            if (turnos.Count == 0)
+            {
+                // O que estava pendente ainda pode ser gravado: ele é um objeto próprio e não
+                // depende do histórico vivo continuar de pé.
+                if (_turnoPendente != null)
+                {
+                    Gravar(_turnoPendente);
+                    _turnoPendente = null;
+                }
+                else if (Snapshot().Count > 0)
+                {
+                    // Histórico com mensagens e nenhum turno: não existe 'user' nelas. Era o
+                    // desfecho da poda comendo a abertura do turno, e o turno inteiro sumia do
+                    // raw.jsonl em silêncio. Com a abertura protegida isto não deveria mais
+                    // acontecer — se acontecer, quero ver.
+                    Console.WriteLine(
+                        "[MEMORIA] Turno não registrado: o histórico vivo não tem mensagem de "
+                        + "usuário para abrir um turno.");
+                }
+
+                return;
+            }
 
             var ultimo = turnos[^1];
 
@@ -1394,9 +1416,38 @@ public sealed class ConversationService : IMessageStore
         return i;
     }
 
+    /// <summary>
+    /// Onde está a mensagem que ABRIU o turno em andamento, ou -1 se não há nenhuma.
+    /// Chamar sempre sob <see cref="_gate"/>.
+    /// <para>
+    /// Ela não é histórico: é a TAREFA. A poda roda a cada rodada de ferramentas, e num turno
+    /// grande — dez iterações, dois arquivos lidos — o mais antigo que ela encontrava era o
+    /// próprio pedido do usuário. Comê-lo deixava o modelo trabalhando sem saber o que tinha
+    /// sido pedido, e é a explicação de turnos que nadam, nadam e morrem na praia.
+    /// </para>
+    /// <para>
+    /// O estrago silencioso vinha depois: o <see cref="Memory.TurnSplitter"/> descarta tudo o
+    /// que vem antes do primeiro <c>user</c>, então o turno inteiro sumia do snapshot e
+    /// <see cref="RecordLastTurn"/> não achava turno nenhum para gravar. Medido numa conversa
+    /// real de 10/09: seis turnos na tela, quatro no raw.jsonl. Os dois perdidos foram
+    /// justamente os dois maiores.
+    /// </para>
+    /// </summary>
+    private int UltimoIndiceDeUsuario()
+    {
+        for (int i = _history.Count - 1; i >= 0; i--)
+            if (_history[i] is UserChatMessage) return i;
+
+        return -1;
+    }
+
     public void Trim(int userLevel)
     {
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
+
+        int cortadas = 0;
+        int antes, depois;
+        bool naoCoube;
 
         lock (_gate)
         {
@@ -1405,26 +1456,69 @@ public sealed class ConversationService : IMessageStore
             // acabou de custar uma chamada ao modelo — e junto com ele os turnos que ele
             // substituiu, que já saíram do histórico vivo.
             int firstRemovable = FirstRemovableIndex();
-            int currentTokens = _tokenCounter.CountMessages(_history);
+
+            // A mensagem que abriu o turno em andamento é intocável enquanto ele corre. Ver
+            // UltimoIndiceDeUsuario. O MIOLO do turno — as chamadas de ferramenta e os
+            // resultados — continua podável, e é ele que ocupa o espaço: um arquivo lido são
+            // quatro mil caracteres, o pedido do usuário são cento e trinta.
+            int protegida = UltimoIndiceDeUsuario();
+
+            antes = _tokenCounter.CountMessages(_history);
+            int currentTokens = antes;
 
             int safetyCounter = 0;
             while (currentTokens > maxTokens
                    && _history.Count > firstRemovable + 2
                    && safetyCounter++ < 200)
             {
-                var msg = _history[firstRemovable];
-                _history.RemoveAt(firstRemovable);
+                int alvo = firstRemovable == protegida ? firstRemovable + 1 : firstRemovable;
+                if (alvo >= _history.Count) break;
+
+                var msg = _history[alvo];
+                _history.RemoveAt(alvo);
+                cortadas++;
+                if (alvo < protegida) protegida--;
 
                 // Se a mensagem removida era um Assistant com tool_calls, remove também as
                 // ToolMessages imediatamente seguintes (são as respostas dessas tool_calls).
                 if (msg is AssistantChatMessage acm && acm.ToolCalls != null && acm.ToolCalls.Count > 0)
                 {
-                    while (_history.Count > firstRemovable && _history[firstRemovable] is ToolChatMessage)
-                        _history.RemoveAt(firstRemovable);
+                    while (alvo < _history.Count && _history[alvo] is ToolChatMessage)
+                    {
+                        _history.RemoveAt(alvo);
+                        cortadas++;
+                        if (alvo < protegida) protegida--;
+                    }
                 }
 
                 currentTokens = _tokenCounter.CountMessages(_history);
             }
+
+            depois = currentTokens;
+            naoCoube = currentTokens > maxTokens;
+        }
+
+        if (cortadas > 0)
+        {
+            // A poda descarta SEM SUBSTITUTO: o que ela come não vira capítulo nem artefato.
+            // Uma conversa que anda na poda em vez de na compactação está perdendo material de
+            // verdade, e até aqui isso não deixava rastro nenhum.
+            Console.WriteLine(
+                $"[MEMORIA] Poda de emergência: {cortadas} mensagem(ns) cortada(s) sem substituto, "
+                + $"{antes} → {depois} tokens (teto {maxTokens}).");
+
+            _registroDaCompactacao.Podou(cortadas, antes, depois, maxTokens);
+        }
+
+        if (naoCoube)
+        {
+            Console.WriteLine(
+                $"[MEMORIA] A poda parou em {depois} tokens, acima do teto de {maxTokens}: "
+                + "só restou o turno em andamento, e o pedido do usuário não é podável.");
+
+            _registroDaCompactacao.Falhou("poda de emergencia",
+                $"parou em {depois} token(s), acima do teto de {maxTokens}. So restou o turno em "
+                + "andamento — o pedido do usuario nao e podavel");
         }
     }
 

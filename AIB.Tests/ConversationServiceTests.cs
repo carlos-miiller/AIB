@@ -210,11 +210,15 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void Trim_SemSystemPrompt_TambemPodaAPrimeiraMensagem()
+        public void Trim_SemSystemPrompt_PodaAMensagemDeUsuarioQueJaSaiuDoTurnoVivo()
         {
             // Sem SendSystemPrompt não existe âncora no índice 0. Travar o índice 0 mesmo
             // assim tornava a primeira mensagem do usuário imortal, e ela nunca saía do
             // contexto por mais longa que fosse a conversa.
+            //
+            // A proteção que existe hoje é OUTRA e é por posição relativa, não por índice fixo:
+            // vale para a mensagem que abriu o turno EM ANDAMENTO. Assim que chega uma mais
+            // nova, a antiga volta a ser histórico como qualquer outra mensagem.
             var settings = BuildSettings(sendSystemPrompt: false);
             var conversation = BuildConversation(settings, new FakeProvider(), out _);
 
@@ -223,11 +227,63 @@ namespace AIB.Tests
             int quantas = MensagensParaEstourarNivel1(2000);
             for (int i = 0; i < quantas; i++) conversation.AppendAssistantText(Filler(2000));
 
+            // O turno vivo passa a ser este. O anterior perde a proteção.
+            conversation.AppendRecoveredContext("pedido novo", "o que falta?");
+
             conversation.Trim(1);
 
             var depois = conversation.SnapshotHistory();
             depois.Should().NotContain(m => TextOf(m).Contains("[CONTEXTO RECUPERADO DO CHAT: sessao antiga]"));
             conversation.CountTokens().Should().BeLessThanOrEqualTo(LevelService.GetMaxTokensForLevel(1));
+        }
+
+        [Fact]
+        public void APoda_NaoCome_OPedidoDoTurnoEmAndamento()
+        {
+            // A poda roda a cada rodada de ferramentas. Num turno grande — dez iterações, dois
+            // arquivos lidos — o mais antigo que ela encontrava era o PRÓPRIO PEDIDO do
+            // usuário, e comê-lo deixava o modelo trabalhando sem saber o que tinha sido
+            // pedido.
+            //
+            // Medido numa conversa real de 10/09: seis turnos na tela, quatro no raw.jsonl. Os
+            // dois perdidos foram os dois maiores, e o log mostra o prefixo caindo para 1.059
+            // tokens no meio deles — a poda tinha varrido o histórico até o osso.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            conversation.AppendRecoveredContext("pedido do usuario", "replique este arquivo para os outros tres");
+
+            // O miolo do turno: chamadas e resultados grandes, como um arquivo lido.
+            int quantas = MensagensParaEstourarNivel1(2000);
+            for (int i = 0; i < quantas; i++) conversation.AppendAssistantText(Filler(2000));
+
+            conversation.Trim(1);
+
+            var depois = conversation.SnapshotHistory();
+            depois.Should().Contain(m => TextOf(m).Contains("replique este arquivo"),
+                "o pedido é a TAREFA, não histórico — podá-lo é apagar o que o turno está fazendo");
+            conversation.CountTokens().Should().BeLessThanOrEqualTo(LevelService.GetMaxTokensForLevel(1),
+                "e o miolo do turno continua podável, que é o que de fato ocupa espaço");
+        }
+
+        [Fact]
+        public void OTurnoSOBREVIVE_APoda_EPodeSerRegistrado()
+        {
+            // O estrago silencioso vinha depois da poda: o TurnSplitter descarta tudo o que vem
+            // antes do primeiro 'user', então um histórico sem a abertura não tem turno nenhum
+            // — e o RecordLastTurn não achava o que gravar. O turno inteiro sumia do raw.jsonl
+            // sem uma linha de aviso.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            conversation.AppendRecoveredContext("pedido do usuario", "faz a planilha virar html");
+            int quantas = MensagensParaEstourarNivel1(2000);
+            for (int i = 0; i < quantas; i++) conversation.AppendAssistantText(Filler(2000));
+
+            conversation.Trim(1);
+
+            AIB.Services.Memory.TurnSplitter.Split(conversation.SnapshotHistory())
+                .Should().NotBeEmpty("sem a abertura no histórico, o turno não existe para o registro");
         }
 
         [Fact]
