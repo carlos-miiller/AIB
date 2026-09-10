@@ -34,8 +34,15 @@ public sealed class TriadorDeEmail
     /// <summary>Teto de tokens da resposta. Trinta linhas curtas de JSON cabem folgadas.</summary>
     public const int TetoDeResposta = 1400;
 
-    private static readonly ChatRequestOptions Opcoes =
-        new(Temperature: 0.0f, Think: false, NumPredict: TetoDeResposta);
+    /// <summary>
+    /// As opções da chamada. O raciocínio é decidido por quem chama — ver
+    /// <c>MailTriageThinking</c>: é o único ponto do programa onde ligar o pensamento tem chance
+    /// clara de pagar, e o único onde dá para medir se pagou.
+    /// </summary>
+    public static ChatRequestOptions Opcoes(bool comRaciocinio = false) =>
+        new(Temperature: 0.0f,
+            Think: comRaciocinio ? (bool?)null : false,
+            NumPredict: comRaciocinio ? TetoDeResposta * 3 : TetoDeResposta);
 
     private const string Prompt =
         """
@@ -61,8 +68,19 @@ public sealed class TriadorDeEmail
 
     private readonly IChatProvider _provider;
 
-    public TriadorDeEmail(IChatProvider provider) =>
+    private readonly bool _comRaciocinio;
+
+    /// <param name="comRaciocinio">
+    /// Deixar o modelo pensar antes de classificar. Quando verdadeiro o teto de resposta
+    /// triplica: o raciocínio sai pelo mesmo orçamento de tokens, e um teto curto cortaria o
+    /// JSON no meio — o que a leitura tolerante trataria como "sem veredito" e devolveria uma
+    /// caixa inteira sem triagem.
+    /// </param>
+    public TriadorDeEmail(IChatProvider provider, bool comRaciocinio = false)
+    {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _comRaciocinio = comRaciocinio;
+    }
 
     public async Task<IReadOnlyList<VereditoDeEmail>> TriarAsync(
         IReadOnlyList<MensagemDeEmail> lote, CancellationToken ct = default)
@@ -76,7 +94,7 @@ public sealed class TriadorDeEmail
         };
 
         var resultado = await _provider
-            .CompleteAsync(mensagens, Array.Empty<ChatTool>(), Opcoes, ct)
+            .CompleteAsync(mensagens, Array.Empty<ChatTool>(), Opcoes(_comRaciocinio), ct)
             .ConfigureAwait(false);
 
         return Interpretar(resultado.Text);

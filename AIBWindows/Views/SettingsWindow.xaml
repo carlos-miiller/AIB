@@ -949,6 +949,25 @@
                                         </Grid>
                                     </Border>
 
+
+                                    <!-- Deixar o modelo pensar ao triar -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Deixar o modelo pensar ao triar" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="A triagem é um julgamento de tiro único, que é onde raciocinar mais rende — e o diário deixa medir se rendeu. Cada digest fica mais lento em troca."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="MailTriageThinkingSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
                                     <!-- RESTAURAR — só os campos DESTA página. Um botão único
                                          para a tela inteira faria quem quer voltar um número de
                                          e-mail atrás perder de quebra o provedor e o modelo. -->
@@ -1257,6 +1276,43 @@
                                                            Text="O modelo pensa antes de responder. O raciocínio nunca aparece na tela e, sem GPU, custa minutos por turno — medido: 953 tokens de pensamento em 12 minutos para produzir zero texto. Ligue só para depurar."/>
                                             </StackPanel>
                                             <ToggleButton x:Name="ModelThinkingSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+
+                                    <!-- Guardar a fala junto da ferramenta -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Guardar a fala junto da ferramenta" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O que o agente disse antes de chamar uma ferramenta volta para ele na etapa seguinte. Sem isso ele esquece por que escolheu aquele caminho e repete a mesma chamada. Deixe ligado."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="KeepAssistantSpeechSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Devolver o raciocínio ao modelo -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Devolver o raciocínio ao modelo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O pensamento de cada etapa volta ao modelo nas seguintes, em vez de ser descartado. Modelos de raciocínio são treinados esperando o pensamento AUSENTE do histórico — pode melhorar ou piorar. Só faz diferença com o raciocínio ligado."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="ThinkingInHistorySwitch" Grid.Column="1"
                                                           Style="{StaticResource Switch}"
                                                           Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
                                         </Grid>

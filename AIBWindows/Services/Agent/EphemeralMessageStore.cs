@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using OpenAI.Chat;
 
 namespace AIB.Services.Agent;
@@ -24,7 +24,7 @@ public sealed class EphemeralMessageStore : IMessageStore
 
     public IReadOnlyList<ChatMessage> Snapshot() => _messages.ToArray();
 
-    public void AppendAssistantToolCalls(IReadOnlyList<ChatToolCall> calls)
+    public void AppendAssistantToolCalls(IReadOnlyList<ChatToolCall> calls, string? fala = null)
         => _messages.Add(ChatMessage.CreateAssistantMessage(calls));
 
     public void AppendToolResult(string toolCallId, string result)

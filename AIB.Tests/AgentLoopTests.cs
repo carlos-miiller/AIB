@@ -152,7 +152,7 @@ namespace AIB.Tests
 
             public IReadOnlyList<ChatMessage> Snapshot() => Messages.ToArray();
 
-            public void AppendAssistantToolCalls(IReadOnlyList<ChatToolCall> calls)
+            public void AppendAssistantToolCalls(IReadOnlyList<ChatToolCall> calls, string? fala = null)
                 => Messages.Add(ChatMessage.CreateAssistantMessage(calls));
 
             public void AppendToolResult(string toolCallId, string result)
@@ -371,10 +371,35 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public async Task RaciocinioBruto_VaiParaOHistoricoMasNaoParaOUsuario()
+        public async Task RaciocinioBruto_NaoVaiAoHistorico_NemAoUsuario()
         {
-            // O modelo enxerga o próprio <think> nas iterações seguintes (continuidade de
-            // plano), mas o usuário só vê o canal final.
+            // MUDOU DE POLITICA: o <think> ficava no historico sempre. Agora depende da chave
+            // ThinkingInHistory, que nasce DESLIGADA — modelos de raciocinio sao treinados
+            // esperando o bloco ausente do historico, e devolve-lo vai contra o treino.
+            //
+            // O usuario nunca viu o raciocinio e continua nao vendo: isso nao mudou.
+            string historyText = await RaciocinioNoHistorico(devolver: false);
+
+            historyText.Should().Be("São 4.");
+            historyText.Should().NotContain("think");
+        }
+
+        [Fact]
+        public async Task ComAChaveLigada_ORaciocinio_VOLTA_AoModelo()
+        {
+            string historyText = await RaciocinioNoHistorico(devolver: true);
+
+            historyText.Should().Be("<think>vou somar</think>São 4.");
+        }
+
+        /// <summary>Roda um turno so de texto e devolve o que foi parar no historico.</summary>
+        private async Task<string> RaciocinioNoHistorico(bool devolver)
+        {
+            var atual = _settings.LoadSettings();
+            atual.ThinkingInHistory = devolver;
+            _settings.SaveSettings(atual);
+            _settings.InvalidateCache();
+
             var provider = new ScriptedProvider(
                 null,
                 new StreamChunk[]
@@ -388,11 +413,10 @@ namespace AIB.Tests
             var events = await DrainAsync(BuildLoop(provider).RunAsync(Request(store), CancellationToken.None));
 
             string userText = string.Concat(events.OfType<AgentEvent.Text>().Select(t => t.Value));
-            userText.Should().Be("São 4.");
+            userText.Should().Be("São 4.", "o usuario nunca ve o canal de raciocinio");
 
             var appended = store.Messages.OfType<AssistantChatMessage>().Single();
-            string historyText = string.Concat(appended.Content.Where(p => p?.Text != null).Select(p => p.Text));
-            historyText.Should().Be("<think>vou somar</think>São 4.");
+            return string.Concat(appended.Content.Where(p => p?.Text != null).Select(p => p.Text));
         }
 
         [Fact]

@@ -143,6 +143,61 @@ public sealed class UserAppSettings
     /// </summary>
     public bool ModelThinking { get; set; } = PadraoDoRaciocinio;
 
+    public const bool PadraoDaFalaNoHistorico = true;
+
+    /// <summary>
+    /// Guardar o que o agente FALOU junto da chamada de ferramenta que ele fez em seguida.
+    /// <para>
+    /// Nasce LIGADA porque o contrário é um defeito, não uma escolha. O laço gravava só as
+    /// <c>tool_calls</c> — a fala "vou abrir o users.xls" era mostrada ao usuário e some do
+    /// histórico do próprio modelo. Na iteração seguinte ele via uma chamada e um erro, sem
+    /// nenhum registro de por que tinha escolhido aquele caminho, e repetia a mesma chamada.
+    /// Foram quatro repetições idênticas numa sessão real.
+    /// </para>
+    /// <para>
+    /// A chave existe para poder desligar se algum modelo reagir mal, não porque desligado seja
+    /// um estado desejável.
+    /// </para>
+    /// </summary>
+    public bool KeepAssistantSpeech { get; set; } = PadraoDaFalaNoHistorico;
+
+    public const bool PadraoDoRaciocinioNoHistorico = false;
+
+    /// <summary>
+    /// Devolver o bloco de raciocínio ao modelo nas idas seguintes, em vez de apará-lo.
+    /// <para>
+    /// NASCE DESLIGADA e é a mais incerta das três. Modelos de raciocínio são treinados
+    /// esperando o bloco de pensamento AUSENTE do histórico; devolvê-lo vai contra o treino e
+    /// pode degradar em vez de melhorar. Por isso é chave, e não padrão.
+    /// </para>
+    /// <para>
+    /// O custo é menor do que parece: histórico só cresce no fim, então o cache de prefixo
+    /// continua valendo e os tokens extras são prefilados UMA vez, não a cada iteração.
+    /// </para>
+    /// <para>
+    /// Sem <see cref="ModelThinking"/> não há raciocínio nenhum, e esta chave não faz diferença.
+    /// </para>
+    /// </summary>
+    public bool ThinkingInHistory { get; set; } = PadraoDoRaciocinioNoHistorico;
+
+    public const bool PadraoDoRaciocinioNaTriagem = false;
+
+    /// <summary>
+    /// Deixar o modelo raciocinar antes de classificar cada e-mail.
+    /// <para>
+    /// É o lugar onde raciocínio tem mais chance de pagar: a triagem é julgamento de tiro único
+    /// — "isto pede ação hoje?" — e não uma sequência de ferramentas. E é o único mensurável
+    /// objetivamente: o diário grava a urgência de cada mensagem, então ligar e contar quantas
+    /// mala-diretas caem em "media" é número, não impressão.
+    /// </para>
+    /// <para>
+    /// Nasce desligada por herança da medição do compactador: resumir cinco turnos custava
+    /// 286,6s, dos quais 226,7s eram raciocínio para um resumo de 117 tokens. Com o raciocínio
+    /// desligado, 14,7s. Se aqui for diferente, o diário dirá.
+    /// </para>
+    /// </summary>
+    public bool MailTriageThinking { get; set; } = PadraoDoRaciocinioNaTriagem;
+
     public const int PadraoDeDiasDeDiario = 7;
 
     /// <summary>

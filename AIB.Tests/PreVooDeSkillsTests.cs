@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -22,8 +22,18 @@ namespace AIB.Tests
     /// — quase quatro mil caracteres do mesmo texto empurrados para dentro do contexto.
     /// </para>
     /// </summary>
-    public class PreVooDeSkillsTests
+    [Collection("Skills")]
+    public class PreVooDeSkillsTests : IDisposable
     {
+        private readonly string? _overrideAnterior = SkillService.SkillsDirectoryOverride;
+
+        /// <summary>
+        /// Devolve o override estatico ao que era. A colecao "Skills" ja impede que duas classes
+        /// corram juntas; isto impede que uma deixe a raiz apontada para uma pasta temporaria
+        /// que ela mesma vai apagar.
+        /// </summary>
+        public void Dispose() => SkillService.SkillsDirectoryOverride = _overrideAnterior;
+
         // ─────────────────────────────────────────────────────────────────────
         // Achar caminho no meio dos argumentos
         // ─────────────────────────────────────────────────────────────────────
@@ -165,7 +175,6 @@ namespace AIB.Tests
             tool.Validar(args).Should().NotBeNull().And.Subject.As<string>()
                 .Should().Contain("não existe");
 
-            SkillService.SkillsDirectoryOverride = null;
         }
 
         [Fact]
@@ -183,7 +192,6 @@ namespace AIB.Tests
             tool.Validar(args).Should().BeNull();
             tool.Validar("{ isto nao e json").Should().BeNull("argumento ilegível é problema do executor");
 
-            SkillService.SkillsDirectoryOverride = null;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -255,7 +263,6 @@ namespace AIB.Tests
             segunda.Should().NotContain("MANUAL DE MENTIRA", "mil caracteres repetidos incham o prompt");
             segunda.Should().Contain("já foi enviado nesta sessão");
 
-            SkillService.SkillsDirectoryOverride = null;
         }
 
         // ─────────────────────────────────────────────────────────────────────

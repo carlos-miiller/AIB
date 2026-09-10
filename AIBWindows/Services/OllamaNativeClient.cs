@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -268,7 +268,13 @@ public class OllamaNativeClient
                         }
                     });
                 }
-                list.Add(new { role = role, content = "", tool_calls = toolCalls });
+                // O content vinha FIXO em "" — mesmo com a fala guardada no histórico, ela
+                // era zerada aqui e o modelo nunca a via de volta. Ver KeepAssistantSpeech.
+                string dito = acm.Content != null && acm.Content.Count > 0
+                    ? acm.Content[0].Text ?? ""
+                    : "";
+
+                list.Add(new { role = role, content = dito, tool_calls = toolCalls });
                 continue;
             }
 

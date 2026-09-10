@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using OpenAI.Chat;
 
 namespace AIB.Services.Agent;
@@ -15,7 +15,11 @@ public interface IMessageStore
     IReadOnlyList<ChatMessage> Snapshot();
 
     /// <summary>Anexa a mensagem assistant que carrega as tool_calls da iteração.</summary>
-    void AppendAssistantToolCalls(IReadOnlyList<ChatToolCall> calls);
+    /// <param name="fala">
+    /// O que o agente disse antes de chamar. Opcional: a mensagem assistant do protocolo carrega
+    /// texto e tool_calls juntos, e guardar a fala é o que dá continuidade entre as iterações.
+    /// </param>
+    void AppendAssistantToolCalls(IReadOnlyList<ChatToolCall> calls, string? fala = null);
 
     /// <summary>Anexa o ToolChatMessage correspondente a uma tool_call já anexada.</summary>
     void AppendToolResult(string toolCallId, string result);

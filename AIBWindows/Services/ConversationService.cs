@@ -1296,9 +1296,20 @@ public sealed class ConversationService : IMessageStore
         lock (_gate) { return _history.ToArray(); }
     }
 
-    public void AppendAssistantToolCalls(IReadOnlyList<ChatToolCall> calls)
+    /// <param name="fala">
+    /// O que o agente disse ANTES de chamar a ferramenta. Uma mensagem <c>assistant</c> pode
+    /// carregar texto e <c>tool_calls</c> ao mesmo tempo, e é isso que dá continuidade ao laço:
+    /// sem a fala, a iteração seguinte vê uma chamada e um erro sem saber por que aquele caminho
+    /// foi escolhido. Nulo ou vazio guarda só as chamadas, como antes.
+    /// </param>
+    public void AppendAssistantToolCalls(IReadOnlyList<ChatToolCall> calls, string? fala = null)
     {
-        lock (_gate) { _history.Add(ChatMessage.CreateAssistantMessage(calls)); }
+        var mensagem = new AssistantChatMessage(calls);
+
+        if (!string.IsNullOrWhiteSpace(fala))
+            mensagem.Content.Add(ChatMessageContentPart.CreateTextPart(fala));
+
+        lock (_gate) { _history.Add(mensagem); }
     }
 
     public void AppendToolResult(string toolCallId, string result)

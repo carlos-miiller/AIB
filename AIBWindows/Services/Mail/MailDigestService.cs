@@ -426,7 +426,8 @@ public sealed class MailDigestService : IDisposable
             // invertido de propósito" prevê — modelo pequeno é confiante até quando erra, e por
             // isso ele nunca decide o que sobe. O degrau 3 é do 9B.
             var provider = _provedores.GetProvider(config);
-            vereditos = await new TriadorDeEmail(provider).TriarAsync(lote, ct).ConfigureAwait(false);
+            vereditos = await new TriadorDeEmail(provider, config.MailTriageThinking)
+                .TriarAsync(lote, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

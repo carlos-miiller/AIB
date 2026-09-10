@@ -233,7 +233,13 @@ public sealed class AgentLoop
                         tc.Name,
                         BinaryData.FromString(tc.ArgumentsOrEmpty())))
                     .ToList();
-                store.AppendAssistantToolCalls(chatToolCalls);
+                // A FALA vai junto. Sem ela, a iteração seguinte via a chamada e o erro sem
+                // saber por que aquele caminho foi escolhido — e repetia a mesma chamada.
+                store.AppendAssistantToolCalls(
+                    chatToolCalls,
+                    settings.KeepAssistantSpeech
+                        ? ParaOHistorico(rawAssistantText, finalText, settings.ThinkingInHistory)
+                        : null);
 
                 // Fecha a fala do agente ANTES de anunciar as ferramentas: o que ele disse até
                 // aqui ("vou ler o arquivo") é uma fala completa, e o que vier depois da execução
@@ -289,13 +295,8 @@ public sealed class AgentLoop
             // ── Resposta final em texto ───────────────────────────────────────────
             if (finalText.Length > 0)
             {
-                // Preserva blocos <think>...</think> no HISTÓRICO: o modelo enxerga o próprio
-                // raciocínio nas iterações seguintes. Para o usuário eles nunca aparecem —
-                // o provider já os classificou como canal de raciocínio e só o canal final
-                // virou AgentEvent.Text. Sem texto cru (provider que não o publica), cai no
-                // canal final, que é o que o usuário viu.
                 store.AppendAssistantText(
-                    string.IsNullOrEmpty(rawAssistantText) ? finalText.ToString() : rawAssistantText!);
+                    ParaOHistorico(rawAssistantText, finalText, settings.ThinkingInHistory));
                 store.Trim(request.UserLevel);
                 store.NotifyTokenCount(request.UserLevel);
                 pulso.Fim("respondeu", _tokenCounter.CountText(finalText.ToString()));
@@ -318,6 +319,27 @@ public sealed class AgentLoop
         request.Store.Trim(request.UserLevel);
         request.Store.NotifyTokenCount(request.UserLevel);
         yield return new AgentEvent.Completed(TurnOutcome.IterationLimitReached, teto);
+    }
+
+    /// <summary>
+    /// O texto do assistente como ele vai para o histórico.
+    /// <para>
+    /// O texto CRU do provider traz o raciocínio embrulhado em <c>&lt;think&gt;…&lt;/think&gt;</c>
+    /// — é o <see cref="Ai.ChannelSplitter.RawText"/>, que junta os dois canais. Com
+    /// <c>raciocinioNoHistorico</c> ligado ele viaja inteiro; desligado, o bloco é aparado e só
+    /// a fala visível fica.
+    /// </para>
+    /// <para>
+    /// Provider que não publica texto cru cai no canal final, que é exatamente o que o usuário
+    /// leu na tela.
+    /// </para>
+    /// </summary>
+    public static string ParaOHistorico(
+        string? textoCru, StringBuilder canalFinal, bool raciocinioNoHistorico)
+    {
+        string cru = string.IsNullOrEmpty(textoCru) ? (canalFinal?.ToString() ?? "") : textoCru!;
+
+        return raciocinioNoHistorico ? cru : Memory.ThinkBlockStripper.Strip(cru);
     }
 
     /// <summary>

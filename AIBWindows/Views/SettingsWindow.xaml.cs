@@ -159,6 +159,9 @@ public partial class SettingsWindow : Window
             ConfirmDangerousSwitch.IsChecked = _currentSettings.ConfirmDangerousCommands;
             ExecutionLogSwitch.IsChecked = _currentSettings.ExecutionLogging;
         ModelThinkingSwitch.IsChecked = _currentSettings.ModelThinking;
+        KeepAssistantSpeechSwitch.IsChecked = _currentSettings.KeepAssistantSpeech;
+        ThinkingInHistorySwitch.IsChecked = _currentSettings.ThinkingInHistory;
+        MailTriageThinkingSwitch.IsChecked = _currentSettings.MailTriageThinking;
 
             ShadowModelComboBox.Text = _currentSettings.ShadowModelName;
             ShadowMailPreviewTextBox.Text = _currentSettings.ShadowMailPreviewCount.ToString();
@@ -849,6 +852,7 @@ public partial class SettingsWindow : Window
                 MailWindowTextBox.Text = padrao.MailWindowDays.ToString();
                 MailTimeoutTextBox.Text = padrao.MailTimeoutSeconds.ToString();
                 MailJournalTextBox.Text = padrao.MailJournalDays.ToString();
+                MailTriageThinkingSwitch.IsChecked = padrao.MailTriageThinking;
                 break;
 
             case PaginaDeConfiguracoes.Shadow:
@@ -866,6 +870,8 @@ public partial class SettingsWindow : Window
                 ConfirmDangerousSwitch.IsChecked = padrao.ConfirmDangerousCommands;
                 ExecutionLogSwitch.IsChecked = padrao.ExecutionLogging;
                 ModelThinkingSwitch.IsChecked = padrao.ModelThinking;
+                KeepAssistantSpeechSwitch.IsChecked = padrao.KeepAssistantSpeech;
+                ThinkingInHistorySwitch.IsChecked = padrao.ThinkingInHistory;
                 MaxIterationsTextBox.Text = padrao.MaxTurnIterations.ToString();
                 CompactionTriggerTextBox.Text = ParaPorcento(padrao.CompactionTrigger);
                 MemoryFractionTextBox.Text = ParaPorcento(padrao.MemoryFraction);
@@ -1115,6 +1121,9 @@ public partial class SettingsWindow : Window
         _currentSettings.ConfirmDangerousCommands = ConfirmDangerousSwitch.IsChecked ?? true;
         _currentSettings.ExecutionLogging = ExecutionLogSwitch.IsChecked ?? false;
         _currentSettings.ModelThinking = ModelThinkingSwitch.IsChecked ?? false;
+        _currentSettings.KeepAssistantSpeech = KeepAssistantSpeechSwitch.IsChecked ?? true;
+        _currentSettings.ThinkingInHistory = ThinkingInHistorySwitch.IsChecked ?? false;
+        _currentSettings.MailTriageThinking = MailTriageThinkingSwitch.IsChecked ?? false;
 
         _currentSettings.ShadowModelName = ShadowModelComboBox.Text.Trim();
         _currentSettings.ShadowMailPreviewCount =
