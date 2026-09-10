@@ -1520,6 +1520,28 @@
                                         </Grid>
                                     </Border>
 
+                                    <!-- Diário da compactação. Mora na PASTA DA SESSÃO, e não em
+                                         ~/.AIB/logs: um registro de compactação separado da
+                                         conversa que ele compactou obriga a cruzar horário
+                                         à mão. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Gravar diário da compactação"
+                                                           Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quando a memória foi compactada em capítulos e arcos, quanto custou e quando falhou. Vai para compactacao.log na pasta da conversa, junto do raw. Grava contagens e tempos, não o texto dos resumos — pode ficar ligado."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="CompactionLogSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
 
                                     <!-- Onde os arquivos ficam. Uma chave que grava em disco e
                                          não diz ONDE obriga o usuário a procurar. -->
@@ -1530,6 +1552,10 @@
                                             <TextBlock x:Name="PastaDeLogsTexto" Margin="0,4,0,0"
                                                        Style="{StaticResource FieldHelpText}"
                                                        TextWrapping="Wrap"/>
+                                            <TextBlock Margin="0,6,0,0"
+                                                       Style="{StaticResource FieldHelpText}"
+                                                       TextWrapping="Wrap"
+                                                       Text="O diário da compactação é a exceção: ele fica na pasta de cada conversa, em Configurações › Memória."/>
                                             <Button x:Name="AbrirPastaDeLogs" Margin="0,10,0,0"
                                                     HorizontalAlignment="Left"
                                                     Style="{StaticResource QuietButton}"

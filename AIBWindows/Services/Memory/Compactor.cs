@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using AIB.Services.Agent;
 using AIB.Services.Ai;
 using OpenAI.Chat;
 
@@ -81,9 +82,18 @@ public sealed class Compactor
         """;
 
     private readonly IChatProvider _provider;
+    private readonly RegistroDaCompactacao? _registro;
 
-    public Compactor(IChatProvider provider) =>
+    /// <param name="registro">
+    /// Diário opcional. O Compactor é o único lugar que enxerga o custo REAL da chamada —
+    /// prefill e saída vêm do provedor e morriam aqui dentro. Nulo quando a chave está
+    /// desligada ou em ensaio.
+    /// </param>
+    public Compactor(IChatProvider provider, RegistroDaCompactacao? registro = null)
+    {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        _registro = registro;
+    }
 
     /// <summary>
     /// Fecha um capítulo a partir de turnos COMPLETOS.
@@ -106,6 +116,8 @@ public sealed class Compactor
         string agora = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
 
         string resumo;
+        var relogio = System.Diagnostics.Stopwatch.StartNew();
+
         try
         {
             var mensagens = new List<ChatMessage>
@@ -124,15 +136,26 @@ public sealed class Compactor
 
             if (string.IsNullOrWhiteSpace(resumo))
                 resumo = "[resumo indisponível: o modelo devolveu texto vazio]";
+
+            relogio.Stop();
+            _registro?.Resumo(relogio.ElapsedMilliseconds,
+                resultado.PromptEvalCount, resultado.EvalCount, Palavras(resumo));
         }
         catch (OperationCanceledException)
         {
             // Cancelamento é do usuário ou do encerramento do app. Não vira capítulo mutilado.
+            relogio.Stop();
+            _registro?.Falhou($"resumo do capítulo {chapterIndex}",
+                $"cancelado depois de {PulsoDoTurno.Duracao(relogio.ElapsedMilliseconds)}");
             throw;
         }
         catch (Exception ex)
         {
+            relogio.Stop();
             Console.WriteLine($"[MEMORIA] Resumo do capítulo {chapterIndex} falhou: {ex.Message}");
+            _registro?.Falhou($"resumo do capítulo {chapterIndex}",
+                $"{ex.GetType().Name}: {ex.Message} "
+                + $"(depois de {PulsoDoTurno.Duracao(relogio.ElapsedMilliseconds)})");
             resumo = "[resumo indisponível: falha ao contatar o modelo]";
         }
 
@@ -166,6 +189,8 @@ public sealed class Compactor
         string agora = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
 
         string resumo;
+        var relogio = System.Diagnostics.Stopwatch.StartNew();
+
         try
         {
             var mensagens = new List<ChatMessage>
@@ -182,14 +207,25 @@ public sealed class Compactor
 
             if (string.IsNullOrWhiteSpace(resumo))
                 resumo = "[resumo indisponível: o modelo devolveu texto vazio]";
+
+            relogio.Stop();
+            _registro?.Resumo(relogio.ElapsedMilliseconds,
+                resultado.PromptEvalCount, resultado.EvalCount, Palavras(resumo));
         }
         catch (OperationCanceledException)
         {
+            relogio.Stop();
+            _registro?.Falhou($"resumo do ato {actIndex}",
+                $"cancelado depois de {PulsoDoTurno.Duracao(relogio.ElapsedMilliseconds)}");
             throw;
         }
         catch (Exception ex)
         {
+            relogio.Stop();
             Console.WriteLine($"[MEMORIA] Resumo do ato {actIndex} falhou: {ex.Message}");
+            _registro?.Falhou($"resumo do ato {actIndex}",
+                $"{ex.GetType().Name}: {ex.Message} "
+                + $"(depois de {PulsoDoTurno.Duracao(relogio.ElapsedMilliseconds)})");
             resumo = "[resumo indisponível: falha ao contatar o modelo]";
         }
 
@@ -262,6 +298,15 @@ public sealed class Compactor
 
         return texto.ToString();
     }
+
+    /// <summary>
+    /// Palavras do resumo. O pedido é "no máximo 120 palavras", e é a contagem que diz se o
+    /// modelo obedeceu — o número de tokens não responde isso.
+    /// </summary>
+    public static int Palavras(string? texto) =>
+        string.IsNullOrWhiteSpace(texto)
+            ? 0
+            : texto.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
 
     private static string Truncate(string texto, int limite)
     {

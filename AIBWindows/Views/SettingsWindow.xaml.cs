@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using AIB.Services;
 using AIB.Services.Mail;
+using AIB.Services.Memory;
 
 namespace AIB.Views;
 
@@ -178,6 +179,7 @@ public partial class SettingsWindow : Window
             AtualizarPastasPermitidas();
             AtualizarAutorizacoes();
             ExecutionLogSwitch.IsChecked = _currentSettings.ExecutionLogging;
+            CompactionLogSwitch.IsChecked = _currentSettings.CompactionLogging;
         ModelThinkingSwitch.IsChecked = _currentSettings.ModelThinking;
         KeepAssistantSpeechSwitch.IsChecked = _currentSettings.KeepAssistantSpeech;
         ThinkingInHistorySwitch.IsChecked = _currentSettings.ThinkingInHistory;
@@ -932,6 +934,7 @@ public partial class SettingsWindow : Window
             case PaginaDeConfiguracoes.Logs:
                 VerboseLoggingSwitch.IsChecked = padrao.VerboseConsoleLogging;
                 ExecutionLogSwitch.IsChecked = padrao.ExecutionLogging;
+                CompactionLogSwitch.IsChecked = padrao.CompactionLogging;
                 break;
         }
 
@@ -1091,6 +1094,16 @@ public partial class SettingsWindow : Window
                 ? System.IO.Directory.GetDirectories(sessoes)
                 : Array.Empty<string>();
 
+            int diarios = pastas.Count(d =>
+            {
+                try
+                {
+                    return System.IO.File.Exists(
+                        System.IO.Path.Combine(d, RegistroDaCompactacao.NomeDoArquivo));
+                }
+                catch { return false; }
+            });
+
             long bytes = pastas.Sum(d =>
             {
                 try
@@ -1106,7 +1119,12 @@ public partial class SettingsWindow : Window
                 : pasta + Environment.NewLine
                   + $"{pastas.Length} conversa(s), {bytes / 1024.0 / 1024:0.#} MB. "
                   + "A transcrição bruta de cada uma fica guardada e não é apagada: compactar "
-                  + "encurta o que vai para o modelo, não o que está no disco.";
+                  + "encurta o que vai para o modelo, não o que está no disco."
+                  + Environment.NewLine
+                  + (diarios == 0
+                      ? "O diário da compactação está desligado — a chave fica na aba Logs."
+                      : $"{diarios} conversa(s) com diário da compactação "
+                        + $"({RegistroDaCompactacao.NomeDoArquivo}).");
         }
         catch (Exception ex)
         {
@@ -1391,6 +1409,7 @@ public partial class SettingsWindow : Window
         _currentSettings.ConfirmDangerousCommands = ConfirmDangerousSwitch.IsChecked ?? true;
         _currentSettings.WriteRoots = (WriteRootsTextBox.Text ?? "").Trim();
         _currentSettings.ExecutionLogging = ExecutionLogSwitch.IsChecked ?? false;
+        _currentSettings.CompactionLogging = CompactionLogSwitch.IsChecked ?? false;
         _currentSettings.ModelThinking = ModelThinkingSwitch.IsChecked ?? false;
         _currentSettings.KeepAssistantSpeech = KeepAssistantSpeechSwitch.IsChecked ?? true;
         _currentSettings.ThinkingInHistory = ThinkingInHistorySwitch.IsChecked ?? false;

@@ -199,6 +199,13 @@ public sealed class ConversationService : IMessageStore
         _sessionMemory = NewSessionMemory();
         _facts = new FactStore(memoryRootOverride);
 
+        // A pasta e a chave sao resolvidas A CADA ESCRITA: _sessionMemory troca quando o
+        // usuario zera a conversa ou restaura outra sessao, e um caminho congelado escreveria
+        // o diario da conversa nova dentro da pasta da antiga.
+        _registroDaCompactacao = new RegistroDaCompactacao(
+            () => _settingsService.LoadSettings().CompactionLogging,
+            () => _sessionMemory.SessionDir);
+
         _warmupService = new WarmupService(_settingsService, _toolRegistry, _providerFactory, _tokenCounter);
         _warmupService.OnWarmupStateChanged += state => RaiseWarmupState(state);
         // Ao SAIR do aquecimento o contador e refeito: o prefixo fixo ja esta montado e o
@@ -574,6 +581,11 @@ public sealed class ConversationService : IMessageStore
     /// <summary>Turnos que faltam para tentar compactar de novo. Só a thread do portão mexe.</summary>
     private int _compactionCooldown;
 
+    private readonly RegistroDaCompactacao _registroDaCompactacao;
+
+    /// <summary>Onde o diario da compactacao esta sendo gravado. Diagnostico e ensaio.</summary>
+    public string? CaminhoDoRegistroDaCompactacao => _registroDaCompactacao.Caminho;
+
     /// <summary>Capítulos fechados nesta sessão. Diagnóstico e teste.</summary>
     public IReadOnlyList<Chapter> Chapters => _memory.Chapters;
 
@@ -603,9 +615,19 @@ public sealed class ConversationService : IMessageStore
             if (vivo <= gatilho) return;
 
             var candidatos = SelectTurnsToCompact(quota, vivo);
-            if (candidatos.Count == 0) return;
+            if (candidatos.Count == 0)
+            {
+                // "Passou do gatilho e nao compactou" tem causa, e a causa e sempre a mesma:
+                // os turnos recentes ficam fora e nao sobrou turno fechado antes deles. Sem
+                // esta linha o diario mostraria um silencio inexplicavel.
+                _registroDaCompactacao.Pulou(
+                    $"vivo={vivo} > limite={gatilho}, mas nenhum turno elegivel "
+                    + $"(os {KeepRecentTurns} mais recentes ficam sempre fora)");
+                return;
+            }
 
             Console.WriteLine($"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > gatilho={gatilho}.");
+            _registroDaCompactacao.Gatilho(vivo, gatilho, quota.Live, candidatos.Count);
 
             await FecharCapituloAsync(candidatos, quota, ct).ConfigureAwait(false);
         }
@@ -615,6 +637,10 @@ public sealed class ConversationService : IMessageStore
             Console.WriteLine(
                 $"[MEMORIA] Compactação cancelada (teto de {SummaryTimeout.TotalMinutes:F0} min). " +
                 $"Os turnos seguem no contexto vivo; nova tentativa em {CompactionCooldownTurns} turno(s).");
+            _registroDaCompactacao.Falhou("compactacao",
+                $"cancelada no teto de {SummaryTimeout.TotalMinutes:F0} min. Os turnos seguem "
+                + $"vivos e a poda de emergencia assume; nova tentativa em "
+                + $"{CompactionCooldownTurns} turno(s)");
         }
         catch (Exception ex)
         {
@@ -622,6 +648,9 @@ public sealed class ConversationService : IMessageStore
             Console.WriteLine(
                 $"[MEMORIA] Compactação falhou: {ex.Message}. " +
                 $"Nova tentativa em {CompactionCooldownTurns} turno(s).");
+            _registroDaCompactacao.Falhou("compactacao",
+                $"{ex.GetType().Name}: {ex.Message}. Nova tentativa em "
+                + $"{CompactionCooldownTurns} turno(s)");
         }
     }
 
@@ -634,10 +663,13 @@ public sealed class ConversationService : IMessageStore
         List<Turn> candidatos, MemoryQuota quota, CancellationToken ct)
     {
         var settings = _settingsService.LoadSettings();
-        var compactor = new Compactor(_providerFactory.GetProvider(settings));
+        var compactor = new Compactor(_providerFactory.GetProvider(settings), _registroDaCompactacao);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(SummaryTimeout);
+
+        _registroDaCompactacao.Capitulo(
+            _memory.NextChapterIndex, candidatos.Count, candidatos[0].Index, candidatos[^1].Index);
 
         var capitulo = await compactor
             .SummarizeAsync(_memory.NextChapterIndex, candidatos, timeout.Token)
@@ -646,7 +678,8 @@ public sealed class ConversationService : IMessageStore
         // Medido ANTES da remocao, e sobre as mensagens originais: e este o custo que o
         // capitulo acabou de tirar do prompt, e o unico numero que torna a economia
         // verificavel depois.
-        _tokensCompactados += _tokenCounter.CountMessages(candidatos.SelectMany(t => t.Messages));
+        int tirados = _tokenCounter.CountMessages(candidatos.SelectMany(t => t.Messages));
+        _tokensCompactados += tirados;
 
         // So remove DEPOIS que o capitulo existe. Remover antes e falhar o resumo perderia os
         // turnos das duas pontas: fora do contexto e sem substituto.
@@ -666,6 +699,7 @@ public sealed class ConversationService : IMessageStore
         RefreshMemoryMessage(quota);
 
         Console.WriteLine($"[MEMORIA] Capitulo {capitulo.Index} fechado ({capitulo.Artifacts.Count} artefato(s)). Vivo agora: {LiveTokens()} tokens.");
+        _registroDaCompactacao.CapituloFechado(tirados, capitulo.Artifacts.Count, LiveTokens());
 
         return capitulo;
     }
@@ -693,8 +727,15 @@ public sealed class ConversationService : IMessageStore
 
             var candidatos = SelectTurnsToCompact(quota, LiveTokens(), forcado: true);
             if (candidatos.Count == 0)
+            {
+                _registroDaCompactacao.Pulou(
+                    $"pedido do usuario, mas nenhum turno elegivel (os {KeepRecentTurns} mais "
+                    + "recentes ficam sempre fora)");
                 return $"Nada a compactar: os {KeepRecentTurns} turnos mais recentes ficam sempre fora, "
                      + "e nao ha turno fechado antes deles.";
+            }
+
+            _registroDaCompactacao.GatilhoManual(LiveTokens(), quota.Live, candidatos.Count);
 
             var capitulo = await FecharCapituloAsync(candidatos, quota, ct).ConfigureAwait(false);
 
@@ -791,6 +832,8 @@ public sealed class ConversationService : IMessageStore
             if (soltos.Count < minimo) return null;
 
             Console.WriteLine($"[MEMORIA] Promovendo {soltos.Count} capítulo(s) a ato.");
+            _registroDaCompactacao.Ato(
+                _memory.NextActIndex, soltos.Count, soltos[0].Index, soltos[^1].Index);
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(SummaryTimeout);
@@ -811,17 +854,20 @@ public sealed class ConversationService : IMessageStore
             Console.WriteLine(
                 $"[MEMORIA] Ato {ato.Index} fechado (capítulos {ato.FirstChapter}–{ato.LastChapter}, " +
                 $"{ato.Artifacts.Count} artefato(s)). Fatos novos: {promovidos}.");
+            _registroDaCompactacao.AtoFechado(ato.Artifacts.Count, promovidos);
 
             return ato;
         }
         catch (OperationCanceledException)
         {
             Console.WriteLine("[MEMORIA] Promoção cancelada. Os capítulos seguem soltos.");
+            _registroDaCompactacao.Falhou("promocao a ato", "cancelada. Os capitulos seguem soltos");
             return null;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[MEMORIA] Promoção falhou: {ex.Message}");
+            _registroDaCompactacao.Falhou("promocao a ato", $"{ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }

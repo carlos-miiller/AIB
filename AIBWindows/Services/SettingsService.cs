@@ -50,6 +50,21 @@ public sealed class UserAppSettings
     /// </para>
     /// </summary>
     public bool ExecutionLogging { get; set; } = false;
+
+    /// <summary>
+    /// Grava o diário da compactação na pasta da sessão, ao lado do <c>raw.jsonl</c>.
+    /// <para>
+    /// Quando a compactação disparou, quanto o resumidor custou e — o que importa — as vezes em
+    /// que ela falhou. Hoje um resumo que estoura o teto imprime uma linha no console e morre
+    /// ali; na execução seguinte ninguém sabe que a conversa andou com a poda de emergência.
+    /// </para>
+    /// <para>
+    /// É mais barato que o registro de execução: grava CONTAGENS e tempos, não o texto dos
+    /// resumos — esses já ficam em <c>chapters.jsonl</c> e <c>acts.jsonl</c>. Por isso pode
+    /// ficar ligado sem virar despejo.
+    /// </para>
+    /// </summary>
+    public bool CompactionLogging { get; set; } = false;
     public string DataDir { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AIB");
 
     // Diretórios

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -41,6 +41,11 @@ namespace AIB.Tests
 
                 janela.FindName("VerboseLoggingSwitch").Should().NotBeNull();
                 janela.FindName("ExecutionLogSwitch").Should().NotBeNull();
+
+                // O diário da compactação: a chave mora aqui, com as outras de registro, mas o
+                // ARQUIVO vai para a pasta da sessão — separá-lo da conversa que ele compactou
+                // obrigaria a cruzar horário à mão.
+                janela.FindName("CompactionLogSwitch").Should().NotBeNull();
 
                 // Uma chave que grava em disco e não diz ONDE obriga o usuário a procurar.
                 ((TextBlock)janela.FindName("PastaDeLogsTexto")).Text
