@@ -20,6 +20,7 @@ namespace AIB.Tests
     /// vezes seguidas.
     /// </para>
     /// </summary>
+    [Collection("Escrita")]
     public class FerramentasDeArquivoTests : IDisposable
     {
         private readonly string _dir;

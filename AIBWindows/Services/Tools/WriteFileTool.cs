@@ -20,6 +20,30 @@ public class WriteFileTool : ITool
     /// %APPDATA%\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\config.json.
     /// Sem confinamento de raiz, o caminho resolvido é a única defesa que o usuário tem.
     /// </summary>
+    /// <summary>
+    /// Recusa a gravação fora das pastas permitidas, antes do portão humano.
+    /// <para>
+    /// O modal mostra o caminho, mas mostrar não é impedir: quem clica "permitir" às pressas
+    /// autoriza a gravação em <c>Startup\</c> do mesmo jeito. Barrar aqui é o que faz a pergunta
+    /// nem chegar a existir. Sem pasta configurada, nada muda. Ver <see cref="PastasPermitidas"/>.
+    /// </para>
+    /// </summary>
+    public string? Validar(string argumentsJson)
+    {
+        try
+        {
+            var args = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
+            if (!args.TryGetProperty("path", out var pathEl)) return null;
+
+            string caminho = PathArgumentRepair.Normalize(pathEl.GetString());
+            return string.IsNullOrWhiteSpace(caminho) ? null : PastasPermitidas.Barrar(caminho);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel)
     {
         try

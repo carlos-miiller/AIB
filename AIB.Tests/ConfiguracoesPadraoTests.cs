@@ -197,12 +197,16 @@ namespace AIB.Tests
         // ─────────────────────────────────────────────────────────────────
 
         [Fact]
-        public void RestaurarNoAvancado_VOLTA_OsNumerosDaMemoria()
+        public void RestaurarEmCadaPagina_VOLTA_SoOQueEhDela()
         {
+            // Os três campos moravam juntos no Avançado e um único "Restaurar" mexia nos três.
+            // Depois da separação, o teto de etapas e as ferramentas são da página Ferramentas e
+            // a compactação é da Memória — e é justamente o que este ensaio protege: restaurar
+            // numa aba não pode atravessar para a vizinha.
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
-                var janela = Nova(PastaTemporaria(), PaginaDeConfiguracoes.Avancado, s =>
+                var janela = Nova(PastaTemporaria(), PaginaDeConfiguracoes.Ferramentas, s =>
                 {
                     s.MaxTurnIterations = 40;
                     s.CompactionTrigger = 0.60;
@@ -212,13 +216,18 @@ namespace AIB.Tests
                 Achar<TextBox>(janela, "MaxIterationsTextBox").Text.Should().Be("40");
 
                 Achar<Button>(janela, "SaveButton");   // a página existe
-                Restaurar(janela, "Avancado");
+                Restaurar(janela, "Ferramentas");
 
                 var padrao = new UserAppSettings();
                 Achar<TextBox>(janela, "MaxIterationsTextBox").Text
                     .Should().Be(padrao.MaxTurnIterations.ToString());
-                Achar<TextBox>(janela, "CompactionTriggerTextBox").Text.Should().Be("85");
                 Achar<ToggleButton>(janela, "IntelligentToolsSwitch").IsChecked.Should().BeTrue();
+
+                // A compactação é de OUTRA aba: continua nos 60% que o usuário tinha.
+                Achar<TextBox>(janela, "CompactionTriggerTextBox").Text.Should().Be("60");
+
+                Restaurar(janela, "Memoria");
+                Achar<TextBox>(janela, "CompactionTriggerTextBox").Text.Should().Be("85");
 
                 janela.Close();
             });

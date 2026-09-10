@@ -16,6 +16,17 @@ public enum PaginaDeConfiguracoes
     Conexao,
     Email,
     Shadow,
+
+    /// <summary>
+    /// O que a IA pode fazer na máquina, e onde. Nasceu porque o confinamento de pasta e a
+    /// lista de "sempre permitir" são decisões de segurança, e segurança sem tela própria
+    /// acaba sendo uma linha esquecida no meio do Avançado.
+    /// </summary>
+    Ferramentas,
+
+    /// <summary>O que a conversa lembra: compactação, fatia de contexto e onde isso mora.</summary>
+    Memoria,
+
     Avancado,
 
     /// <summary>
@@ -163,6 +174,9 @@ public partial class SettingsWindow : Window
 
             IntelligentToolsSwitch.IsChecked = _currentSettings.EnableIntelligentTools;
             ConfirmDangerousSwitch.IsChecked = _currentSettings.ConfirmDangerousCommands;
+            WriteRootsTextBox.Text = _currentSettings.WriteRoots;
+            AtualizarPastasPermitidas();
+            AtualizarAutorizacoes();
             ExecutionLogSwitch.IsChecked = _currentSettings.ExecutionLogging;
         ModelThinkingSwitch.IsChecked = _currentSettings.ModelThinking;
         KeepAssistantSpeechSwitch.IsChecked = _currentSettings.KeepAssistantSpeech;
@@ -285,6 +299,8 @@ public partial class SettingsWindow : Window
             PaginaDeConfiguracoes.Conexao => NavConexao,
             PaginaDeConfiguracoes.Email => NavEmail,
             PaginaDeConfiguracoes.Shadow => NavShadow,
+            PaginaDeConfiguracoes.Ferramentas => NavFerramentas,
+            PaginaDeConfiguracoes.Memoria => NavMemoria,
             PaginaDeConfiguracoes.Avancado => NavAvancado,
             PaginaDeConfiguracoes.Logs => NavLogs,
             _ => NavIdentidade
@@ -298,6 +314,8 @@ public partial class SettingsWindow : Window
         NavConexao.IsChecked == true ? PaginaDeConfiguracoes.Conexao :
         NavEmail.IsChecked == true ? PaginaDeConfiguracoes.Email :
         NavShadow.IsChecked == true ? PaginaDeConfiguracoes.Shadow :
+        NavFerramentas.IsChecked == true ? PaginaDeConfiguracoes.Ferramentas :
+        NavMemoria.IsChecked == true ? PaginaDeConfiguracoes.Memoria :
         NavAvancado.IsChecked == true ? PaginaDeConfiguracoes.Avancado :
         NavLogs.IsChecked == true ? PaginaDeConfiguracoes.Logs :
         PaginaDeConfiguracoes.Identidade;
@@ -316,10 +334,22 @@ public partial class SettingsWindow : Window
         PaginaConexao.Visibility = Visibilidade(NavConexao);
         PaginaEmail.Visibility = Visibilidade(NavEmail);
         PaginaShadow.Visibility = Visibilidade(NavShadow);
+        PaginaFerramentas.Visibility = Visibilidade(NavFerramentas);
+        PaginaMemoria.Visibility = Visibilidade(NavMemoria);
         PaginaAvancado.Visibility = Visibilidade(NavAvancado);
         PaginaLogs.Visibility = Visibilidade(NavLogs);
 
         if (NavLogs.IsChecked == true) AtualizarPastaDeLogs();
+
+        // Recalculado A CADA VISITA, e não uma vez na abertura: a lista de autorizações cresce
+        // enquanto a tela está aberta, e a pasta de sessões também.
+        if (NavFerramentas.IsChecked == true)
+        {
+            AtualizarPastasPermitidas();
+            AtualizarAutorizacoes();
+        }
+
+        if (NavMemoria.IsChecked == true) AtualizarPastaDeMemoria();
 
         // A página Shadow depende de coisa que muda em OUTRA página: conectar uma caixa
         // acontece em E-mail. Reavaliar ao entrar é o que faz a ajuda parar de dizer "nenhuma
@@ -877,15 +907,26 @@ public partial class SettingsWindow : Window
                 AtualizarAjudaDoShadow();
                 break;
 
-            case PaginaDeConfiguracoes.Avancado:
+            case PaginaDeConfiguracoes.Ferramentas:
                 IntelligentToolsSwitch.IsChecked = padrao.EnableIntelligentTools;
                 ConfirmDangerousSwitch.IsChecked = padrao.ConfirmDangerousCommands;
-                ModelThinkingSwitch.IsChecked = padrao.ModelThinking;
-                KeepAssistantSpeechSwitch.IsChecked = padrao.KeepAssistantSpeech;
-                ThinkingInHistorySwitch.IsChecked = padrao.ThinkingInHistory;
                 MaxIterationsTextBox.Text = padrao.MaxTurnIterations.ToString();
+                // As pastas permitidas voltam ao padrão, que é VAZIO — disco inteiro liberado.
+                // Restaurar afrouxa a segurança aqui, então o texto abaixo do campo diz na hora
+                // o que passou a valer, em vez de deixar a mudança silenciosa.
+                WriteRootsTextBox.Text = padrao.WriteRoots;
+                AtualizarPastasPermitidas();
+                break;
+
+            case PaginaDeConfiguracoes.Memoria:
+                KeepAssistantSpeechSwitch.IsChecked = padrao.KeepAssistantSpeech;
                 CompactionTriggerTextBox.Text = ParaPorcento(padrao.CompactionTrigger);
                 MemoryFractionTextBox.Text = ParaPorcento(padrao.MemoryFraction);
+                break;
+
+            case PaginaDeConfiguracoes.Avancado:
+                ModelThinkingSwitch.IsChecked = padrao.ModelThinking;
+                ThinkingInHistorySwitch.IsChecked = padrao.ThinkingInHistory;
                 break;
 
             case PaginaDeConfiguracoes.Logs:
@@ -927,6 +968,168 @@ public partial class SettingsWindow : Window
         {
             PastaDeLogsTexto.Text = pasta + Environment.NewLine
                                     + $"(não consegui ler a pasta: {ex.Message})";
+        }
+    }
+
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Ferramentas — confinamento de pasta e autorizações da sessão
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Diz, em português, o que a lista de pastas passou a significar.
+    /// <para>
+    /// O campo é texto livre: uma linha com erro de digitação some da lista sem avisar, e o
+    /// usuário sairia da tela achando que confinou a gravação quando não confinou. Mostrar as
+    /// pastas que de fato valeram é a única forma de ele perceber.
+    /// </para>
+    /// </summary>
+    private void AtualizarPastasPermitidas()
+    {
+        var raizes = PastasPermitidas.Analisar(WriteRootsTextBox.Text);
+
+        if (raizes.Count == 0)
+        {
+            PastasPermitidasTexto.Text =
+                "Nenhuma pasta configurada: gravar e editar valem para o disco inteiro.";
+            return;
+        }
+
+        var faltando = raizes.Where(r => !System.IO.Directory.Exists(r)).ToList();
+
+        PastasPermitidasTexto.Text =
+            $"Valendo agora: {string.Join(" | ", raizes)}."
+            + (faltando.Count == 0
+                ? ""
+                : Environment.NewLine
+                  + $"Ainda não existe(m) no disco: {string.Join(" | ", faltando)}. "
+                  + "Confira se digitou certo — uma pasta errada aqui bloqueia gravações válidas.");
+    }
+
+    /// <summary>Reavalia a ajuda a cada tecla: o efeito da linha digitada aparece na hora.</summary>
+    private void PastasDeEscrita_Mudou(object sender, TextChangedEventArgs e)
+    {
+        if (PastasPermitidasTexto == null) return;
+        AtualizarPastasPermitidas();
+        MarcarSujo();
+    }
+
+    /// <summary>
+    /// Mostra o que o usuário autorizou nesta sessão.
+    /// <para>
+    /// A lista vive só em memória e some quando o app fecha — mas enquanto ele está aberto ela é
+    /// uma decisão de segurança tomada por clique e depois invisível. Ver é o que permite
+    /// desfazer.
+    /// </para>
+    /// </summary>
+    private void AtualizarAutorizacoes()
+    {
+        var lista = AlwaysAllowSession.Listar();
+
+        if (lista.Count == 0)
+        {
+            AutorizacoesTexto.Text = "Nada autorizado nesta sessão.";
+            LimparAutorizacoes.IsEnabled = false;
+            return;
+        }
+
+        LimparAutorizacoes.IsEnabled = true;
+
+        AutorizacoesTexto.Text = string.Join(
+            Environment.NewLine,
+            lista.Select(x =>
+            {
+                string cmd = x.Cmd.Replace("\r", " ").Replace("\n", " ").Trim();
+                if (cmd.Length > 90) cmd = cmd[..90] + "…";
+                // Substantivo, e nao o rotulo em gerundio da trilha de acoes: aqui a lista e de
+                // coisas AUTORIZADAS, e "[Executando comando] git status" leria como se o
+                // comando estivesse rodando agora.
+                string tipo = x.Tool switch
+                {
+                    Ferramentas.Shell => "Comando",
+                    Ferramentas.Habilidade => "Habilidade",
+                    "materialize_skill" => "Habilidade",
+                    _ => x.Tool
+                };
+
+                return $"[{tipo}] {cmd}";
+            }));
+    }
+
+    /// <summary>
+    /// Esquece as autorizações da sessão. Vale na hora, sem passar por "Salvar": a lista não é
+    /// uma configuração de disco, e deixar um comando autorizado até o próximo Salvar seria
+    /// deixá-lo autorizado exatamente enquanto o usuário acha que já revogou.
+    /// </summary>
+    private void LimparAutorizacoes_Click(object sender, RoutedEventArgs e)
+    {
+        AlwaysAllowSession.Clear();
+        AtualizarAutorizacoes();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Memória — onde a conversa mora
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Onde ficam as sessões, quantas são e quanto ocupam.
+    /// <para>
+    /// O <c>raw.jsonl</c> de cada sessão é a fonte de verdade da conversa e nunca é apagado por
+    /// nós. Dizer isso na tela é o que evita a pergunta "onde foi parar o que eu conversei" e,
+    /// principalmente, a suposição errada de que compactar joga algo fora.
+    /// </para>
+    /// </summary>
+    private void AtualizarPastaDeMemoria()
+    {
+        string pasta = DirectoryService.MemoryDir;
+
+        try
+        {
+            string sessoes = System.IO.Path.Combine(pasta, "sessions");
+
+            var pastas = System.IO.Directory.Exists(sessoes)
+                ? System.IO.Directory.GetDirectories(sessoes)
+                : Array.Empty<string>();
+
+            long bytes = pastas.Sum(d =>
+            {
+                try
+                {
+                    return System.IO.Directory.GetFiles(d, "*", System.IO.SearchOption.AllDirectories)
+                        .Sum(a => { try { return new System.IO.FileInfo(a).Length; } catch { return 0L; } });
+                }
+                catch { return 0L; }
+            });
+
+            PastaDeMemoriaTexto.Text = pastas.Length == 0
+                ? pasta + Environment.NewLine + "(nenhuma conversa gravada ainda)"
+                : pasta + Environment.NewLine
+                  + $"{pastas.Length} conversa(s), {bytes / 1024.0 / 1024:0.#} MB. "
+                  + "A transcrição bruta de cada uma fica guardada e não é apagada: compactar "
+                  + "encurta o que vai para o modelo, não o que está no disco.";
+        }
+        catch (Exception ex)
+        {
+            PastaDeMemoriaTexto.Text = pasta + Environment.NewLine
+                                       + $"(não consegui ler a pasta: {ex.Message})";
+        }
+    }
+
+    /// <summary>Abre a pasta no Explorer, como na aba Logs.</summary>
+    private void AbrirPastaDeMemoria_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(DirectoryService.MemoryDir);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = DirectoryService.MemoryDir,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CONFIG] não consegui abrir a pasta de memória: {ex.Message}");
         }
     }
 
@@ -1186,6 +1389,7 @@ public partial class SettingsWindow : Window
 
         _currentSettings.EnableIntelligentTools = IntelligentToolsSwitch.IsChecked ?? true;
         _currentSettings.ConfirmDangerousCommands = ConfirmDangerousSwitch.IsChecked ?? true;
+        _currentSettings.WriteRoots = (WriteRootsTextBox.Text ?? "").Trim();
         _currentSettings.ExecutionLogging = ExecutionLogSwitch.IsChecked ?? false;
         _currentSettings.ModelThinking = ModelThinkingSwitch.IsChecked ?? false;
         _currentSettings.KeepAssistantSpeech = KeepAssistantSpeechSwitch.IsChecked ?? true;

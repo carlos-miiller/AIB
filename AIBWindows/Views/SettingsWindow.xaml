@@ -438,6 +438,36 @@
                             </StackPanel>
                         </RadioButton>
 
+                        <RadioButton x:Name="NavFerramentas" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M12.6,2.6 A4,4 0 0 0 7.6,7.6 L2.6,12.6 A1.6,1.6 0 0 0 5,15
+                                            L10,10 A4,4 0 0 0 15,5 L12.4,7.6 L10,7.6 L10,5.2 Z"/>
+                                <TextBlock Text="Ferramentas" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <RadioButton x:Name="NavMemoria" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M10,3.4 A3.1,3.1 0 0 0 4.6,5.6 A2.8,2.8 0 0 0 3.6,10.4
+                                            A3,3 0 0 0 5.8,15.4 A3,3 0 0 0 10,16.4 Z
+                                            M10,3.4 A3.1,3.1 0 0 1 15.4,5.6 A2.8,2.8 0 0 1 16.4,10.4
+                                            A3,3 0 0 1 14.2,15.4 A3,3 0 0 1 10,16.4 Z"/>
+                                <TextBlock Text="Memória" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
+
                         <RadioButton x:Name="NavAvancado" GroupName="Paginas"
                                      Style="{StaticResource NavItem}" Checked="Nav_Checked">
                             <StackPanel Orientation="Horizontal">
@@ -1146,8 +1176,8 @@
                             </ScrollViewer>
                         </Grid>
 
-                        <!-- ─────────── PÁGINA 5 — Avançado ─────────── -->
-                        <Grid x:Name="PaginaAvancado" Visibility="Collapsed">
+                        <!-- ─────────── PÁGINA 5 — Ferramentas ─────────── -->
+                        <Grid x:Name="PaginaFerramentas" Visibility="Collapsed">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
@@ -1157,8 +1187,8 @@
                                     BorderBrush="{StaticResource BorderCardBrush}"
                                     BorderThickness="1" CornerRadius="0" Padding="16,12">
                                 <StackPanel>
-                                    <TextBlock Text="Avançado" Style="{StaticResource PageTitle}"/>
-                                    <TextBlock Text="Ferramentas, raciocínio e memória da conversa."
+                                    <TextBlock Text="Ferramentas" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="O que a IA pode fazer na sua máquina, e onde."
                                                Style="{StaticResource PageSubtitle}"/>
                                 </StackPanel>
                             </Border>
@@ -1220,6 +1250,76 @@
                                         </Grid>
                                     </Border>
 
+                                    <!-- Pastas onde a gravação é permitida.
+                                         O modal mostra o caminho, mas MOSTRAR não é IMPEDIR: quem
+                                         clica "permitir" às pressas autoriza uma gravação em
+                                         Startup\ do mesmo jeito. Vazio = disco inteiro, como
+                                         sempre foi. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <StackPanel Margin="0,13">
+                                            <TextBlock Text="Pastas onde a gravação é permitida"
+                                                       Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                       Text="Uma pasta por linha, caminho absoluto. Vazio libera o disco inteiro, que é como sempre funcionou. Vale para gravar e editar arquivos — NÃO alcança comandos do shell, que continuam defendidos só pelo modal de confirmação."/>
+                                            <TextBox x:Name="WriteRootsTextBox" Margin="0,8,0,0"
+                                                     Style="{StaticResource ControlTextBoxLista}"
+                                                     TextChanged="PastasDeEscrita_Mudou"/>
+                                            <TextBlock x:Name="PastasPermitidasTexto" Margin="0,6,0,0"
+                                                       Style="{StaticResource FieldHelpText}"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- O que o usuário autorizou nesta sessão.
+                                         Uma allowlist que ele não consegue VER é uma decisão de
+                                         segurança tomada por ele e depois escondida dele. -->
+                                    <Border BorderThickness="0">
+                                        <StackPanel Margin="0,13">
+                                            <TextBlock Text="Autorizações desta sessão"
+                                                       Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                       Text="Os comandos marcados como &quot;Sempre permitir&quot;. Valem só enquanto a AIB estiver aberta, e casam com o texto exato — mudou uma vírgula, o modal pergunta de novo."/>
+                                            <TextBlock x:Name="AutorizacoesTexto" Margin="0,6,0,0"
+                                                       Style="{StaticResource FieldHelpText}"
+                                                       TextWrapping="Wrap"/>
+                                            <Button x:Name="LimparAutorizacoes" Margin="0,10,0,0"
+                                                    HorizontalAlignment="Left"
+                                                    Style="{StaticResource QuietButton}"
+                                                    Content="Esquecer todas"
+                                                    Click="LimparAutorizacoes_Click"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Ferramentas" Click="Restaurar_Click"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- ─────────── PÁGINA 6 — Memória ─────────── -->
+                        <Grid x:Name="PaginaMemoria" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Memória" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="O que a conversa lembra, e por quanto tempo."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+
                                     <!-- Compactar a partir de (% da conversa) -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">
@@ -1256,6 +1356,72 @@
 
 
 
+                                    <!-- Guardar a fala junto da ferramenta -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Guardar a fala junto da ferramenta" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O que o agente disse antes de chamar uma ferramenta volta para ele na etapa seguinte. Sem isso ele esquece por que escolheu aquele caminho e repete a mesma chamada. Deixe ligado."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="KeepAssistantSpeechSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Onde a conversa fica gravada. Mesmo gesto da aba Logs: uma
+                                         configuração de memória que não diz ONDE a memória mora
+                                         obriga o usuário a procurar. -->
+                                    <Border BorderThickness="0">
+                                        <StackPanel Margin="0,13">
+                                            <TextBlock Text="Onde a conversa fica gravada"
+                                                       Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock x:Name="PastaDeMemoriaTexto" Margin="0,4,0,0"
+                                                       Style="{StaticResource FieldHelpText}"
+                                                       TextWrapping="Wrap"/>
+                                            <Button x:Name="AbrirPastaDeMemoria" Margin="0,10,0,0"
+                                                    HorizontalAlignment="Left"
+                                                    Style="{StaticResource QuietButton}"
+                                                    Content="Abrir a pasta"
+                                                    Click="AbrirPastaDeMemoria_Click"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Memoria" Click="Restaurar_Click"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- ─────────── PÁGINA 7 — Avançado ─────────── -->
+                        <Grid x:Name="PaginaAvancado" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Avançado" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="Raciocínio do modelo. Sem GPU, cada opção aqui custa minutos por turno."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+
                                     <!-- Raciocinio do modelo -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">
@@ -1274,24 +1440,6 @@
                                         </Grid>
                                     </Border>
 
-
-                                    <!-- Guardar a fala junto da ferramenta -->
-                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
-                                        <Grid Margin="0,13">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                                <TextBlock Text="Guardar a fala junto da ferramenta" Style="{StaticResource FieldLabelText}"/>
-                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
-                                                           Text="O que o agente disse antes de chamar uma ferramenta volta para ele na etapa seguinte. Sem isso ele esquece por que escolheu aquele caminho e repete a mesma chamada. Deixe ligado."/>
-                                            </StackPanel>
-                                            <ToggleButton x:Name="KeepAssistantSpeechSwitch" Grid.Column="1"
-                                                          Style="{StaticResource Switch}"
-                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
-                                        </Grid>
-                                    </Border>
 
                                     <!-- Devolver o raciocínio ao modelo -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
@@ -1322,7 +1470,7 @@
                             </ScrollViewer>
                         </Grid>
 
-                        <!-- ─────────── PÁGINA 6 — Logs ─────────── -->
+                        <!-- ─────────── PÁGINA 8 — Logs ─────────── -->
                         <Grid x:Name="PaginaLogs" Visibility="Collapsed">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel Margin="40,28,40,28">

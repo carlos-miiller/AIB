@@ -13,6 +13,7 @@ namespace AIB.Tests
     /// Ferramentas de arquivo. Tudo acontece dentro de um diretório temporário próprio —
     /// nenhum teste toca caminho real do usuário.
     /// </summary>
+    [Collection("Escrita")]
     public class FileToolsTests : IDisposable
     {
         private readonly string _dir;

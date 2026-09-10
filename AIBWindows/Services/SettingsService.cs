@@ -71,6 +71,19 @@ public sealed class UserAppSettings
     /// </summary>
     public bool ConfirmDangerousCommands { get; set; } = true;
 
+    /// <summary>
+    /// Pastas onde <c>write</c> e <c>edit</c> podem gravar — uma por linha, caminho absoluto.
+    /// <para>
+    /// Vazio é o comportamento de sempre: o disco inteiro. Confinar é uma escolha do usuário, e
+    /// ligá-la sozinha quebraria quem usa a AIB para mexer em projeto fora da pasta pessoal.
+    /// </para>
+    /// <para>
+    /// NÃO alcança o <c>shell</c>: um <c>Set-Content</c> escreve onde quiser, e a defesa dele
+    /// continua sendo o portão de confirmação mais a denylist. Ver <see cref="PastasPermitidas"/>.
+    /// </para>
+    /// </summary>
+    public string WriteRoots { get; set; } = "";
+
     // ─────────────────────────────────────────────────────────────────────
     // Valores que eram constantes no código
     //
@@ -336,6 +349,7 @@ public sealed class SettingsService
         }
 
         var loaded = ReadFromDisk(path);
+        PastasPermitidas.Configurar(loaded.WriteRoots);
 
         lock (_gate)
         {
@@ -396,6 +410,11 @@ public sealed class SettingsService
         byte[] plainBytes = Encoding.UTF8.GetBytes(json);
         byte[] encryptedBytes = ProtectedData.Protect(plainBytes, null, DataProtectionScope.CurrentUser);
         File.WriteAllBytes(path, encryptedBytes);
+
+        // O confinamento passa a valer no mesmo instante em que o usuario salva. Sincronizar aqui,
+        // e nao em cada tela, e o que impede o caso "mudei nas configuracoes e a ferramenta
+        // continuou com a lista velha".
+        PastasPermitidas.Configurar(settings.WriteRoots);
 
         lock (_gate)
         {

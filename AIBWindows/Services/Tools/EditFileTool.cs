@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -85,6 +85,11 @@ public sealed class EditFileTool : ITool
         {
             var a = Ler(argumentsJson);
             if (a == null) return null;
+
+            // O confinamento de pasta vem ANTES de qualquer coisa: se o caminho é proibido,
+            // nem o conteúdo do arquivo deve ser lido para montar a prévia.
+            string? fora = PastasPermitidas.Barrar(a.Caminho);
+            if (fora != null) return fora;
 
             if (!File.Exists(a.Caminho))
                 return PreVooDeCaminho.Conferir($"\"{a.Caminho}\"")

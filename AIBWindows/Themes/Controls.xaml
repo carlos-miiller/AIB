@@ -260,6 +260,27 @@
         <Setter Property="FontSize" Value="{StaticResource FontSizeControlMono}"/>
     </Style>
 
+    <!-- Caixa de VARIAS linhas: uma pasta por linha, um item por linha.
+         Nao herda de ControlTextBox de proposito — aquele template tem altura fixa e
+         barras de rolagem escondidas, e uma lista que cresce ficaria invisivel a partir
+         da terceira linha. Aqui a rolagem aparece quando precisa. -->
+    <Style x:Key="ControlTextBoxLista" TargetType="TextBox">
+        <Setter Property="MinHeight" Value="84"/>
+        <Setter Property="MaxHeight" Value="150"/>
+        <Setter Property="AcceptsReturn" Value="True"/>
+        <Setter Property="TextWrapping" Value="NoWrap"/>
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="HorizontalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="Background" Value="{StaticResource SurfaceControlBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderControlBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource MonoFontFamily}"/>
+        <Setter Property="FontSize" Value="{StaticResource FontSizeControlMono}"/>
+        <Setter Property="SelectionBrush" Value="{StaticResource AccentFocusBrush}"/>
+    </Style>
+
     <Style x:Key="ControlPasswordBox" TargetType="PasswordBox">
         <Setter Property="Height" Value="{StaticResource ControlHeight}"/>
         <Setter Property="Background" Value="{StaticResource SurfaceControlBrush}"/>

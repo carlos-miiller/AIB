@@ -40,4 +40,32 @@ public static class AlwaysAllowSession
     {
         lock (_allowed) _allowed.Clear();
     }
+
+    /// <summary>
+    /// O que está autorizado agora, para a tela poder mostrar.
+    /// <para>
+    /// Uma allowlist que o usuário não consegue VER é uma decisão de segurança tomada por ele e
+    /// depois escondida dele. Ordenada por ferramenta e comando para a lista não dançar entre
+    /// duas leituras.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<(string Tool, string Cmd, string? ContentHash)> Listar()
+    {
+        lock (_allowed)
+        {
+            var copia = new List<(string Tool, string Cmd, string? ContentHash)>(_allowed);
+            copia.Sort((a, b) =>
+            {
+                int t = string.CompareOrdinal(a.Tool, b.Tool);
+                return t != 0 ? t : string.CompareOrdinal(a.Cmd, b.Cmd);
+            });
+            return copia;
+        }
+    }
+
+    /// <summary>Quantos comandos estão autorizados nesta sessão.</summary>
+    public static int Quantos
+    {
+        get { lock (_allowed) return _allowed.Count; }
+    }
 }
