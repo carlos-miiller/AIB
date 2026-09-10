@@ -1623,10 +1623,18 @@ public partial class ChatWindow : Window
     /// avisa que a poda de emergência está perto — e a poda descarta sem substituto.
     /// </para>
     /// </summary>
-    private System.Windows.Media.Brush CorDaOcupacao(int ocupacaoPct)
+    private System.Windows.Media.Brush CorDaOcupacao(TokenReport r)
     {
-        if (ocupacaoPct >= 90) return (System.Windows.Media.Brush)FindResource("DangerTextBrush");
-        if (ocupacaoPct >= 75) return (System.Windows.Media.Brush)FindResource("WarnBrush");
+        // A REDE em primeiro lugar: é o único ponto em que algo é perdido de verdade. Passar
+        // dela é a poda de emergência voltando a descartar sem substituto.
+        if (r.OcupacaoDaRedePct >= 90) return (System.Windows.Media.Brush)FindResource("DangerTextBrush");
+
+        // Passar do teto do NÍVEL não interrompe nada e virou rotina desde que a janela ficou
+        // bem maior que ele. Vale laranja — "vai compactar no fim do turno" — e não vermelho:
+        // alarme que dispara todo turno deixa de ser alarme.
+        if (r.AcimaDoOrcamento || r.OcupacaoPct >= 90)
+            return (System.Windows.Media.Brush)FindResource("WarnBrush");
+
         return (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
     }
 
@@ -1674,7 +1682,7 @@ public partial class ChatWindow : Window
             TokenCounterText.Inlines.Add(new Run(
                 $"{relatorio.Contexto:N0} tokens | {relatorio.Max:N0}"));
 
-            TokenCounterText.Foreground = CorDaOcupacao(relatorio.OcupacaoPct);
+            TokenCounterText.Foreground = CorDaOcupacao(relatorio);
 
             // A conta atrás do número. Dois números e uma cor respondem "está economizando?",
             // e não respondem "de onde vem isso?" — que é a pergunta do dia em que a conta
@@ -1731,7 +1739,18 @@ public partial class ChatWindow : Window
         texto.Append($"custo cru da conversa ... {r.Total,8:N0}").Append('\n');
         texto.Append($"vai ao modelo agora ..... {r.Contexto,8:N0}").Append('\n');
         texto.Append($"teto deste nível ........ {r.Max,8:N0}")
-             .Append($"  ({r.OcupacaoPct}% ocupado)");
+             .Append($"  ({r.OcupacaoPct}% ocupado)").Append('\n');
+
+        // O teto do nível é PLACAR: passar dele não interrompe nada. Sem dizer isso, um número
+        // acima de 100% na dica parece defeito.
+        texto.Append(r.AcimaDoOrcamento
+            ? "acima do orçamento do nível — a conversa segue, e a compactação roda no fim do turno"
+            : "o teto do nível não interrompe nada: é o ponto em que a compactação passa a agir");
+
+        if (r.Rede > 0)
+            texto.Append('\n').Append('\n')
+                 .Append($"janela do modelo ........ {r.Rede,8:N0}").Append('\n')
+                 .Append("(daí em diante a poda descarta sem substituto)");
 
         if (!r.MedidaCompleta)
             texto.Append('\n').Append('\n')

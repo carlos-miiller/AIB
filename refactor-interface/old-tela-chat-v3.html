@@ -10,7 +10,7 @@
     ============================================================================
      ARQUIVO: tela-chat-v3.html
      PAPEL:   Especificação executável da janela de conversa do AIB + do
-              painel lateral (4 abas).
+              painel lateral (3 abas).
      DESTINO: Reimplementação 1:1 em C# / WPF (.NET, XAML + MVVM).
 
      SUPERSEDE: tela-chat.html (v1) e tela-chat-v2.html. Esses dois arquivos
@@ -31,8 +31,7 @@
        4. §3  ESPECIFICAÇÃO POR COMPONENTE — medidas exatas, por elemento.
        5. §4  CADEIA DE AÇÕES (tool calls) — o componente mais complexo.
        6. §5  ESTADOS DA CONVERSA         — os 7 cenários do seletor.
-       7. §6  PAINEL LATERAL (3 abas) — a antiga aba de e-mails foi removida
-              e virou o modo de exibição de §3.10.  [NOVO]
+       7. §6  PAINEL LATERAL (3 abas).
        8. §7  MODELO DE DADOS (ViewModels).
        9. §8  MAPA HTML -> XAML, ARMADILHAS e CHECKLIST DE ACEITE.
       10. O markup, onde cada elemento tem `data-spec` e comentários `IMPL:`.
@@ -199,7 +198,7 @@
          └── Border .panel-border    neon + padding 1.5 + shadow + r20
              └── Border .panel       glass + r18.5
                  ├── Grid .panel-head   título + botão fechar
-                 ├── .panel-tabs        3 botões de aba  [NOVO: era 4]
+                 ├── .panel-tabs        3 botões de aba
                  └── ContentControl     aba ativa (uma de 3 .tab-pane)
 
      Grid da janela de chat: RowDefinitions="Auto,*,Auto,Auto".
@@ -238,57 +237,15 @@
        (c) PILL de nível — "Nível 2", 11px/600, accentLilac, fundo
            rgba(155,81,224,0.14), borda accentBorder, r20, padding 3px 10px.
            É EXATAMENTE a pill de personalidade da tela de seleção.
-           TOOLTIP DE XP (implementado, ChatWindow.xaml): a pill abre um ToolTip
-           com fundo surfaceTooltip, borda accentBorder e sombra, contendo
-           "Nível N (x/y XP)" em mono 11px textBody e uma ProgressBar de
-           180x6 (Background surfaceCode, sem borda) logo abaixo.
-           A COR DA PILL É SEMPRE LILÁS: a faixa (bronze…diamante) vive na barra
-           de XP do ToolTip, para a moldura neon seguir sendo a única cor
-           saturada da janela (§0 O2). Atualizada por RefreshLevelUI().
-       (d) SWITCH CHAT / E-MAIL  [NOVO]  (data-spec="view-switch") — §3.10.
-           Fica À ESQUERDA do bloco de botões de ícone, encostado no
-           espaçador, e é o que troca o conteúdo da área central.
-           Pílula de 28px: trilho r999, fundo rgba(255,255,255,0.04), borda
-           rgba(255,255,255,0.08), padding 2px; dentro, dois botões de 24px
-           (r999, padding 0 11px, 11.5px/600) com ícone 13px à esquerda do
-           rótulo — "Chat" (balão) e "E-mail" (envelope).
-           Inativo textSecondary, hover textBody; ATIVO accentLilac sobre
-           rgba(155,81,224,0.14) — mesma família da pill de nível e da aba
-           ativa do painel (§6). Sem sombra e sem borda no botão ativo: o
-           realce é só fundo + cor.
-           WPF: Border r999 com dois RadioButton (GroupName="ModoDeExibicao",
-           ModoChat IsChecked=True e ModoEmail), handler único Modo_Checked.
-           O switch precisa de área NÃO arrastável dentro do header: em WPF os
-           botões já consomem o clique, mas o Border em volta não pode chamar
-           DragMove().
-       (e) espaçador "*".
-       (f) BOTÕES DE ÍCONE 34x34, r8, transparentes, Foreground textSecondary,
-           hover surfaceHoverSoft + textBody, align-self center.
-           São CINCO no XAML, quatro visíveis:
-             0. SHADOW ASSISTANT (olho) — Visibility=Collapsed. Existe com
-                handler (BtnToggleShadow_Click) e é revelado por
-                ApplyShadowAssistantSetting() quando a setting
-                ShadowAssistantEnabled está ligada. NÃO remover o botão nem os
-                handlers; ele só não aparece por padrão.
+       (d) espaçador "*".
+       (e) 4 botões de ícone 34x34, r8, transparentes, Foreground
+           textSecondary, hover surfaceHoverSoft + textBody, align-self center:
              1. PAINEL LATERAL — abre/fecha a segunda janela (§6).
              2. ENGRENAGEM     — abre a tela de Configurações
                                  (handoff/tela-configuracoes.html).
              3. LIMPAR CONVERSA.
              4. FECHAR (X)     — hover rgba(229,72,77,0.16) + danger.
-                É `CloseIconButton`, um Style próprio, e NÃO chama Close(): o
-                handler é EsconderTudo() — a janela é escondida, não destruída.
      O contador de tokens NÃO fica aqui: foi movido para o rodapé (§3.8).
-
-     ┌─ NOTA DE MUDANÇA  [NOVO] ─────────────────────────────────────────────┐
-     │ O QUE MUDOU: o header ganhou o switch (d), à esquerda do botão do     │
-     │ painel lateral. Antes o header tinha só nome + pill + botões.         │
-     │ O QUE SUBSTITUI: a ABA DE E-MAILS DO PAINEL LATERAL (antigas §6.2 e   │
-     │ §6.2.1), REMOVIDAS. A caixa de entrada deixou de ser uma coluna de    │
-     │ 252px na segunda janela e passou a ocupar a área central da janela    │
-     │ principal — ver §3.10.                                                │
-     │ POR QUÊ: o painel é contexto do chat (histórico, arquivos, ações);    │
-     │ e-mail não é contexto, é outra visão do mesmo assistente.             │
-     └───────────────────────────────────────────────────────────────────────┘
 
      §3.4  LISTA DE MENSAGENS  (data-spec="messages")
      ---------------------------------------------------------------------------
@@ -333,32 +290,13 @@
            placeholder "Fale com a KAI..." em textMuted.
            Enter envia; Shift+Enter quebra linha.
            WPF: PreviewKeyDown checando Keyboard.Modifiers.
-       (c) botão LER TELA (OCR) — icon-btn 34x34, ToolTip "Ler tela (OCR)".
-           O ícone é uma CÂMERA (corpo + lente), mas a ação NÃO é captura de
-           imagem: é OCR da tela via OcrService (VisionButton_Click).
-       (d) botão MICROFONE — icon-btn 34x34, ToolTip "Falar com o AIB
-           (Whisper)". Dita por transcrição, não é o botão primário.
+       (c) botão CÂMERA (captura de imagem) — icon-btn 34x34.
+       (d) botão MICROFONE (ditado) — icon-btn 34x34.
        (e) BOTÃO PRIMÁRIO circular 38px, Background = gradiente `primary`,
            glow 0 4px 16px rgba(155,81,224,0.35). DOIS estados:
              idle     -> ícone de ENVIAR (aviãozinho). §0 O10.
              gravando -> quadrado vermelho 13px, r3, danger (stop).
-           Implementado em code-behind: AplicarEstadoDeGravacao(bool) troca o
-           conteúdo do botão. Não há bool IsRecording em ViewModel (§7).
-
-     EXISTEM NO APP E AINDA NÃO TÊM DESENHO — não implementar visual novo por
-     conta própria; estão aqui só para não serem apagados numa refatoração:
-       • POPUP DE COMANDOS (CommandsPopup + ShowSkillsList): abre acima do
-         input, Placement=Top, VerticalOffset=-8, StaysOpen=False. Border
-         surfaceInputBar + borda accentBorder + r de tooltip + sombra, com um
-         ListBox de 200px de largura; item r6, padding 8,5, hover
-         surfaceHoverSoft, selecionado accentFill12. Navegação por setas em
-         CommandsList_PreviewKeyDown.
-       • ARRASTAR ARQUIVOS PARA O INPUT (InsertFilePaths): solta caminhos no
-         TextBox. Sem affordance visual — nenhum estado de drag-over desenhado.
-       • TextBox multilinha real: AcceptsReturn=True, TextWrapping=Wrap,
-         MinHeight 32, MaxHeight 110, ScrollViewer vertical Auto. A altura de
-         49px da barra é MinHeight, não altura fixa — a barra CRESCE até o
-         texto passar de 110px e então rola.
+           WPF: bool IsRecording no ViewModel trocando o conteúdo do botão.
 
      §3.8  RODAPÉ DE CONTEXTO  (data-spec="chat-footer")
      ---------------------------------------------------------------------------
@@ -367,14 +305,6 @@
        ESQUERDA: título do chat atual, 12px textSecondary, ellipsis. É o mesmo
                  título exibido na lista do painel lateral (§6.1).
        DIREITA:  contador de tokens, mono 12px, formato "909/8704 tokens (-91%)".
-                 Atualizado por UpdateTokenCounterUI(TokenReport), com a cor
-                 vinda de CorDaEconomia(economia) — é um método de code-behind,
-                 não um converter de binding (§7).
-                 ATENÇÃO: o texto de projeto no XAML é "0/8192 tokens", com o
-                 total errado. O placeholder deve ser "0/8704 tokens" ou, melhor,
-                 vazio até o primeiro relatório chegar — 8192 é um número que
-                 não corresponde a nenhum campo de Configurações e aparece na
-                 tela no primeiro frame.
                  O valor entre parênteses é a ECONOMIA de contexto obtida pelo
                  cache (negativo = economia).
                  COR POR ESTADO (fazer no converter do binding):
@@ -393,163 +323,6 @@
      sua borda — ver §8 A5.
      WPF: TextBlock na coluna oposta ao alinhamento, dentro da mesma Grid da
      bolha, Opacity ligada a IsMouseOver do container da linha.
-
-     §3.10  MODO E-MAIL — ÁREA CENTRAL  [NOVO]  (data-spec="mail-view")
-     ---------------------------------------------------------------------------
-     Toma o lugar da lista de mensagens (§3.4) quando o switch de §3.3(d) está
-     em "E-mail". Não é janela nova nem pane: é o MESMO Grid.Row 1, com um
-     segundo elemento irmão alternado por Visibility.
-     SOMEM JUNTO: a BARRA DE INPUT (§3.7) e o RODAPÉ DE CONTEXTO (§3.8). No
-     modo e-mail a área central é só a caixa de entrada, de ponta a ponta —
-     não se fala com a KAI a partir daqui; para perguntar sobre a caixa,
-     volta-se ao Chat. A janela NÃO muda de tamanho ao trocar de modo (§8 A2).
-
-     CASCA: ScrollViewer vertical, padding 16px 20px 18px, gap 8px entre itens,
-     mesma barra de rolagem de 6px de §3.4.
-
-     LINHA DE TÍTULO (.mv-head): "Caixa de entrada" 13px/600 textStrong à
-     esquerda; à direita, na mesma linha, o resumo em mono 11px textMuted
-     "4 e-mails • 2 urgentes • 1.2k tokens" (urgentes em danger #E5484D quando > 0,
-     textMuted quando zero) e, encostado na borda, o botão de engrenagem
-     26x26 (.btn-title-icon) que abre a tela de configurações na página
-     "E-mail" — AbrirConfiguracoesDeEmail(). É o MESMO botão e as MESMAS três
-     medidas do antigo rodapé da aba; mudaram de lugar, não de conteúdo.
-
-     ITEM (.mail-item): o mesmo MailListItem de antes — barra de urgência de
-     3px | nome em 1 linha com ellipsis | resumo em no máximo 2 linhas | selo
-     de urgência — porém em escala de janela, não de painel: padding
-     12px 14px, r12, nome 13.5px/600, resumo 12px/1.5. Cores de urgência
-     inalteradas (Máxima danger, Média #E8A33D, Baixa textMuted).
-     LINHA DE METADADOS  [NOVO]: entre o nome e o resumo, 10.5px textMuted,
-     uma linha só, com "·" como separador (TextBlock literal, textMuted a
-     ~28%). Três campos, nesta ordem:
-       (a) DATA da mensagem mais recente da conversa — não a do primeiro
-           e-mail. O dia relativo VEM PRIMEIRO e a data completa abreviada
-           logo depois, separados por "·":
-             "Hoje · 10/09/2026, 09:12"
-             "Ontem · 09/09/2026, 17:40"
-             "Segunda · 07/09/2026, 06:00"
-           O rótulo relativo é capitalizado e vale até sete dias; acima
-           disso ele SAI e fica só a data: "12/03/2026, 14:20". Data em
-           dd/MM/yyyy e hora em HH:mm (24h), sempre — nunca "há 2 dias" nem
-           formato do sistema.
-       (b) TAMANHO DA CONVERSA — "N respostas" quando N > 1 e "1 mensagem"
-           quando é um e-mail solto. É a contagem da thread inteira, não das
-           não lidas.
-       (c) DE QUEM É A VEZ — dois valores, e só dois:
-             "Nova mensagem"      accentLilac 600 — a última mensagem é do
-                                  outro lado: a resposta é sua.
-             "Aguardando retorno" textSecondary  — a última mensagem é sua:
-                                  espera-se o destinatário.
-           Vem de comparar o remetente da última mensagem com o endereço da
-           conta conectada; não é campo do servidor.
-     Esta linha SOME quando o item está aberto (§3.10, acordeão): o corpo já
-     traz remetente, hora e resumo inteiro.
-     A linha NÃO existe no item do Shadow Assistant (§4.8 de lá): lá o balão
-     tem 252px e três itens; aqui há largura de janela. Se MailListItem for
-     reusado nos dois lugares, deixe a linha atrás de uma propriedade
-     (MostrarMetadados, padrão False).
-     Ordenação inalterada: urgência decrescente e, no mesmo nível, mais
-     recente no topo.
-
-     LEITURA EM ACORDEÃO  [NOVO]: o clique no item NÃO abre mais o cliente de
-     e-mail (isso agora é o botão secundário do corpo). Ele EXPANDE o item para baixo, revelando uma terceira linha do
-     Grid (.mail-body), e só um item fica aberto por vez. Aberto: fundo
-     rgba(155,81,224,0.07), borda accentBorder. O corpo tem
-       • divisória 1px rgba(255,255,255,0.07) e 10px de respiro acima;
-       • o resumo COLAPSADO de 2 linhas SAI enquanto o item está aberto: o
-         corpo já traz o texto inteiro, e mantê-lo repetiria a primeira frase;
-       • remetente e hora, 10.5px textMuted, numa linha;
-       • rótulo "RESUMO DA KAI" 10px/700 letter-spacing .08em accentLilac;
-       • o resumo COMPLETO (aqui sem teto de linhas), 12px/1.55 textBody;
-       • DOIS BOTÕES lado a lado, gap 8px, ambos outline r9, padding 7px 13px,
-         12px/600:
-           – PRIMÁRIO "Abrir com <NOME>" — accentLilac, borda
-             rgba(155,81,224,0.40). O <NOME> é o NOME DA PERSONALIDADE ATIVA,
-             não a palavra "Kai": vem do MESMO campo que preenche o
-             .header-name de §3.3(b), e muda quando a personalidade muda
-             (tela de seleção). No XAML é um TextBlock com dois Run — "Abrir
-             com " literal + Run bound a NomeDaInteligencia — e nunca a
-             string inteira em hard-code. Traz o e-mail para dentro do chat:
-             abre a conversa com o e-mail já em contexto.
-           – SECUNDÁRIO "Abrir no Gmail" — textSecondary, borda
-             rgba(255,255,255,0.14), hover textBody sobre
-             rgba(255,255,255,0.06). É ele que abre o e-mail fora do app, no
-             webmail/cliente configurado. O rótulo segue o PROVEDOR da conta
-             conectada ("Abrir no Gmail", "Abrir no Outlook"…); com provedor
-             desconhecido, "Abrir no cliente".
-     WPF: MaxLines/TextTrimming só no resumo COLAPSADO; no corpo o TextBlock é
-     Wrap sem teto. Alternar por um bool ExpandidoId no code-behind, não por
-     Expander (o Expander traz chevron e template próprios).
-
-     SEM CONTA CONFIGURADA: a mesma composição do antigo §6.2.1 — círculo de
-     42px com envelope accentLilac, "Nenhum e-mail conectado", subtítulo e
-     botão "Configurar e-mail" — centralizada na área central inteira, com o
-     título 15px e o subtítulo 12.5px (a largura agora é de janela, não de
-     painel). Um único trigger em MailAccountConfigured controla lista,
-     medidas do título, engrenagem e convite.
-
-     ┌─ NOTA DE MUDANÇA  [NOVO] ─────────────────────────────────────────────┐
-     │ O QUE MUDOU: seção nova. A caixa de entrada saiu do painel lateral e  │
-     │ virou um modo da área central, com leitura em acordeão.               │
-     │ O QUE SUBSTITUI: §6.2 (aba 2 do painel) e §6.2.1 (convite), agora     │
-     │ removidas; o rodapé de contagens da aba virou a linha de título       │
-     │ desta seção; o clique no item, que abria o cliente, virou expansão.   │
-     │ O QUE FICA IGUAL: MailListItem, MailSummary (§7), as cores de         │
-     │ urgência, a ordenação e o destino da engrenagem.                      │
-     └───────────────────────────────────────────────────────────────────────┘
-
-     §3.11  LEITURA DO E-MAIL COM A IA  [NOVO]  (data-spec="mail-view.thread")
-     ---------------------------------------------------------------------------
-     Terceiro estado do modo e-mail, ao lado da lista (§3.10) e do convite sem
-     conta. Chega-se aqui pelo botão "Abrir com <NOME>" do corpo de um item.
-     NÃO troca o switch: continua-se em "E-mail". A leitura acontece DENTRO do
-     modo, e a lista é o que sai — a janela e o header (§3.3) não mudam.
-
-     LINHA DE TÍTULO: é a MESMA .mv-head de §3.10, com duas trocas.
-       (a) O título "Caixa de entrada" vira CAMINHO:
-             Caixa de entrada  ›  Jurídico — contrato Vertex
-           "Caixa de entrada" é um botão 13px/600 textSecondary (hover
-           accentLilac) que volta para a lista; o "›" é 13px textMuted; o
-           ASSUNTO é 13px/600 textStrong e é o ÚNICO elemento que encolhe —
-           MinWidth 0 e TextTrimming="CharacterEllipsis", para que o caminho
-           nunca empurre os botões da direita. ToolTip com o assunto inteiro.
-       (b) As TRÊS MEDIDAS ("N e-mails • N urgentes • N tokens") e a
-           ENGRENAGEM saem, e no lugar entram DOIS BOTÕES, gap 8px, altura
-           26px, r8, borda rgba(255,255,255,0.14), 11.5px/600 textSecondary,
-           hover textBody sobre rgba(255,255,255,0.06):
-             – "Abrir no Gmail"  — abre o e-mail fora do app; o rótulo segue o
-               PROVEDOR da conta ("Abrir no Outlook"…; desconhecido, "Abrir no
-               cliente"). Mesma ação do botão secundário do item.
-             – "Recarregar"      — com ícone de seta circular 12px à esquerda.
-               Relê o e-mail no servidor e refaz o resumo. Enquanto roda, o
-               ícone gira (mesma animação do spinner de §4.2) e o botão fica
-               desabilitado; não some, para a linha não pular de largura.
-           As contagens NÃO voltam durante a leitura: elas descrevem a caixa,
-           e aqui se está dentro de um item.
-
-     CORPO: a mesma conversa do chat, com as mesmas .row e bolhas de §3.4/§3.5
-     (gap 14px), aberta por um CARTÃO DE E-MAIL EM CONTEXTO:
-       • barra de urgência de 3px à esquerda, na cor do item de origem;
-       • rótulo "E-MAIL EM CONTEXTO" 9.5px/700 letter-spacing .08em accentLilac;
-       • remetente e hora 10.5px textMuted;
-       • o resumo completo 12px/1.55 textBody;
-       • caixa r12, fundo rgba(155,81,224,0.07), borda rgba(155,81,224,0.28).
-       Não é bolha e não tem autor: é contexto, e por isso ocupa a largura
-       inteira da coluna, sem os 74% de MaxWidth das bolhas.
-     Depois dele vem a primeira resposta da IA, já com o e-mail lido.
-
-     BARRA DE INPUT: VOLTA aqui (é o único ponto do modo e-mail em que ela
-     aparece), com placeholder "Fale com a <NOME> sobre este e-mail...". O
-     rodapé de contexto (§3.8) segue Collapsed.
-
-     ┌─ NOTA DE MUDANÇA  [NOVO] ─────────────────────────────────────────────┐
-     │ O QUE MUDOU: seção nova, o destino do botão "Abrir com <NOME>" de     │
-     │ §3.10 — antes ele só existia como rótulo, sem tela.                   │
-     │ O QUE SUBSTITUI: dentro do modo e-mail, a LISTA e a linha de medidas; │
-     │ o caminho no título é o que informa onde se está.                     │
-     │ O QUE FICA IGUAL: janela, header, switch, e as bolhas de §3.5.        │
-     └───────────────────────────────────────────────────────────────────────┘
 
     ============================================================================
      §4  CADEIA DE AÇÕES (tool calls) — o componente mais complexo
@@ -604,7 +377,7 @@
      flex 0 0 22px, scroll-snap-align start.
      Aqui o ícone reflete a OPERAÇÃO (write_file, copy_file, move_file,
      create_dir, rename_file, list_dir, delete_file...) — ao contrário da aba
-     de arquivos do painel, onde reflete o TIPO de arquivo (§6.3).
+     de arquivos do painel, onde reflete o TIPO de arquivo (§6.2).
      Em falha: variante .failed, Foreground danger, hover #FF7A7E.
 
      §4.6  TOOLTIP DAS AÇÕES  (data-spec="action-tooltip")
@@ -622,7 +395,7 @@
             Usada nos ícones colapsados do chat.
        (ii) EM BLOCO — largura FIXA 340px, seções empilhadas separadas por
             divisórias 1px dividerTooltip. Usada no painel de histórico de
-            ações (§6.4). Cada seção tem um rótulo 9px/600 UPPER textMuted
+            ações (§6.3). Cada seção tem um rótulo 9px/600 UPPER textMuted
             (tracking 0.10em) e o conteúdo abaixo:
               • "CAMINHO COMPLETO" -> o caminho inteiro, sem abreviação,
                 mono 11px textBody, word-break break-all.
@@ -645,14 +418,6 @@
     ============================================================================
      §5  ESTADOS DA CONVERSA  (os 7 cenários do seletor do mock)
     ============================================================================
-     COMO ESTÁ HOJE (ChatWindow.xaml): existe UM único Border `StatusBar`,
-     ancorado embaixo da lista (HorizontalAlignment=Center,
-     VerticalAlignment=Bottom, Margin 0,0,0,10, Padding 14,9, r14), sempre com
-     fundo warnFill10 e borda warnBorder, e só o TEXTO muda. Ele cobre hoje:
-     aquecimento, "Pensando", OCR e escuta de voz.
-     Isso precisa VIRAR AS 7 VARIANTES de §5.8 — quatro situações diferentes
-     na mesma cor de alerta significam que nenhuma delas comunica nada.
-
      §5.1  EXECUTANDO AÇÕES — cadeia com concluídas colapsadas + uma em curso
            + indicador "digitando". É o estado normal de trabalho.
      §5.2  ERRO NA EXECUÇÃO — §4.7, seguido de uma bolha da IA explicando a
@@ -697,65 +462,10 @@
            círculo de 46px (fundo rgba(155,81,224,0.12), borda
            rgba(155,81,224,0.28)), título 17px/600 textStrong e subtítulo 13px
            textSecondary com MaxWidth ~300px. Sem botões — o convite é o input.
-           TEXTOS IMPLEMENTADOS (ChatWindow.xaml), VERBATIM:
-             título    "Nenhuma conversa ainda"
-             subtítulo "Peça alguma coisa e o trabalho começa aqui."
-           IsHitTestVisible=False no grupo: ele fica SOBRE a lista e não pode
-           roubar o clique. Alternado por AtualizarEstadoVazio().
      §5.7  RECONECTANDO  (data-spec="system-notice.reconnect")
            Mesma faixa de sistema, em magenta: fundo rgba(213,63,140,0.10),
            borda magentaBorder, spinner 12px magenta e botão "Tentar agora"
            (outline magenta). Enquanto ativa, o input deve ficar DESABILITADO.
-
-     §5.8  A FAIXA DE SISTEMA — AS 7 VARIANTES  (data-spec="status-bar")
-     ---------------------------------------------------------------------------
-     UM único controle, SETE variantes. A geometria nunca muda: faixa
-     centralizada na base da lista, Padding 14,9, r14, borda 1px, ícone 14px à
-     esquerda + texto 12px textBody + (opcional) um botão outline à direita.
-     O que muda é a TRINCA cor / ícone / ação:
-
-     var. | situação        | fundo+borda        | ícone       | ação à direita
-     -----|-----------------|--------------------|-------------|-----------------
-      1   | Pensando        | neutro: surfaceCard| 3 pontos    | —
-          |                 | + borderCard       | pulsando    |
-      2   | Aquecendo       | warn  fill10/border| relógio     | —
-      3   | Lendo tela      | neutro (como 1)    | câmera      | "Cancelar"
-      4   | Ouvindo         | accent: fill12 +   | microfone   | "Parar"
-          |                 | accentBorder       |             |
-      5   | Contexto cheio  | warn  fill10/border| alerta      | "Compactar"
-      6   | Reconectando    | magenta fill10/    | spinner     | "Tentar agora"
-          |                 | magentaBorder      |             |
-      7   | Erro            | danger fill10/     | x em círculo| "Detalhes"
-          |                 | dangerBorder       |             |
-
-     REGRAS
-       • As variantes 2, 6 e 7 DESABILITAM o input e o botão primário; 1, 3, 4 e
-         5 deixam o input ativo.
-       • Uma faixa por vez. Prioridade: 7 > 6 > 2 > 5 > 4 > 3 > 1.
-       • O botão da faixa é SEMPRE outline na cor da variante, altura 26px, r8,
-         11.5px/600 — nunca preenchido: a faixa é aviso, não chamada à ação
-         principal.
-       • NADA DE EMOJI. Hoje o code-behind escreve "🧠 Pensando...",
-         "👁 Lendo tela...", "🎙 Ouvindo..." e "⏳ AIB conectando e aquecendo
-         motores...". Emoji não existe em nenhum outro lugar do produto, muda de
-         desenho a cada versão do Windows e não aceita a cor da variante.
-         Trocar pelos Path de 14px do design system e deixar o texto limpo:
-           1 "Pensando…"
-           2 "Conectando e aquecendo motores. A primeira vez leva alguns minutos."
-           3 "Lendo a tela…"
-           4 "Ouvindo…"
-           5 "O contexto está cheio."
-           6 "Reconectando…"
-           7 a mensagem de erro, em uma linha
-         Os ícones de câmera e microfone são os MESMOS Path já usados nos botões
-         do input (§3.7 c/d) — reaproveitar, não redesenhar.
-       • IMPL: um UserControl `StatusStrip` com uma DependencyProperty
-         Variante : enum { Pensando, Aquecendo, LendoTela, Ouvindo,
-         ContextoCheio, Reconectando, Erro } + Mensagem : string +
-         AcaoCommand : ICommand. Os DataTriggers pintam fundo, borda e ícone;
-         o botão fica Collapsed quando AcaoCommand é nulo. Substitui os quatro
-         `StatusText.Text = …` espalhados pelo ChatWindow.xaml.cs
-         (HandleWarmupState, VisionButton_Click, VoiceButton_Click).
 
     ============================================================================
      §6  PAINEL LATERAL  (segunda janela flutuante, 300 x 520)
@@ -763,59 +473,13 @@
      Abre/fecha pelo 1º botão do header. Mesma moldura neon, mesmo vidro, mesma
      sombra da janela de chat, alinhado pela BASE (align-items: flex-end).
      A janela de chat NÃO encolhe quando ele abre (§8 A2).
-     IMPLEMENTADO EM SidePanelWindow.xaml. A Window do WPF é 350x605, não
-     300x520: a DropShadow precisa de área para desenhar e não pode ser
-     recortada. A Margin="0,25,40,60" faz a conta (350−40−10 = 300 e
-     605−25−60 = 520), espelhando a da janela de chat. Topmost=True e
-     ShowActivated=False — abrir o painel NÃO tira o foco da conversa.
-     A posição é calculada por PosicionarPainel() no ChatWindow; o arrasto é
-     manual (Cabecalho_MouseLeftButtonDown/MouseMove/MouseLeftButtonUp), não
-     DragMove() — DragMove() em janela não ativada lança exceção.
-
-     CABEÇALHO: mesma altura do header do chat (HeaderHeight, 52px), divisória
-     inferior 1px `divider`. À esquerda o título "Painel" 14px/600 textStrong
-     com Margin 18,0,0,0 — e NÃO o nome da aba ativa: a aba já está marcada na
-     barra logo abaixo e na linha de título da pane, e um terceiro lugar
-     repetindo o mesmo rótulo faz o painel parecer ter dois cabeçalhos.
-     À direita, o botão de fechar (`CloseIconButton`, o mesmo do chat).
-
-     BARRA DE ABAS: quatro RadioButton de ÍCONE SÓ (Style `PanelTab`), sem
-     rótulo de texto, Margin 14,12,14,6, 4px entre eles. Casca r de icon-btn,
-     Padding 8. Inativa textSecondary; hover surfaceHoverSoft; ATIVA
-     (IsChecked) fundo accentFill12 + Foreground accentLilac. RadioButton, e
-     não Button: a exclusividade mútua sai de graça e o teclado funciona.
-     A ordem é Histórico | Arquivos | Ações — TRÊS abas  [NOVO: a de e-mails
-     saiu daqui e virou o modo de §3.10].
-     Todos os ícones são Path 18x18 Stretch=None.
-     O identificador de cada aba é AbaHistorico / AbaArquivos / AbaAcoes, e
-     todas caem no mesmo handler Aba_Checked.
-
-     PANES: três Grid irmãos no mesmo Grid.Row (PaneHistorico, PaneArquivos,
-     PaneAcoes), alternados por Visibility — NÃO é um
-     ContentControl com DataTemplate. Margin 14,0,14,12.
-     Cada pane tem SEMPRE as mesmas três linhas: Auto (título) | * (lista) |
-     Auto (rodapé).
-     Toda pane usa a MESMA linha de título (Grid MinHeight=27, Margin 0,0,0,8,
-     título 12px/600 textSecondary) para o título não pular de altura ao trocar
-     de aba — §8 A8. Só a aba de Arquivos tem botão nessa linha.
-     Cada lista é um ScrollViewer > StackPanel com um ItemsControl (ListaHistorico,
-     ListaArquivos, ListaAcoes) mais um TextBlock de estado vazio
-     IRMÃO do ItemsControl — o vazio não é um template, é um TextBlock que se
-     mostra quando a lista está sem itens (Style `VazioTexto`: 12px textMuted,
-     centralizado, Margin 0,28,0,0).
-     Cada rodapé é uma divisória 1px `divider` + um TextBlock único (Style
-     `RodapeTexto`: 11px textMuted, NoWrap, ellipsis, MinHeight 25). O MinHeight
-     é o que mantém a base dos quatro rodapés coincidindo ao trocar de aba.
-
-     ESTILOS COMPARTILHADOS do painel (Window.Resources), reutilize-os:
-       PanelTab     RadioButton de ícone (acima)
-       ItemCard     casca de item: surfaceCard, borderCard, RadiusCard,
-                    Padding 11,9, Margin 0,0,0,6, Cursor=Hand,
-                    hover borda accentBorderStrong + fundo accentFill08
-       ItemTitulo   12.5px/600 textStrong, ellipsis
-       ItemMeta     10.5px mono textMuted, ellipsis
-       VazioTexto   estado vazio (acima)
-       RodapeTexto  rodapé de pane (acima)
+     Estrutura: cabeçalho (título + fechar) | barra de 3 abas | pane ativa.
+     BARRA DE ABAS: botões de ícone; a ativa recebe Foreground accentLilac e
+     fundo rgba(155,81,224,0.12); as inativas textSecondary.
+     Toda pane usa a MESMA linha de título (.panel-title-row, min-height 27px)
+     para o título não pular de altura ao trocar de aba — §8 A8.
+     A lista de cada pane é flex:1 + min-height:0 + overflow-y auto, ocupando a
+     altura restante (o rodapé da pane fica fixo embaixo).
 
      §6.1  ABA 1 — HISTÓRICO DE CHATS  (data-spec="pane.history")
      ---------------------------------------------------------------------------
@@ -830,9 +494,9 @@
        3. Restaurar o estado DERIVADO daquela conversa:
             - título do chat no rodapé (§3.8);
             - contador de tokens, com a cor recalculada pela regra de estado;
-            - a aba "Arquivos no Contexto" (§6.3) — os arquivos DAQUELA
+            - a aba "Arquivos no Contexto" (§6.2) — os arquivos DAQUELA
               conversa, não os da anterior;
-            - a aba "Histórico de Ações" (§6.4) — idem.
+            - a aba "Histórico de Ações" (§6.3) — idem.
        4. Rolar a lista de mensagens para o fim.
        5. Marcar o item clicado como ativo (borda lilás persistente).
      O painel permanece ABERTO após a troca.
@@ -841,33 +505,7 @@
      turnos de conversas diferentes.
      ESTADO VAZIO: "Nenhum chat salvo."
 
-     RODAPÉ (.panel-foot): "N chats • N MB em disco", uma linha, mesma altura
-     das outras abas. O PESO é a soma, por chat salvo, do arquivo do CHAT mais
-     os arquivos de CAPÍTULOS e de ATOS gerados pela compressão de contexto
-     (chat + capítulos + atos) — não apenas o arquivo de mensagens. Desaparece
-     junto com a lista quando não há chat salvo.
-
-     §6.2  [REMOVIDA]  ABA 2 — E-MAILS
-     ---------------------------------------------------------------------------
-     ┌─ NOTA DE MUDANÇA  [NOVO] ─────────────────────────────────────────────┐
-     │ §6.2 e §6.2.1 FORAM REMOVIDAS. A aba de e-mails não existe mais no    │
-     │ painel lateral: a caixa de entrada agora é um MODO DA ÁREA CENTRAL,   │
-     │ acionado pelo switch do header — §3.3(d) e §3.10.                     │
-     │ PARA QUEM VAI IMPLEMENTAR:                                            │
-     │  • apagar o RadioButton AbaEmails e o Grid PaneEmails de              │
-     │    SidePanelWindow.xaml, e ListaEmails / EmailsVazio do code-behind;  │
-     │  • NÃO apagar MailListItem.xaml nem MailSummary (§7): são reusados     │
-     │    inteiros em §3.10, só com padding e tamanhos de janela;            │
-     │  • o convite "Nenhum e-mail conectado" e o botão de engrenagem migram │
-     │    para §3.10, com o mesmo destino (página "E-mail" das configurações);│
-     │  • o painel volta a três abas e o rodapé de contagens da aba de       │
-     │    e-mails vira a linha de título de §3.10.                           │
-     └───────────────────────────────────────────────────────────────────────┘
-     A numeração das abas seguintes NÃO foi renomeada para não invalidar as
-     referências espalhadas pelo arquivo: §6.3 continua sendo Arquivos e §6.4
-     Ações, hoje a segunda e a terceira aba.
-
-     §6.3  ABA 3 — ARQUIVOS NO CONTEXTO  (data-spec="pane.files")
+     §6.2  ABA 2 — ARQUIVOS NO CONTEXTO  (data-spec="pane.files")
      ---------------------------------------------------------------------------
      Todos os arquivos encostados de alguma forma pela IA nesta sessão (lidos,
      criados, copiados, movidos) mais os que o usuário anexou manualmente.
@@ -899,13 +537,9 @@
      O clique no X precisa de e.Handled = true, senão abre o Explorer junto.
      RODAPÉ: divisória 1px `divider` + linha 11px textMuted com a contagem de
      arquivos e o peso somado no contexto.
-     RODAPÉ (.panel-foot): "N arquivos • N KB • N tokens", uma linha, mesma
-     altura das outras abas. O KB é o tamanho somado em disco; os tokens são o
-     custo real no prompt — uma medida não deriva da outra e as duas ficam.
-     Rótulos curtos e NoWrap, como em §6.2 (§8 A16).
      ESTADO VAZIO: "Nenhum arquivo no contexto."
 
-     §6.4  ABA 4 — HISTÓRICO DE AÇÕES  (data-spec="pane.log")
+     §6.3  ABA 3 — HISTÓRICO DE AÇÕES  (data-spec="pane.log")
      ---------------------------------------------------------------------------
      Registro cronológico de TUDO que a IA fez na conversa inteira: criar,
      editar e excluir arquivos e pastas, listar diretórios e executar comandos.
@@ -933,7 +567,7 @@
                "+8 linhas, −2 linhas", "saída: 12 itens". Em FALHA o mesmo
                campo vira danger com a mensagem do erro.
      HOVER no ALVO ou no COMANDO abre o tooltip EM BLOCO de §4.6 (ii).
-     Clicar numa entrada que tenha caminho abre o Explorer nele, igual à §6.3.
+     Clicar numa entrada que tenha caminho abre o Explorer nele, igual à §6.2.
      RODAPÉ: total de ações e quantas falharam.
      ESTADO VAZIO: "Nenhuma ação registrada."
      WPF: ItemsControl bound a ObservableCollection<ActionLogEntry>, um
@@ -941,44 +575,28 @@
      uma Border de 1px na coluna do marcador, colapsada no último item.
 
     ============================================================================
-     §7  MODELO DE DADOS
+     §7  MODELO DE DADOS (ViewModels)
     ============================================================================
-     NÃO HÁ MVVM NESTA TELA, E ESTÁ ACEITO ASSIM (decisão de 10/09/2026).
-     ChatWindow.xaml.cs monta as bolhas imperativamente — AddUserBubble,
-     AddWelcomeBubble, RegistrarAcao, RemoverLinha, AnimateBubbleIn —
-     empilhando FrameworkElements dentro do StackPanel MessagesPanel. Não existe
-     ChatViewModel, não existe ObservableCollection<Message>, e cada botão do
-     header e do input tem seu handler `Click=` direto no XAML.
-     Portanto: as classes abaixo são MODELOS DE DADOS (o que os serviços
-     entregam e o que é persistido), não alvos de Binding. As colunas
-     "COMANDO" da tabela do fim mapeiam para os HANDLERS reais.
-     Quem quiser migrar para MVVM depois: começar pela lista de mensagens
-     (ItemsControl + DataTemplate por autor), que é a parte com mais estado
-     duplicado. Não é pré-requisito de nada nesta spec.
+     ChatViewModel
+       AgentName          : string            "KAI" (vem da tela de seleção)
+       AgentLevel         : int               exibido na pill "Nível 2"
+       ChatTitle          : string            rodapé, §3.8
+       UsedTokens         : int
+       MaxContextTokens   : int  { get; }     = campo homônimo de Configurações
+       ContextSavingPct   : double            negativo = economia
+       Messages           : ObservableCollection<Message>
+       IsThinking         : bool              mostra o §3.6
+       IsRecording        : bool              estado do botão primário
+       ConnectionState    : enum { Online, Reconnecting, Offline }
+       PendingConfirmation: ConfirmationRequest?   não-nulo bloqueia a fila
+       IsPanelOpen        : bool
 
-     Message   (o que uma bolha carrega; hoje vive no ChatStreamItem/histórico)
+     Message
        Author    : enum { User, Ai, System }
        Text      : string
        Timestamp : DateTime
-       ToolChain : lista de ToolCall?
-       CodeBlocks: lista de CodeBlock?
-
-     ESTADO DA JANELA — hoje são campos e chamadas de code-behind, não
-     propriedades observáveis. Onde cada um mora:
-       nome da Inteligência  AgentNameText.Text, via ApplyCharacterUI()
-       nível e XP           LevelText / TooltipLevelInfo / XpProgressBar,
-                            via RefreshLevelUI(bool incrementXp)
-       título do chat       ChatTitleText.Text, via AplicarTitulo(string)
-       tokens               TokenCounterText, via UpdateTokenCounterUI(TokenReport)
-                            + CorDaEconomia(economia) para a cor
-       total de contexto    settings "Máximo de Tokens de Contexto" (§3.8)
-       pensando / status    StatusBar + StatusText (a substituir pelo
-                            StatusStrip de §5.8)
-       gravando             AplicarEstadoDeGravacao(bool)
-       conversa vazia       AtualizarEstadoVazio()
-       painel aberto        campo _painel (instância de SidePanelWindow) +
-                            SidebarButton_Click / PosicionarPainel()
-       confirmação pendente ConfirmCardView + DescartarConfirmacaoPendente()
+       ToolChain : ObservableCollection<ToolCall>?
+       CodeBlocks: IList<CodeBlock>?
 
      ToolCall
        Tool      : string        "write_file", "copy_file", "delete_file"...
@@ -998,106 +616,29 @@
        Date : DateTime
        IsActive : bool
 
-     ContextFile           (§6.3)
+     ContextFile           (§6.2)
        Name, Folder, FullPath : string
        Extension : string          -> ícone (converter)
        Origin : enum { CreatedByAi, CopiedByAi, ReadByAi, AttachedByUser }
        SizeBytes : long
        RemoveCommand, RevealInExplorerCommand : ICommand
 
-     ActionLogEntry        (§6.4)
+     ActionLogEntry        (§6.3)
        Tool, Target, FullTarget, Command, RawOutput, Result : string
        Kind : enum (mesmo de ToolCall.Kind)
        Status : enum { Done, Failed }
        Timestamp : DateTime
 
-     MailSummary           (§6.2)  — MESMA classe do Shadow Assistant (§4.8 lá).
-       Id            : string      identificador na caixa (UID IMAP)
-       Name          : string      assunto OU remetente, como vier do servidor
-       Description   : string      resumo gerado pela IA a partir do corpo
-       Urgency       : enum { Maxima, Media, Baixa }   -> cor e rótulo
-       ReceivedAt    : DateTime
-       ContextTokens : int         peso do resumo no prompt atual
-       LastMessageAt : DateTime    data exibida na linha de metadados (§3.10)
-       MessageCount  : int         tamanho da thread ("N respostas")
-       AwaitingMe    : bool        true -> "Nova mensagem"; false ->
-                                   "Aguardando retorno"  [NOVO]
-       OpenCommand   : ICommand    abre no cliente de e-mail padrão
-
-     MailAccountViewModel  (§6.2 / §6.2.1)
-       IsConfigured   : bool       false -> §6.2.1; true -> lista (§6.2).
-                                   Espelha MailAccountConfigured da tela de
-                                   configurações; endereço e senha de app
-                                   pertencem àquela tela, não a esta.
-       Mails          : ObservableCollection<MailSummary>
-       TotalCount     : int  => Mails.Count
-       UrgentCount    : int  => Maxima + Media   (rodapé, §6.2)
-       ContextTokens  : int  => soma de MailSummary.ContextTokens
-
-     HistoryFooterViewModel (§6.1)
-       ChatCount    : int
-       DiskBytes    : long   => por chat: arquivo do CHAT
-                                        + arquivos de CAPÍTULOS
-                                        + arquivos de ATOS
-                                (a compressão de contexto grava os três)
-
-     COMANDOS — hoje são HANDLERS de code-behind (§7 topo). Nome no XAML → o que faz
-       SendButton_Click        enviar (ou parar a gravação, se gravando)
-       InputBox_PreviewKeyDown Enter envia, Shift+Enter quebra linha
-       VoiceButton_Click       ditado por Whisper
-       VisionButton_Click      OCR da tela
-       SettingsButton_Click    engrenagem do header → SettingsWindow
-       AbrirConfiguracoesDeEmail()  → SettingsWindow(PaginaDeConfiguracoes.Email)
-       SidebarButton_Click     abre/fecha SidePanelWindow
-       ClearButton_Click       limpar conversa
-       CloseButton_Click       EsconderTudo() — esconde, NÃO fecha
-       AbrirChat(sessao) / RecuperarChat / ExcluirChat   §6.1
-       Adicionar_Click         §6.3 "+ Adicionar" (no painel)
-       ConfigurarEmail_Click   §6.2.1 "Configurar e-mail" (no painel)
-       Aba_Checked             troca de aba do painel
-     AINDA SEM HANDLER (previstos nesta spec, não implementados):
-       "Compactar" de §5.4 · "Tentar agora" de §5.7 · engrenagem da linha de
-       título da aba de e-mails (§6.2) · varredura manual de e-mail
-
-    ============================================================================
-     §6.6  PLANO DE IMPLEMENTAÇÃO DAS ADIÇÕES DE E-MAIL
-    ============================================================================
-     Estas partes são novas em relação ao restante do arquivo. Ordem sugerida,
-     cada passo verificável isolado:
-
-     E1. MODELO. MailSummary + MailAccountViewModel (§7). O serviço de IMAP
-         pode ser um stub que devolve 4 itens fixos — os iguais ao markup —
-         para destravar a UI.
-     E2. UrgencyToBrush / UrgencyToLabel converters. Três níveis, cores em §2:
-         Maxima #E5484D, Media #E8A33D, Baixa #8B8794. O fundo do selo é a
-         MESMA cor a 13% (Baixa: branco a 5%). Não criar um quarto nível.
-     E3. MailListItem.xaml — UserControl do item (§6.2). É o MESMO controle do
-         Shadow Assistant (shadow-assistant.html §4.8); se aquele já existe,
-         reusar e só sobrescrever CornerRadius (14 aqui, 12 lá) e o hover
-         (lilás do painel). Marcar como PROVISÓRIO no topo do arquivo: este
-         layout vai mudar.
-     E4. Quarta aba no painel: o botão (ícone de envelope 18px) entra em
-         SEGUNDO lugar, entre Histórico de Chats e Arquivos no Contexto. A
-         ordem é: Histórico | E-mails | Arquivos | Ações.
-     E5. Pane de e-mails: .panel-title-row ("E-mails", canto direito vazio e
-         reservado) + ItemsControl rolável + .panel-foot. Ordenação: urgência
-         decrescente, e dentro do nível o mais recente no topo.
-     E6. Rodapés de contagem (.panel-foot) nas QUATRO abas. Uma linha só,
-         MinHeight 25, NoWrap nos filhos, rótulos curtos. Confira a base dos
-         quatro rodapés na mesma altura ao alternar de aba (§8 A8, A16).
-     E7. Estado §6.2.1 (sem conta). UM DataTrigger em IsConfigured controla
-         quatro elementos: lista Collapsed, rodapé Collapsed, engrenagem do
-         título Collapsed, convite Visible (§8 A17). A linha de título
-         permanece.
-     E8. Rota para as configurações: a engrenagem do título e o botão do
-         convite chamam OpenSettingsCommand(ActiveSection.Mail). Os campos e a
-         guarda da senha estão em tela-configuracoes.html (§5 campos 6 e 7,
-         §7 A12) — nada disso é implementado aqui.
-     E9. Ao voltar das configurações com login válido, MailAccountConfigured
-         passa a true: a aba troca o convite pela lista e dispara a primeira
-         varredura.
-     E10. Rodapé do histórico (§6.1): ChatCount e DiskBytes = chat + capítulos
-         + atos. O cálculo é do serviço de persistência, não da View.
+     COMANDOS
+       SendMessageCommand      Enter (sem Shift) ou botão primário
+       ToggleRecordingCommand  botão primário em modo gravação
+       OpenSettingsCommand     engrenagem do header
+       TogglePanelCommand      1º botão do header
+       ClearConversationCommand
+       LoadConversationCommand(id)     §6.1
+       AddContextFilesCommand          §6.2 "+ Adicionar"
+       CompactContextCommand           §5.4 "Compactar"
+       RetryConnectionCommand          §5.7 "Tentar agora"
 
     ============================================================================
      §8  MAPA HTML -> XAML, ARMADILHAS E CHECKLIST
@@ -1136,18 +677,8 @@
      .panel-border        | Border (2ª Window)        | 300x520
      .panel-tab           | RadioButton estilizado    | ativa = lilás
      .tab-pane            | ContentControl            | 1 de 3
-     .view-switch         | Border + 2 RadioButton    | §3.3(d)   [NOVO]
-     .mail-view           | ScrollViewer + ItemsControl | §3.10   [NOVO]
-     .mail-thread         | StackPanel de .row        | §3.11    [NOVO]
-     .mail-context        | Border + Grid 2 colunas   | §3.11    [NOVO]
-     .mail-item           | Border + Grid 3 colunas   | §3.10 (= shadow §4.8)
-     .panel-empty-state   | Grid centralizado         | §6.2.1, no lugar da lista
-     .btn-empty-action    | Button outline            | abre o modal de §6.5
-     .btn-title-icon      | Button 26x26 + ToolTip    | engrenagem da aba 2
-     .panel-foot          | StackPanel Horizontal     | NoWrap, MinHeight 25
-     .pf-important        | TextBlock                 | #E8A33D quando > 0
-     .file-item           | Border + Style            | §6.3
-     .log-item            | Grid + Border(trilha)     | §6.4
+     .file-item           | Border + Style            | §6.2
+     .log-item            | Grid + Border(trilha)     | §6.3
 
      Equivalências que costumam confundir:
        gap: Npx           -> Margin nos filhos (WPF não tem gap)
@@ -1191,29 +722,6 @@
      A11. CONTADOR "+N" NA TRILHA. Foi implementado e REMOVIDO de propósito: a
          barra de rolagem de 4px já comunica que há mais ações. Não readicionar.
 
-     A12. RODAPÉ DE ABA EM DUAS LINHAS. As três métricas dos rodapés cabem em
-         uma linha só porque os rótulos são curtos ("2 urgentes", "1.2k
-         tokens"). Por extenso estouram os 269px úteis, quebram no meio das
-         palavras e mudam a altura do rodapé — o conteúdo passa a pular ao
-         trocar de aba (A8). Métrica nova troca uma existente. (= A16 nas
-         referências do texto.)
-     A13. RESUMO DE E-MAIL SEM LIMITE. O resumo vem da IA e pode ser longo:
-         TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis".
-         Sem isso o item cresce e a lista perde o ritmo. Os textos curtos do
-         mock são só do mock — no C# entra o resumo inteiro.
-     A14. DIÁLOGO DE CONFIGURAÇÃO DENTRO DO CHAT. Existiu um modal aqui para
-         pedir e-mail e senha de app; foi REMOVIDO. A configuração de e-mail
-         vive na tela de configurações, na página "E-mail" — os dois gatilhos
-         desta tela só navegam para lá. Não reintroduzir formulário no chat.
-     A15. (livre — era a guarda da senha de app, hoje em
-         tela-configuracoes.html §7 A12.)
-     A16. (ver A12 — mesma armadilha; o texto de §6.2 e §6.3 cita "A16".)
-     A17. CONTAGENS E ENGRENAGEM VISÍVEIS SEM CONTA. O rodapé e o botão de
-         configurações da aba de e-mails pertencem à LISTA, não ao pane:
-         quando §6.2.1 está ativo desaparecem junto. "4 e-mails • 2 urgentes"
-         embaixo de "Nenhum e-mail conectado" é contradição direta. Amarre
-         lista + rodapé + engrenagem + convite ao MESMO trigger.
-
      §8.2  CHECKLIST DE ACEITE
      ---------------------------------------------------------------------------
      [ ] Nenhum blur; vidro = cor sólida Argb(230,18,18,22).
@@ -1235,104 +743,10 @@
      [ ] Hora só no hover, fora da bolha, sem deslocar a bolha da borda.
      [ ] Painel lateral 300x520, mesma altura da janela; chat não encolhe.
      [ ] 3 abas, títulos na mesma altura ao alternar.
-     [ ] Switch Chat/E-mail no header, à esquerda do botão do painel.  [NOVO]
-     [ ] No modo E-mail somem a barra de input e o rodapé de contexto, e a
-         janela não muda de tamanho.  [NOVO]
-     [ ] Clique no e-mail EXPANDE o item, um aberto por vez.  [NOVO]
-     [ ] Corpo do e-mail com dois botões: "Abrir com <personalidade>" (o nome
-         vem do modelo, não em hard-code) e "Abrir no <provedor>".  [NOVO]
-     [ ] "Abrir com <personalidade>" mantém o modo E-mail e mostra §3.11:
-         título vira "Caixa de entrada › <assunto>" com ellipsis no assunto,
-         e as medidas + engrenagem viram "Abrir no <provedor>" e
-         "Recarregar".  [NOVO]
-     [ ] Em §3.11 a barra de input volta, com placeholder próprio.  [NOVO]
-     [ ] Item colapsado com a linha data · N respostas · vez de quem; some
-         quando o item abre.  [NOVO]
-     [ ] Modo E-mail: item igual ao do Shadow Assistant (§3.10) — nome em 1
-         linha, resumo em no máximo 2, selo e barra na cor da urgência.
-     [ ] Rodapés das três abas em UMA linha e na mesma altura (25px).
-     [ ] Aba de histórico: N chats e peso = chat + capítulos + atos.
-     [ ] Modo E-mail: total, urgentes (danger) e tokens na LINHA DE TÍTULO.
-     [ ] Sem conta conectada: rodapé de contagens e engrenagem do título
-         também desaparecem.
-     [ ] Engrenagem do modo E-mail abre a tela de configurações na página
-         "E-mail".
-     [ ] Aba de arquivos: total, KB e tokens.
-     [ ] Sem conta conectada: aba de e-mails mostra o convite de §6.2.1 com o
-         botão "Configurar e-mail", que abre a tela de configurações na página
-         "E-mail". Nenhum formulário de e-mail dentro do chat.
      [ ] Aba de arquivos: ícone pelo TIPO; operação só na pill de origem.
      [ ] Clique em arquivo/entrada abre o Explorer com o item selecionado.
      [ ] Clique no X de remover não abre o Explorer.
      [ ] Os 7 estados de §5 implementados.
-
-     ---------------------------------------------------------------------------
-     §8.1  DIVERGÊNCIAS ABERTAS  (revisão de 10/09/2026 contra o código real)
-     ---------------------------------------------------------------------------
-     O que esta spec descreve e o app AINDA não faz. Em ordem de impacto:
-
-     D1. FAIXA DE SISTEMA COM UMA COR SÓ. ChatWindow.xaml tem um Border
-         `StatusBar` sempre em warn, e quatro `StatusText.Text = …` diferentes
-         no code-behind (HandleWarmupState, VisionButton_Click,
-         VoiceButton_Click). Implementar o StatusStrip de §5.8 com as 7
-         variantes e apagar as quatro atribuições soltas.
-     D2. EMOJI NOS TEXTOS DE STATUS. "🧠 Pensando...", "👁 Lendo tela...",
-         "🎙 Ouvindo...", "⏳ AIB conectando e aquecendo motores...".
-         Trocar pelos Path de 14px do design system (§5.8).
-     D3. SEM CAMINHO PARA A CONFIGURAÇÃO DE E-MAIL COM CONTA CONECTADA.
-         A engrenagem da linha de título da aba de e-mails (§6.2) não existe em
-         SidePanelWindow.xaml; o único acesso é o convite, que some quando a
-         conta existe. AbrirConfiguracoesDeEmail() já está pronto no ChatWindow.
-     D4. PLACEHOLDER "0/8192 tokens" no rodapé. O total não corresponde a
-         nenhum campo de Configurações (§3.8) — usar 8704 ou deixar vazio.
-     D5. "Compactar" (§5.4) e "Tentar agora" (§5.7) não têm handler.
-     D6. COMENTÁRIO DESATUALIZADO em SidePanelWindow.xaml: "BARRA DE 3 ABAS"
-         sobre uma barra de quatro. Trocar para 4.
-     D7. DOIS PAINÉIS NO PROJETO: ContextSidebar.xaml convive com
-         SidePanelWindow.xaml. Só o segundo implementa §6. Confirmar se o
-         primeiro ainda é usado e, se não, remover — dois painéis divergem.
-
-     D8. TOOLTIP COM A CASCA NATIVA DO WINDOWS. Não existe nenhum
-         Style TargetType="ToolTip" no projeto (procurado em Themes/Controls.xaml,
-         Themes/Tokens.xaml e no resto). TooltipEmBloco monta o conteúdo com as
-         cores do design system dentro do ToolTip padrão: fundo claro, borda
-         cinza, canto reto, sem sombra. §4.6 pede surfaceTooltip #1D1C24, borda
-         accentBorder, r8 e tooltipShadow. Vale para TODOS os tooltips do app.
-         CORREÇÃO PRONTA: handoff/correcoes/1-Controls-ToolTip.xaml.txt
-     D9. TOOLTIP DE LARGURA VARIÁVEL. MaxWidth=340 em vez de largura FIXA 340
-         (§4.6 ii) — cada entrada abre um tooltip de largura diferente.
-     D10. "SAÍDA BRUTA" SEM CAIXA E SEM TETO. O Secao() local renderiza as três
-         seções idênticas (mono 11px textBody, Wrap). §4.6 pede, só para ela,
-         caixa surfaceCode + borda + r7, mono 10.5px textSecondary, sem wrap e
-         MaxHeight 118px com rolagem. Sem o teto, a saída de um run_command
-         verboso estica o tooltip até sair da tela.
-     D11. "RESULTADO" EM textBody. §4.6 pede mono 11px accentLilac — é o único
-         texto colorido do tooltip, o resumo que se procura primeiro.
-     D12. SEM ToolTipService. Sem InitialShowDelay, ShowDuration, Placement ou
-         HasDropShadow: vale o padrão do WPF, que FECHA EM 5 SEGUNDOS.
-     D13. A CAIXA DO COMANDO (campo (d) de §6.4) NUNCA FOI IMPLEMENTADA. O item
-         tem topo, alvo e resultado. Por isso o hover está só no alvo, e não
-         "no alvo ou no comando". E as seções CAMINHO COMPLETO e COMANDO do
-         tooltip são mutuamente exclusivas — um run_command tem os dois.
-     D14. A TRILHA VERTICAL NÃO EXISTE, e o item é um `ItemCard`. §6.4 e o
-         .log-item do mock descrevem uma LINHA DO TEMPO: item plano, sem fundo
-         nem borda, com uma linha de 1px descendo do marcador ao item seguinte
-         (ausente no último). Hoje cada entrada é um card com borda, hover
-         lilás e 6px de margem — lê como pilha de cards. O marcador também
-         perdeu a borda de 1px do mock, e o ícone está em 14px em vez de 13.
-         D9 a D14: handoff/correcoes/2-SidePanelWindow-Acoes.cs.txt
-     D15. Target JÁ CORTADO NO SERVIÇO. ActionLogService faz
-         Encurtar(literal, 34) e o TextBlock fica com TextTrimming.None. Um
-         limite fixo de 34 caracteres ignora a largura real do painel e corta
-         pelo FIM, perdendo o nome do arquivo — a parte que se lê num caminho.
-         §6.4(c) pede ellipsis na View. Correção é no serviço.
-
-     ACEITO COMO ESTÁ, NÃO É DIVERGÊNCIA (decisão de 10/09/2026):
-       • ausência de MVVM na janela de chat — ver §7;
-       • bolhas montadas em code-behind, sem ItemsControl;
-       • panes do painel alternadas por Visibility, sem ContentControl;
-       • popup de comandos, arrastar-arquivos e o botão de OCR seguem sem
-         desenho próprio — existem, ficam, não recebem UI nova agora (§3.7).
     ============================================================================
   */
 
@@ -1371,32 +785,6 @@
     overflow: hidden;
   }
 
-  /* ================= 3b. REALCE DO QUE É NOVO [MOCK-ONLY] =================
-     Tudo que foi adicionado nesta rodada (switch do header, modo e-mail,
-     linha de metadados, leitura com a IA) recebe data-novo. O realce é
-     ligado por padrão e sai no botão "destacar o que é novo" do rodapé de
-     cenários. NÃO PORTAR para o XAML: é andaime de revisão. */
-  body.novo-on [data-novo] {
-    position: relative;
-    outline: 1px dashed rgba(155,81,224,0.55);
-    outline-offset: 3px;
-    border-radius: 4px;
-  }
-  body.novo-on [data-novo]::after {
-    content: attr(data-novo);
-    position: absolute; top: -8px; left: -3px;
-    padding: 1px 5px; border-radius: 4px;
-    background: #9B51E0; color: #fff;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    font-size: 8px; font-weight: 700; letter-spacing: .06em;
-    line-height: 1.5; white-space: nowrap; pointer-events: none; z-index: 5;
-  }
-  body.novo-on .mail-view [data-novo]::after { top: -7px; }
-  /* o selo não pode cobrir texto: na linha de metadados ele vai para a
-     direita, e no container do modo e-mail fica dentro da área visível */
-  body.novo-on .mail-meta::after { left: auto; right: 0; top: -6px; }
-  body.novo-on .mail-view::after { top: 4px; left: 6px; }
-
   /* ================= 4. HEADER ================= */
   .header {
     flex: 0 0 52px;
@@ -1423,131 +811,6 @@
   }
 
   .header-spacer { flex: 1 1 auto; }
-
-  /* ---- SWITCH CHAT / E-MAIL (§3.3d) [NOVO] ----
-     Troca o conteúdo da área central. Fica à ESQUERDA do botão do painel.
-     WPF: Border r999 com dois RadioButton (GroupName="ModoDeExibicao"). */
-  .view-switch {
-    display: flex; align-items: center; gap: 2px;
-    padding: 2px; border-radius: 999px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    -webkit-app-region: no-drag;
-  }
-  .vs-opt {
-    display: flex; align-items: center; gap: 6px;
-    height: 24px; padding: 0 11px;
-    border: none; border-radius: 999px; background: transparent;
-    color: #8B8794; font-family: inherit;
-    font-size: 11.5px; font-weight: 600; white-space: nowrap;
-    cursor: pointer; transition: background .12s ease, color .12s ease;
-  }
-  .vs-opt:hover { color: #CBC8D1; }
-  .vs-opt.active { color: #C79EF0; background: rgba(155,81,224,0.14); }
-
-  /* ---- MODO E-MAIL: área central (§3.10) [NOVO] ----
-     Irmão de .messages no mesmo lugar da grade; um dos dois é visível.
-     No modo e-mail o input (§3.7) e o rodapé (§3.8) ficam Collapsed. */
-  .mail-view {
-    flex: 1 1 auto; min-height: 0;
-    overflow-y: auto; overflow-x: hidden;
-    padding: 16px 20px 18px;
-    display: flex; flex-direction: column; gap: 8px;
-  }
-  .mail-view::-webkit-scrollbar { width: 6px; }
-  .mail-view::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
-  .mv-head { display: flex; align-items: center; gap: 10px; padding: 0 2px 6px; }
-  .mv-title { font-size: 13px; font-weight: 600; color: #F5F4F7; }
-  .mv-spacer { flex: 1 1 auto; }
-  .mv-meta {
-    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
-    font-size: 11px; color: #8B8794; white-space: nowrap;
-  }
-  .mv-meta .urg { color: #E5484D; }
-
-  /* ---- LEITURA COM A IA (§3.11) [NOVO] ----
-     Mesma .mv-head; o título vira caminho e as medidas dão lugar a ações. */
-  .mv-crumb { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1 1 auto; }
-  .mv-back {
-    flex: 0 0 auto; border: none; background: transparent; padding: 0;
-    font-family: inherit; font-size: 13px; font-weight: 600; color: #8B8794;
-    cursor: pointer; white-space: nowrap; transition: color .12s ease;
-  }
-  .mv-back:hover { color: #C79EF0; }
-  .mv-sep { flex: 0 0 auto; font-size: 13px; color: #6F6A7A; }
-  .mv-subject {
-    min-width: 0; font-size: 13px; font-weight: 600; color: #F5F4F7;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .mv-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-  .mv-btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    height: 26px; padding: 0 11px; border-radius: 8px;
-    background: transparent; border: 1px solid rgba(255,255,255,0.14);
-    color: #8B8794; font-family: inherit; font-size: 11.5px; font-weight: 600;
-    white-space: nowrap; cursor: pointer;
-    transition: background .12s ease, color .12s ease, border-color .12s ease;
-  }
-  .mv-btn:hover { background: rgba(255,255,255,0.06); color: #CBC8D1; }
-
-  /* corpo da leitura: mesma lista de mensagens do chat, dentro do modo e-mail */
-  .mail-thread { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
-
-  /* CARTÃO DO E-MAIL EM CONTEXTO — abre a conversa, não é bolha. */
-  .mail-context {
-    display: flex; align-items: flex-start; gap: 10px;
-    padding: 11px 13px; border-radius: 12px;
-    background: rgba(155,81,224,0.07);
-    border: 1px solid rgba(155,81,224,0.28);
-  }
-  .mc-bar { flex: 0 0 3px; align-self: stretch; border-radius: 2px; }
-  .mc-body { min-width: 0; flex: 1 1 auto; }
-  .mc-label {
-    font-size: 9.5px; font-weight: 700; letter-spacing: .08em;
-    color: #C79EF0; margin-bottom: 4px;
-  }
-  .mc-from { font-size: 10.5px; color: #8B8794; margin-bottom: 6px; }
-  .mc-text { font-size: 12px; line-height: 1.55; color: #CBC8D1; }
-  /* item em escala de janela (o do painel era 12.5/11.5 em 252px) */
-  .mail-view .mail-item { padding: 12px 14px; border-radius: 12px; column-gap: 12px; }
-  .mail-view .mail-name { font-size: 13.5px; }
-  .mail-view .mail-desc { font-size: 12px; line-height: 1.5; }
-  .mail-view .mail-item.open {
-    background: rgba(155,81,224,0.07);
-    border-color: rgba(155,81,224,0.40);
-  }
-  /* corpo do acordeão: 3ª linha do mesmo Grid do item */
-  .mail-body {
-    grid-column: 2 / span 2; grid-row: 4;
-    display: none; margin-top: 10px; padding-top: 10px;
-    border-top: 1px solid rgba(255,255,255,0.07);
-    cursor: default;
-  }
-  .mail-item.open .mail-body { display: block; }
-  /* aberto, o resumo de 2 linhas sai: o corpo já traz o resumo inteiro */
-  .mail-view .mail-item.open .mail-desc { display: none; }
-  .mb-from { font-size: 10.5px; color: #8B8794; margin-bottom: 8px; }
-  .mb-label {
-    font-size: 10px; font-weight: 700; letter-spacing: .08em;
-    color: #C79EF0; margin-bottom: 5px;
-  }
-  .mb-text { font-size: 12px; line-height: 1.55; color: #CBC8D1; }
-  .mb-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-  .mb-open {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 13px; border-radius: 9px;
-    background: transparent; border: 1px solid rgba(155,81,224,0.40);
-    color: #C79EF0; font-family: inherit; font-size: 12px; font-weight: 600;
-    cursor: pointer; transition: background .12s ease;
-  }
-  .mb-open:hover { background: rgba(155,81,224,0.12); }
-  /* AÇÃO SECUNDÁRIA (Abrir no Gmail): mesma geometria, sem o lilás */
-  .mb-open.secondary { color: #8B8794; border-color: rgba(255,255,255,0.14); }
-  .mb-open.secondary:hover { background: rgba(255,255,255,0.06); color: #CBC8D1; }
-  /* convite sem conta, agora em escala de janela */
-  .mail-view .panel-empty-state { padding: 24px; }
-  .mail-view .panel-empty-title { font-size: 15px; }
-  .mail-view .panel-empty-sub { font-size: 12.5px; max-width: 300px; }
 
   .token-counter {
     font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
@@ -2122,7 +1385,7 @@
     gap: 12px;
   }
   /* barra de abas do painel. Hoje só a primeira (Histórico) existe;
-     ordem: Histórico de Chats | Arquivos no Contexto | Ações. */
+     as outras funções serão adicionadas depois. */
   .panel-tabs { display: flex; align-items: center; gap: 6px; }
   .panel-tab {
     width: 36px; height: 36px;
@@ -2209,26 +1472,6 @@
   }
   .btn-add-file:hover { background: rgba(155, 81, 224, 0.12); border-color: rgba(155, 81, 224, 0.6); }
 
-  /* botão de ÍCONE na linha de título (aba de e-mails, §6.2).
-     Quadrado 26x26 em vez do outline com rótulo do .btn-add-file: aqui a ação
-     é secundária e a coluna é estreita. Discreto em repouso (textSecondary,
-     sem borda) e lilás no hover — mesma leitura dos botões do header. */
-  .btn-title-icon {
-    flex: 0 0 26px; width: 26px; height: 26px;
-    display: flex; align-items: center; justify-content: center;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    color: #8B8794;
-    cursor: pointer;
-    transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
-  }
-  .btn-title-icon:hover {
-    color: #C79EF0;
-    background: rgba(155, 81, 224, 0.12);
-    border-color: rgba(155, 81, 224, 0.40);
-  }
-
   /* ---- ITEM DE ARQUIVO NO CONTEXTO ----
      Casca de card (igual ao item de conversa). Clicar no item abre o
      Explorer na pasta do arquivo COM ELE SELECIONADO:
@@ -2299,125 +1542,7 @@
   .file-item:hover .fi-remove { opacity: 1; }
   .fi-remove:hover { color: #E5484D; background: rgba(229, 72, 77, 0.14); }
 
-  /* ================= ABA 2: E-MAILS =================
-     Mesma casca das outras panes (.panel-title-row + .panel-list); só o ITEM é
-     diferente. O item é o MESMO da lista de e-mails do Shadow Assistant
-     (shadow-assistant.html §4.8): barra de urgência | nome + resumo | selo.
-     Reaproveitar o controle de lá, não reimplementar.
-     PROVISÓRIO: este layout de item será revisto; manter em um UserControl
-     isolado (MailListItem) para a troca sair barata. */
-  .mail-item {
-    display: grid;
-    grid-template-columns: 3px 1fr auto;
-    align-items: start;
-    column-gap: 10px;
-    row-gap: 3px;
-    padding: 9px 11px 10px 9px;
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.035);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    cursor: pointer;
-    transition: border-color 0.12s ease, background 0.12s ease;
-  }
-  .mail-item:hover {
-    border-color: rgba(155, 81, 224, 0.40);
-    background: rgba(155, 81, 224, 0.08);
-  }
-  .mail-bar { grid-row: 1 / span 3; align-self: stretch; width: 3px; border-radius: 2px; }
-  .mail-name {
-    grid-column: 2; font-size: 12.5px; font-weight: 600; color: #F5F4F7;
-    line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  /* LIMITE DE 2 LINHAS. O clamp CSS abaixo corta a altura, mas NÃO desenha as
-     reticências de forma confiável — por isso os textos do mock já vêm
-     dimensionados para caber em 2 linhas (na coluna de ~162px isso dá cerca
-     de 58 caracteres), e o primeiro item traz um "…" literal para mostrar
-     como fica um resumo truncado.
-     EM WPF NÃO SE FAZ NADA DISSO: o corte e o "…" são nativos —
-       <TextBlock TextWrapping="Wrap" MaxLines="2"
-                  TextTrimming="CharacterEllipsis"/>
-     e o texto completo, sem encurtar, vai para o Text. Não copie o texto
-     abreviado do mock para o C#. */
-  /* LINHA DE METADADOS (§3.10) [NOVO]: data · N respostas · quem deve agir.
-     Só existe no item COLAPSADO — expandido, o corpo já dá tudo isso. */
-  .mail-meta {
-    grid-column: 2; grid-row: 2; min-width: 0;
-    display: flex; align-items: center; gap: 6px; margin: 1px 0 1px;
-    font-size: 10.5px; color: #6F6A7A; white-space: nowrap; overflow: hidden;
-  }
-  .mail-meta .mm-sep { color: #4A4653; }
-  .mail-meta .mm-wait { color: #8B8794; }        /* aguardando o destinatário */
-  .mail-meta .mm-new  { color: #C79EF0; font-weight: 600; }  /* a vez é sua */
-  .mail-item.open .mail-meta { display: none; }
-  .mail-desc {
-    grid-column: 2; grid-row: 3; min-width: 0;
-    font-size: 11.5px; color: #8B8794; line-height: 1.45;
-  }
-  .mail-desc > span {
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .mail-urg {
-    grid-column: 3; grid-row: 1;
-    display: flex; align-items: center; gap: 5px;
-    padding: 3px 8px 3px 6px;
-    border-radius: 999px;
-    font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
-    white-space: nowrap;
-  }
-  .mail-urg .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-  .u-max { color: #E5484D; background: rgba(229, 72, 77, 0.13); }
-  .u-med { color: #E8A33D; background: rgba(232, 163, 61, 0.13); }
-  .u-low { color: #8B8794; background: rgba(255, 255, 255, 0.05); }
-  .b-max { background: #E5484D; }
-  .b-med { background: #E8A33D; }
-  .b-low { background: rgba(255, 255, 255, 0.16); }
-
-  /* ---- ESTADO "E-MAIL NÃO CONFIGURADO" (§6.2.1) ----
-     Mesma composição do estado de conversa vazia (§5.6: glifo em círculo,
-     título, subtítulo), reduzida para a largura do painel (252px úteis) e com
-     um BOTÃO como último elemento. Ocupa o lugar da lista, não do título.
-     IMPL WPF: um Grid centralizado no lugar do ItemsControl, alternado por
-     Visibility/DataTrigger em MailAccountConfigured. */
-  .panel-empty-state {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    text-align: center;
-    gap: 4px;
-    padding: 16px 8px;
-  }
-  /* mesmo círculo do §5.6, 42px em vez de 46 (o painel é estreito) */
-  .panel-empty-glyph {
-    width: 42px; height: 42px;
-    border-radius: 50%;
-    background: rgba(155, 81, 224, 0.12);
-    border: 1px solid rgba(155, 81, 224, 0.30);
-    display: flex; align-items: center; justify-content: center;
-    color: #C79EF0;
-    margin-bottom: 6px;
-  }
-  .panel-empty-title { font-size: 13.5px; font-weight: 600; color: #F5F4F7; }
-  .panel-empty-sub {
-    font-size: 11.5px; color: #8B8794; line-height: 1.5; max-width: 232px;
-  }
-  /* botão de ação do estado vazio: mesma família do .btn-add-file, um degrau
-     maior porque aqui ele é a ÚNICA ação da tela */
-  .btn-empty-action {
-    display: flex; align-items: center; gap: 6px;
-    margin-top: 10px;
-    background: transparent;
-    border: 1px solid rgba(155, 81, 224, 0.40);
-    color: #C79EF0;
-    font-size: 12px; font-weight: 600; font-family: inherit;
-    padding: 7px 13px; border-radius: 9px;
-    cursor: pointer; white-space: nowrap;
-    transition: background 0.12s ease, border-color 0.12s ease;
-  }
-  .btn-empty-action:hover { background: rgba(155, 81, 224, 0.12); border-color: rgba(155, 81, 224, 0.6); }
-
-  /* ================= ABA 4: HISTÓRICO DE AÇÕES =================
+  /* ================= ABA 3: HISTÓRICO DE AÇÕES =================
      Registro cronológico de TUDO que a IA fez na conversa: criar, editar,
      excluir arquivos e pastas, listar diretórios e executar comandos.
      Cada entrada é um item de lista com trilha vertical à esquerda.
@@ -2513,33 +1638,16 @@
   }
 
   /* rodapé da aba: total de arquivos e peso somado no contexto */
-  /* Rodapé de aba — UMA linha só, nas abas 2, 3 e 4, com a MESMA altura
-     (§8 A8: o conteúdo não pode pular ao trocar de aba). Os rótulos são
-     curtos de propósito: em 269px úteis não cabem três métricas escritas por
-     extenso. IMPL WPF: StackPanel Horizontal com TextWrapping="NoWrap" nos
-     TextBlocks e MinHeight fixa. */
   .panel-foot {
     display: flex; align-items: center; gap: 8px;
-    min-height: 25px;
-    white-space: nowrap;
     padding-top: 10px;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     font-size: 11px; color: #6F6A7A;
   }
   .panel-foot .pf-count { color: #8B8794; }
-  /* quantos e-mails exigem atenção — âmbar quando > 0, textMuted quando 0 */
-  .panel-foot .pf-important { color: #E8A33D; }
 
   /* estado vazio do painel — exatamente o texto do app real */
   .panel-empty { font-size: 12px; font-style: italic; color: #6F6A7A; }
-
-  /* MOCK-ONLY: alternador de estado da aba de e-mails, no rodapé de cenários.
-     Tracejado para deixar claro que é chave de mock, não cenário. */
-  .scn-btn.mock-toggle { border-style: dashed; }
-  .scn-btn.mock-toggle.on {
-    color: #C79EF0; border-color: rgba(155, 81, 224, 0.45);
-    background: rgba(155, 81, 224, 0.12);
-  }
 
   /* ================= PAINEL DE CENÁRIOS (NÃO É PRODUTO) =================
      Esta barra existe SOMENTE neste mock, para você percorrer os estados.
@@ -2592,23 +1700,6 @@
 
       <span class="header-spacer"></span>
 
-      <!-- SWITCH CHAT / E-MAIL (§3.3d, §3.10) [NOVO] -->
-      <div class="view-switch" id="viewSwitch" data-spec="view-switch" data-novo="NOVO · §3.3d">
-        <button class="vs-opt active" data-view="chat">
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17 11.4a2.6 2.6 0 0 1-2.6 2.6H7l-4 3V5.2A2.6 2.6 0 0 1 5.6 2.6h8.8A2.6 2.6 0 0 1 17 5.2z"></path>
-          </svg>
-          Chat
-        </button>
-        <button class="vs-opt" data-view="mail">
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2.4" y="4.4" width="15.2" height="11.2" rx="1.8"></rect>
-            <path d="M3.1 5.6L10 10.8l6.9-5.2"></path>
-          </svg>
-          E-mail
-        </button>
-      </div>
-
       <!-- abre/fecha a janela do painel lateral -->
       <button class="icon-btn" id="panelBtn" title="Painel lateral">
         <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
@@ -2643,168 +1734,8 @@
          No produto, isto é um ItemsControl bound à coleção de mensagens. -->
     <div class="messages" id="messages" data-spec="messages"></div>
 
-    <!-- ============ 5b. MODO E-MAIL (§3.10) [NOVO] ============
-         Ocupa o MESMO lugar de .messages; um dos dois é visível. Veio da
-         antiga aba 2 do painel lateral (§6.2/§6.2.1, removidas). O clique no
-         item agora EXPANDE (acordeão); o corpo traz "Abrir com <personalidade>"
-         (nome vindo do modelo) e "Abrir no <provedor>". -->
-    <div class="mail-view" id="mailView" data-spec="mail-view" data-novo="NOVO · §3.10 MODO E-MAIL" style="display: none;">
-      <div class="mv-head">
-        <!-- LISTA: título simples -->
-        <span class="mv-title" id="mailTitle">Caixa de entrada</span>
-        <!-- LEITURA COM A IA (§3.11) [NOVO]: o MESMO título vira caminho,
-             "Caixa de entrada › <assunto>". O assunto é o único que encolhe
-             (min-width 0 + ellipsis), para nunca empurrar os botões. -->
-        <div class="mv-crumb" id="mailCrumb" style="display: none;">
-          <button class="mv-back" id="mailBack">Caixa de entrada</button>
-          <span class="mv-sep">›</span>
-          <span class="mv-subject" id="mailSubject"></span>
-        </div>
-        <span class="mv-spacer" id="mailSpacer"></span>
-        <!-- LEITURA: as três medidas e a engrenagem saem; entram duas ações -->
-        <div class="mv-actions" id="mailActions" data-novo="NOVO · §3.11" style="display: none;">
-          <button class="mv-btn" data-spec="mail.open-external">Abrir no Gmail</button>
-          <button class="mv-btn" data-spec="mail.reload">
-            <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M16.4 8.2A6.6 6.6 0 1 0 16.8 12"></path>
-              <path d="M16.8 3.6v4.6h-4.6"></path>
-            </svg>
-            Recarregar
-          </button>
-        </div>
-        <span class="mv-meta" id="mailMeta">4 e-mails • <span class="urg">2 urgentes</span> • 1.2k tokens</span>
-        <button class="btn-title-icon" id="mailSettings" title="Configurações de e-mail">
-          <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="10" cy="10" r="2.6"></circle>
-            <path d="M10 1.9v2.3M10 15.8v2.3M3.9 3.9l1.6 1.6M14.5 14.5l1.6 1.6M1.9 10h2.3M15.8 10h2.3M3.9 16.1l1.6-1.6M14.5 5.5l1.6-1.6"></path>
-          </svg>
-        </button>
-      </div>
-
-      <div id="mailList" style="display: flex; flex-direction: column; gap: 8px;">
-        <div class="mail-item" data-spec="mail-item" data-urgency="max">
-          <span class="mail-bar b-max"></span>
-          <span class="mail-name">Jurídico — contrato Vertex</span>
-          <span class="mail-meta" data-novo="NOVO"><span>Hoje · 10/09/2026, 09:12</span><span class="mm-sep">·</span><span>4 respostas</span><span class="mm-sep">·</span><span class="mm-new">Nova mensagem</span></span>
-          <span class="mail-urg u-max"><span class="dot"></span>Máxima</span>
-          <span class="mail-desc"><span>Pedem sua assinatura no aditivo até as 18h de hoje…</span></span>
-          <div class="mail-body">
-            <div class="mb-from">juridico@vertex.com.br · hoje, 09:12</div>
-            <div class="mb-label">RESUMO DA KAI</div>
-            <div class="mb-text">Pedem sua assinatura no aditivo do contrato até as 18h de hoje. O aditivo muda a cláusula de reajuste e estende o prazo em 6 meses. Anexo em PDF, 4 páginas. Se não houver assinatura hoje, a renovação volta para a fila do jurídico.</div>
-            <div class="mb-actions" data-novo="NOVO">
-              <!-- O RÓTULO CARREGA O NOME DA PERSONALIDADE ATIVA: "Abrir com "
-                   + NomeDaInteligencia (aqui "Kai"). Não é literal — vem do
-                   mesmo campo que alimenta o .header-name. Se a personalidade
-                   mudar, o rótulo muda junto. -->
-              <button class="mb-open" data-spec="mail.open-with-ai">Abrir com <span class="ai-name">Kai</span></button>
-              <button class="mb-open secondary" data-spec="mail.open-external">Abrir no Gmail</button>
-            </div>
-          </div>
-        </div>
-        <div class="mail-item" data-spec="mail-item" data-urgency="med">
-          <span class="mail-bar b-med"></span>
-          <span class="mail-name">Marina Costa — revisão do orçamento</span>
-          <span class="mail-meta" data-novo="NOVO"><span>Ontem · 09/09/2026, 17:40</span><span class="mm-sep">·</span><span>7 respostas</span><span class="mm-sep">·</span><span class="mm-wait">Aguardando retorno</span></span>
-          <span class="mail-urg u-med"><span class="dot"></span>Média</span>
-          <span class="mail-desc"><span>Planilha com os cortes de infra; quer sua confirmação até quinta.</span></span>
-          <div class="mail-body">
-            <div class="mb-from">marina.costa@empresa.com · ontem, 17:40</div>
-            <div class="mb-label">RESUMO DA KAI</div>
-            <div class="mb-text">Planilha com os cortes de infraestrutura para o próximo trimestre. Quer sua confirmação até quinta-feira para fechar o número com o financeiro.</div>
-            <div class="mb-actions" data-novo="NOVO">
-              <!-- O RÓTULO CARREGA O NOME DA PERSONALIDADE ATIVA: "Abrir com "
-                   + NomeDaInteligencia (aqui "Kai"). Não é literal — vem do
-                   mesmo campo que alimenta o .header-name. Se a personalidade
-                   mudar, o rótulo muda junto. -->
-              <button class="mb-open" data-spec="mail.open-with-ai">Abrir com <span class="ai-name">Kai</span></button>
-              <button class="mb-open secondary" data-spec="mail.open-external">Abrir no Gmail</button>
-            </div>
-          </div>
-        </div>
-        <div class="mail-item" data-spec="mail-item" data-urgency="low">
-          <span class="mail-bar b-low"></span>
-          <span class="mail-name">Notion — resumo semanal</span>
-          <span class="mail-meta" data-novo="NOVO"><span>Segunda · 07/09/2026, 06:00</span><span class="mm-sep">·</span><span>1 mensagem</span><span class="mm-sep">·</span><span class="mm-new">Nova mensagem</span></span>
-          <span class="mail-urg u-low"><span class="dot"></span>Baixa</span>
-          <span class="mail-desc"><span>Relatório automático do workspace. Nada pendente.</span></span>
-          <div class="mail-body">
-            <div class="mb-from">no-reply@notion.so · segunda, 06:00</div>
-            <div class="mb-label">RESUMO DA KAI</div>
-            <div class="mb-text">Relatório automático do workspace: 12 páginas editadas, 3 comentários novos, nenhuma tarefa atribuída a você. Nada pendente.</div>
-            <div class="mb-actions" data-novo="NOVO">
-              <!-- O RÓTULO CARREGA O NOME DA PERSONALIDADE ATIVA: "Abrir com "
-                   + NomeDaInteligencia (aqui "Kai"). Não é literal — vem do
-                   mesmo campo que alimenta o .header-name. Se a personalidade
-                   mudar, o rótulo muda junto. -->
-              <button class="mb-open" data-spec="mail.open-with-ai">Abrir com <span class="ai-name">Kai</span></button>
-              <button class="mb-open secondary" data-spec="mail.open-external">Abrir no Gmail</button>
-            </div>
-          </div>
-        </div>
-        <div class="mail-item" data-spec="mail-item" data-urgency="low">
-          <span class="mail-bar b-low"></span>
-          <span class="mail-name">GitHub — 3 notificações</span>
-          <span class="mail-meta" data-novo="NOVO"><span>Segunda · 07/09/2026, 22:15</span><span class="mm-sep">·</span><span>3 mensagens</span><span class="mm-sep">·</span><span class="mm-wait">Aguardando retorno</span></span>
-          <span class="mail-urg u-low"><span class="dot"></span>Baixa</span>
-          <span class="mail-desc"><span>Menções em issues do aib-desktop. Nada urgente.</span></span>
-          <div class="mail-body">
-            <div class="mb-from">notifications@github.com · segunda, 22:15</div>
-            <div class="mb-label">RESUMO DA KAI</div>
-            <div class="mb-text">Três menções em issues do repositório aib-desktop, todas em discussões já respondidas por outra pessoa. Nada urgente.</div>
-            <div class="mb-actions" data-novo="NOVO">
-              <!-- O RÓTULO CARREGA O NOME DA PERSONALIDADE ATIVA: "Abrir com "
-                   + NomeDaInteligencia (aqui "Kai"). Não é literal — vem do
-                   mesmo campo que alimenta o .header-name. Se a personalidade
-                   mudar, o rótulo muda junto. -->
-              <button class="mb-open" data-spec="mail.open-with-ai">Abrir com <span class="ai-name">Kai</span></button>
-              <button class="mb-open secondary" data-spec="mail.open-external">Abrir no Gmail</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- LEITURA COM A IA (§3.11) [NOVO]: substitui a LISTA, não o modo.
-           Chega-se aqui pelo botão "Abrir com <personalidade>" do corpo de um
-           item. É a conversa do chat dentro do modo e-mail: cartão do e-mail
-           em contexto + bolhas normais (§3.5). A barra de input volta, com
-           placeholder próprio. -->
-      <div class="mail-thread" id="mailThread" data-spec="mail-view.thread" data-novo="NOVO · §3.11 LEITURA COM A IA" style="display: none;">
-        <div class="mail-context" data-spec="mail-context">
-          <span class="mc-bar b-max" id="mtBar"></span>
-          <div class="mc-body">
-            <div class="mc-label">E-MAIL EM CONTEXTO</div>
-            <div class="mc-from" id="mtFrom">juridico@vertex.com.br · hoje, 09:12</div>
-            <div class="mc-text" id="mtText">Pedem sua assinatura no aditivo do contrato até as 18h de hoje. O aditivo muda a cláusula de reajuste e estende o prazo em 6 meses. Anexo em PDF, 4 páginas.</div>
-          </div>
-        </div>
-        <div class="row ai">
-          <div class="bubble ai">Li o e-mail e o aditivo em anexo. O prazo é hoje às 18h, e a mudança real está na cláusula de reajuste — o resto é redação.<br><br>Posso redigir a resposta, extrair as cláusulas alteradas ou salvar o anexo no contexto. O que você quer fazer?</div>
-        </div>
-      </div>
-
-      <!-- SEM CONTA CONFIGURADA (§3.10): substitui a lista -->
-      <div class="panel-empty-state" id="mailEmpty" data-spec="mail-view.empty" style="display: none;">
-        <div class="panel-empty-glyph">
-          <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2.4" y="4.4" width="15.2" height="11.2" rx="1.8"></rect>
-            <path d="M3.1 5.6L10 10.8l6.9-5.2"></path>
-          </svg>
-        </div>
-        <div class="panel-empty-title">Nenhum e-mail conectado</div>
-        <div class="panel-empty-sub">Conecte uma conta para a KAI ler, resumir e priorizar sua caixa de entrada.</div>
-        <button class="btn-empty-action" id="mailInvite">
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="10" cy="10" r="2.6"></circle>
-            <path d="M10 1.9v2.3M10 15.8v2.3M3.9 3.9l1.6 1.6M14.5 14.5l1.6 1.6M1.9 10h2.3M15.8 10h2.3M3.9 16.1l1.6-1.6M14.5 5.5l1.6-1.6"></path>
-          </svg>
-          Configurar e-mail
-        </button>
-      </div>
-    </div>
-
     <!-- ============ 6. BARRA DE INPUT ============ -->
-    <div class="input-wrap" id="inputWrap" data-spec="input">
+    <div class="input-wrap" data-spec="input">
       <div class="input-border">
         <div class="input-bar">
           <span class="input-glyph">✦</span>
@@ -2849,13 +1780,12 @@
 </div>
 
 <!-- ============ 8. PAINEL LATERAL (segunda janela flutuante) ============
-     Ancorado ao lado da janela de chat. Quatro abas; ver §6. -->
+     Ancorado ao lado da janela de chat. Hoje só a aba de Histórico. -->
 <div class="panel-border" id="sidePanel" data-spec="panel">
   <div class="panel">
 
-    <!-- abas do painel, nesta ordem:
-         1) Histórico de Chats  2) Arquivos no Contexto  3) Histórico de Ações
-         [NOVO] a aba de e-mails saiu daqui: virou o modo de §3.10. -->
+    <!-- abas do painel: 1) Histórico de Chats  2) Arquivos no Contexto.
+         As demais funções entram depois. -->
     <div class="panel-tabs">
       <button class="panel-tab active" data-tab="history" title="Histórico de Chats">
         <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -2885,7 +1815,7 @@
       <!-- lista de conversas salvas.
            CLICAR num item RESTAURA a conversa na janela principal:
            repovoa as mensagens, e junto com elas o título do chat, o
-           contador de tokens do rodapé e as abas 3 e 4 (arquivos e ações
+           contador de tokens do rodapé e as abas 2 e 3 (arquivos e ações
            daquela conversa). Ver item 8a do bloco de handoff. -->
       <div class="panel-list">
       <div class="chat-item">
@@ -2913,27 +1843,9 @@
 
       <!-- ESTADO VAZIO (alternativa à lista acima) — texto do app real:
            <div class="panel-empty">Nenhum chat salvo.</div> -->
-
-      <!-- rodapé da aba: quantos chats salvos e quanto ocupam em disco.
-           ÚLTIMO filho do pane; mesma .panel-foot das abas 2, 3 e 4 (uma
-           linha, MinHeight 25, rótulos curtos — §8 A16).
-           COMO CALCULAR O PESO:
-             peso = soma, para cada chat salvo, de
-                      arquivo do CHAT      (as mensagens em si)
-                    + arquivos de CAPÍTULOS (os resumos intermediários)
-                    + arquivos de ATOS      (os resumos de nível acima)
-           Ou seja: chat + capítulos + atos. Não é só o .json das mensagens —
-           a compressão de contexto grava capítulos e atos ao lado dele, e é
-           o total no disco que interessa ao usuário aqui.
-           Collapsed junto com a lista quando não há nenhum chat salvo. -->
-      <div class="panel-foot" data-spec="pane.history.foot">
-        <span class="pf-count">7 chats</span>
-        <span>•</span>
-        <span>4.1 MB em disco</span>
-      </div>
     </div>
 
-    <!-- ====== ABA 3: ARQUIVOS NO CONTEXTO ======
+    <!-- ====== ABA 2: ARQUIVOS NO CONTEXTO ======
          Lista todos os arquivos que a IA tocou de alguma forma (leu, criou,
          copiou, moveu) mais os que o usuário anexou manualmente.
          Interações:
@@ -3037,20 +1949,18 @@
         </div>
       </div>
 
-      <!-- total, peso em disco e peso somado no contexto -->
-      <div class="panel-foot" data-spec="pane.files.foot">
+      <!-- total e peso somado dos arquivos que estão no contexto -->
+      <div class="panel-foot">
         <span class="pf-count">4 arquivos</span>
         <span>•</span>
-        <span>38 KB</span>
-        <span>•</span>
-        <span>2.9k tokens</span>
+        <span>38 KB no contexto</span>
       </div>
 
       <!-- ESTADO VAZIO (alternativa à lista acima):
            <div class="panel-empty">Nenhum arquivo no contexto.</div> -->
     </div>
 
-    <!-- ====== ABA 4: HISTÓRICO DE AÇÕES ======
+    <!-- ====== ABA 3: HISTÓRICO DE AÇÕES ======
          Registro cronológico de TUDO que a IA fez na conversa inteira:
          criar/editar/excluir arquivos e pastas, listar diretórios e
          executar comandos. Mais recente no TOPO, agrupado por dia.
@@ -3245,8 +2155,6 @@
      Só serve para percorrer os estados neste mock. Não portar para o C#. -->
 <div class="scenarios" id="scenarios" data-spec="MOCK-ONLY">
   <span class="tag">cenários do mock — não faz parte do produto</span>
-  <!-- os botões de cenário são injetados aqui pelo <script>;
-       o alternador da aba de e-mails (§6.2 / §6.2.1) entra no fim da fila -->
 </div>
 
 </div>
@@ -3467,44 +2375,6 @@ const SCENARIOS = [
     bar.appendChild(b);
   });
 
-  /* MOCK-ONLY: alternador do estado "sem conta configurada" do MODO E-MAIL
-     (§3.10). Não portar. */
-  (function () {
-    var list = document.getElementById('mailList');
-    var empty = document.getElementById('mailEmpty');
-    var meta = document.getElementById('mailMeta');
-    var gear = document.getElementById('mailSettings');
-    var b = document.createElement('button');
-    b.className = 'scn-btn mock-toggle';
-    b.textContent = 'e-mails: sem conta configurada';
-    b.addEventListener('click', function () {
-      var showEmpty = empty.style.display === 'none';
-      list.style.display = showEmpty ? 'none' : 'flex';
-      /* medidas e engrenagem acompanham a LISTA, não o modo (§3.10) */
-      meta.style.display = showEmpty ? 'none' : 'inline';
-      gear.style.display = showEmpty ? 'none' : 'flex';
-      empty.style.display = showEmpty ? 'flex' : 'none';
-      b.classList.toggle('on', showEmpty);
-      b.textContent = showEmpty ? 'e-mails: com conta configurada'
-                                : 'e-mails: sem conta configurada';
-      setView('mail');
-    });
-    bar.appendChild(b);
-  })();
-
-  /* MOCK-ONLY: liga/desliga o realce do que é novo. Não portar. */
-  (function () {
-    document.body.classList.add('novo-on');
-    var b = document.createElement('button');
-    b.className = 'scn-btn mock-toggle on';
-    b.textContent = 'destacar o que é novo';
-    b.addEventListener('click', function () {
-      var on = document.body.classList.toggle('novo-on');
-      b.classList.toggle('on', on);
-    });
-    bar.appendChild(b);
-  })();
-
   show(0);
 
   /* Enter envia (só demonstração; WPF: PreviewKeyDown no TextBox) */
@@ -3610,98 +2480,6 @@ const SCENARIOS = [
   /* Abas do painel lateral. WPF: TabControl sem chrome, ou um
      ContentControl trocando de DataTemplate por aba selecionada. */
   var panelEl = document.getElementById('sidePanel');
-  /* MOCK-ONLY: alterna a lista de e-mails com o estado "não configurado". */
-  var mailToggle = document.getElementById('mailEmptyToggle');
-  if (mailToggle) {
-    mailToggle.addEventListener('click', function () {
-      var pane = document.querySelector('[data-pane="mail"]');
-      var list = pane.querySelector('.panel-list');
-      var empty = pane.querySelector('.panel-empty-state');
-      var showEmpty = empty.style.display === 'none';
-      list.style.display = showEmpty ? 'none' : 'flex';
-      empty.style.display = showEmpty ? 'flex' : 'none';
-      mailToggle.textContent = showEmpty ? 'com e-mails' : 'estado vazio';
-    });
-  }
-
-  /* Os dois gatilhos de configuração de e-mail (engrenagem da linha de título
-     e botão do convite, §3.10) abrem a TELA DE CONFIGURAÇÕES na página E-mail.
-     No produto: AbrirConfiguracoesDeEmail(). */
-  (function () {
-    var go = function () { window.location.href = 'tela-configuracoes.html'; };
-    var gear = document.getElementById('mailSettings');
-    if (gear) gear.addEventListener('click', go);
-    var invite = document.getElementById('mailInvite');
-    if (invite) invite.addEventListener('click', go);
-  })();
-
-  /* SWITCH CHAT / E-MAIL (§3.3d) [NOVO]: troca o conteúdo da Row 1 e esconde
-     input + rodapé no modo e-mail. WPF: Modo_Checked alternando Visibility. */
-  function setView(v) {
-    /* voltar ao Chat encerra a leitura de §3.11 */
-    if (v === 'chat') modoLeitura(false);
-    document.getElementById('messages').style.display = (v === 'chat') ? '' : 'none';
-    document.getElementById('mailView').style.display = (v === 'mail') ? 'flex' : 'none';
-    document.getElementById('inputWrap').style.display = (v === 'chat') ? '' : 'none';
-    var foot = document.querySelector('.chat-footer');
-    if (foot) foot.style.display = (v === 'chat') ? '' : 'none';
-    Array.prototype.forEach.call(document.querySelectorAll('.vs-opt'), function (o) {
-      o.classList.toggle('active', o.getAttribute('data-view') === v);
-    });
-  }
-  Array.prototype.forEach.call(document.querySelectorAll('.vs-opt'), function (o) {
-    o.addEventListener('click', function () { setView(o.getAttribute('data-view')); });
-  });
-
-  /* LEITURA COM A IA (§3.11) [NOVO]: "Abrir com <personalidade>" troca a
-     LISTA pela conversa, sem sair do modo e-mail. O título vira caminho e as
-     medidas + engrenagem dão lugar a "Abrir no Gmail" e "Recarregar".
-     No produto: AbrirEmailNoChat(mailSummary). */
-  function lerEmail(item) {
-    var assunto = item.querySelector('.mail-name').textContent;
-    document.getElementById('mailSubject').textContent = assunto;
-    document.getElementById('mailSubject').title = assunto;
-    document.getElementById('mtFrom').textContent = item.querySelector('.mb-from').textContent;
-    document.getElementById('mtText').textContent = item.querySelector('.mb-text').textContent;
-    document.getElementById('mtBar').className = 'mc-bar ' + item.querySelector('.mail-bar').className.split(' ')[1];
-    modoLeitura(true);
-  }
-  function modoLeitura(on) {
-    document.getElementById('mailTitle').style.display = on ? 'none' : '';
-    document.getElementById('mailCrumb').style.display = on ? 'flex' : 'none';
-    document.getElementById('mailSpacer').style.display = on ? 'none' : '';
-    document.getElementById('mailActions').style.display = on ? 'flex' : 'none';
-    document.getElementById('mailMeta').style.display = on ? 'none' : '';
-    document.getElementById('mailSettings').style.display = on ? 'none' : '';
-    document.getElementById('mailList').style.display = on ? 'none' : 'flex';
-    document.getElementById('mailThread').style.display = on ? 'flex' : 'none';
-    /* na leitura a barra de input volta, com placeholder próprio (§3.11) */
-    document.getElementById('inputWrap').style.display = on ? '' : 'none';
-    document.getElementById('inputField').placeholder = on
-      ? 'Fale com a KAI sobre este e-mail...' : 'Fale com a KAI...';
-  }
-  document.getElementById('mailBack').addEventListener('click', function () { modoLeitura(false); });
-
-  /* Acordeão dos e-mails (§3.10): um item aberto por vez. Os dois botões do
-     corpo agem sozinhos e não propagam para o item. */
-  document.getElementById('mailView').addEventListener('click', function (e) {
-    var t = e.target;
-    /* os dois botões de ação do corpo não fecham o item */
-    var btn = t.closest ? t.closest('.mb-open') : null;
-    if (btn) {
-      e.stopPropagation();
-      if (!btn.classList.contains('secondary')) lerEmail(btn.closest('.mail-item'));
-      return;
-    }
-    var item = t.closest ? t.closest('.mail-item') : null;
-    if (!item) return;
-    var jaAberto = item.classList.contains('open');
-    Array.prototype.forEach.call(this.querySelectorAll('.mail-item'), function (i) {
-      i.classList.remove('open');
-    });
-    if (!jaAberto) item.classList.add('open');
-  });
-
   Array.prototype.forEach.call(panelEl.querySelectorAll('.panel-tab'), function (tab) {
     tab.addEventListener('click', function () {
       var name = tab.getAttribute('data-tab');
@@ -3773,49 +2551,6 @@ const SCENARIOS = [
     },
     "shadow": { "blurRadius": 60, "shadowDepth": 15, "opacity": 0.55, "color": "#000000" }
   },
-  "panelFootFormat": {
-    "tabOrderIsIn": "sidePanelTabs — lista única de abas neste documento",
-    "minHeight": 25, "fontSize": 11, "gap": 8, "wrap": false,
-    "separator": "•",
-    "usableWidth": 269,
-    "note": "rótulos curtos de propósito; por extenso não cabem em uma linha",
-    "importantColor": "#E8A33D",
-    "perTabContentIn": "sidePanelTabs[].footer"
-  },
-  "mailPane": {
-    "sameItemAs": "shadow-assistant.html §4.8",
-    "provisional": true,
-    "item": {
-      "radius": 14, "padding": [9, 11, 10, 9], "gap": 6,
-      "columns": ["3px urgencyBar", "*", "auto badge"],
-      "hoverBorder": "rgba(155,81,224,0.40)", "hoverBackground": "rgba(155,81,224,0.08)",
-      "name": { "size": 12.5, "weight": 600, "color": "#F5F4F7", "lines": 1, "trimming": "CharacterEllipsis" },
-      "desc": { "size": 11.5, "color": "#8B8794", "lineHeight": 1.45, "maxLines": 2 },
-      "badge": { "radius": 999, "size": 10, "weight": 600, "dot": 5, "padding": [3, 8, 3, 6] }
-    },
-    "urgency": {
-      "Maxima": { "color": "#E5484D", "label": "Máxima" },
-      "Media":  { "color": "#E8A33D", "label": "Média" },
-      "Baixa":  { "color": "#8B8794", "label": "Baixa" },
-      "badgeBackgroundAlpha": 0.13,
-      "baixaBadgeBackground": "rgba(255,255,255,0.05)"
-    },
-    "sort": "urgency desc, then receivedAt desc",
-    "scrolls": true,
-    "itemClick": "abre o e-mail no cliente padrão",
-    "emptyStates": {
-      "notConfigured": { "spec": "§6.2.1", "hasActionButton": true },
-      "configuredNoMail": { "text": "Nenhum e-mail novo." }
-    }
-  },
-  "mailEmptyState": {
-    "glyph": { "size": 42, "icon": 19, "background": "rgba(155,81,224,0.12)", "border": "rgba(155,81,224,0.30)" },
-    "title": { "text": "Nenhum e-mail conectado", "size": 13.5, "weight": 600 },
-    "subtitle": { "text": "Conecte uma conta para a KAI ler, resumir e priorizar sua caixa de entrada.", "size": 11.5, "maxWidth": 232 },
-    "button": { "text": "Configurar e-mail", "size": 12, "weight": 600, "radius": 9, "padding": [7, 13], "icon": 13, "opens": "tela-configuracoes.html, página E-mail" },
-    "keepsTitleRow": true, "hidesPanelFoot": true, "hidesTitleRowButton": true
-  },
-
   "tokens": {
     "surfaces": {
       "glass": "rgba(18,18,22,0.90)", "glassArgb": [230, 18, 18, 22],
@@ -3946,57 +2681,19 @@ const SCENARIOS = [
     { "id": "empty", "label": "Conversa vazia" },
     { "id": "reconnect", "label": "Reconectando", "disablesInput": true }
   ],
-  "statusStrip": {
-    "spec": "§5.8 — UM controle, SETE variantes; geometria fixa (pad 14,9, r14, centralizado na base da lista)",
-    "implementedToday": "Border StatusBar + TextBlock StatusText, sempre warn, só o texto muda",
-    "noEmoji": true,
-    "variants": [
-      { "id": "pensando",      "tone": "neutro",  "icon": "3 pontos pulsando", "action": null,           "disablesInput": false, "text": "Pensando…" },
-      { "id": "aquecendo",     "tone": "warn",    "icon": "relógio",           "action": null,           "disablesInput": true,  "text": "Conectando e aquecendo motores. A primeira vez leva alguns minutos." },
-      { "id": "lendoTela",     "tone": "neutro",  "icon": "câmera (§3.7c)",    "action": "Cancelar",     "disablesInput": false, "text": "Lendo a tela…" },
-      { "id": "ouvindo",       "tone": "accent",  "icon": "microfone (§3.7d)", "action": "Parar",        "disablesInput": false, "text": "Ouvindo…" },
-      { "id": "contextoCheio", "tone": "warn",    "icon": "alerta",            "action": "Compactar",    "disablesInput": false, "text": "O contexto está cheio." },
-      { "id": "reconectando",  "tone": "magenta", "icon": "spinner",           "action": "Tentar agora", "disablesInput": true,  "text": "Reconectando…" },
-      { "id": "erro",          "tone": "danger",  "icon": "x em círculo",      "action": "Detalhes",     "disablesInput": true,  "text": "a mensagem de erro, em uma linha" }
-    ],
-    "priority": ["erro", "reconectando", "aquecendo", "contextoCheio", "ouvindo", "lendoTela", "pensando"],
-    "actionButton": { "style": "outline na cor da variante", "height": 26, "radius": 8, "size": 11.5, "weight": 600 }
-  },
   "sidePanelTabs": [
     {
       "id": "history", "title": "Histórico de Chats",
       "emptyState": "Nenhum chat salvo.",
-      "onItemClick": "restaura a conversa: mensagens + título + contador + abas 3 e 4",
+      "onItemClick": "restaura a conversa: mensagens + título + contador + abas 2 e 3",
       "restoreSteps": [
         "persistir a conversa atual se houver mensagens não salvas",
         "carregar do disco e repovoar a coleção de mensagens na ordem original",
-        "restaurar título do chat, contador de tokens, aba de arquivos (3) e aba de ações (4)",
+        "restaurar título do chat, contador de tokens, aba de arquivos e aba de ações",
         "rolar a lista de mensagens para o fim",
         "marcar o item como ativo na lista"
       ],
-      "panelStaysOpen": true,
-      "footer": { "parts": ["N chats", "N MB em disco"],
-                  "diskBytes": "soma por chat de: arquivo do chat + capítulos + atos",
-                  "hiddenWhenEmpty": true }
-    },
-    {
-      "id": "mail", "title": "E-mails",
-      "spec": "§6.2",
-      "provisionalItemLayout": true,
-      "itemSameAs": "shadow-assistant.html §4.8 — ver mailPane neste JSON",
-      "emptyState": "Nenhum e-mail novo.",
-      "notConfiguredState": "§6.2.1 — convite que abre a tela de configurações na página E-mail",
-      "iconMeaning": "envelope; a aba é a 2ª, entre histórico e arquivos",
-      "titleRowButton": { "type": "icon", "box": 26, "icon": 15, "align": "right",
-                          "tooltip": "Configurações de e-mail",
-                          "opens": "tela-configuracoes.html na página E-mail (OpenSettingsCommand(Mail))",
-                          "hiddenWhenNotConfigured": true },
-      "order": "urgência decrescente, depois mais recente no topo",
-      "scrolls": true,
-      "onItemClick": "abre o e-mail no cliente padrão",
-      "footer": { "parts": ["N e-mails", "N urgentes", "N tokens"],
-                  "urgentes": "urgência Máxima + Média, em #E8A33D",
-                  "hiddenWhenNotConfigured": true }
+      "panelStaysOpen": true
     },
     {
       "id": "files", "title": "Arquivos no Contexto",
@@ -4007,8 +2704,7 @@ const SCENARIOS = [
       "onItemClick": "explorer.exe /select,{fullPath}",
       "removeButton": "remove do contexto, nunca do disco; e.Handled = true",
       "addButton": { "label": "Adicionar", "action": "OpenFileDialog multiselect" },
-      "footer": { "parts": ["N arquivos", "N KB", "N tokens"],
-                  "note": "KB é o tamanho em disco; tokens é o custo no prompt — as duas ficam" }
+      "footer": "contagem de arquivos + peso somado"
     },
     {
       "id": "log", "title": "Histórico de Ações",

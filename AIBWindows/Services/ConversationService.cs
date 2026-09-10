@@ -1821,6 +1821,7 @@ public sealed class ConversationService : IMessageStore
             _tokensDeResumo,
             _memory.TokensDaMemoria,
             _descartadoAoReabrir,
+            TetoDaPoda,
             _memory.Chapters.Count,
             _memory.Acts.Count,
             _memory.MedidaCompleta || _crusSemMedida == 0);

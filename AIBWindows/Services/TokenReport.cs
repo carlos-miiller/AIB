@@ -24,7 +24,11 @@ namespace AIB.Services;
 /// </para>
 /// </param>
 /// <param name="Contexto">O que realmente vai ao modelo agora — prompt, memória e conversa viva.</param>
-/// <param name="Max">Teto de tokens do nível do usuário.</param>
+/// <param name="Max">
+/// Teto de tokens do nível do usuário. É PLACAR, não freio: passar dele não interrompe nada,
+/// apenas marca que a compactação vai rodar no fim do turno. Quem realmente para a conversa é
+/// <paramref name="Rede"/>.
+/// </param>
 /// <param name="Cru">
 /// Tokens dos turnos crus já engolidos por capítulos. Vem somado dos REGISTROS em
 /// chapters.jsonl, e não de um campo em memória: o campo zerava ao reabrir uma conversa do
@@ -66,6 +70,8 @@ public readonly record struct TokenReport(
     int Memoria = 0,
     int MemoriaDosRegistros = 0,
     int Descartado = 0,
+    /// <summary>Onde a poda de emergência age de verdade: a janela do modelo menos a resposta.</summary>
+    int Rede = 0,
     int Capitulos = 0,
     int Atos = 0,
     bool MedidaCompleta = true)
@@ -98,7 +104,22 @@ public readonly record struct TokenReport(
     /// </para>
     /// </summary>
     public int OcupacaoPct =>
-        Max > 0 ? Math.Clamp((int)Math.Round((double)Contexto / Max * 100), 0, 100) : 0;
+        Max > 0 ? Math.Max(0, (int)Math.Round((double)Contexto / Max * 100)) : 0;
+
+    /// <summary>
+    /// Quanto da REDE o contexto ocupa. É esta que vira alarme.
+    /// <para>
+    /// O teto do nível virou placar quando a janela passou a ser bem maior que ele: passar de
+    /// 100% dele é rotina num turno com ferramentas, e pintar isso de vermelho seria alarme
+    /// falso a cada turno. A rede, sim, é o ponto em que a poda volta a descartar sem
+    /// substituto.
+    /// </para>
+    /// </summary>
+    public int OcupacaoDaRedePct =>
+        Rede > 0 ? Math.Max(0, (int)Math.Round((double)Contexto / Rede * 100)) : 0;
+
+    /// <summary>Passou do orçamento do nível: a compactação vai rodar no fim do turno.</summary>
+    public bool AcimaDoOrcamento => Max > 0 && Contexto > Max;
 
     /// <summary>
     /// O que a faixa cobra além do custo próprio dos capítulos: o cabeçalho do bloco.

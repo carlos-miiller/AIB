@@ -115,16 +115,17 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void ContextoQuaseCHEIO_AvisaEmVermelho()
+        public void PertoDaREDE_AvisaEmVermelho()
         {
-            // É esta a grandeza acionável: passar de 90% quer dizer que a poda de emergência
-            // está perto, e a poda descarta SEM substituto.
+            // A rede é a janela do modelo menos a margem da resposta, e é o único ponto em que
+            // algo é perdido de verdade: dali em diante a poda volta a descartar SEM substituto.
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
                 var janela = JanelaDeEnsaio.Nova();
 
-                Atualizar(janela, new TokenReport(Total: 9000, Contexto: 8500, Max: 9216));
+                Atualizar(janela, new TokenReport(
+                    Total: 30000, Contexto: 29000, Max: 9216, Rede: 30720));
 
                 Cor(janela).Should().BeSameAs(janela.FindResource("DangerTextBrush"));
 
@@ -133,19 +134,51 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void ContextoApertando_AvisaEmLaranja()
+        public void AcimaDoTetoDoNIVEL_EhLaranja_ENaoVermelho()
+        {
+            // O teto do nível virou PLACAR quando a janela passou a ser mais que o triplo dele.
+            // Passar de 9.216 é rotina num turno com ferramentas: a conversa segue e a
+            // compactação roda no fim. Vermelho aqui seria alarme a cada turno — e alarme que
+            // dispara sempre deixa de ser alarme.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                Atualizar(janela, new TokenReport(
+                    Total: 14000, Contexto: 13000, Max: 9216, Rede: 30720));
+
+                Cor(janela).Should().BeSameAs(janela.FindResource("WarnBrush"));
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void DentroDoOrcamento_ContinuaNeutro()
         {
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
                 var janela = JanelaDeEnsaio.Nova();
 
-                Atualizar(janela, new TokenReport(Total: 8000, Contexto: 7000, Max: 9216));
+                Atualizar(janela, new TokenReport(
+                    Total: 8000, Contexto: 7000, Max: 9216, Rede: 30720));
 
-                Cor(janela).Should().BeSameAs(janela.FindResource("WarnBrush"));
+                Cor(janela).Should().BeSameAs(janela.FindResource("TextSecondaryBrush"),
+                    "76% do orçamento não é motivo de aviso: nada acontece ao passar dele");
 
                 janela.Close();
             });
+        }
+
+        [Fact]
+        public void AOcupacao_PODE_PassarDeCem()
+        {
+            // O teto do nível não interrompe nada, então o contexto o ultrapassa. Grampear em
+            // 100% esconderia justamente o quanto ele foi ultrapassado.
+            new TokenReport(20000, 13000, 9216, Rede: 30720).OcupacaoPct.Should().Be(141);
+            new TokenReport(20000, 13000, 9216, Rede: 30720).AcimaDoOrcamento.Should().BeTrue();
         }
 
         [Fact]
