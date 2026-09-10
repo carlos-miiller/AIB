@@ -88,6 +88,19 @@ public readonly record struct TokenReport(
     public int ForaDoContexto => Total > Contexto ? Total - Contexto : 0;
 
     /// <summary>
+    /// Quanto do teto do nível o contexto já ocupa, em porcentagem.
+    /// <para>
+    /// É esta a grandeza que merece cor de alarme na barra, e não a economia. Economia baixa
+    /// não é falha: um capítulo que resumiu 200 tokens em 128 fez o trabalho dele, e pintar
+    /// isso de vermelho acusa o sistema de errar quando a conversa é que era curta. Ocupação
+    /// alta, sim, é acionável — é o aviso de que a próxima mensagem vai disparar compactação
+    /// ou, pior, a poda.
+    /// </para>
+    /// </summary>
+    public int OcupacaoPct =>
+        Max > 0 ? Math.Clamp((int)Math.Round((double)Contexto / Max * 100), 0, 100) : 0;
+
+    /// <summary>
     /// O que a faixa cobra além do custo próprio dos capítulos: o cabeçalho do bloco.
     /// <para>
     /// Negativo significa outra coisa — a cota aparou capítulos na renderização, e parte do que

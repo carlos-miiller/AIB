@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
 using AIB.Services;
@@ -1610,12 +1611,23 @@ public partial class ChatWindow : Window
     /// falha nenhuma a sinalizar.
     /// </para>
     /// </summary>
-    private System.Windows.Media.Brush CorDaEconomia(int? economiaPct)
+    /// <summary>
+    /// A cor da barra mede OCUPAÇÃO do contexto, e não economia.
+    /// <para>
+    /// Antes ela media a economia, e a escala punia conversa curta: um capítulo que resumiu 200
+    /// tokens em 128 fez o trabalho dele e a barra saía MAGENTA, acusando o sistema de falhar.
+    /// É a mesma armadilha do "-0%" que a nota do primeiro turno já evitava, um nível acima.
+    /// </para>
+    /// <para>
+    /// Ocupação é acionável: passar de 75% avisa que a compactação vai disparar; passar de 90%
+    /// avisa que a poda de emergência está perto — e a poda descarta sem substituto.
+    /// </para>
+    /// </summary>
+    private System.Windows.Media.Brush CorDaOcupacao(int ocupacaoPct)
     {
-        if (!economiaPct.HasValue) return (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
-        if (economiaPct.Value >= 50) return (System.Windows.Media.Brush)FindResource("SuccessBrush");
-        if (economiaPct.Value >= 20) return (System.Windows.Media.Brush)FindResource("WarnBrush");
-        return (System.Windows.Media.Brush)FindResource("MagentaBrush");
+        if (ocupacaoPct >= 90) return (System.Windows.Media.Brush)FindResource("DangerTextBrush");
+        if (ocupacaoPct >= 75) return (System.Windows.Media.Brush)FindResource("WarnBrush");
+        return (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
     }
 
     /// <summary>
@@ -1632,21 +1644,35 @@ public partial class ChatWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            int? economia = relatorio.EconomiaPct;
-
             // O teto do nivel no lugar da porcentagem. Os dois numeros da esquerda ja dizem
             // quanto foi poupado — a porcentagem repetia isso em outra forma, e ocupava o
             // espaco do unico dado que faltava: o quanto ainda cabe.
+            //
             // A condição é o TOTAL diferir do contexto, e não haver economia. Uma conversa
             // reaberta sem capítulo nenhum não poupou nada, mas o custo cru dela continua sendo
             // maior que o contexto — e esconder isso é o que fazia 9.144 tokens virarem 1.838
             // sem explicação.
-            string texto = relatorio.Total > relatorio.Contexto
-                ? $"{relatorio.Total:N0} > {relatorio.Contexto:N0} tokens | {relatorio.Max:N0}"
-                : $"{relatorio.Contexto:N0} tokens | {relatorio.Max:N0}";
+            bool temTotal = relatorio.Total > relatorio.Contexto;
 
-            TokenCounterText.Text = texto;
-            TokenCounterText.Foreground = CorDaEconomia(economia);
+            TokenCounterText.Inlines.Clear();
+
+            if (temTotal)
+            {
+                // TACHADO e apagado: é o preço que a conversa NÃO está pagando. Riscar diz isso
+                // sem precisar de legenda, e deixa o número vivo ser o que salta aos olhos.
+                TokenCounterText.Inlines.Add(new Run($"{relatorio.Total:N0}")
+                {
+                    TextDecorations = System.Windows.TextDecorations.Strikethrough,
+                    Foreground = (System.Windows.Media.Brush)FindResource("TextMutedBrush")
+                });
+
+                TokenCounterText.Inlines.Add(new Run("  "));
+            }
+
+            TokenCounterText.Inlines.Add(new Run(
+                $"{relatorio.Contexto:N0} tokens | {relatorio.Max:N0}"));
+
+            TokenCounterText.Foreground = CorDaOcupacao(relatorio.OcupacaoPct);
 
             // A conta atrás do número. Dois números e uma cor respondem "está economizando?",
             // e não respondem "de onde vem isso?" — que é a pergunta do dia em que a conta
@@ -1702,7 +1728,8 @@ public partial class ChatWindow : Window
         texto.Append('\n');
         texto.Append($"custo cru da conversa ... {r.Total,8:N0}").Append('\n');
         texto.Append($"vai ao modelo agora ..... {r.Contexto,8:N0}").Append('\n');
-        texto.Append($"teto deste nível ........ {r.Max,8:N0}");
+        texto.Append($"teto deste nível ........ {r.Max,8:N0}")
+             .Append($"  ({r.OcupacaoPct}% ocupado)");
 
         if (!r.MedidaCompleta)
             texto.Append('\n').Append('\n')
