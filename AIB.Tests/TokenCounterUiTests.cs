@@ -60,8 +60,8 @@ namespace AIB.Tests
 
                 Atualizar(janela, new TokenReport(Total: 12000, Contexto: 3000, Max: 8704));
 
-                Texto(janela).Should().Contain("12.000", "o que a conversa pesaria, tachado");
-                Texto(janela).Should().Contain("3.000", "e o que ela pesa");
+                Texto(janela).Should().Contain("12.000 > 3.000",
+                    "a seta diz que um número virou o outro; o risco diz que o primeiro não é pago");
                 Texto(janela).Should().Contain("|", "depois da barra vem o teto do nivel");
                 Texto(janela).Should().Contain("8.704");
                 Texto(janela).Should().NotContain("%", "a porcentagem saiu: os dois numeros ja dizem o quanto foi poupado");
@@ -83,6 +83,7 @@ namespace AIB.Tests
 
                 Atualizar(janela, new TokenReport(Total: 1204, Contexto: 1204, Max: 8704));
 
+                Texto(janela).Should().NotContain(">");
                 Texto(janela).Should().NotContain("%");
                 Texto(janela).Should().Contain("1.204 tokens");
                 Texto(janela).Should().Contain("| 8.704", "o teto aparece com ou sem compactacao");
@@ -238,8 +239,7 @@ namespace AIB.Tests
                 Atualizar(janela, new TokenReport(
                     Total: 3000, Contexto: 900, Max: 8704, Descartado: 2100));
 
-                Texto(janela).Should().Contain("3.000");
-                Texto(janela).Should().Contain("900 tokens");
+                Texto(janela).Should().Contain("3.000 > 900");
                 Texto(janela).Should().NotContain("%");
 
                 janela.Close();

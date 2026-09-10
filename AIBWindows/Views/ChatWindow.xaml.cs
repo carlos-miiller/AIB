@@ -1666,7 +1666,9 @@ public partial class ChatWindow : Window
                     Foreground = (System.Windows.Media.Brush)FindResource("TextMutedBrush")
                 });
 
-                TokenCounterText.Inlines.Add(new Run("  "));
+                // A seta fica. O risco diz que aquele preço não está sendo pago; a seta diz
+                // que um número VIROU o outro. São duas informações, não uma repetida.
+                TokenCounterText.Inlines.Add(new Run(" > "));
             }
 
             TokenCounterText.Inlines.Add(new Run(
