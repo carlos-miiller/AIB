@@ -205,6 +205,41 @@ public sealed class MemoryLayer
         return escolhidos;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // A conta da economia
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Tudo o que já foi engolido, em tokens crus. Somado dos CAPÍTULOS e não dos atos: cada
+    /// turno passou por exatamente um capítulo, e somar os dois contaria o mesmo turno duas
+    /// vezes.
+    /// </summary>
+    public int TokensCrus => _chapters.Sum(c => c.TokensDosTurnos);
+
+    /// <summary>
+    /// O que a memória pesa hoje: os atos mais os capítulos que nenhum ato absorveu. É a mesma
+    /// regra do <see cref="RenderChapters"/> — capítulo coberto por ato não vai ao prompt, e
+    /// contá-lo aqui inventaria um peso que ninguém paga.
+    /// </summary>
+    public int TokensDaMemoria =>
+        _acts.Sum(a => a.TokensDoAto)
+        + _chapters.Where(c => c.Index > LastCoveredChapter).Sum(c => c.TokensDoCapitulo);
+
+    /// <summary>
+    /// Quanto a memória está poupando agora. Nunca negativo — ver <see cref="Chapter.Economia"/>.
+    /// </summary>
+    public int Economia => TokensCrus > TokensDaMemoria ? TokensCrus - TokensDaMemoria : 0;
+
+    /// <summary>
+    /// Se a conta é confiável. Um capítulo gravado antes da medição traz zero, e somar zero
+    /// com medidas reais produziria uma economia menor que a verdadeira — sem nenhum sinal de
+    /// que faltava informação.
+    /// </summary>
+    public bool MedidaCompleta =>
+        _chapters.Count > 0
+        && _chapters.TrueForAll(c => c.TemMedida)
+        && _acts.TrueForAll(a => a.TemMedida);
+
     /// <summary>Índice do próximo capítulo a nascer.</summary>
     public int NextChapterIndex => _chapters.Count == 0 ? 0 : _chapters[^1].Index + 1;
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace AIB.Services;
 
@@ -19,8 +19,31 @@ namespace AIB.Services;
 /// </param>
 /// <param name="Contexto">O que realmente vai ao modelo agora — prompt, memória e conversa viva.</param>
 /// <param name="Max">Teto de tokens do nível do usuário.</param>
-public readonly record struct TokenReport(int Total, int Contexto, int Max)
+/// <param name="Cru">
+/// Tokens dos turnos crus já engolidos por capítulos. Vem somado dos REGISTROS em
+/// chapters.jsonl, e não de um campo em memória: o campo zerava ao reabrir uma conversa do
+/// histórico e a economia inteira sumia da tela.
+/// </param>
+/// <param name="Memoria">O que a faixa narrativa pesa agora — atos mais capítulos soltos.</param>
+/// <param name="Capitulos">Quantos capítulos existem.</param>
+/// <param name="Atos">Quantos atos existem.</param>
+/// <param name="MedidaCompleta">
+/// Falso quando algum capítulo foi gravado antes da medição existir. A conta continua sendo
+/// mostrada, mas a interface avisa que ela é um piso, não o número.
+/// </param>
+public readonly record struct TokenReport(
+    int Total,
+    int Contexto,
+    int Max,
+    int Cru = 0,
+    int Memoria = 0,
+    int Capitulos = 0,
+    int Atos = 0,
+    bool MedidaCompleta = true)
 {
+    /// <summary>Tokens que a memória tirou do prompt. Nunca negativo.</summary>
+    public int Economia => Total > Contexto ? Total - Contexto : 0;
+
     /// <summary>
     /// Quanto da conversa a memória está poupando, em porcentagem. <c>null</c> enquanto nada
     /// foi compactado — e null é diferente de zero: zero seria afirmar que o sistema rodou e

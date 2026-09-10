@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text;
 
 namespace AIB.Services.Memory;
@@ -16,14 +16,44 @@ namespace AIB.Services.Memory;
 /// <param name="LastTurn">Índice do último turno resumido.</param>
 /// <param name="Summary">Resumo narrativo.</param>
 /// <param name="Artifacts">Fatos literais dos turnos resumidos.</param>
+/// <param name="TokensDosTurnos">
+/// O que os turnos CRUS custavam no prompt, medido antes de saírem dele. É a metade esquerda
+/// da conta da economia.
+/// </param>
+/// <param name="TokensDoCapitulo">
+/// O que este capítulo custa no prompt — <see cref="Render"/> medido. É a metade direita.
+/// </param>
 public sealed record Chapter(
     int Index,
     string AtUtc,
     int FirstTurn,
     int LastTurn,
     string Summary,
-    IReadOnlyList<Artifact> Artifacts)
+    IReadOnlyList<Artifact> Artifacts,
+    int TokensDosTurnos = 0,
+    int TokensDoCapitulo = 0)
 {
+    /// <summary>
+    /// Quanto este capítulo tirou do prompt. Nunca negativo: um resumo que saiu maior que o
+    /// material não economizou -30 tokens, economizou zero.
+    /// <para>
+    /// Os dois números moram no REGISTRO, e não num campo somado à mão em memória. O campo
+    /// antigo zerava ao reabrir uma conversa do histórico, e a economia inteira da sessão
+    /// sumia da tela sem nenhum sinal. Persistido em chapters.jsonl, o número sobrevive a
+    /// fechar o app — e é conferível depois, que é o ponto de medir.
+    /// </para>
+    /// <para>
+    /// Capítulos gravados antes desta mudança trazem zero nos dois campos: a economia deles é
+    /// desconhecida, não é zero, e a interface diz isso em vez de inventar um número.
+    /// </para>
+    /// </summary>
+    public int Economia => TokensDosTurnos > TokensDoCapitulo
+        ? TokensDosTurnos - TokensDoCapitulo
+        : 0;
+
+    /// <summary>Se este capítulo sabe quanto custou. Falso nos gravados antes da medição.</summary>
+    public bool TemMedida => TokensDosTurnos > 0;
+
     /// <summary>Bloco pronto para o prompt.</summary>
     public string Render()
     {

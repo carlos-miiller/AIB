@@ -113,13 +113,17 @@ public sealed class RegistroDaCompactacao
     /// O que o capítulo tirou do prompt. É o único número que torna a economia verificável
     /// depois — medido sobre as mensagens originais, antes da remoção.
     /// </summary>
-    public void CapituloFechado(int tokensRemovidos, int artefatos, int vivoAgora) =>
+    public void CapituloFechado(int tokensRemovidos, int custoDoCapitulo, int artefatos, int vivoAgora) =>
         Escrever("  · fechado",
-            $"{Numero(tokensRemovidos)} token(s) saíram do prompt, {artefatos} artefato(s), "
+            $"{Numero(tokensRemovidos)} → {Numero(custoDoCapitulo)} token(s) "
+            + $"(economia {Numero(tokensRemovidos - custoDoCapitulo)}), {artefatos} artefato(s), "
             + $"vivo agora {Numero(vivoAgora)}");
 
-    public void AtoFechado(int artefatos, int fatosNovos) =>
-        Escrever("  · fechado", $"{artefatos} artefato(s), {fatosNovos} fato(s) durável(is) novo(s)");
+    public void AtoFechado(int dosCapitulos, int custoDoAto, int artefatos, int fatosNovos) =>
+        Escrever("  · fechado",
+            $"{Numero(dosCapitulos)} → {Numero(custoDoAto)} token(s) na promoção "
+            + $"(economia {Numero(dosCapitulos - custoDoAto)}), {artefatos} artefato(s), "
+            + $"{fatosNovos} fato(s) durável(is) novo(s)");
 
     /// <summary>
     /// A razão de este arquivo existir. Uma compactação que falha some no console e a conversa

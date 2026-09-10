@@ -93,11 +93,16 @@ public sealed class ConversationService : IMessageStore
     private int _turnsRecorded;
 
     /// <summary>
-    /// Tokens dos turnos CRUS que ja foram engolidos por um capitulo. Cresce a cada
-    /// compactacao e e a metade esquerda da conta: o que a conversa custaria se nada tivesse
-    /// sido resumido.
+    /// Tokens dos turnos crus engolidos por capítulos que NÃO trazem a própria medida — os
+    /// gravados antes de <see cref="Chapter.TokensDosTurnos"/> existir.
+    /// <para>
+    /// É só a rede para conversas antigas, recontada do raw.jsonl na reabertura. A conta de
+    /// hoje sai dos REGISTROS: um número somado à mão em memória zerava ao reabrir a conversa,
+    /// e a economia inteira da sessão sumia da tela sem nenhum sinal. Ver
+    /// <see cref="CruEngolido"/>.
+    /// </para>
     /// </summary>
-    private int _tokensCompactados;
+    private int _crusSemMedida;
 
     /// <summary>
     /// Tokens da faixa narrativa da memoria — atos e capitulos soltos — como ela esta AGORA no
@@ -269,7 +274,7 @@ public sealed class ConversationService : IMessageStore
         {
             _sessionMemory = NewSessionMemory();
             _turnsRecorded = 0;
-            _tokensCompactados = 0;
+            _crusSemMedida = 0;
             _tokensDeResumo = 0;
             _tituloRevisado = false;
             Title = null;
@@ -397,7 +402,16 @@ public sealed class ConversationService : IMessageStore
             foreach (var ato in atos) _memory.Add(ato);
 
             int ultimoCoberto = _memory.LastCoveredTurn;
-            _tokensCompactados = 0;
+            _crusSemMedida = 0;
+
+            // Só os turnos cobertos por capítulos que NÃO sabem quanto custaram. Os demais já
+            // trazem o número no registro, e recontá-los aqui somaria o mesmo turno duas vezes.
+            int ultimoSemMedida = capitulos.Count == 0
+                ? -1
+                : capitulos.Where(c => !c.TemMedida)
+                           .Select(c => c.LastTurn)
+                           .DefaultIfEmpty(-1)
+                           .Max();
 
             lock (_gate)
             {
@@ -407,8 +421,9 @@ public sealed class ConversationService : IMessageStore
                     {
                         // O turno inteiro, inclusive o miolo de ferramentas: e isso que a
                         // conversa custaria se o capitulo nao existisse.
-                        foreach (var registro in turno.Messages)
-                            _tokensCompactados += _tokenCounter.CountText(registro.Text ?? "");
+                        if (turno.Index <= ultimoSemMedida)
+                            foreach (var registro in turno.Messages)
+                                _crusSemMedida += _tokenCounter.CountText(registro.Text ?? "");
 
                         continue;
                     }
@@ -685,7 +700,8 @@ public sealed class ConversationService : IMessageStore
         List<Turn> candidatos, MemoryQuota quota, CancellationToken ct)
     {
         var settings = _settingsService.LoadSettings();
-        var compactor = new Compactor(_providerFactory.GetProvider(settings), _registroDaCompactacao);
+        var compactor = new Compactor(
+            _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(SummaryTimeout);
@@ -701,7 +717,6 @@ public sealed class ConversationService : IMessageStore
         // capitulo acabou de tirar do prompt, e o unico numero que torna a economia
         // verificavel depois.
         int tirados = _tokenCounter.CountMessages(candidatos.SelectMany(t => t.Messages));
-        _tokensCompactados += tirados;
 
         // So remove DEPOIS que o capitulo existe. Remover antes e falhar o resumo perderia os
         // turnos das duas pontas: fora do contexto e sem substituto.
@@ -721,7 +736,8 @@ public sealed class ConversationService : IMessageStore
         RefreshMemoryMessage(quota);
 
         Console.WriteLine($"[MEMORIA] Capitulo {capitulo.Index} fechado ({capitulo.Artifacts.Count} artefato(s)). Vivo agora: {LiveTokens()} tokens.");
-        _registroDaCompactacao.CapituloFechado(tirados, capitulo.Artifacts.Count, LiveTokens());
+        _registroDaCompactacao.CapituloFechado(
+            tirados, capitulo.TokensDoCapitulo, capitulo.Artifacts.Count, LiveTokens());
 
         return capitulo;
     }
@@ -803,7 +819,8 @@ public sealed class ConversationService : IMessageStore
                     + "ganho e com perda: o capitulo original deixaria de ser mostrado.";
 
             var settings = _settingsService.LoadSettings();
-            var compactor = new Compactor(_providerFactory.GetProvider(settings));
+            var compactor = new Compactor(
+                _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter);
 
             var ato = await PromoverAsync(compactor, minimo: 2, ct).ConfigureAwait(false);
             if (ato == null) return "A promocao falhou. Os capitulos seguem soltos.";
@@ -876,7 +893,8 @@ public sealed class ConversationService : IMessageStore
             Console.WriteLine(
                 $"[MEMORIA] Ato {ato.Index} fechado (capítulos {ato.FirstChapter}–{ato.LastChapter}, " +
                 $"{ato.Artifacts.Count} artefato(s)). Fatos novos: {promovidos}.");
-            _registroDaCompactacao.AtoFechado(ato.Artifacts.Count, promovidos);
+            _registroDaCompactacao.AtoFechado(
+                ato.TokensDosCapitulos, ato.TokensDoAto, ato.Artifacts.Count, promovidos);
 
             return ato;
         }
@@ -1538,16 +1556,115 @@ public sealed class ConversationService : IMessageStore
     private TokenReport MontarRelatorio(int userLevel) =>
         Relatorio(CountTokens(), LevelService.GetMaxTokensForLevel(userLevel));
 
+    /// <summary>
+    /// O cru já engolido, somado dos REGISTROS dos capítulos.
+    /// <para>
+    /// Conversas antigas trazem capítulos sem medida; para elas vale o que se recontou do
+    /// raw.jsonl na reabertura. As duas parcelas não se sobrepõem: a recontagem cobre só os
+    /// turnos dos capítulos sem número próprio.
+    /// </para>
+    /// </summary>
+    private int CruEngolido() => _memory.TokensCrus + _crusSemMedida;
+
+    /// <summary>
+    /// A conta da economia, capítulo por capítulo, para o usuário LER.
+    /// <para>
+    /// A barra mostra dois números e uma cor. Isso responde "está economizando?", e não
+    /// responde "de onde vem esse número?" — que é a pergunta que aparece no dia em que a
+    /// conta parece errada. Aqui cada parcela tem nome e origem.
+    /// </para>
+    /// <para>
+    /// Capítulo gravado antes da medição existir aparece como desconhecido, e não como zero.
+    /// Zero afirmaria que ele não economizou nada; a verdade é que ninguém mediu.
+    /// </para>
+    /// </summary>
+    public string MemoriaEmTexto(int userLevel)
+    {
+        var relatorio = MontarRelatorio(userLevel);
+        var texto = new StringBuilder();
+
+        if (_memory.Chapters.Count == 0 && _memory.Acts.Count == 0)
+        {
+            texto.Append("Nada foi compactado ainda nesta conversa.").Append('\n').Append('\n');
+            texto.Append($"No prompt agora: {relatorio.Contexto:N0} de {relatorio.Max:N0} token(s).")
+                 .Append('\n');
+            texto.Append("A compactação dispara sozinha quando a conversa viva passa do gatilho, ")
+                 .Append("ou na hora com /capitulo.");
+            return texto.ToString();
+        }
+
+        texto.Append("MEMÓRIA DESTA CONVERSA").Append('\n').Append('\n');
+
+        foreach (var capitulo in _memory.Chapters)
+        {
+            int turnos = capitulo.LastTurn - capitulo.FirstTurn + 1;
+            texto.Append($"Capítulo {capitulo.Index + 1} · {turnos} turno(s)");
+
+            texto.Append(capitulo.TemMedida
+                ? $" · {capitulo.TokensDosTurnos:N0} → {capitulo.TokensDoCapitulo:N0} "
+                  + $"(-{capitulo.Economia:N0})"
+                : " · medida desconhecida (fechado antes de a AIB medir)");
+
+            if (_memory.LastCoveredChapter >= capitulo.Index)
+                texto.Append(" · já absorvido por um ato");
+
+            texto.Append('\n');
+        }
+
+        foreach (var ato in _memory.Acts)
+        {
+            texto.Append('\n');
+            texto.Append($"Ato {ato.Index + 1} · capítulos {ato.FirstChapter + 1}–{ato.LastChapter + 1}");
+
+            texto.Append(ato.TemMedida
+                ? $" · {ato.TokensDosTurnos:N0} → {ato.TokensDoAto:N0} (-{ato.Economia:N0})"
+                  + $"\n  a promoção em si rendeu {ato.EconomiaDaPromocao:N0} token(s): os "
+                  + $"capítulos pesavam {ato.TokensDosCapitulos:N0} e o ato pesa {ato.TokensDoAto:N0}"
+                : " · medida desconhecida");
+
+            texto.Append('\n');
+        }
+
+        texto.Append('\n');
+        texto.Append($"Conversa crua já resumida ..... {relatorio.Cru,9:N0}").Append('\n');
+        texto.Append($"Memória no prompt hoje ........ {relatorio.Memoria,9:N0}").Append('\n');
+        texto.Append($"Poupado ....................... {relatorio.Economia,9:N0}");
+
+        if (relatorio.EconomiaPct is int pct) texto.Append($"  ({pct}%)");
+        texto.Append('\n').Append('\n');
+
+        texto.Append($"Vai ao modelo agora ........... {relatorio.Contexto,9:N0}").Append('\n');
+        texto.Append($"Teto deste nível .............. {relatorio.Max,9:N0}").Append('\n');
+
+        if (!relatorio.MedidaCompleta)
+        {
+            texto.Append('\n');
+            texto.Append("Parte dos capítulos foi fechada antes de a AIB medir o próprio custo. ")
+                 .Append("O que aparece é um PISO: a economia real é maior.");
+        }
+
+        return texto.ToString();
+    }
+
     private TokenReport Relatorio(int contexto, int max)
     {
-        int total = contexto - _tokensDeResumo + _tokensCompactados;
+        int cru = CruEngolido();
+        int total = contexto - _tokensDeResumo + cru;
 
         // Guarda de sanidade: sem nada compactado os dois numeros sao o mesmo. O bloco de
         // memoria pode existir so com fatos ou anexos, e nenhum dos dois entrou no lugar de
         // conversa — descontar por eles produziria um total MENOR que o contexto.
         if (total < contexto) total = contexto;
 
-        return new TokenReport(total, contexto, max);
+        return new TokenReport(
+            total,
+            contexto,
+            max,
+            cru,
+            _memory.TokensDaMemoria,
+            _memory.Chapters.Count,
+            _memory.Acts.Count,
+            _memory.MedidaCompleta || _crusSemMedida == 0);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

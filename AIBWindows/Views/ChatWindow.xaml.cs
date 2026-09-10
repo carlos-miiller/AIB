@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -952,6 +953,22 @@ public partial class ChatWindow : Window
             return;
         }
 
+        // A conta por extenso. Não passa pelo modelo e não trava o portão: é leitura de estado
+        // que já existe, e fazer o usuário esperar um turno para ver um número seria absurdo.
+        if (text.Equals("/memoria", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("/memória", StringComparison.OrdinalIgnoreCase))
+        {
+            InputBox.Clear();
+            AddUserBubble(text);
+            // Entre cercas: a conta e alinhada por espacos, e o markdown colapsaria as
+            // colunas em uma linha so de texto corrido.
+            string conta = _conversation.MemoriaEmTexto(
+                LevelService.GetLevel(_settingsService.LoadSettings().MessageCount));
+            AddAgentBubble("```\n" + conta + "\n```");
+            ChatScrollViewer.ScrollToEnd();
+            return;
+        }
+
         // Comando secreto para desbloquear nível
         if (text.StartsWith("/unlock_level", StringComparison.OrdinalIgnoreCase))
         {
@@ -1626,7 +1643,49 @@ public partial class ChatWindow : Window
 
             TokenCounterText.Text = texto;
             TokenCounterText.Foreground = CorDaEconomia(economia);
+
+            // A conta atrás do número. Dois números e uma cor respondem "está economizando?",
+            // e não respondem "de onde vem isso?" — que é a pergunta do dia em que a conta
+            // parece errada. A dica não ocupa espaço na barra e está sempre a um mouse de
+            // distância; o /memoria mostra o mesmo capítulo por capítulo.
+            TokenCounterText.ToolTip = DicaDoContador(relatorio);
         });
+    }
+
+    /// <summary>
+    /// O texto da dica do contador: as parcelas da conta, sem o detalhe por capítulo.
+    /// <para>
+    /// Enquanto nada foi compactado ela diz isso com todas as letras. Uma dica vazia, ou uma
+    /// dica cheia de zeros, faria o sistema parecer quebrado justamente quando ele só ainda
+    /// não teve trabalho.
+    /// </para>
+    /// </summary>
+    private static string DicaDoContador(TokenReport r)
+    {
+        if (r.Capitulos == 0 && r.Atos == 0)
+            return $"Nada compactado ainda.\n"
+                 + $"No prompt: {r.Contexto:N0} de {r.Max:N0} tokens.\n\n"
+                 + "/memoria mostra a conta; /capitulo compacta agora.";
+
+        var texto = new StringBuilder();
+        texto.Append("ECONOMIA DA MEMÓRIA").Append('\n').Append('\n');
+        texto.Append($"{r.Capitulos} capítulo(s), {r.Atos} ato(s)").Append('\n').Append('\n');
+        texto.Append($"conversa crua resumida .. {r.Cru,8:N0}").Append('\n');
+        texto.Append($"memória no prompt ....... {r.Memoria,8:N0}").Append('\n');
+        texto.Append($"poupado ................. {r.Economia,8:N0}");
+
+        if (r.EconomiaPct is int pct) texto.Append($"  ({pct}%)");
+
+        texto.Append('\n').Append('\n');
+        texto.Append($"vai ao modelo agora ..... {r.Contexto,8:N0}").Append('\n');
+        texto.Append($"teto deste nível ........ {r.Max,8:N0}");
+
+        if (!r.MedidaCompleta)
+            texto.Append('\n').Append('\n')
+                 .Append("Capítulos antigos sem medida: o poupado é um piso.");
+
+        texto.Append('\n').Append('\n').Append("/memoria mostra capítulo por capítulo.");
+        return texto.ToString();
     }
 
     /// <summary>

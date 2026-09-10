@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text;
 
 namespace AIB.Services.Memory;
@@ -20,6 +20,16 @@ namespace AIB.Services.Memory;
 /// <param name="LastTurn">Índice do último turno coberto.</param>
 /// <param name="Summary">Resumo narrativo dos capítulos.</param>
 /// <param name="Artifacts">Artefatos condensados dos capítulos cobertos.</param>
+/// <param name="TokensDosTurnos">
+/// O cru lá do fundo: a soma do que os turnos custavam, herdada dos capítulos cobertos. É
+/// contra ELE que a economia do ato se mede, e não contra os capítulos — quem promoveu já
+/// tinha economizado uma vez.
+/// </param>
+/// <param name="TokensDosCapitulos">
+/// O que os capítulos cobertos custavam no prompt. Serve para separar as duas economias: a do
+/// resumo dos turnos e a da promoção a ato.
+/// </param>
+/// <param name="TokensDoAto">O que este ato custa no prompt — <see cref="Render"/> medido.</param>
 public sealed record Act(
     int Index,
     string AtUtc,
@@ -28,8 +38,31 @@ public sealed record Act(
     int FirstTurn,
     int LastTurn,
     string Summary,
-    IReadOnlyList<Artifact> Artifacts)
+    IReadOnlyList<Artifact> Artifacts,
+    int TokensDosTurnos = 0,
+    int TokensDosCapitulos = 0,
+    int TokensDoAto = 0)
 {
+    /// <summary>Quanto o ato tira do prompt em relação ao CRU. Nunca negativo.</summary>
+    public int Economia => TokensDosTurnos > TokensDoAto
+        ? TokensDosTurnos - TokensDoAto
+        : 0;
+
+    /// <summary>
+    /// O que a PROMOÇÃO em si rendeu — capítulos que saíram menos o ato que entrou.
+    /// <para>
+    /// Separado da economia total de propósito. Promover cedo demais custa um resumo de resumo
+    /// por quase nada, e este é o número que mostra se os quatro capítulos por ato estão no
+    /// ponto certo. Sem ele, a economia do ato herdaria o crédito do trabalho dos capítulos.
+    /// </para>
+    /// </summary>
+    public int EconomiaDaPromocao => TokensDosCapitulos > TokensDoAto
+        ? TokensDosCapitulos - TokensDoAto
+        : 0;
+
+    /// <summary>Se este ato sabe quanto custou. Falso nos gravados antes da medição.</summary>
+    public bool TemMedida => TokensDosTurnos > 0;
+
     /// <summary>Bloco pronto para o prompt.</summary>
     public string Render()
     {

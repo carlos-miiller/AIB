@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using AIB.Services.Memory;
@@ -111,7 +111,7 @@ namespace AIB.Tests
 
             registro.Gatilho(9412, 8700, 10235, 5);
             registro.Capitulo(3, 5, 12, 16);
-            registro.CapituloFechado(9933, 4, 3480);
+            registro.CapituloFechado(9933, 143, 4, 3480);
 
             Conteudo().Split("diário da compactação").Length.Should().Be(2, "o cabeçalho não se repete");
         }
@@ -180,13 +180,14 @@ namespace AIB.Tests
             var registro = Novo();
 
             registro.Capitulo(3, 5, 12, 16);
-            registro.CapituloFechado(9933, 4, 3480);
+            registro.CapituloFechado(9933, 143, 4, 3480);
             registro.Ato(0, 4, 0, 3);
-            registro.AtoFechado(3, 2);
+            registro.AtoFechado(600, 210, 3, 2);
 
             string texto = Conteudo();
             texto.Should().Contain("CAPÍTULO 3").And.Contain("turnos 12–16");
-            texto.Should().Contain("9.933 token(s) saíram do prompt");
+            texto.Should().Contain("9.933 → 143 token(s)");
+            texto.Should().Contain("economia 9.790", "o número é a razão de o diário existir");
             texto.Should().Contain("ATO 0").And.Contain("capítulos 0–3");
             texto.Should().Contain("2 fato(s)");
         }

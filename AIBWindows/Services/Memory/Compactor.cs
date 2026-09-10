@@ -83,16 +83,27 @@ public sealed class Compactor
 
     private readonly IChatProvider _provider;
     private readonly RegistroDaCompactacao? _registro;
+    private readonly TokenCounter _contador;
 
     /// <param name="registro">
     /// Diário opcional. O Compactor é o único lugar que enxerga o custo REAL da chamada —
     /// prefill e saída vêm do provedor e morriam aqui dentro. Nulo quando a chave está
     /// desligada ou em ensaio.
     /// </param>
-    public Compactor(IChatProvider provider, RegistroDaCompactacao? registro = null)
+    /// <param name="contador">
+    /// Mede o que entrou e o que saiu. Vive AQUI, e não no chamador, porque é aqui que as duas
+    /// pontas existem ao mesmo tempo: os turnos crus antes de serem descartados e o bloco do
+    /// capítulo recém-nascido. Medir depois, no chamador, exigiria guardar os turnos vivos só
+    /// para isso.
+    /// </param>
+    public Compactor(
+        IChatProvider provider,
+        RegistroDaCompactacao? registro = null,
+        TokenCounter? contador = null)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _registro = registro;
+        _contador = contador ?? new TokenCounter();
     }
 
     /// <summary>
@@ -159,13 +170,24 @@ public sealed class Compactor
             resumo = "[resumo indisponível: falha ao contatar o modelo]";
         }
 
-        return new Chapter(
+        // Medido AQUI, e não somado num campo do chamador. O campo antigo zerava ao reabrir
+        // uma conversa do histórico e a economia inteira da sessão sumia da tela. No registro,
+        // o número vai para chapters.jsonl e volta com ela.
+        int crus = _contador.CountMessages(turns.SelectMany(t => t.Messages));
+
+        var capitulo = new Chapter(
             chapterIndex,
             agora,
             turns[0].Index,
             turns[^1].Index,
             resumo,
-            artefatos);
+            artefatos,
+            crus);
+
+        // O custo do capítulo é o do bloco que ele vira no prompt, e por isso só pode ser
+        // medido depois de montado. Os números NÃO entram no Render: o modelo não ganha nada
+        // sabendo que este capítulo custa 117 tokens, e incluí-los tornaria a medida circular.
+        return capitulo with { TokensDoCapitulo = _contador.CountText(capitulo.Render()) };
     }
 
     /// <summary>
@@ -229,7 +251,13 @@ public sealed class Compactor
             resumo = "[resumo indisponível: falha ao contatar o modelo]";
         }
 
-        return new Act(
+        // O cru vem de LÁ DO FUNDO, herdado dos capítulos: é contra ele que a economia do ato
+        // se mede. Contra os capítulos mediria só a promoção, e o ato levaria o crédito do
+        // trabalho que os capítulos já tinham feito.
+        int crus = chapters.Sum(c => c.TokensDosTurnos);
+        int deCapitulos = chapters.Sum(c => c.TokensDoCapitulo);
+
+        var ato = new Act(
             actIndex,
             agora,
             chapters[0].Index,
@@ -237,7 +265,11 @@ public sealed class Compactor
             chapters[0].FirstTurn,
             chapters[^1].LastTurn,
             resumo,
-            artefatos);
+            artefatos,
+            crus,
+            deCapitulos);
+
+        return ato with { TokensDoAto = _contador.CountText(ato.Render()) };
     }
 
     /// <summary>Capítulos em texto plano, pelo mesmo motivo do <see cref="RenderForSummary"/>.</summary>
