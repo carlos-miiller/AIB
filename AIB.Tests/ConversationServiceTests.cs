@@ -575,16 +575,46 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public async Task TurnoVazio_NaoGravaLinhaAlguma()
+        public async Task TurnoVAZIO_EhGravado_ComAMarcaQueOFecha()
         {
+            // Antes ele não era gravado: o histórico terminava sem fala do assistente, o turno
+            // não FECHAVA, e ele ficava pendente esperando a mensagem seguinte do usuário. Se o
+            // app fechasse antes, sumia — e enquanto estivesse aberto travava a compactação de
+            // tudo o que viesse depois, porque SelectTurnsToCompact para no primeiro turno não
+            // fechado que encontra.
+            //
+            // Medido em 10/09: um turno de 55 minutos terminou com resposta vazia e a sessão
+            // ficou com UM turno no raw.jsonl, sete podas de emergência e nenhum capítulo.
             var settings = BuildSettings(sendSystemPrompt: false);
             // Stream sem texto e sem ferramenta: o turno termina sem fala do assistente.
             var conversation = BuildConversation(settings, new FakeProvider(), out _);
 
             await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
 
-            // Turno aberto em disco deixaria um user sem resposta; fica para a próxima gravação.
-            File.Exists(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl")).Should().BeFalse();
+            string caminho = Path.Combine(conversation.SessionMemoryDir, "raw.jsonl");
+            File.Exists(caminho).Should().BeTrue("o turno aconteceu, e o registro é do que aconteceu");
+
+            string linha = File.ReadAllText(caminho);
+            linha.Should().Contain("oi");
+            linha.Should().Contain("turno encerrado sem resposta",
+                "a marca diz POR QUE não houve fala, em vez de deixar um usuário sem resposta");
+        }
+
+        [Fact]
+        public async Task TurnoVazio_FICA_CompactavelDepois()
+        {
+            // A consequência que importa: fechado, ele entra na conta de SelectTurnsToCompact.
+            // Aberto, ele era uma parede — todos os turnos seguintes ficavam inalcançáveis para
+            // a compactação, e só a poda de emergência agia, descartando sem substituto.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+
+            var turnos = AIB.Services.Memory.TurnSplitter.Split(conversation.SnapshotHistory());
+
+            turnos.Should().HaveCount(1);
+            AIB.Services.Memory.TurnSplitter.IsClosed(turnos[0]).Should().BeTrue();
         }
 
         [Fact]

@@ -496,6 +496,28 @@ public sealed class ConversationService : IMessageStore
     /// comido o começo do histórico vivo. O que saiu do contexto continua em raw.jsonl.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Fecha o turno em andamento com uma marca, se ele acabou sem fala do assistente.
+    /// <para>
+    /// Idempotente: se o último turno já fecha, não faz nada. Chamada só quando o turno
+    /// terminou de um jeito que o laço do agente não cobriu — hoje, o cancelamento.
+    /// </para>
+    /// </summary>
+    private void FecharTurnoAberto(string motivo)
+    {
+        try
+        {
+            var turnos = TurnSplitter.Split(Snapshot());
+            if (turnos.Count == 0 || TurnSplitter.IsClosed(turnos[^1])) return;
+
+            AppendAssistantText(Agent.AgentLoop.MarcaDeTurnoMorto(motivo));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Falha ao fechar o turno aberto: {ex.Message}");
+        }
+    }
+
     private void RecordLastTurn()
     {
         try
@@ -1211,6 +1233,13 @@ public sealed class ConversationService : IMessageStore
                 }
             }
 
+            // Cancelar deixa o histórico terminando num resultado de ferramenta, e um turno
+            // sem última fala do assistente não FECHA: não vai para o raw.jsonl e trava a
+            // compactação de tudo o que vier depois, porque SelectTurnsToCompact para no
+            // primeiro turno aberto que encontra. A marca fecha, e é honesta — o turno acabou
+            // mesmo, só que por decisão do usuário.
+            if (cancelado) FecharTurnoAberto("cancelado por você");
+
             // Antes de liberar o portão: o turno seguinte não pode começar a mexer no
             // histórico enquanto este ainda não foi registrado.
             RecordLastTurn();
@@ -1737,6 +1766,48 @@ public sealed class ConversationService : IMessageStore
     // Helpers privados
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// <summary>Teto do manual de uma skill no prompt. Ver <see cref="ManualDaSkill"/>.</summary>
+    public const int TetoDoManualDeSkill = 700;
+
+    /// <summary>
+    /// Uma habilidade como o modelo a enxerga: nome, descrição e o CORPO do SKILL.md.
+    /// <para>
+    /// O corpo era lido do disco, guardado em <c>LocalSkill.Instructions</c> com o comentário
+    /// "instruções de uso, para o modelo ler" — e nunca entregue a lugar nenhum. O modelo
+    /// recebia só a linha de descrição e tinha de adivinhar como chamar.
+    /// </para>
+    /// <para>
+    /// Medido numa sessão real: com a skill do Bitrix descrita apenas como "Skill oficial para
+    /// o Bitrix24. Use para tarefas, leads e contatos.", o modelo inventou
+    /// <c>-Action "list_users" -Filter ""</c>. Três invenções, três erradas — os comandos são
+    /// <c>get_task</c>, <c>list_tasks</c> e <c>call</c>, os parâmetros são <c>-Command</c>,
+    /// <c>-Args</c> e <c>-Url</c>, e o SKILL.md dizia isso em letras garrafais. A chamada passou
+    /// pelo portão humano e falhou. Não foi alucinação: foi o manual ficando na gaveta.
+    /// </para>
+    /// <para>
+    /// Cortado em <see cref="TetoDoManualDeSkill"/> caracteres. O prompt é prefixo cacheado, mas
+    /// um SKILL.md de dez páginas ainda comeria a janela — e o começo do manual é onde mora a
+    /// forma de chamar.
+    /// </para>
+    /// </summary>
+    public static string ManualDaSkill(LocalSkill skill)
+    {
+        string texto = $"- {skill.Name}: {skill.Description}\n";
+
+        string manual = (skill.Instructions ?? "").Trim();
+        if (manual.Length == 0) return texto;
+
+        if (manual.Length > TetoDoManualDeSkill)
+            manual = manual[..TetoDoManualDeSkill] + "\n  […manual cortado]";
+
+        // Indentado: o bloco pertence à skill de cima, e sem recuo o modelo lê o manual de uma
+        // como se valesse para a lista inteira.
+        foreach (string linha in manual.Replace("\r", "").Split('\n'))
+            texto += "  " + linha + "\n";
+
+        return texto;
+    }
+
     /// <summary>
     /// Monta o system prompt contextual. Devolve null quando o setting "SendSystemPrompt"
     /// está desligado — caso de quem usa um Modelfile do Ollama com SYSTEM embutido e não
@@ -1769,7 +1840,7 @@ public sealed class ConversationService : IMessageStore
                 // skill ensina um procedimento sem automatiza-lo. Pular as de markdown deixava
                 // instalada uma habilidade que o modelo nunca ficava sabendo que existia.
                 foreach (var skill in skills)
-                    contextualPrompt += $"- {skill.Name}: {skill.Description}\n";
+                    contextualPrompt += ManualDaSkill(skill);
             }
         }
         catch { }

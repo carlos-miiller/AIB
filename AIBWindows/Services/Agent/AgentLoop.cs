@@ -305,6 +305,19 @@ public sealed class AgentLoop
             }
 
             // ── Stream vazio: sem texto e sem ferramenta ──────────────────────────
+            //
+            // A marca FECHA o turno, e fechar é o que faz ele existir em disco. Sem ela a
+            // última mensagem do histórico continua sendo um resultado de ferramenta:
+            // TurnSplitter.IsClosed devolve false, RecordLastTurn guarda o turno como pendente
+            // e ele só é gravado quando chega OUTRA mensagem do usuário — se o app fechar
+            // antes, some. Pior: SelectTurnsToCompact para no primeiro turno não fechado, então
+            // um turno morto assim bloqueia a compactação de tudo o que veio depois, para
+            // sempre.
+            //
+            // Medido em 10/09: um turno de 55 minutos terminou com resposta vazia, e a sessão
+            // inteira ficou com um turno no raw.jsonl e sete podas de emergência sem um único
+            // capítulo.
+            store.AppendAssistantText(MarcaDeTurnoMorto("o modelo não devolveu texto nem ferramenta"));
             store.Trim(request.UserLevel);
             store.NotifyTokenCount(request.UserLevel);
             pulso.Fim("resposta VAZIA");
@@ -316,10 +329,27 @@ public sealed class AgentLoop
         // Poda aqui também: esta é justamente a saída em que o histórico ficou maior, com 18
         // rodadas de tool_calls e resultados acumulados. Sem isto a próxima mensagem parte de um
         // histórico não podado e com o contador de tokens da UI defasado.
+        // Mesma marca, mesmo motivo: aqui o histórico termina num resultado de ferramenta
+        // com o modelo ainda pedindo mais. Sem fechar, o turno não vai para o disco e trava a
+        // compactação dos seguintes.
+        request.Store.AppendAssistantText(
+            MarcaDeTurnoMorto($"teto de {teto} etapas atingido com ferramenta pendente"));
         request.Store.Trim(request.UserLevel);
         request.Store.NotifyTokenCount(request.UserLevel);
         yield return new AgentEvent.Completed(TurnOutcome.IterationLimitReached, teto);
     }
+
+    /// <summary>
+    /// A linha que fecha um turno que acabou sem resposta.
+    /// <para>
+    /// Vai para o histórico do modelo de propósito: ele precisa saber que a tentativa anterior
+    /// morreu, senão continua a conversa como se tivesse respondido. E é o que dá ao turno uma
+    /// última mensagem de assistente — a condição de <c>TurnSplitter.IsClosed</c>, e portanto
+    /// de o turno ser gravado e poder virar capítulo.
+    /// </para>
+    /// </summary>
+    public static string MarcaDeTurnoMorto(string motivo) =>
+        $"[turno encerrado sem resposta: {motivo}]";
 
     /// <summary>
     /// O texto do assistente como ele vai para o histórico.
