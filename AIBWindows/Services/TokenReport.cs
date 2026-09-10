@@ -24,7 +24,17 @@ namespace AIB.Services;
 /// chapters.jsonl, e não de um campo em memória: o campo zerava ao reabrir uma conversa do
 /// histórico e a economia inteira sumia da tela.
 /// </param>
-/// <param name="Memoria">O que a faixa narrativa pesa agora — atos mais capítulos soltos.</param>
+/// <param name="Memoria">
+/// O que a faixa narrativa pesa AGORA no prompt, medida sobre o texto renderizado. É esta que
+/// entra na conta do total, e por isso é ela que precisa aparecer na tela: mostrar a soma dos
+/// registros ao lado de uma economia calculada sobre outra grandeza dava três números que não
+/// fechavam entre si.
+/// </param>
+/// <param name="MemoriaDosRegistros">
+/// A soma do custo próprio dos atos e capítulos soltos. Difere de <paramref name="Memoria"/>
+/// pelo cabeçalho da faixa — as duas linhas que abrem o bloco e são pagas uma vez só, existindo
+/// um capítulo ou vinte. Medido: 27 tokens.
+/// </param>
 /// <param name="Capitulos">Quantos capítulos existem.</param>
 /// <param name="Atos">Quantos atos existem.</param>
 /// <param name="MedidaCompleta">
@@ -37,12 +47,22 @@ public readonly record struct TokenReport(
     int Max,
     int Cru = 0,
     int Memoria = 0,
+    int MemoriaDosRegistros = 0,
     int Capitulos = 0,
     int Atos = 0,
     bool MedidaCompleta = true)
 {
     /// <summary>Tokens que a memória tirou do prompt. Nunca negativo.</summary>
     public int Economia => Total > Contexto ? Total - Contexto : 0;
+
+    /// <summary>
+    /// O que a faixa cobra além do custo próprio dos capítulos: o cabeçalho do bloco.
+    /// <para>
+    /// Negativo significa outra coisa — a cota aparou capítulos na renderização, e parte do que
+    /// os registros somam não chegou ao prompt. Quem exibe precisa dizer qual dos dois é.
+    /// </para>
+    /// </summary>
+    public int DiferencaDaFaixa => Memoria - MemoriaDosRegistros;
 
     /// <summary>
     /// Quanto da conversa a memória está poupando, em porcentagem. <c>null</c> enquanto nada

@@ -1672,6 +1672,20 @@ public partial class ChatWindow : Window
         texto.Append($"{r.Capitulos} capítulo(s), {r.Atos} ato(s)").Append('\n').Append('\n');
         texto.Append($"conversa crua resumida .. {r.Cru,8:N0}").Append('\n');
         texto.Append($"memória no prompt ....... {r.Memoria,8:N0}").Append('\n');
+
+        // As parcelas da faixa. Três números que não fecham entre si fazem quem confere
+        // desistir de confiar no contador inteiro.
+        if (r.DiferencaDaFaixa > 0)
+        {
+            texto.Append($"  capítulos e atos ...... {r.MemoriaDosRegistros,8:N0}").Append('\n');
+            texto.Append($"  cabeçalho do bloco .... {r.DiferencaDaFaixa,8:N0}").Append('\n');
+        }
+        else if (r.DiferencaDaFaixa < 0)
+        {
+            texto.Append($"  capítulos e atos ...... {r.MemoriaDosRegistros,8:N0}").Append('\n');
+            texto.Append($"  não coube na cota ..... {-r.DiferencaDaFaixa,8:N0}").Append('\n');
+        }
+
         texto.Append($"poupado ................. {r.Economia,8:N0}");
 
         if (r.EconomiaPct is int pct) texto.Append($"  ({pct}%)");

@@ -1628,6 +1628,24 @@ public sealed class ConversationService : IMessageStore
         texto.Append('\n');
         texto.Append($"Conversa crua já resumida ..... {relatorio.Cru,9:N0}").Append('\n');
         texto.Append($"Memória no prompt hoje ........ {relatorio.Memoria,9:N0}").Append('\n');
+
+        // As duas parcelas da faixa. Sem elas a soma dos capítulos acima não bate com o número
+        // da linha anterior, e quem confere desiste de confiar no contador.
+        if (relatorio.DiferencaDaFaixa > 0)
+        {
+            texto.Append($"  capítulos e atos ............ {relatorio.MemoriaDosRegistros,9:N0}")
+                 .Append('\n');
+            texto.Append($"  cabeçalho do bloco .......... {relatorio.DiferencaDaFaixa,9:N0}")
+                 .Append("  (pago uma vez só)").Append('\n');
+        }
+        else if (relatorio.DiferencaDaFaixa < 0)
+        {
+            texto.Append($"  capítulos e atos ............ {relatorio.MemoriaDosRegistros,9:N0}")
+                 .Append('\n');
+            texto.Append($"  não coube na cota ........... {-relatorio.DiferencaDaFaixa,9:N0}")
+                 .Append("  (ficou de fora do prompt)").Append('\n');
+        }
+
         texto.Append($"Poupado ....................... {relatorio.Economia,9:N0}");
 
         if (relatorio.EconomiaPct is int pct) texto.Append($"  ({pct}%)");
@@ -1661,6 +1679,10 @@ public sealed class ConversationService : IMessageStore
             contexto,
             max,
             cru,
+            // A faixa como ela ESTÁ no prompt, que é o número que entra no total acima. A soma
+            // dos registros vai ao lado, para a diferença — o cabeçalho do bloco — ter linha
+            // própria em vez de virar um buraco de 27 tokens na conta que o usuário lê.
+            _tokensDeResumo,
             _memory.TokensDaMemoria,
             _memory.Chapters.Count,
             _memory.Acts.Count,

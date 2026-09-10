@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using AIB.Services;
@@ -153,12 +153,38 @@ namespace AIB.Tests
             // Dois números e uma cor respondem "está economizando?". Não respondem "de onde
             // vem esse número?", que é a pergunta do dia em que a conta parece errada.
             var r = new TokenReport(12_408, 5_102, 16_384,
-                Cru: 9_000, Memoria: 120, Capitulos: 2, Atos: 1);
+                Cru: 9_000, Memoria: 120, MemoriaDosRegistros: 93, Capitulos: 2, Atos: 1);
 
             r.Economia.Should().Be(7_306);
             r.EconomiaPct.Should().Be(59);
             r.Cru.Should().Be(9_000);
             r.Memoria.Should().Be(120);
+        }
+
+        [Fact]
+        public void AsParcelas_FECHAM_ComOCabecalhoDaFaixa()
+        {
+            // Medido na sessão real: o capítulo custa 101 e a faixa no prompt pesa 128. A
+            // diferença é o cabeçalho do bloco — duas linhas pagas UMA vez, existindo um
+            // capítulo ou vinte. Sem linha própria ela virava um buraco de 27 tokens no meio de
+            // uma conta que o usuário estava conferindo.
+            var r = new TokenReport(1_910, 1_838, 9_216,
+                Cru: 200, Memoria: 128, MemoriaDosRegistros: 101, Capitulos: 1);
+
+            r.DiferencaDaFaixa.Should().Be(27);
+            (r.Cru - r.Memoria).Should().Be(r.Economia, "as três linhas da tela têm de fechar");
+        }
+
+        [Fact]
+        public void CapituloAparado_PelaCota_TemOutroNome()
+        {
+            // Diferença negativa não é cabeçalho: é capítulo que a cota deixou de fora do
+            // prompt. Chamar os dois pelo mesmo nome esconderia memória que não está sendo
+            // enviada.
+            var r = new TokenReport(9_000, 8_000, 9_216,
+                Cru: 4_000, Memoria: 300, MemoriaDosRegistros: 900, Capitulos: 6);
+
+            r.DiferencaDaFaixa.Should().Be(-600);
         }
 
         [Fact]
