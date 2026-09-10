@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using AIB.Services.Memory;
@@ -26,7 +26,7 @@ namespace AIB.Tests
             var mensagens = new List<ChatMessage>
             {
                 ChatMessage.CreateUserMessage("crie o arquivo"),
-                ToolCall("c1", "write_file", """{"path":"C:\\temp\\ola.txt","content":"oi"}"""),
+                ToolCall("c1", "write", """{"path":"C:\\temp\\ola.txt","content":"oi"}"""),
                 ChatMessage.CreateToolMessage("c1", "SUCESSO: Arquivo salvo corretamente em 'C:\\temp\\ola.txt'."),
                 ChatMessage.CreateAssistantMessage("Pronto.")
             };
@@ -45,7 +45,7 @@ namespace AIB.Tests
         {
             var mensagens = new List<ChatMessage>
             {
-                ToolCall("c1", "read_file", """{"path":"notas.txt"}"""),
+                ToolCall("c1", "read", """{"path":"notas.txt"}"""),
                 ChatMessage.CreateToolMessage("c1", "conteúdo qualquer")
             };
 
@@ -63,7 +63,7 @@ namespace AIB.Tests
             // como "C:\emp\ola.txt". Registrar isso como fato apontaria para lugar nenhum.
             var mensagens = new List<ChatMessage>
             {
-                ToolCall("c1", "write_file", "{\"path\":\"C:\\temp\\\\ola.txt\",\"content\":\"x\"}"),
+                ToolCall("c1", "write", "{\"path\":\"C:\\temp\\\\ola.txt\",\"content\":\"x\"}"),
                 ChatMessage.CreateToolMessage("c1", "SUCESSO: Arquivo salvo.")
             };
 
@@ -75,7 +75,7 @@ namespace AIB.Tests
         {
             var mensagens = new List<ChatMessage>
             {
-                ToolCall("c1", "run_command", """{"command":"del C:\\x\\y.txt"}"""),
+                ToolCall("c1", "shell", """{"command":"del C:\\x\\y.txt"}"""),
                 ChatMessage.CreateToolMessage("c1", "ERRO: Acesso negado ao caminho.\nlinha irrelevante")
             };
 
@@ -92,7 +92,7 @@ namespace AIB.Tests
         {
             var mensagens = new List<ChatMessage>
             {
-                ToolCall("c1", "write_file", """{"path":"C:\\x.txt","content":"y"}"""),
+                ToolCall("c1", "write", """{"path":"C:\\x.txt","content":"y"}"""),
                 ChatMessage.CreateToolMessage("c1", "Ação Rejeitada pelo Usuário.")
             };
 
@@ -109,7 +109,7 @@ namespace AIB.Tests
             // como fato é pior que não registrar nada.
             var mensagens = new List<ChatMessage>
             {
-                ToolCall("c1", "write_file", """{"path":"C:\\x.txt","content":"y"}""")
+                ToolCall("c1", "write", """{"path":"C:\\x.txt","content":"y"}""")
             };
 
             ArtifactExtractor.Extract(mensagens).Should().BeEmpty();
@@ -120,9 +120,9 @@ namespace AIB.Tests
         {
             var mensagens = new List<ChatMessage>
             {
-                ToolCall("c1", "write_file", "{isto não é json"),
+                ToolCall("c1", "write", "{isto não é json"),
                 ChatMessage.CreateToolMessage("c1", "ERRO: argumentos inválidos"),
-                ToolCall("c2", "read_file", """{"path":"C:\\bom.txt"}"""),
+                ToolCall("c2", "read", """{"path":"C:\\bom.txt"}"""),
                 ChatMessage.CreateToolMessage("c2", "ok")
             };
 
@@ -139,8 +139,8 @@ namespace AIB.Tests
             {
                 ChatMessage.CreateAssistantMessage(new[]
                 {
-                    ChatToolCall.CreateFunctionToolCall("a", "read_file", BinaryData.FromString("""{"path":"C:\\1.txt"}""")),
-                    ChatToolCall.CreateFunctionToolCall("b", "read_file", BinaryData.FromString("""{"path":"C:\\2.txt"}"""))
+                    ChatToolCall.CreateFunctionToolCall("a", "read", BinaryData.FromString("""{"path":"C:\\1.txt"}""")),
+                    ChatToolCall.CreateFunctionToolCall("b", "read", BinaryData.FromString("""{"path":"C:\\2.txt"}"""))
                 }),
                 // Resultados chegam fora da ordem em que as chamadas foram declaradas.
                 ChatMessage.CreateToolMessage("b", "dois"),

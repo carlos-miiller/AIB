@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using AIB.Services;
@@ -12,7 +12,7 @@ namespace AIB.Tests
     /// <para>
     /// Antes disto, anexar pelo "+" do painel não informava nada ao modelo: a lista era
     /// contabilidade da interface. Pedir "analisa o relatório" pelo nome levava o modelo a
-    /// chutar um caminho, ou a varrer o disco com run_command.
+    /// chutar um caminho, ou a varrer o disco com shell.
     /// </para>
     /// <para>
     /// A lista do <see cref="ContextService"/> é estática e a suíte roda classes em paralelo,
@@ -45,8 +45,8 @@ namespace AIB.Tests
 
             string bloco = ContextService.RenderizarAnexados();
 
-            bloco.Should().Contain(caminho, "o modelo precisa do caminho exato para chamar read_file");
-            bloco.Should().Contain("read_file");
+            bloco.Should().Contain(caminho, "o modelo precisa do caminho exato para chamar read");
+            bloco.Should().Contain("read");
         }
 
         [Fact]

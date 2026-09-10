@@ -59,8 +59,8 @@ public sealed class UserAppSettings
     // Avançado
 
     /// <summary>
-    /// Controla apenas o denylist pós-modal de <c>run_command</c>; NÃO controla o modal em si.
-    /// Modal sempre dispara em run_command (independente desta flag).
+    /// Controla apenas o denylist pós-modal de <c>shell</c>; NÃO controla o modal em si.
+    /// Modal sempre dispara em shell (independente desta flag).
     ///
     /// ON (default): o denylist roda como segunda camada após o modal em níveis &lt; 9.
     /// OFF: denylist é ignorado; o modal é o único portão.
@@ -204,7 +204,7 @@ public sealed class UserAppSettings
     /// Por quantos dias o que a triagem decidiu fica gravado, para a conversa poder consultar.
     /// <para>
     /// É o mostrador da regra 3. Em ZERO, nada do e-mail toca o disco e a ferramenta
-    /// <c>consultar_emails</c> não tem o que responder — a conversa volta a não saber nada
+    /// <c>mail</c> não tem o que responder — a conversa volta a não saber nada
     /// sobre a caixa, que era o comportamento original. Acima de zero, ficam gravados
     /// remetente, assunto e o resumo de uma frase, que são os mesmos campos que já apareciam na
     /// tela do Shadow e no painel.

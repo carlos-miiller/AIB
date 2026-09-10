@@ -10,7 +10,7 @@ namespace AIB.Services;
 /// <summary>
 /// Registro central das ferramentas nativas C# do agente AIB.
 /// As skills dinâmicas não são mais registradas aqui individualmente para evitar overhead no LLM.
-/// Em vez disso, o LLM usa a ferramenta 'execute_skill' para chamá-las sob demanda (Lazy Loading).
+/// Em vez disso, o LLM usa a ferramenta 'skill' para chamá-las sob demanda (Lazy Loading).
 /// </summary>
 public class ToolRegistry
 {
@@ -174,6 +174,9 @@ public class ToolRegistry
         var nativeTools = new List<ITool>
         {
             new ReadFileTool(),
+            new EditFileTool(),
+            new GlobTool(),
+            new GrepTool(),
             new RunCommandTool(),
             new WriteFileTool(),
 
@@ -194,7 +197,7 @@ public class ToolRegistry
     }
 
     /// <summary>
-    /// A execute_skill so existe quando ha skill instalada.
+    /// A skill so existe quando ha skill instalada.
     /// <para>
     /// O schema de toda ferramenta registrada e reenviado ao modelo em CADA requisicao. Numa
     /// instalacao sem skills, deixa-la registrada seria pagar ~80 tokens por turno, para
@@ -214,7 +217,7 @@ public class ToolRegistry
         {
             _tools[skill.Name] = skill;
             _nativeToolNames.Add(skill.Name);
-            Console.WriteLine($"[REGISTRY] execute_skill registrada ({quantas} habilidade(s) instalada(s)).");
+            Console.WriteLine($"[REGISTRY] skill registrada ({quantas} habilidade(s) instalada(s)).");
         }
         else
         {

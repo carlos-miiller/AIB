@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using AIB.Services;
 using AIB.Services.Memory;
 using FluentAssertions;
@@ -22,13 +22,13 @@ namespace AIB.Tests
         public void Dispose() => ActionLogService.Clear();
 
         private static Artifact Arquivo(string caminho, bool falhou = false) =>
-            new(ArtifactKind.FileWritten, "write_file", caminho, falhou);
+            new(ArtifactKind.FileWritten, "write", caminho, falhou);
 
         [Fact]
         public void MaisRecenteFicaNoTopo()
         {
-            ActionLogService.Add(ActionLogService.Construir("write_file", Arquivo(@"C:\a.cs"), false, null, null));
-            ActionLogService.Add(ActionLogService.Construir("write_file", Arquivo(@"C:\b.cs"), false, null, null));
+            ActionLogService.Add(ActionLogService.Construir("write", Arquivo(@"C:\a.cs"), false, null, null));
+            ActionLogService.Add(ActionLogService.Construir("write", Arquivo(@"C:\b.cs"), false, null, null));
 
             ActionLogService.Entries[0].FullTarget.Should().Be(@"C:\b.cs");
         }
@@ -38,7 +38,7 @@ namespace AIB.Tests
         {
             const string longo = @"C:\Users\Carlo\CPAPS\AIB\AIBWindows\Services\Memory\Compactor.cs";
 
-            ActionLogService.Add(ActionLogService.Construir("write_file", Arquivo(longo), false, null, null));
+            ActionLogService.Add(ActionLogService.Construir("write", Arquivo(longo), false, null, null));
             var entrada = ActionLogService.Entries[0];
 
             entrada.FullTarget.Should().Be(longo, "o tooltip mostra o caminho sem abreviação");
@@ -67,8 +67,8 @@ namespace AIB.Tests
         public void FalhaEhRegistradaComAMensagem()
         {
             ActionLogService.Add(ActionLogService.Construir(
-                "run_command",
-                new Artifact(ArtifactKind.CommandRun, "run_command", "dotnet test", true, "conexão recusada"),
+                "shell",
+                new Artifact(ArtifactKind.CommandRun, "shell", "dotnet test", true, "conexão recusada"),
                 falhou: true,
                 detalhe: "ERRO: 127.0.0.1:11434 recusou a conexão.",
                 saidaBruta: null));
@@ -98,8 +98,8 @@ namespace AIB.Tests
             // §6.3 pinta o marcador dessas em cinza: leitura não deve competir visualmente com
             // escrita e destruição.
             ActionLogService.Add(ActionLogService.Construir(
-                "read_file",
-                new Artifact(ArtifactKind.FileRead, "read_file", @"C:\x.md", false),
+                "read",
+                new Artifact(ArtifactKind.FileRead, "read", @"C:\x.md", false),
                 false, null, null));
 
             ActionLogService.Entries[0].SoLeitura.Should().BeTrue();
@@ -110,8 +110,8 @@ namespace AIB.Tests
         {
             // Falha tem cor própria e precisa vencer o cinza da leitura.
             ActionLogService.Add(ActionLogService.Construir(
-                "read_file",
-                new Artifact(ArtifactKind.FileRead, "read_file", @"C:\x.md", true),
+                "read",
+                new Artifact(ArtifactKind.FileRead, "read", @"C:\x.md", true),
                 falhou: true, detalhe: "ERRO: não encontrado", saidaBruta: null));
 
             ActionLogService.Entries[0].SoLeitura.Should().BeFalse();
@@ -121,12 +121,12 @@ namespace AIB.Tests
         public void ComandoVaiParaOCampoDeComando_ArquivoNao()
         {
             ActionLogService.Add(ActionLogService.Construir(
-                "run_command",
-                new Artifact(ArtifactKind.CommandRun, "run_command", "dotnet build", false),
+                "shell",
+                new Artifact(ArtifactKind.CommandRun, "shell", "dotnet build", false),
                 false, null, null));
 
             ActionLogService.Add(ActionLogService.Construir(
-                "write_file", Arquivo(@"C:\a.cs"), false, null, null));
+                "write", Arquivo(@"C:\a.cs"), false, null, null));
 
             ActionLogService.Entries[1].Command.Should().Be("dotnet build");
             ActionLogService.Entries[0].Command.Should().BeNull("caminho de arquivo não é comando");
@@ -137,7 +137,7 @@ namespace AIB.Tests
         {
             for (int i = 0; i < ActionLogService.MaxEntradas + 25; i++)
                 ActionLogService.Add(ActionLogService.Construir(
-                    "write_file", Arquivo($@"C:\f{i}.cs"), false, null, null));
+                    "write", Arquivo($@"C:\f{i}.cs"), false, null, null));
 
             ActionLogService.Entries.Should().HaveCount(ActionLogService.MaxEntradas);
             ActionLogService.Entries[0].FullTarget.Should()
@@ -147,12 +147,12 @@ namespace AIB.Tests
         [Fact]
         public void RotuloDoDia()
         {
-            var hoje = ActionLogService.Construir("write_file", Arquivo(@"C:\a.cs"), false, null, null);
+            var hoje = ActionLogService.Construir("write", Arquivo(@"C:\a.cs"), false, null, null);
             hoje.DiaRotulo.Should().Be("HOJE");
 
             var ontem = new ActionLogEntry
             {
-                Tool = "write_file",
+                Tool = "write",
                 Target = "a",
                 FullTarget = "a",
                 Timestamp = DateTime.Now.AddDays(-1)

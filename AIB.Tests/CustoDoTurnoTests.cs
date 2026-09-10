@@ -64,7 +64,7 @@ namespace AIB.Tests
         [Fact]
         public void AEsperaNoModal_SAI_DoTempoDaFerramenta()
         {
-            // Defeito real: "[TURNO 4] ~ ferramenta run_command — ok em 7299,6s" para um
+            // Defeito real: "[TURNO 4] ~ ferramenta shell — ok em 7299,6s" para um
             // Get-Content trivial. As duas horas eram o modal aberto esperando alguém clicar, e
             // o resumo do turno ainda dividia 463 caracteres por elas e anunciava "0,1 car/s".
             var linhas = new List<string>();
@@ -73,11 +73,11 @@ namespace AIB.Tests
                 iteracao: 4, modelo: "qwen3.5:9b", tokensDoPrompt: 6376, reusoPrevisto: 4927,
                 numCtx: 16384, intervalo: TimeSpan.FromHours(1), escrever: linhas.Add);
 
-            pulso.FerramentaComecou("run_command");
-            pulso.EsperaHumana("run_command", 7_290_000);
-            pulso.FerramentaTerminou("run_command", falhou: false);
+            pulso.FerramentaComecou("shell");
+            pulso.EsperaHumana("shell", 7_290_000);
+            pulso.FerramentaTerminou("shell", falhou: false);
 
-            string linha = linhas.Single(l => l.Contains("~ ferramenta run_command")
+            string linha = linhas.Single(l => l.Contains("~ ferramenta shell")
                                               && !l.Contains("executando"));
 
             linha.Should().Contain("esperando você");
@@ -94,7 +94,7 @@ namespace AIB.Tests
                 iteracao: 1, modelo: "m", tokensDoPrompt: 100, reusoPrevisto: 0,
                 numCtx: 16384, intervalo: TimeSpan.FromHours(1), escrever: linhas.Add);
 
-            pulso.EsperaHumana("run_command", 600_000);
+            pulso.EsperaHumana("shell", 600_000);
             pulso.Fim("ferramenta(s) executada(s)");
 
             linhas.Last().Should().Contain("esperando você");
@@ -112,10 +112,10 @@ namespace AIB.Tests
                 iteracao: 1, modelo: "m", tokensDoPrompt: 10, reusoPrevisto: 0,
                 numCtx: 16384, intervalo: TimeSpan.FromHours(1), escrever: linhas.Add);
 
-            pulso.FerramentaComecou("read_file");
-            pulso.FerramentaTerminou("read_file", falhou: false);
+            pulso.FerramentaComecou("read");
+            pulso.FerramentaTerminou("read", falhou: false);
 
-            string linha = linhas.Single(l => l.Contains("~ ferramenta read_file")
+            string linha = linhas.Single(l => l.Contains("~ ferramenta read")
                                               && !l.Contains("executando"));
 
             linha.Should().Contain("ok em");
@@ -137,10 +137,10 @@ namespace AIB.Tests
         // ─────────────────────────────────────────────────────────────────────
 
         [Theory]
-        [InlineData("<tool_call>\n{\"name\":\"run_command\"}")]
+        [InlineData("<tool_call>\n{\"name\":\"shell\"}")]
         [InlineData("<parameter=command>\npowershell -File x.ps1\n</parameter>\n</function>\n</tool_call>")]
-        [InlineData("<function=run_command>")]
-        [InlineData("<invoke name=\"run_command\">")]
+        [InlineData("<function=shell>")]
+        [InlineData("<invoke name=\"shell\">")]
         public void OEsqueletoDeChamada_EhRECONHECIDO(string pensamento)
         {
             ChannelSplitter.ChamadaMalformada(pensamento).Should().BeTrue();

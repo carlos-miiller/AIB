@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using AIB.Services.Ai;
@@ -11,7 +11,7 @@ namespace AIB.Tests
     public class RegexToolCallHealerTests
     {
         private static ChatTool ReadFileTool() => ChatTool.CreateFunctionTool(
-            functionName: "read_file",
+            functionName: "read",
             functionDescription: "Lê um arquivo.",
             functionParameters: BinaryData.FromString(
                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}"));
@@ -34,10 +34,10 @@ namespace AIB.Tests
         {
             var healer = new RegexToolCallHealer();
 
-            healer.TryHeal("Action: read_file(C:\\dados\\nota.txt)", Tools(ReadFileTool()), out var healed)
+            healer.TryHeal("Action: read(C:\\dados\\nota.txt)", Tools(ReadFileTool()), out var healed)
                   .Should().BeTrue();
 
-            healed.ToolName.Should().Be("read_file");
+            healed.ToolName.Should().Be("read");
 
             using var doc = JsonDocument.Parse(healed.ArgumentsJson);
             doc.RootElement.ValueKind.Should().Be(JsonValueKind.Object);
@@ -50,7 +50,7 @@ namespace AIB.Tests
             var healer = new RegexToolCallHealer();
 
             // Se os argumentos fossem montados por interpolação de string, isto geraria JSON inválido.
-            healer.TryHeal("Action: read_file(\"C:\\a\"b\".txt)", Tools(ReadFileTool()), out var healed)
+            healer.TryHeal("Action: read(\"C:\\a\"b\".txt)", Tools(ReadFileTool()), out var healed)
                   .Should().BeTrue();
 
             Action parse = () => JsonDocument.Parse(healed.ArgumentsJson).Dispose();
@@ -75,7 +75,7 @@ namespace AIB.Tests
         {
             var healer = new RegexToolCallHealer();
 
-            healer.TryHeal("Action: read_file({\"path\": \"a.txt\", \"inventado\": 1})", Tools(ReadFileTool()), out var healed)
+            healer.TryHeal("Action: read({\"path\": \"a.txt\", \"inventado\": 1})", Tools(ReadFileTool()), out var healed)
                   .Should().BeTrue();
 
             using var doc = JsonDocument.Parse(healed.ArgumentsJson);
@@ -88,7 +88,7 @@ namespace AIB.Tests
         {
             var healer = new RegexToolCallHealer();
 
-            healer.TryHeal("Action: read_file()", Tools(ReadFileTool()), out _).Should().BeFalse();
+            healer.TryHeal("Action: read()", Tools(ReadFileTool()), out _).Should().BeFalse();
         }
 
         [Fact]
@@ -105,7 +105,7 @@ namespace AIB.Tests
         {
             var healer = new RegexToolCallHealer();
 
-            healer.TryHeal("Action: run_command(format c:)", Tools(ReadFileTool()), out _).Should().BeFalse();
+            healer.TryHeal("Action: shell(format c:)", Tools(ReadFileTool()), out _).Should().BeFalse();
         }
 
         [Fact]

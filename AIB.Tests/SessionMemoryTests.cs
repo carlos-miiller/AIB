@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -39,7 +39,7 @@ namespace AIB.Tests
             {
                 ChatMessage.CreateSystemMessage("alma"),
                 ChatMessage.CreateUserMessage("primeira"),
-                ToolCall("c1", "read_file", """{"path":"C:\\a.txt"}"""),
+                ToolCall("c1", "read", """{"path":"C:\\a.txt"}"""),
                 ChatMessage.CreateToolMessage("c1", "conteúdo"),
                 ChatMessage.CreateAssistantMessage("li o arquivo"),
                 ChatMessage.CreateUserMessage("segunda"),
@@ -73,7 +73,7 @@ namespace AIB.Tests
             var turnos = TurnSplitter.Split(new List<ChatMessage>
             {
                 ChatMessage.CreateUserMessage("apague"),
-                ToolCall("c1", "run_command", """{"command":"del x"}""")
+                ToolCall("c1", "shell", """{"command":"del x"}""")
             });
 
             TurnSplitter.IsClosed(turnos[0]).Should().BeFalse();
@@ -114,7 +114,7 @@ namespace AIB.Tests
             var turnos = TurnSplitter.Split(new List<ChatMessage>
             {
                 ChatMessage.CreateUserMessage("crie o arquivo"),
-                ToolCall("c1", "write_file", """{"path":"C:\\temp\\ola.txt","content":"oi"}"""),
+                ToolCall("c1", "write", """{"path":"C:\\temp\\ola.txt","content":"oi"}"""),
                 ChatMessage.CreateToolMessage("c1", "SUCESSO: Arquivo salvo."),
                 ChatMessage.CreateAssistantMessage("Feito."),
                 ChatMessage.CreateUserMessage("obrigado"),
@@ -128,7 +128,7 @@ namespace AIB.Tests
             var lidos = memoria.ReadTurns();
             lidos.Should().HaveCount(2);
             lidos[0].Messages.Select(m => m.Role).Should().Equal("user", "assistant", "tool", "assistant");
-            lidos[0].Messages[1].ToolCalls.Should().ContainSingle().Which.Name.Should().Be("write_file");
+            lidos[0].Messages[1].ToolCalls.Should().ContainSingle().Which.Name.Should().Be("write");
             lidos[0].Messages[2].ToolCallId.Should().Be("c1");
             lidos[0].Artifacts.Should().ContainSingle()
                 .Which.Value.Should().Be(@"C:\temp\ola.txt");

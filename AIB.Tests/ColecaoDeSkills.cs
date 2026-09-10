@@ -1,4 +1,4 @@
-using Xunit;
+﻿using Xunit;
 
 namespace AIB.Tests
 {
@@ -12,7 +12,7 @@ namespace AIB.Tests
     /// </para>
     /// <para>
     /// As classes que so LEEM as skills reais entram aqui tambem: o registry decide registrar
-    /// a execute_skill pela contagem, entao ele precisa nao ver a raiz de outro ensaio.
+    /// a skill pela contagem, entao ele precisa nao ver a raiz de outro ensaio.
     /// </para>
     /// </summary>
     [CollectionDefinition("Skills")]

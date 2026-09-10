@@ -29,7 +29,7 @@ namespace AIB.Services.Tools;
 /// </summary>
 public class ExecuteSkillTool : ITool
 {
-    /// <summary>Teto de tempo. O mesmo do run_command: skill que trava não segura o turno.</summary>
+    /// <summary>Teto de tempo. O mesmo do shell: skill que trava não segura o turno.</summary>
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
     private const int MaxSaida = 8000;
@@ -51,7 +51,7 @@ public class ExecuteSkillTool : ITool
     private readonly System.Collections.Generic.HashSet<string> _manualEnviado =
         new(StringComparer.OrdinalIgnoreCase);
 
-    public string Name => "execute_skill";
+    public string Name => Ferramentas.Habilidade;
 
     public string Description =>
         "Executa uma habilidade instalada pelo nome. Use quando a tarefa corresponder a uma das "
@@ -233,7 +233,7 @@ public class ExecuteSkillTool : ITool
 
             try { processo.StandardInput.Close(); } catch { }
 
-            // Os dois canos lidos em PARALELO, pelo mesmo motivo do run_command: ler um até o
+            // Os dois canos lidos em PARALELO, pelo mesmo motivo do shell: ler um até o
             // fim antes do outro trava assim que o filho enche o buffer de 4KB do que sobrou.
             var saida = processo.StandardOutput.ReadToEndAsync();
             var erro = processo.StandardError.ReadToEndAsync();

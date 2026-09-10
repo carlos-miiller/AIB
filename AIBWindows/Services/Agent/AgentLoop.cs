@@ -407,7 +407,7 @@ public sealed class AgentLoop
     /// <summary>Mantém a lista de arquivos recentes acessados pelo agente.</summary>
     private static void TrackRecentFile(ToolCallAccumulator tc)
     {
-        if (tc.Name != "read_file" && tc.Name != "view_file" && tc.Name != "write_to_file"
+        if (tc.Name != Ferramentas.Ler && tc.Name != "view_file" && tc.Name != "write_to_file"
             && tc.Name != "replace_file_content" && tc.Name != "multi_replace_file_content")
             return;
 

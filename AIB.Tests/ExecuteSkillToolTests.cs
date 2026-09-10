@@ -13,7 +13,7 @@ namespace AIB.Tests
     /// A ferramenta que roda uma habilidade.
     /// <para>
     /// Executa código na máquina do usuário, então passa pelo mesmo portão do
-    /// <c>run_command</c>. O que o card mostra é o caminho literal do script: autorizar uma
+    /// <c>shell</c>. O que o card mostra é o caminho literal do script: autorizar uma
     /// skill é autorizar aquele arquivo, e o usuário tem de poder abri-lo antes de dizer sim.
     /// </para>
     /// </summary>
@@ -68,7 +68,7 @@ namespace AIB.Tests
 
             ctx.Should().NotBeNull();
             ctx!.Command.Should().Contain("s.ps1").And.Contain("-Path a.xlsx");
-            ctx.Tool.Should().Be("execute_skill");
+            ctx.Tool.Should().Be("skill");
         }
 
         [Fact]

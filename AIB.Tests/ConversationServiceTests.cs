@@ -1003,7 +1003,7 @@ namespace AIB.Tests
             conversation.AppendAssistantText("");
             conversation.AppendAssistantToolCalls(new[]
             {
-                ChatToolCall.CreateFunctionToolCall("id-x", "read_file", BinaryData.FromString("{}"))
+                ChatToolCall.CreateFunctionToolCall("id-x", "read", BinaryData.FromString("{}"))
             });
 
             await foreach (var _ in conversation.StreamResponseAsync("segunda pergunta")) { }

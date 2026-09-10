@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Windows.Media;
 using AIB.Services.Memory;
 
+using AIB.Services;
+
 namespace AIB.Ui;
 
 /// <summary>
@@ -47,10 +49,10 @@ public static class ToolIcons
     /// </summary>
     public static Geometry De(string? ferramenta) => Obter(ferramenta switch
     {
-        "write_file" => Gravar,
-        "read_file" => Ler,
-        "run_command" => Terminal,
-        "execute_skill" => Terminal,
+        Ferramentas.Gravar => Gravar,
+        Ferramentas.Ler => Ler,
+        Ferramentas.Shell => Terminal,
+        Ferramentas.Habilidade => Terminal,
         _ => Generico
     });
 

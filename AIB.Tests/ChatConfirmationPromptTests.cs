@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using AIB.Services;
 using FluentAssertions;
@@ -20,7 +20,7 @@ namespace AIB.Tests
         private static CommandConfirmationContext Contexto() => new()
         {
             Command = "Remove-Item -Recurse C:\\temp",
-            Tool = "run_command",
+            Tool = "shell",
             Level = 5,
             Cwd = "C:\\"
         };

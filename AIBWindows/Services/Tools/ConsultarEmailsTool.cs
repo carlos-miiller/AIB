@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -51,7 +51,7 @@ public sealed class ConsultarEmailsTool : ITool
         _agora = agora ?? (() => DateTime.Now);
     }
 
-    public string Name => "consultar_emails";
+    public string Name => Ferramentas.Email;
 
     public string Description =>
         "Consulta o que a triagem automática de e-mail já leu e classificou. Use para perguntas " +
@@ -113,7 +113,7 @@ public sealed class ConsultarEmailsTool : ITool
 
         var passadas = _diario.LerPeriodo(de, ate);
 
-        Console.WriteLine($"[TOOL: consultar_emails] {rotulo}, urgência={urgencia}, " +
+        Console.WriteLine($"[TOOL: mail] {rotulo}, urgência={urgencia}, " +
                           $"{passadas.Count} passada(s) no registro.");
 
         return Task.FromResult(Responder(passadas, rotulo, urgencia, remetente, assunto));

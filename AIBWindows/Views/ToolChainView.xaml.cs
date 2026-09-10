@@ -77,13 +77,16 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
             NomeFerramenta.Text = $"{_emCurso.Count} ferramentas";
             ArgumentoResumido.Text = "em paralelo";
             ChipEmCurso.ToolTip = MontarTooltipSimples(
-                string.Join(", ", _emCurso.Values), null);
+                string.Join(", ", _emCurso.Values.Select(AIB.Services.Ferramentas.Rotulo)), null);
         }
         else
         {
-            NomeFerramenta.Text = ferramenta;
+            // O ROTULO, nao o nome da funcao. "read" e endereco; "Lendo arquivo" e noticia,
+            // e e o que a pessoa olhando a tela quer saber.
+            NomeFerramenta.Text = AIB.Services.Ferramentas.Rotulo(ferramenta);
             ArgumentoResumido.Text = argumento ?? "";
-            ChipEmCurso.ToolTip = MontarTooltipSimples(ferramenta, argumento);
+            ChipEmCurso.ToolTip = MontarTooltipSimples(
+                AIB.Services.Ferramentas.Rotulo(ferramenta), argumento);
         }
 
         ChipEmCurso.Visibility = Visibility.Visible;
@@ -300,7 +303,7 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
     }
 
     /// <summary>
-    /// Tooltip simples de uma linha (§4.6 i): "write_file • C:\caminho\arquivo.txt".
+    /// Tooltip simples de uma linha (§4.6 i): "write • C:\caminho\arquivo.txt".
     /// </summary>
     private static object MontarTooltipSimples(string ferramenta, string? literal)
     {

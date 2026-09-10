@@ -376,7 +376,7 @@ namespace AIB.Tests
             contexto.Should().Contain("31 lida(s)");
             contexto.Should().Contain("2 triada(s)");
             contexto.Should().Contain("1 de urgência máxima");
-            contexto.Should().Contain("consultar_emails");
+            contexto.Should().Contain("mail");
 
             contexto.Should().NotContain("Contrato");
             contexto.Should().NotContain("João");

@@ -513,7 +513,7 @@ public partial class ChatWindow : Window
         var artefato = acao.Artifact;
 
         // O nome vem do EVENTO. Tira-lo do artefato deixava a linha em branco sempre que a
-        // ferramenta nao tinha extrator proprio — foi o que aconteceu com a execute_skill.
+        // ferramenta nao tinha extrator proprio — foi o que aconteceu com a skill.
         ActionLogService.Add(ActionLogService.Construir(
             acao.Tool,
             artefato,

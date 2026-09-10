@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -157,13 +157,13 @@ namespace AIB.Tests
             var papel = new Papel();
             using var pulso = Novo(papel);
 
-            pulso.FerramentaComecou("read_file");
+            pulso.FerramentaComecou("read");
             pulso.BaterAgora();
-            pulso.FerramentaTerminou("read_file", falhou: false);
+            pulso.FerramentaTerminou("read", falhou: false);
 
-            papel.Tudo.Should().Contain("ferramenta read_file — executando");
-            papel.Tudo.Should().Contain("ferramenta read_file há");
-            papel.Tudo.Should().Contain("ferramenta read_file — ok em");
+            papel.Tudo.Should().Contain("ferramenta read — executando");
+            papel.Tudo.Should().Contain("ferramenta read há");
+            papel.Tudo.Should().Contain("ferramenta read — ok em");
         }
 
         [Fact]
@@ -172,8 +172,8 @@ namespace AIB.Tests
             var papel = new Papel();
             using var pulso = Novo(papel);
 
-            pulso.FerramentaComecou("run_command");
-            pulso.FerramentaTerminou("run_command", falhou: true);
+            pulso.FerramentaComecou("shell");
+            pulso.FerramentaTerminou("shell", falhou: true);
 
             papel.Tudo.Should().Contain("FALHOU");
         }
@@ -187,8 +187,8 @@ namespace AIB.Tests
             using var pulso = Novo(papel);
 
             pulso.Escreveu(50);
-            pulso.FerramentaComecou("read_file");
-            pulso.FerramentaTerminou("read_file", falhou: false);
+            pulso.FerramentaComecou("read");
+            pulso.FerramentaTerminou("read", falhou: false);
             pulso.BaterAgora();
 
             papel.Tudo.Should().Contain("aguardando o primeiro token");

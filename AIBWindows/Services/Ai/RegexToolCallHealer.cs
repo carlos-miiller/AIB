@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Encodings.Web;
@@ -10,7 +10,7 @@ namespace AIB.Services.Ai;
 
 /// <summary>
 /// Implementação do healer por regex. Cura a alucinação de modelos pequenos que escrevem
-/// a chamada de ferramenta como prosa ("Action: read_file(caminho.txt)") em vez de usar
+/// a chamada de ferramenta como prosa ("Action: read(caminho.txt)") em vez de usar
 /// function calling. Recurso INTENCIONAL (doc 03 §3.1).
 ///
 /// Três garantias que o fallback antigo não dava:

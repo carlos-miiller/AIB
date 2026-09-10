@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -38,7 +38,7 @@ namespace AIB.Tests
                 // Nove ações para a trilha passar dos 142px e a barra aparecer.
                 for (int i = 0; i < 9; i++)
                 {
-                    cadeia.Iniciar("id" + i, "read_file", "arquivo" + i + ".cs");
+                    cadeia.Iniciar("id" + i, "read", "arquivo" + i + ".cs");
                     cadeia.Concluir("id" + i, false, false, null, null);
                 }
 

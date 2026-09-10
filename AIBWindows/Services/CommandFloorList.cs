@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 namespace AIB.Services;
 
 /// <summary>
-/// Floor list de comandos destrutivos para <c>run_command</c>. Roda APÓS o
+/// Floor list de comandos destrutivos para <c>shell</c>. Roda APÓS o
 /// modal (D-04) e refuta apenas quando <c>userLevel &lt; 7</c> e
 /// <c>ConfirmDangerousCommands == ON</c>. Em L&gt;=7 ou com a flag OFF,
 /// o modal é a autoridade única (D-01, herda Phase 1 D5/D8).

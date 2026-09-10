@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 using AIB.Services;
 using FluentAssertions;
@@ -53,7 +53,7 @@ namespace AIB.Tests
             // que rodava PowerShell arbitrário sem perguntar nada.
             var registry = new ToolRegistry(confirmationPrompt: null);
 
-            string r = await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo oi"), userLevel: 9);
+            string r = await registry.ExecuteToolAsync("shell", ComandoInofensivo("echo oi"), userLevel: 9);
 
             r.Should().StartWith("ACESSO NEGADO");
             r.Should().Contain("não há interface disponível");
@@ -65,7 +65,7 @@ namespace AIB.Tests
             var prompt = new PromptFalso(permitir: false);
             var registry = new ToolRegistry(prompt);
 
-            string r = await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo oi"), userLevel: 9);
+            string r = await registry.ExecuteToolAsync("shell", ComandoInofensivo("echo oi"), userLevel: 9);
 
             prompt.Perguntas.Should().HaveCount(1, "o modal tem de ser consultado");
             r.Should().Be("Ação Rejeitada pelo Usuário.",
@@ -78,10 +78,10 @@ namespace AIB.Tests
             var prompt = new PromptFalso(permitir: false);
             var registry = new ToolRegistry(prompt);
 
-            await registry.ExecuteToolAsync("run_command", ComandoInofensivo("Get-Process"), userLevel: 9);
+            await registry.ExecuteToolAsync("shell", ComandoInofensivo("Get-Process"), userLevel: 9);
 
             prompt.Perguntas[0].Command.Should().Be("Get-Process");
-            prompt.Perguntas[0].Tool.Should().Be("run_command");
+            prompt.Perguntas[0].Tool.Should().Be("shell");
             prompt.Perguntas[0].Level.Should().Be(9);
         }
 
@@ -94,7 +94,7 @@ namespace AIB.Tests
             var registry = new ToolRegistry(prompt);
 
             await registry.ExecuteToolAsync(
-                "write_file", "{\"path\":\"arquivo.txt\",\"content\":\"oi\"}", userLevel: 9);
+                "write", "{\"path\":\"arquivo.txt\",\"content\":\"oi\"}", userLevel: 9);
 
             prompt.Perguntas.Should().HaveCount(1);
             prompt.Perguntas[0].Command.Should().MatchRegex(@"^(CRIAR|SOBRESCREVER) [A-Za-z]:\\",
@@ -107,8 +107,8 @@ namespace AIB.Tests
             var prompt = new PromptFalso(permitir: true, sempre: true);
             var registry = new ToolRegistry(prompt);
 
-            await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo um"), userLevel: 9);
-            await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo um"), userLevel: 9);
+            await registry.ExecuteToolAsync("shell", ComandoInofensivo("echo um"), userLevel: 9);
+            await registry.ExecuteToolAsync("shell", ComandoInofensivo("echo um"), userLevel: 9);
 
             prompt.Perguntas.Should().HaveCount(1, "o segundo uso do MESMO comando vem da allowlist de sessão");
         }
@@ -119,8 +119,8 @@ namespace AIB.Tests
             var prompt = new PromptFalso(permitir: true, sempre: true);
             var registry = new ToolRegistry(prompt);
 
-            await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo um"), userLevel: 9);
-            await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo dois"), userLevel: 9);
+            await registry.ExecuteToolAsync("shell", ComandoInofensivo("echo um"), userLevel: 9);
+            await registry.ExecuteToolAsync("shell", ComandoInofensivo("echo dois"), userLevel: 9);
 
             prompt.Perguntas.Should().HaveCount(2, "a allowlist casa byte a byte, não por prefixo nem por ferramenta");
         }
@@ -128,13 +128,13 @@ namespace AIB.Tests
         [Fact]
         public async Task LeituraDeArquivo_NaoPassaPeloPortao()
         {
-            // read_file não altera a máquina: exigir confirmação a cada leitura treinaria o
+            // read não altera a máquina: exigir confirmação a cada leitura treinaria o
             // usuário a clicar "permitir" sem ler, esvaziando o portão onde ele importa.
             var prompt = new PromptFalso(permitir: false);
             var registry = new ToolRegistry(prompt);
 
             await registry.ExecuteToolAsync(
-                "read_file", "{\"path\":\"C:\\\\naoexiste\\\\arquivo.txt\"}", userLevel: 9);
+                "read", "{\"path\":\"C:\\\\naoexiste\\\\arquivo.txt\"}", userLevel: 9);
 
             prompt.Perguntas.Should().BeEmpty();
         }
@@ -145,7 +145,7 @@ namespace AIB.Tests
             var prompt = new PromptFalso(permitir: true);
             var registry = new ToolRegistry(prompt);
 
-            string r = await registry.ExecuteToolAsync("run_command", "{isso nao e json", userLevel: 9);
+            string r = await registry.ExecuteToolAsync("shell", "{isso nao e json", userLevel: 9);
 
             prompt.Perguntas.Should().BeEmpty("não dá para autorizar o que não se consegue descrever");
             r.Should().StartWith("ACESSO NEGADO");
@@ -157,7 +157,7 @@ namespace AIB.Tests
             var prompt = new PromptFalso(permitir: true);
             var registry = new ToolRegistry(prompt);
 
-            string r = await registry.ExecuteToolAsync("run_command", ComandoInofensivo("echo oi"), userLevel: 1);
+            string r = await registry.ExecuteToolAsync("shell", ComandoInofensivo("echo oi"), userLevel: 1);
 
             r.Should().StartWith("ACESSO NEGADO");
             prompt.Perguntas.Should().BeEmpty("a trava de nível vem antes de incomodar o usuário");
@@ -172,7 +172,7 @@ namespace AIB.Tests
             var registry = new ToolRegistry(prompt);
 
             string r = await registry.ExecuteToolAsync(
-                "run_command", ComandoInofensivo("Remove-Item -Recurse C:\\\\dados"), userLevel: 6);
+                "shell", ComandoInofensivo("Remove-Item -Recurse C:\\\\dados"), userLevel: 6);
 
             prompt.Perguntas.Should().HaveCount(1, "o modal ainda é consultado primeiro");
             r.Should().StartWith("ACESSO NEGADO (FLOOR)");
@@ -185,7 +185,7 @@ namespace AIB.Tests
             var registry = new ToolRegistry(prompt);
 
             string r = await registry.ExecuteToolAsync(
-                "run_command", ComandoInofensivo("Remove-Item -Recurse C:\\\\dados"), userLevel: 7);
+                "shell", ComandoInofensivo("Remove-Item -Recurse C:\\\\dados"), userLevel: 7);
 
             // Recusado pelo usuário, não pelo floor: em L>=7 o modal é a autoridade única.
             r.Should().Be("Ação Rejeitada pelo Usuário.");

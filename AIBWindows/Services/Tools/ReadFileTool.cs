@@ -1,15 +1,52 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using OpenAI.Chat;
 
 namespace AIB.Services.Tools;
 
+/// <summary>
+/// Lê um arquivo — por faixa, com número de linha — ou lista uma pasta.
+/// <para>
+/// Três coisas mudaram, e as três saíram de uma sessão real.
+/// </para>
+/// <para>
+/// FAIXA. Antes vinha o arquivo inteiro até 12.000 caracteres. Numa máquina onde o prefill é o
+/// custo dominante, trazer um HTML de duzentas linhas para ver três campos é pagar duzentas
+/// linhas. Com <c>offset</c> e <c>limit</c> o modelo pede o pedaço.
+/// </para>
+/// <para>
+/// NÚMERO DE LINHA. É o que faz a edição por trecho ancorar e o que transforma "erro na linha 26,
+/// caractere 98" em algo acionável. Sem numeração, o modelo conta linhas de cabeça — e erra.
+/// </para>
+/// <para>
+/// PASTA. Antes, apontar para uma pasta respondia "Arquivo não encontrado" — mentira, ela existe.
+/// Foi o primeiro passo em falso de uma cadeia que custou dois turnos: o modelo perguntou pela
+/// pasta, ouviu que não existia, e foi listar pelo shell o que esta ferramenta já tinha na mão.
+/// </para>
+/// </summary>
 public class ReadFileTool : ITool
 {
-    public string Name => "read_file";
-    public string Description => "Lê o conteúdo de um arquivo de texto. Use caminhos absolutos preferencialmente.";
+    /// <summary>Linhas por leitura, quando ninguém pede faixa.</summary>
+    public const int LinhasPadrao = 400;
+
+    /// <summary>Teto de caracteres por linha. Minificado é uma linha de cem mil.</summary>
+    public const int TetoDaLinha = 2000;
+
+    /// <summary>Entradas listadas de uma pasta.</summary>
+    public const int TetoDaPasta = 100;
+
+    public string Name => Ferramentas.Ler;
+
+    public string Description =>
+        "Lê um arquivo de texto, com número de linha, ou lista o conteúdo de uma pasta. "
+        + "Use 'offset' e 'limit' para ler só um pedaço de arquivo grande em vez do todo. "
+        + "Sempre use caminhos absolutos.";
+
     public int RequiredLevel => 1;
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
@@ -21,7 +58,15 @@ public class ReadFileTool : ITool
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "O caminho completo e absoluto do arquivo a ser lido."
+                    "description": "O caminho completo e absoluto do arquivo ou da pasta."
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Primeira linha a ler, começando em 1. Padrão: o começo."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Quantas linhas ler. Padrão 400."
                 }
             },
             "required": ["path"]
@@ -31,37 +76,140 @@ public class ReadFileTool : ITool
 
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
+        string path;
+        int offset, limit;
+
         try
         {
             var args = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
+
             if (!args.TryGetProperty("path", out var pathElement))
                 return "ERRO: O parâmetro 'path' é obrigatório.";
 
-            // Mesmo reparo do write_file: caractere de controle é ilegal em caminho do Windows,
-            // então sua presença só pode vir de um escape JSON mal emitido pelo modelo.
-            string path = PathArgumentRepair.Normalize(pathElement.GetString());
-            if (string.IsNullOrWhiteSpace(path))
-                return "ERRO: O caminho do arquivo não pode estar vazio.";
+            // Caractere de controle é ilegal em caminho do Windows, então sua presença só pode
+            // vir de um escape JSON mal emitido pelo modelo.
+            path = PathArgumentRepair.Normalize(pathElement.GetString());
 
-            if (!File.Exists(path))
-                return $"ERRO: Arquivo não encontrado em '{path}'.";
+            offset = Math.Max(1, Numero(args, "offset", 1));
+            limit = Math.Max(1, Numero(args, "limit", LinhasPadrao));
+        }
+        catch (JsonException ex)
+        {
+            return $"ERRO: argumentos ilegíveis ({ex.Message}).";
+        }
 
-            Console.WriteLine($"[TOOL: read_file] Lendo: {path}");
-            
-            // Usar StreamReader para ler de forma assíncrona
-            using var reader = new StreamReader(path);
-            string content = await reader.ReadToEndAsync();
+        if (string.IsNullOrWhiteSpace(path))
+            return "ERRO: O caminho do arquivo não pode estar vazio.";
 
-            if (content.Length > 12000)
+        // A PASTA vem antes do arquivo: apontar para uma pasta é um pedido legítimo, e
+        // respondê-lo com "não encontrado" foi o que mandou o modelo procurar pelo shell.
+        if (Directory.Exists(path))
+        {
+            Console.WriteLine($"[TOOL: {Name}] Listando pasta: {path}");
+            return Listar(path);
+        }
+
+        if (!File.Exists(path))
+            return PreVooDeCaminho.Conferir($"\"{path}\"") ?? $"ERRO: '{path}' não existe.";
+
+        Console.WriteLine($"[TOOL: {Name}] Lendo: {path} (linha {offset}, até {limit})");
+
+        try
+        {
+            var linhas = new List<string>();
+            int numero = 0, lidas = 0;
+            bool sobrou = false;
+
+            using var leitor = new StreamReader(path, detectEncodingFromByteOrderMarks: true);
+
+            while (await leitor.ReadLineAsync() is { } linha)
             {
-                return content.Substring(0, 12000) + "\n...[Arquivo muito grande, conteúdo truncado no final].";
+                numero++;
+                if (numero < offset) continue;
+
+                if (lidas >= limit) { sobrou = true; break; }
+
+                linhas.Add($"{numero,6}\t{Aparar(linha)}");
+                lidas++;
             }
 
-            return content;
+            if (linhas.Count == 0)
+                return numero == 0
+                    ? $"'{path}' está vazio."
+                    : $"'{path}' tem {numero} linha(s); a faixa pedida (a partir da {offset}) "
+                      + "está além do fim.";
+
+            var sb = new StringBuilder();
+            sb.AppendJoin('\n', linhas);
+
+            if (sobrou)
+                sb.Append($"\n\n...[mostrando as linhas {offset} a {offset + lidas - 1}. "
+                          + $"Continue com offset={offset + lidas}.]");
+
+            return sb.ToString();
         }
         catch (Exception ex)
         {
             return $"ERRO ao ler arquivo: {ex.Message}";
         }
     }
+
+    /// <summary>
+    /// O conteúdo de uma pasta: subpastas primeiro, marcadas com barra, depois os arquivos com
+    /// o tamanho. Pública para os ensaios — é a resposta que substitui uma mentira.
+    /// </summary>
+    public static string Listar(string pasta)
+    {
+        try
+        {
+            var subpastas = Directory.GetDirectories(pasta)
+                .Select(d => Path.GetFileName(d) + "\\")
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var arquivos = Directory.GetFiles(pasta)
+                .Select(a => new FileInfo(a))
+                .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(f => $"{f.Name}  ({Tamanho(f.Length)})")
+                .ToList();
+
+            if (subpastas.Count == 0 && arquivos.Count == 0)
+                return $"'{pasta}' é uma pasta, e está vazia.";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"'{pasta}' é uma PASTA, com {subpastas.Count} subpasta(s) e "
+                          + $"{arquivos.Count} arquivo(s):");
+
+            foreach (string nome in subpastas.Concat(arquivos).Take(TetoDaPasta))
+                sb.AppendLine("  " + nome);
+
+            int total = subpastas.Count + arquivos.Count;
+            if (total > TetoDaPasta)
+                sb.AppendLine($"  (+{total - TetoDaPasta} não listado(s))");
+
+            return sb.ToString().TrimEnd();
+        }
+        catch (Exception ex)
+        {
+            return $"ERRO ao listar '{pasta}': {ex.Message}";
+        }
+    }
+
+    private static int Numero(JsonElement args, string nome, int padrao) =>
+        args.TryGetProperty(nome, out var campo)
+        && campo.ValueKind == JsonValueKind.Number
+        && campo.TryGetInt32(out int valor)
+            ? valor
+            : padrao;
+
+    /// <summary>Corta linha absurdamente longa. Um arquivo minificado é uma linha só.</summary>
+    private static string Aparar(string linha) =>
+        linha.Length <= TetoDaLinha ? linha : linha.Substring(0, TetoDaLinha) + "…[linha cortada]";
+
+    private static string Tamanho(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes / (1024.0 * 1024):0.#} MB"
+    };
 }

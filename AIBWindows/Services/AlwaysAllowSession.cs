@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace AIB.Services;
 
@@ -14,9 +14,9 @@ namespace AIB.Services;
 /// <c>(string Tool, string Cmd, string? ContentHash)</c> — a igualdade estrutural
 /// embutida em <c>ValueTuple&lt;string,string,string?&gt;</c> faz match exato
 /// byte-a-byte em cada elemento (ordinal). <c>Tool</c> é o nome da ferramenta
-/// (<c>run_command</c> / <c>execute_skill</c> / <c>materialize_skill</c>);
+/// (<c>shell</c> / <c>skill</c> / <c>materialize_skill</c>);
 /// <c>Cmd</c> é o texto exato exibido no modal; <c>ContentHash</c> é null para
-/// <c>run_command</c> e o hex SHA256 do corpo do script para as skill tools.
+/// <c>shell</c> e o hex SHA256 do corpo do script para as skill tools.
 ///
 /// Mudança de body em disco → tupla nova → modal re-dispara: o cache de
 /// "Sempre permitir" é invalidado automaticamente quando o conteúdo da skill

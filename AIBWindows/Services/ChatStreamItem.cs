@@ -52,7 +52,7 @@ public abstract record ChatStreamItem
     /// <param name="Id">Mesmo id do <see cref="ToolStarted"/> correspondente.</param>
     /// <param name="Tool">
     /// Nome da ferramenta. Vem junto porque nem toda ferramenta produz artefato, e o registro
-    /// de acoes tirava o nome DALI: uma execute_skill bem-sucedida chegava com artefato nulo e
+    /// de acoes tirava o nome DALI: uma skill bem-sucedida chegava com artefato nulo e
     /// virava uma linha em branco na aba de logs.
     /// </param>
     /// <param name="Failed">Se falhou ou foi recusada pelo usuário.</param>

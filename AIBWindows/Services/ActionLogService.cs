@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using AIB.Services.Memory;
 
@@ -30,7 +30,7 @@ public sealed class ActionLogEntry
     /// <summary>O literal inteiro, sem abreviação. É o que o tooltip mostra.</summary>
     public required string FullTarget { get; init; }
 
-    /// <summary>Linha de comando, quando a ferramenta foi <c>run_command</c>.</summary>
+    /// <summary>Linha de comando, quando a ferramenta foi <c>shell</c>.</summary>
     public string? Command { get; init; }
 
     /// <summary>Saída do console como saiu, para o tooltip em bloco.</summary>

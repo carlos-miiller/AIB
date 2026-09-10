@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -47,7 +47,45 @@ namespace AIB.Tests
 
             string result = await new ReadFileTool().ExecuteAsync(Args(("path", file)));
 
-            result.Should().Be("conteúdo esperado");
+            // O conteudo vem com NUMERO DE LINHA. E o que faz a edicao por trecho ancorar e o
+            // que transforma "erro na linha 26" em algo que se possa achar; sem isso o modelo
+            // conta linhas de cabeca e erra.
+            result.Should().Contain("conteúdo esperado");
+            result.Should().MatchRegex(@"^\s*1\t");
+        }
+
+        [Fact]
+        public async Task ReadFile_LeSO_AFaixaPedida()
+        {
+            // Antes vinha o arquivo inteiro. Numa maquina onde o prefill e o custo dominante,
+            // trazer duzentas linhas para ver tres campos e pagar duzentas linhas.
+            string file = Path_("longo.txt");
+            await File.WriteAllLinesAsync(file, Enumerable.Range(1, 50).Select(i => $"linha {i}"));
+
+            string result = await new ReadFileTool().ExecuteAsync(
+                JsonSerializer.Serialize(new { path = file, offset = 10, limit = 3 }));
+
+            result.Should().Contain("linha 10").And.Contain("linha 12");
+            result.Should().NotContain("linha 9").And.NotContain("linha 13");
+            result.Should().Contain("offset=13", "a resposta diz como continuar");
+        }
+
+        [Fact]
+        public async Task ReadFile_NumaPASTA_ListaAPasta()
+        {
+            // Antes respondia "arquivo nao encontrado" — mentira, a pasta existe. Foi o primeiro
+            // passo em falso de uma cadeia que custou dois turnos: o modelo perguntou pela
+            // pasta, ouviu que nao existia, e foi listar pelo shell o que a ferramenta ja tinha.
+            string sub = Path.Combine(_dir, "dentro");
+            Directory.CreateDirectory(sub);
+            await File.WriteAllTextAsync(Path.Combine(_dir, "users.csv"), "id;nome");
+
+            string result = await new ReadFileTool().ExecuteAsync(Args(("path", _dir)));
+
+            result.Should().Contain("é uma PASTA");
+            result.Should().Contain("users.csv");
+            result.Should().Contain("dentro\\");
+            result.Should().NotContain("ERRO");
         }
 
         [Fact]
@@ -73,7 +111,10 @@ namespace AIB.Tests
             string result = await new ReadFileTool().ExecuteAsync(Args(("path", Path_("nao_existe.txt"))));
 
             result.Should().StartWith("ERRO");
-            result.Should().Contain("não encontrado");
+            result.Should().Contain("não existe");
+
+            // E diz o que EXISTE na pasta, que e o que evita a segunda tentativa as cegas.
+            result.Should().Contain(_dir);
         }
 
         [Fact]
@@ -88,29 +129,31 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public async Task ReadFile_ArquivoGigante_EhTruncadoEmDozeMilCaracteres()
+        public async Task ReadFile_LinhaAbsurdamenteLonga_EhCortada()
         {
+            // Um arquivo minificado e uma linha so, de cem mil caracteres. O teto agora e POR
+            // LINHA, e nao do arquivo: o corte do arquivo virou faixa, que o modelo controla.
             string file = Path_("grande.txt");
             await File.WriteAllTextAsync(file, new string('x', 20000));
 
             string result = await new ReadFileTool().ExecuteAsync(Args(("path", file)));
 
-            result.Should().StartWith(new string('x', 12000));
-            result.Should().Contain("conteúdo truncado");
-            // O corte protege a janela de contexto: o retorno não pode crescer com o arquivo.
-            result.Length.Should().BeLessThan(12200);
+            result.Should().Contain("linha cortada");
+            result.Length.Should().BeLessThan(ReadFileTool.TetoDaLinha + 200);
         }
 
         [Fact]
-        public async Task ReadFile_ArquivoNoLimite_NaoEhTruncado()
+        public async Task ReadFile_MuitasLinhas_ParaNoTetoEDizComoSeguir()
         {
-            string file = Path_("limite.txt");
-            await File.WriteAllTextAsync(file, new string('y', 12000));
+            string file = Path_("muitas.txt");
+            await File.WriteAllLinesAsync(
+                file, Enumerable.Range(1, ReadFileTool.LinhasPadrao + 50).Select(i => $"L{i}"));
 
             string result = await new ReadFileTool().ExecuteAsync(Args(("path", file)));
 
-            result.Should().NotContain("truncado");
-            result.Length.Should().Be(12000);
+            result.Should().Contain($"L{ReadFileTool.LinhasPadrao}");
+            result.Should().NotContain($"L{ReadFileTool.LinhasPadrao + 1}\n");
+            result.Should().Contain($"offset={ReadFileTool.LinhasPadrao + 1}");
         }
 
         [Fact]
@@ -124,7 +167,7 @@ namespace AIB.Tests
             root.GetProperty("properties").TryGetProperty("path", out _).Should().BeTrue();
             root.GetProperty("required").EnumerateArray()
                 .Select(e => e.GetString()).Should().Contain("path");
-            tool.Name.Should().Be("read_file");
+            tool.Name.Should().Be("read");
             tool.RequiredLevel.Should().Be(1);
         }
 

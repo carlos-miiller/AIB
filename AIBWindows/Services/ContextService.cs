@@ -196,7 +196,7 @@ public static class ContextService
     /// Só o caminho, nunca o conteúdo. Embutir o arquivo garantiria que o modelo o visse, mas
     /// uma planilha de 240 KB não cabe na janela e a lista aceita até
     /// <see cref="MaxRecentes"/> itens. Com o caminho literal na mão, ele chama
-    /// <c>read_file</c> quando precisar — e só do que precisar.
+    /// <c>read</c> quando precisar — e só do que precisar.
     /// </para>
     /// <para>
     /// Só os anexados pelo usuário. O que a IA leu ou escreveu já está no histórico da
@@ -215,7 +215,7 @@ public static class ContextService
             texto.AppendLine($"- {arquivo.FilePath}");
 
         texto.Append(
-            "Use read_file com o caminho exato acima quando o usuário se referir a um deles "
+            "Use read com o caminho exato acima quando o usuário se referir a um deles "
             + "pelo nome. Não os leia sem necessidade.");
 
         return texto.ToString();

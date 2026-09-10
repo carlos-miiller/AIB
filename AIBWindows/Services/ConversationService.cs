@@ -1440,7 +1440,7 @@ public sealed class ConversationService : IMessageStore
             var skills = SkillService.ListLocalSkills();
             if (skills.Count > 0)
             {
-                contextualPrompt += "\n\nHabilidades dinâmicas disponíveis (use a ferramenta 'execute_skill' para chamá-las passando 'skill_name'):\n";
+                contextualPrompt += "\n\nHabilidades dinâmicas disponíveis (use a ferramenta 'skill' para chamá-las passando 'skill_name'):\n";
                 // Skill de documentacao entra na lista como qualquer outra: chama-la devolve
                 // o texto de instrucoes em vez de rodar um script, e isso e util — e como uma
                 // skill ensina um procedimento sem automatiza-lo. Pular as de markdown deixava
@@ -1461,7 +1461,7 @@ public sealed class ConversationService : IMessageStore
     /// Só contagens e horários. Nenhum remetente, nenhum assunto, nenhum resumo — o system
     /// prompt entra em TODA requisição e é o texto que a compactação carrega para dentro dos
     /// capítulos; conteúdo de e-mail aqui criaria a raiz permanente que a regra 3 evita. Quem
-    /// tem os detalhes é a ferramenta <c>consultar_emails</c>, chamada só quando perguntam.
+    /// tem os detalhes é a ferramenta <c>mail</c>, chamada só quando perguntam.
     /// </para>
     /// <para>
     /// Pública e estática para os ensaios: é texto que vai ao modelo em toda conversa, e o
@@ -1502,7 +1502,7 @@ public sealed class ConversationService : IMessageStore
         }
 
         sb.Append(" Para detalhes, filtros ou qualquer pergunta sobre e-mail, chame " +
-                  "'consultar_emails' — não responda de memória nem invente números.");
+                  "'mail' — não responda de memória nem invente números.");
 
         return sb.ToString();
     }

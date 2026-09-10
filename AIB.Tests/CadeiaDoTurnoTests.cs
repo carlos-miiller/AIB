@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Text;
 using AIB.Services;
@@ -95,7 +95,7 @@ namespace AIB.Tests
         {
             var mensagem = new AssistantChatMessage(new[]
             {
-                ChatToolCall.CreateFunctionToolCall("id1", "read_file", BinaryData.FromString("{}"))
+                ChatToolCall.CreateFunctionToolCall("id1", "read", BinaryData.FromString("{}"))
             });
 
             mensagem.Content.Add(ChatMessageContentPart.CreateTextPart("Vou abrir o users.xls."));
@@ -110,7 +110,7 @@ namespace AIB.Tests
         {
             var mensagem = new AssistantChatMessage(new[]
             {
-                ChatToolCall.CreateFunctionToolCall("id1", "read_file", BinaryData.FromString("{}"))
+                ChatToolCall.CreateFunctionToolCall("id1", "read", BinaryData.FromString("{}"))
             });
 
             mensagem.Content.Should().BeEmpty("fala vazia não vira parte de conteúdo vazia");

@@ -357,9 +357,9 @@ namespace AIB.Tests
                 for (int i = 0; i < 7; i++)
                 {
                     string id = "t" + i;
-                    cadeia.Iniciar(id, "read_file", $@"C:\Users\Carlo\CPAPS\AIB\arquivo{i}.cs");
+                    cadeia.Iniciar(id, "read", $@"C:\Users\Carlo\CPAPS\AIB\arquivo{i}.cs");
                     cadeia.Concluir(id, falhou: false, recusada: false,
-                        artefato: new Artifact(ArtifactKind.FileRead, "read_file",
+                        artefato: new Artifact(ArtifactKind.FileRead, "read",
                                                $@"C:\Users\Carlo\CPAPS\AIB\arquivo{i}.cs", false),
                         detalhe: null);
                 Drenar(cadeia);
@@ -368,7 +368,7 @@ namespace AIB.Tests
                 cadeia.Concluidas.Should().Be(7);
 
                 // E uma em curso ao lado.
-                cadeia.Iniciar("t7", "run_command", "dotnet test AIB.Tests");
+                cadeia.Iniciar("t7", "shell", "dotnet test AIB.Tests");
                 cadeia.TemAcaoEmCurso.Should().BeTrue();
 
                 DesenharSolto(cadeia, "cadeia-acoes", 640, 70);
@@ -387,28 +387,30 @@ namespace AIB.Tests
                 GarantirRecursos();
 
                 var cadeia = new ToolChainView();
-                cadeia.Iniciar("a", "read_file", @"C:.cs");
-                cadeia.Iniciar("b", "read_file", @"C:.cs");
-                cadeia.Iniciar("c", "read_file", @"C:\c.cs");
+                cadeia.Iniciar("a", "read", @"C:.cs");
+                cadeia.Iniciar("b", "read", @"C:.cs");
+                cadeia.Iniciar("c", "read", @"C:\c.cs");
 
                 var nome = (System.Windows.Controls.TextBlock)cadeia.FindName("NomeFerramenta");
                 nome.Text.Should().Be("3 ferramentas", "as três em curso precisam ser visíveis");
 
                 // Uma termina: a contagem acompanha, e o chip não some com duas ainda rodando.
                 cadeia.Concluir("a", false, false,
-                    new Artifact(ArtifactKind.FileRead, "read_file", @"C:.cs", false), null);
+                    new Artifact(ArtifactKind.FileRead, "read", @"C:.cs", false), null);
                 Drenar(cadeia);
 
                 cadeia.TemAcaoEmCurso.Should().BeTrue("ainda há duas em curso");
                 nome.Text.Should().Be("2 ferramentas");
 
                 cadeia.Concluir("b", false, false,
-                    new Artifact(ArtifactKind.FileRead, "read_file", @"C:.cs", false), null);
+                    new Artifact(ArtifactKind.FileRead, "read", @"C:.cs", false), null);
                 Drenar(cadeia);
-                nome.Text.Should().Be("read_file", "sobrando uma, ela volta a aparecer pelo nome");
+                nome.Text.Should().Be("Lendo arquivo",
+                    "sobrando uma, ela volta a aparecer — e pelo ROTULO, que e o que a "
+                    + "pessoa olhando a tela entende. 'read' e endereco, nao noticia");
 
                 cadeia.Concluir("c", false, false,
-                    new Artifact(ArtifactKind.FileRead, "read_file", @"C:\c.cs", false), null);
+                    new Artifact(ArtifactKind.FileRead, "read", @"C:\c.cs", false), null);
                 Drenar(cadeia);
 
                 cadeia.TemAcaoEmCurso.Should().BeFalse();
@@ -427,9 +429,9 @@ namespace AIB.Tests
 
                 var cadeia = new ToolChainView();
 
-                cadeia.Iniciar("a", "write_file", @"C:\Windows\System32\config\algo.txt");
+                cadeia.Iniciar("a", "write", @"C:\Windows\System32\config\algo.txt");
                 cadeia.Concluir("a", falhou: true, recusada: false,
-                    artefato: new Artifact(ArtifactKind.FileWritten, "write_file",
+                    artefato: new Artifact(ArtifactKind.FileWritten, "write",
                                            @"C:\Windows\System32\config\algo.txt", true, "acesso negado"),
                     detalhe: "ERRO: acesso negado ao caminho.");
                 Drenar(cadeia);
@@ -456,7 +458,7 @@ namespace AIB.Tests
                 GarantirRecursos();
 
                 var cadeia = new ToolChainView();
-                cadeia.Iniciar("x", "run_command", "Remove-Item -Recurse C:\\temp");
+                cadeia.Iniciar("x", "shell", "Remove-Item -Recurse C:\\temp");
                 cadeia.Aguardar();
 
                 var rotulo = (System.Windows.Controls.TextBlock)cadeia.FindName("RotuloEstado");
@@ -476,7 +478,7 @@ namespace AIB.Tests
                 var card = new ConfirmCardView();
                 card.Preencher(new CommandConfirmationContext
                 {
-                    Tool = "run_command",
+                    Tool = "shell",
                     Command = "Remove-Item -Recurse -Force C:\\Users\\Carlo\\CPAPS\\AIB\\bin",
                     Level = 5,
                     Cwd = "C:\\Users\\Carlo\\CPAPS\\AIB"
@@ -500,7 +502,7 @@ namespace AIB.Tests
                 GarantirRecursos();
 
                 var card = new ConfirmCardView();
-                card.Preencher(new CommandConfirmationContext { Tool = "run_command", Command = "x" });
+                card.Preencher(new CommandConfirmationContext { Tool = "shell", Command = "x" });
 
                 card.Resposta.IsCompleted.Should().BeFalse();
                 card.Descartar();
@@ -530,20 +532,20 @@ namespace AIB.Tests
 
                 // Ações: escrita, leitura e uma falha.
                 ActionLogService.Add(ActionLogService.Construir(
-                    "write_file",
-                    new Artifact(ArtifactKind.FileWritten, "write_file",
+                    "write",
+                    new Artifact(ArtifactKind.FileWritten, "write",
                                  @"C:\Users\Carlo\CPAPS\AIB\AIBWindows\Ui\ShrinkWrap.cs", false, "2,1 KB"),
                     falhou: false, detalhe: null, saidaBruta: null));
 
                 ActionLogService.Add(ActionLogService.Construir(
-                    "read_file",
-                    new Artifact(ArtifactKind.FileRead, "read_file",
+                    "read",
+                    new Artifact(ArtifactKind.FileRead, "read",
                                  @"C:\Users\Carlo\CPAPS\AIB\.planning\MEMORIA-HIERARQUICA.md", false),
                     falhou: false, detalhe: null, saidaBruta: null));
 
                 ActionLogService.Add(ActionLogService.Construir(
-                    "run_command",
-                    new Artifact(ArtifactKind.CommandRun, "run_command",
+                    "shell",
+                    new Artifact(ArtifactKind.CommandRun, "shell",
                                  "dotnet test AIB.Tests --filter Categoria=Integracao", true,
                                  "conexão recusada"),
                     falhou: true, detalhe: "ERRO: 127.0.0.1:11434 recusou a conexão.",
@@ -593,7 +595,7 @@ namespace AIB.Tests
 
                 pergunta = chat.PerguntarConfirmacaoAsync(new CommandConfirmationContext
                 {
-                    Tool = "run_command",
+                    Tool = "shell",
                     Command = "dotnet --version",
                     Level = 5
                 });

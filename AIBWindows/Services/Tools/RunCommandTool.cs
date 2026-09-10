@@ -10,7 +10,7 @@ namespace AIB.Services.Tools;
 
 public class RunCommandTool : ITool
 {
-    public string Name => "run_command";
+    public string Name => Ferramentas.Shell;
     public string Description => "Executa um comando no PowerShell do Windows do usuário. Use para investigar o sistema, rodar scripts ou compilar código. Use 'pwd' ou Get-Location se precisar saber o diretório atual.";
     public int RequiredLevel => 2;
 
@@ -149,7 +149,7 @@ public class RunCommandTool : ITool
             if (string.IsNullOrWhiteSpace(command))
                 return "ERRO: O comando não pode estar vazio.";
 
-            Console.WriteLine($"[TOOL: run_command] Executando: {command}");
+            Console.WriteLine($"[TOOL: shell] Executando: {command}");
 
             // -EncodedCommand (Base64 UTF-16LE) elimina o problema de quoting inteiro. O escape
             // anterior era command.Replace("\"", "\\\""), e a barra invertida não é o caractere

@@ -79,11 +79,11 @@ namespace AIB.Tests
             TurnSplitter.Split(new List<ChatMessage>
             {
                 ChatMessage.CreateUserMessage("crie um arquivo de notas"),
-                ToolCall("c1", "write_file", """{"path":"C:\\temp\\notas.txt","content":"conteúdo"}"""),
+                ToolCall("c1", "write", """{"path":"C:\\temp\\notas.txt","content":"conteúdo"}"""),
                 ChatMessage.CreateToolMessage("c1", "SUCESSO: Arquivo salvo."),
                 ChatMessage.CreateAssistantMessage("Criei o arquivo."),
                 ChatMessage.CreateUserMessage("agora apague"),
-                ToolCall("c2", "run_command", """{"command":"del C:\\temp\\notas.txt"}"""),
+                ToolCall("c2", "shell", """{"command":"del C:\\temp\\notas.txt"}"""),
                 ChatMessage.CreateToolMessage("c2", "ERRO: Acesso negado."),
                 ChatMessage.CreateAssistantMessage("Não consegui, acesso negado.")
             });
@@ -173,7 +173,7 @@ namespace AIB.Tests
             var turnos = TurnSplitter.Split(new List<ChatMessage>
             {
                 ChatMessage.CreateUserMessage("leia o arquivo"),
-                ToolCall("c1", "read_file", """{"path":"C:\\grande.txt"}"""),
+                ToolCall("c1", "read", """{"path":"C:\\grande.txt"}"""),
                 ChatMessage.CreateToolMessage("c1", new string('x', 5000)),
                 ChatMessage.CreateAssistantMessage("li")
             });
@@ -183,7 +183,7 @@ namespace AIB.Tests
             // O conteúdo inteiro de um arquivo lido não ajuda a resumir e é justamente o que
             // estouraria o contexto do resumidor.
             material.Length.Should().BeLessThan(1000);
-            material.Should().Contain("AGENTE CHAMOU: read_file");
+            material.Should().Contain("AGENTE CHAMOU: read");
             material.Should().Contain("truncado");
         }
 
@@ -265,8 +265,8 @@ namespace AIB.Tests
         {
             var capitulo = new Chapter(0, "2026-08-21T00:00:00Z", 0, 1, "resumo qualquer", new[]
             {
-                new Artifact(ArtifactKind.FileWritten, "write_file", @"C:\temp\a.txt", false, "12 caracteres"),
-                new Artifact(ArtifactKind.CommandRun, "run_command", "del x", true, "ERRO: negado")
+                new Artifact(ArtifactKind.FileWritten, "write", @"C:\temp\a.txt", false, "12 caracteres"),
+                new Artifact(ArtifactKind.CommandRun, "shell", "del x", true, "ERRO: negado")
             });
 
             string texto = capitulo.Render();
@@ -341,7 +341,7 @@ namespace AIB.Tests
 
             await new Compactor(provider).PromoteAsync(0, new[]
             {
-                Capitulo(0, "resumo", new Artifact(ArtifactKind.FileRead, "read_file", @"C:\segredo.cs", false))
+                Capitulo(0, "resumo", new Artifact(ArtifactKind.FileRead, "read", @"C:\segredo.cs", false))
             }, CancellationToken.None);
 
             string enviado = string.Concat(provider.UltimasMensagens.Select(Texto));
@@ -355,8 +355,8 @@ namespace AIB.Tests
 
             var ato = await compactor.PromoteAsync(0, new[]
             {
-                Capitulo(0, "a", new Artifact(ArtifactKind.FileRead, "read_file", @"C:.cs", false)),
-                Capitulo(1, "b", new Artifact(ArtifactKind.FileWritten, "write_file", @"C:.cs", false))
+                Capitulo(0, "a", new Artifact(ArtifactKind.FileRead, "read", @"C:.cs", false)),
+                Capitulo(1, "b", new Artifact(ArtifactKind.FileWritten, "write", @"C:.cs", false))
             }, CancellationToken.None);
 
             ato.Artifacts.Should().ContainSingle("ler e gravar o mesmo caminho é um artefato só");
@@ -372,7 +372,7 @@ namespace AIB.Tests
 
             var ato = await new Compactor(provider).PromoteAsync(0, new[]
             {
-                Capitulo(0, "a", new Artifact(ArtifactKind.CommandRun, "run_command", "git status", false))
+                Capitulo(0, "a", new Artifact(ArtifactKind.CommandRun, "shell", "git status", false))
             }, CancellationToken.None);
 
             ato.Summary.Should().Contain("indisponível");

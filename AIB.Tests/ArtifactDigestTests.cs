@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using AIB.Services.Memory;
 using FluentAssertions;
@@ -14,13 +14,13 @@ namespace AIB.Tests
     public class ArtifactDigestTests
     {
         private static Artifact Arquivo(string caminho, bool falhou = false) =>
-            new(ArtifactKind.FileRead, "read_file", caminho, falhou);
+            new(ArtifactKind.FileRead, "read", caminho, falhou);
 
         private static Artifact Gravou(string caminho) =>
-            new(ArtifactKind.FileWritten, "write_file", caminho, false);
+            new(ArtifactKind.FileWritten, "write", caminho, false);
 
         private static Artifact Comando(string linha, bool falhou = false) =>
-            new(ArtifactKind.CommandRun, "run_command", linha, falhou);
+            new(ArtifactKind.CommandRun, "shell", linha, falhou);
 
         private static Chapter Capitulo(int indice, params Artifact[] artefatos) =>
             new(indice, "2026-08-24T00:00:00Z", indice * 2, indice * 2 + 1, $"resumo {indice}", artefatos);
@@ -84,8 +84,8 @@ namespace AIB.Tests
         [Fact]
         public void Condense_PrefereORepresentanteComDetalhe()
         {
-            var semDetalhe = new Artifact(ArtifactKind.FileWritten, "write_file", @"C:\a.txt", false);
-            var comDetalhe = new Artifact(ArtifactKind.FileWritten, "write_file", @"C:\a.txt", false, "1,2 KB");
+            var semDetalhe = new Artifact(ArtifactKind.FileWritten, "write", @"C:\a.txt", false);
+            var comDetalhe = new Artifact(ArtifactKind.FileWritten, "write", @"C:\a.txt", false, "1,2 KB");
 
             ArtifactDigest.Condense(new[] { semDetalhe, comDetalhe })[0].Detail.Should().Be("1,2 KB");
         }
@@ -151,7 +151,7 @@ namespace AIB.Tests
             // Recusa é decisão do usuário, e decisão não precisa se repetir para valer.
             var fatos = ArtifactDigest.Distill(new[]
             {
-                Capitulo(0, new Artifact(ArtifactKind.Denied, "run_command", "format C:", false))
+                Capitulo(0, new Artifact(ArtifactKind.Denied, "shell", "format C:", false))
             });
 
             fatos.Should().ContainSingle();

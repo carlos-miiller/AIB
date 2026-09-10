@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -237,7 +237,7 @@ namespace AIB.Tests
         {
             if (Desligado()) return;
 
-            // Arquivo real para o agente ler: read_file é nível 1 e não passa pelo portão,
+            // Arquivo real para o agente ler: read é nível 1 e não passa pelo portão,
             // então a cadeia roda sem modal.
             string alvo = Path.Combine(_dir, "alvo-do-teste.txt");
             await File.WriteAllTextAsync(alvo, "O código secreto do projeto é ABACAXI-42.");

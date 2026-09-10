@@ -259,7 +259,7 @@ namespace AIB.Tests
         public void AtoImprimeArtefatosLiterais()
         {
             var ato = new Act(0, "2026-08-24T00:00:00Z", 0, 3, 0, 7, "arco",
-                new List<Artifact> { new(ArtifactKind.FileWritten, "write_file", @"C:\x\a.cs", false) });
+                new List<Artifact> { new(ArtifactKind.FileWritten, "write", @"C:\x\a.cs", false) });
 
             ato.Render().Should().Contain(@"C:\x\a.cs");
         }
@@ -304,8 +304,8 @@ namespace AIB.Tests
             camada.Add(new Act(0, "2026-08-24T00:00:00Z", 0, 3, 0, 7, Longo(40),
                 new List<Artifact>
                 {
-                    new(ArtifactKind.FileWritten, "write_file", @"C:\Users\Carlo\CPAPS\AIB\alvo.cs", false),
-                    new(ArtifactKind.Denied, "run_command", "Remove-Item raw.jsonl", false)
+                    new(ArtifactKind.FileWritten, "write", @"C:\Users\Carlo\CPAPS\AIB\alvo.cs", false),
+                    new(ArtifactKind.Denied, "shell", "Remove-Item raw.jsonl", false)
                 }));
 
             int inteiro = Counter.CountText(camada.Acts[0].Render());

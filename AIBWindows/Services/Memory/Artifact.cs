@@ -1,15 +1,15 @@
-namespace AIB.Services.Memory;
+﻿namespace AIB.Services.Memory;
 
 /// <summary>Natureza de um artefato literal extraído de um turno.</summary>
 public enum ArtifactKind
 {
-    /// <summary>Arquivo gravado por write_file.</summary>
+    /// <summary>Arquivo gravado por write.</summary>
     FileWritten,
 
-    /// <summary>Arquivo lido por read_file.</summary>
+    /// <summary>Arquivo lido por read.</summary>
     FileRead,
 
-    /// <summary>Comando executado por run_command.</summary>
+    /// <summary>Comando executado por shell.</summary>
     CommandRun,
 
     /// <summary>Chamada barrada no portão de confirmação — o usuário disse não.</summary>
@@ -23,7 +23,7 @@ public enum ArtifactKind
 /// <c>C:\Users\Carlo\CPAPS\AIB\AIBWindows\Services\Ai\OllamaProvider.cs</c> como "um arquivo do
 /// provider" destrói exatamente a informação que tem valor: o literal. Num jogo de RP o
 /// resumo aproximado gera inconsistência de enredo; aqui gera agente agindo sobre caminho
-/// errado, com run_command na mão.
+/// errado, com shell na mão.
 /// </para>
 /// </summary>
 /// <param name="Kind">Natureza do artefato.</param>

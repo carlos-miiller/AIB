@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using AIB.Services;
 using AIB.Services.Memory;
 using AIB.Views;
@@ -10,8 +10,8 @@ namespace AIB.Tests
     /// <summary>
     /// Como uma habilidade executada aparece na trilha de ações e na aba de registro.
     /// <para>
-    /// Duas falhas na mesma tela, com a mesma raiz: a <c>execute_skill</c> não tinha extrator
-    /// de artefato. Na trilha o tooltip mostrava só "execute_skill", sem dizer QUAL habilidade
+    /// Duas falhas na mesma tela, com a mesma raiz: a <c>skill</c> não tinha extrator
+    /// de artefato. Na trilha o tooltip mostrava só "skill", sem dizer QUAL habilidade
     /// rodou; no registro do painel a linha saía inteiramente em branco, porque o nome da
     /// ferramenta era lido do artefato — que não existia.
     /// </para>
@@ -29,7 +29,7 @@ namespace AIB.Tests
         [Fact]
         public void ChamadaDeHabilidade_VirouArtefatoComONomeDela()
         {
-            var artefato = ArtifactExtractor.Construir("execute_skill", ArgsPlanilha, "Ramal\tNome");
+            var artefato = ArtifactExtractor.Construir("skill", ArgsPlanilha, "Ramal\tNome");
 
             artefato.Should().NotBeNull();
             artefato!.Value.Should().Contain("ler-planilha", "o literal tem de dizer QUAL habilidade rodou");
@@ -41,7 +41,7 @@ namespace AIB.Tests
         public void HabilidadeRecusada_ViraArtefatoDeRecusa()
         {
             var artefato = ArtifactExtractor.Construir(
-                "execute_skill", ArgsPlanilha, "Ação Rejeitada pelo Usuário.");
+                "skill", ArgsPlanilha, "Ação Rejeitada pelo Usuário.");
 
             artefato.Should().NotBeNull();
             artefato!.Kind.Should().Be(ArtifactKind.Denied);
@@ -53,7 +53,7 @@ namespace AIB.Tests
         {
             // Sem o nome nada foi executado, e registrar a chamada vazia como fato criaria uma
             // linha que não corresponde a nada que aconteceu.
-            ArtifactExtractor.Construir("execute_skill", "{}", "ERRO: ...").Should().BeNull();
+            ArtifactExtractor.Construir("skill", "{}", "ERRO: ...").Should().BeNull();
         }
 
         [Fact]
@@ -61,7 +61,7 @@ namespace AIB.Tests
         {
             // O chip nasce ANTES do resultado, então ele não tem artefato: o resumo sai direto
             // dos argumentos da chamada.
-            ArtifactExtractor.ResumirArgumento("execute_skill", ArgsPlanilha)
+            ArtifactExtractor.ResumirArgumento("skill", ArgsPlanilha)
                 .Should().Contain("ler-planilha");
         }
 
@@ -83,10 +83,10 @@ namespace AIB.Tests
         [Fact]
         public void HabilidadeNoRegistro_MostraONomeDela()
         {
-            var artefato = ArtifactExtractor.Construir("execute_skill", ArgsPlanilha, "Ramal\tNome");
+            var artefato = ArtifactExtractor.Construir("skill", ArgsPlanilha, "Ramal\tNome");
 
             ChatWindow.RegistrarAcao(new ChatStreamItem.ToolFinished(
-                Id: "1", Tool: "execute_skill", Failed: false, Denied: false,
+                Id: "1", Tool: "skill", Failed: false, Denied: false,
                 Artifact: artefato, Detail: null));
 
             ActionLogService.Entries[0].FullTarget.Should().Contain("ler-planilha");

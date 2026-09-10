@@ -143,7 +143,7 @@ public sealed class PulsoDoTurno : IDisposable
     /// <summary>
     /// Anota que a ferramenta ficou parada esperando o usuário decidir no modal.
     /// <para>
-    /// Existe porque o log dizia "ferramenta run_command — ok em 7299,6s" para um
+    /// Existe porque o log dizia "ferramenta shell — ok em 7299,6s" para um
     /// <c>Get-Content</c> trivial: as duas horas eram do modal aberto, não da execução. Misturar
     /// as duas coisas faz o registro afirmar que a máquina é lenta quando ela estava parada
     /// esperando gente.

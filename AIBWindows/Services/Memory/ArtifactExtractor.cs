@@ -97,16 +97,16 @@ public static class ArtifactExtractor
     /// Resumo curto dos argumentos, para o chip em execução (§4.2d da spec de chat).
     /// <para>
     /// Sai dos mesmos campos que viram artefato: caminho para as ferramentas de arquivo, linha
-    /// de comando para <c>run_command</c>. Ferramenta sem extrator devolve vazio — melhor um
+    /// de comando para <c>shell</c>. Ferramenta sem extrator devolve vazio — melhor um
     /// chip só com o nome do que um JSON cru espremido em 11px.
     /// </para>
     /// </summary>
     public static string ResumirArgumento(string ferramenta, string argumentosJson) =>
         ferramenta switch
         {
-            "write_file" or "read_file" => CaminhoDe(argumentosJson),
-            "run_command" => StringDe(argumentosJson, "command"),
-            "execute_skill" => ChamadaDeSkill(argumentosJson),
+            Ferramentas.Gravar or Ferramentas.Ler => CaminhoDe(argumentosJson),
+            Ferramentas.Shell => StringDe(argumentosJson, "command"),
+            Ferramentas.Habilidade => ChamadaDeSkill(argumentosJson),
             _ => ""
         };
 
@@ -117,7 +117,7 @@ public static class ArtifactExtractor
 
         switch (ferramenta)
         {
-            case "write_file":
+            case Ferramentas.Gravar:
             {
                 string caminho = CaminhoDe(argumentosJson);
                 if (caminho.Length == 0) return null;
@@ -128,7 +128,7 @@ public static class ArtifactExtractor
                     falhou ? PrimeiraLinha(resultado) : detalhe);
             }
 
-            case "read_file":
+            case Ferramentas.Ler:
             {
                 string caminho = CaminhoDe(argumentosJson);
                 if (caminho.Length == 0) return null;
@@ -138,7 +138,7 @@ public static class ArtifactExtractor
                     falhou ? PrimeiraLinha(resultado) : null);
             }
 
-            case "run_command":
+            case Ferramentas.Shell:
             {
                 string comando = StringDe(argumentosJson, "command");
                 if (comando.Length == 0) return null;
@@ -150,10 +150,10 @@ public static class ArtifactExtractor
                     falhou ? PrimeiraLinha(resultado) : null);
             }
 
-            case "execute_skill":
+            case Ferramentas.Habilidade:
             {
                 // O literal aqui e a chamada: nome da habilidade mais os argumentos que ela
-                // recebeu. So o nome da ferramenta nao serve — "execute_skill" repetido na
+                // recebeu. So o nome da ferramenta nao serve — Ferramentas.Habilidade repetido na
                 // trilha nao diz QUAL habilidade rodou, que e a unica coisa que se quer saber
                 // ao olhar para tras.
                 string chamada = ChamadaDeSkill(argumentosJson);

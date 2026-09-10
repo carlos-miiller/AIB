@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using System.Windows;
 using AIB.Services;
@@ -41,16 +41,16 @@ public partial class ConfirmCardView : UserControl
 
         TituloText.Text = ferramenta switch
         {
-            "write_file" => "Gravar neste arquivo?",
-            "run_command" => "Executar este comando?",
+            Ferramentas.Gravar => "Gravar neste arquivo?",
+            Ferramentas.Shell => "Executar este comando?",
             _ => "Autorizar esta ação?"
         };
 
         ConsequenciaText.Text = ferramenta switch
         {
-            "write_file" =>
+            Ferramentas.Gravar =>
                 "O conteúdo atual do arquivo será substituído. Não é possível desfazer pelo AIB.",
-            "run_command" =>
+            Ferramentas.Shell =>
                 "O comando roda no seu PowerShell, com as suas permissões. O AIB não desfaz o "
                 + "que ele fizer.",
             _ => "Esta ação altera o seu sistema e não pode ser desfeita pelo AIB."
@@ -69,7 +69,7 @@ public partial class ConfirmCardView : UserControl
 
         // "Sempre permitir" só faz sentido para comando: ele é casado pelo texto exato do
         // comando na sessão. Para as demais ferramentas seria uma autorização vaga.
-        SempreCheck.Visibility = ferramenta == "run_command" ? Visibility.Visible : Visibility.Collapsed;
+        SempreCheck.Visibility = ferramenta == Ferramentas.Shell ? Visibility.Visible : Visibility.Collapsed;
 
         // O foco nasce em "Recusar". Enter sem ler o card não pode executar nada.
         Loaded += (_, _) => RecusarButton.Focus();

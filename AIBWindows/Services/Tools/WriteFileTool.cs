@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -8,7 +8,7 @@ namespace AIB.Services.Tools;
 
 public class WriteFileTool : ITool
 {
-    public string Name => "write_file";
+    public string Name => Ferramentas.Gravar;
     public string Description => "Cria ou sobrescreve um arquivo com o texto fornecido. Sempre use caminhos absolutos.";
     public int RequiredLevel => 2;
 
@@ -92,7 +92,7 @@ public class WriteFileTool : ITool
             if (string.IsNullOrWhiteSpace(path))
                 return "ERRO: O caminho não pode estar vazio.";
 
-            Console.WriteLine($"[TOOL: write_file] Escrevendo em: {path}");
+            Console.WriteLine($"[TOOL: write] Escrevendo em: {path}");
 
             // Garante que o diretório exista
             string? dir = Path.GetDirectoryName(path);

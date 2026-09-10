@@ -71,7 +71,7 @@ namespace AIB.Tests
             // rastro, três esperas seguidas pareceriam uma só, muito mais longa.
             var loop = BuildLoop(new ScriptedProvider(
                 null,
-                ToolTurn(("k0", "id0", "read_file", "{\"path\":\"a.txt\"}")),
+                ToolTurn(("k0", "id0", "read", "{\"path\":\"a.txt\"}")),
                 TextTurn("li o arquivo")));
 
             var store = new RecordingStore();
@@ -82,7 +82,7 @@ namespace AIB.Tests
             lock (_pulso) tudo = string.Join("\n", _pulso);
 
             tudo.Should().Contain("[TURNO 1]").And.Contain("[TURNO 2]");
-            tudo.Should().Contain("ferramenta read_file — executando");
+            tudo.Should().Contain("ferramenta read — executando");
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -487,7 +487,7 @@ namespace AIB.Tests
         {
             var provider = new ScriptedProvider(
                 null,
-                ToolTurn(("k0", "id0", "read_file", "{\"path\":\"x\"}")),
+                ToolTurn(("k0", "id0", "read", "{\"path\":\"x\"}")),
                 TextTurn("sem permissão então"));
             var store = new RecordingStore();
 
@@ -549,7 +549,7 @@ namespace AIB.Tests
 
             var request = new AgentTurnRequest(
                 store,
-                new[] { FakeChatTool("read_file") },
+                new[] { FakeChatTool("read") },
                 1,
                 ChatRequestOptions.Default,
                 false);
@@ -567,7 +567,7 @@ namespace AIB.Tests
 
             var request = new AgentTurnRequest(
                 store,
-                new[] { FakeChatTool("read_file") },
+                new[] { FakeChatTool("read") },
                 1,
                 ChatRequestOptions.Default,
                 false);
@@ -575,7 +575,7 @@ namespace AIB.Tests
             await DrainAsync(BuildLoop(provider).RunAsync(request, CancellationToken.None));
 
             provider.ToolsSeen.Should().ContainSingle()
-                .Which.Select(t => t.FunctionName).Should().Equal("read_file");
+                .Which.Select(t => t.FunctionName).Should().Equal("read");
         }
 
         [Fact]

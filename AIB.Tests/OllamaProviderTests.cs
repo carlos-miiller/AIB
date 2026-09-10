@@ -19,7 +19,7 @@ namespace AIB.Tests
     public class OllamaProviderTests
     {
         private static ChatTool ReadFileTool() => ChatTool.CreateFunctionTool(
-            functionName: "read_file",
+            functionName: "read",
             functionDescription: "Lê um arquivo.",
             functionParameters: BinaryData.FromString(
                 "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}"));
@@ -71,8 +71,8 @@ namespace AIB.Tests
             // O Ollama reinicia o índice do array tool_calls em 0 a cada linha: indexar por
             // posição de array fundiria as duas chamadas em uma só, corrompida.
             string ndjson =
-                "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"read_file\",\"arguments\":{\"path\":\"a.txt\"}}}]},\"done\":false}\n" +
-                "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"read_file\",\"arguments\":{\"path\":\"b.txt\"}}}]},\"done\":false}\n" +
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"read\",\"arguments\":{\"path\":\"a.txt\"}}}]},\"done\":false}\n" +
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"read\",\"arguments\":{\"path\":\"b.txt\"}}}]},\"done\":false}\n" +
                 "{\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true}\n";
 
             var provider = BuildProvider(FakeOllama(ndjson, _ => { }));
@@ -108,7 +108,7 @@ namespace AIB.Tests
         {
             // O raciocínio privado do modelo não pode virar execução real de ferramenta.
             string ndjson =
-                "{\"message\":{\"role\":\"assistant\",\"content\":\"<think>Action: read_file(a.txt)</think>Ainda não vou ler nada.\"},\"done\":true}\n";
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"<think>Action: read(a.txt)</think>Ainda não vou ler nada.\"},\"done\":true}\n";
 
             var provider = BuildProvider(FakeOllama(ndjson, _ => { }));
             var chunks = await DrainAsync(provider, new[] { ReadFileTool() });
@@ -122,13 +122,13 @@ namespace AIB.Tests
         public async Task StreamAsync_HealsAToolCallWrittenAsProseInTheFinalChannel()
         {
             string ndjson =
-                "{\"message\":{\"role\":\"assistant\",\"content\":\"Action: read_file(a.txt)\"},\"done\":true}\n";
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"Action: read(a.txt)\"},\"done\":true}\n";
 
             var provider = BuildProvider(FakeOllama(ndjson, _ => { }));
             var chunks = await DrainAsync(provider, new[] { ReadFileTool() });
 
             var call = chunks.OfType<StreamChunk.ToolCallDelta>().Should().ContainSingle().Subject;
-            call.FunctionName.Should().Be("read_file");
+            call.FunctionName.Should().Be("read");
             JsonDocument.Parse(call.ArgumentsJsonFragment!).RootElement
                         .GetProperty("path").GetString().Should().Be("a.txt");
 
@@ -227,13 +227,13 @@ namespace AIB.Tests
         {
             // Alguns modelos mandam "arguments" como string em vez de objeto.
             string ndjson =
-                "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}]},\"done\":true}\n";
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"read\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}]},\"done\":true}\n";
 
             var provider = BuildProvider(FakeOllama(ndjson, _ => { }));
             var chunks = await DrainAsync(provider, new[] { ReadFileTool() });
 
             var call = chunks.OfType<StreamChunk.ToolCallDelta>().Should().ContainSingle().Subject;
-            call.FunctionName.Should().Be("read_file");
+            call.FunctionName.Should().Be("read");
             call.ArgumentsJsonFragment.Should().Contain("a.txt");
         }
 
@@ -241,13 +241,13 @@ namespace AIB.Tests
         public async Task StreamAsync_ChamadaSemArgumentos_NaoLanca_ENaoInventaArgumento()
         {
             string ndjson =
-                "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"read_file\"}}]},\"done\":true}\n";
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"read\"}}]},\"done\":true}\n";
 
             var provider = BuildProvider(FakeOllama(ndjson, _ => { }));
             var chunks = await DrainAsync(provider, new[] { ReadFileTool() });
 
             var call = chunks.OfType<StreamChunk.ToolCallDelta>().Should().ContainSingle().Subject;
-            call.FunctionName.Should().Be("read_file");
+            call.FunctionName.Should().Be("read");
             call.ArgumentsJsonFragment.Should().BeNull();
             chunks.Last().Should().BeOfType<StreamChunk.Done>()
                   .Which.Reason.Should().Be(StreamFinishReason.ToolCalls);
@@ -257,7 +257,7 @@ namespace AIB.Tests
         public async Task StreamAsync_ArgumentosVaziosNoObjeto_ViramObjetoVazio()
         {
             string ndjson =
-                "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"read_file\",\"arguments\":{}}}]},\"done\":true}\n";
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"function\":{\"name\":\"read\",\"arguments\":{}}}]},\"done\":true}\n";
 
             var provider = BuildProvider(FakeOllama(ndjson, _ => { }));
             var chunks = await DrainAsync(provider, new[] { ReadFileTool() });
@@ -271,7 +271,7 @@ namespace AIB.Tests
         {
             // Curador só entra quando NENHUMA tool call nativa apareceu no stream.
             string ndjson =
-                "{\"message\":{\"role\":\"assistant\",\"content\":\"Action: read_file(b.txt)\",\"tool_calls\":[{\"function\":{\"name\":\"read_file\",\"arguments\":{\"path\":\"a.txt\"}}}]},\"done\":true}\n";
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"Action: read(b.txt)\",\"tool_calls\":[{\"function\":{\"name\":\"read\",\"arguments\":{\"path\":\"a.txt\"}}}]},\"done\":true}\n";
 
             var provider = BuildProvider(FakeOllama(ndjson, _ => { }));
             var chunks = await DrainAsync(provider, new[] { ReadFileTool() });
@@ -285,7 +285,7 @@ namespace AIB.Tests
         public async Task StreamAsync_SemFerramentasAtivas_NaoCuraProsaComoChamada()
         {
             string ndjson =
-                "{\"message\":{\"role\":\"assistant\",\"content\":\"Action: read_file(a.txt)\"},\"done\":true}\n";
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"Action: read(a.txt)\"},\"done\":true}\n";
 
             var provider = BuildProvider(FakeOllama(ndjson, _ => { }));
             var chunks = await DrainAsync(provider, Array.Empty<ChatTool>());
@@ -357,7 +357,7 @@ namespace AIB.Tests
                 new UserChatMessage("leia o arquivo"),
                 ChatMessage.CreateAssistantMessage(new[]
                 {
-                    ChatToolCall.CreateFunctionToolCall("id0", "read_file", BinaryData.FromString("{\"path\": ")),
+                    ChatToolCall.CreateFunctionToolCall("id0", "read", BinaryData.FromString("{\"path\": ")),
                 }),
                 ChatMessage.CreateToolMessage("id0", "ERRO"),
                 new UserChatMessage("e agora?")
@@ -391,7 +391,7 @@ namespace AIB.Tests
             {
                 ChatMessage.CreateAssistantMessage(new[]
                 {
-                    ChatToolCall.CreateFunctionToolCall("id0", "read_file", BinaryData.FromString(rawArguments)),
+                    ChatToolCall.CreateFunctionToolCall("id0", "read", BinaryData.FromString(rawArguments)),
                 }),
                 ChatMessage.CreateToolMessage("id0", "ok")
             };

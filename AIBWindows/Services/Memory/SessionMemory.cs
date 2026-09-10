@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -15,7 +15,7 @@ namespace AIB.Services.Memory;
 /// Persistência da memória de uma sessão em <c>~/.AIB/memory/sessions/{id}/</c>.
 /// <para>
 /// <c>raw.jsonl</c> NUNCA é apagado. Resumo é perda irreversível, e resumo ruim aqui não gera
-/// inconsistência de enredo — gera agente agindo sobre informação errada com run_command na
+/// inconsistência de enredo — gera agente agindo sobre informação errada com shell na
 /// mão. O cru fora do contexto é a rede de segurança: sai do prompt, não sai do disco.
 /// </para>
 /// </summary>

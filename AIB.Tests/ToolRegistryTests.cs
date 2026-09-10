@@ -20,20 +20,20 @@ namespace AIB.Tests
         {
             var registry = new ToolRegistry();
 
-            // read_file exige nível 1; nível 0 tem que bater na trava antes de qualquer IO.
+            // read exige nível 1; nível 0 tem que bater na trava antes de qualquer IO.
             string result = await registry.ExecuteToolAsync(
-                "read_file",
+                "read",
                 "{\"path\":\"C:\\Windows\\System32\\config\\SAM\"}",
                 userLevel: 0);
 
             result.Should().StartWith("ACESSO NEGADO");
-            result.Should().Contain("read_file");
+            result.Should().Contain("read");
             result.Should().NotContain("ERRO: Arquivo não encontrado",
                 "a trava de nível precisa vir ANTES de tocar o disco");
         }
 
         [Theory]
-        [InlineData("read_file")]
+        [InlineData("read")]
         public async Task GatingDeNivel_ValeParaTodaFerramentaNativa(string toolName)
         {
             var registry = new ToolRegistry();
@@ -61,9 +61,9 @@ namespace AIB.Tests
             var registry = new ToolRegistry();
 
             // JSON quebrado vindo do modelo não pode derrubar o turno.
-            Func<Task> act = async () => await registry.ExecuteToolAsync("read_file", "{isso nao e json", userLevel: 1);
+            Func<Task> act = async () => await registry.ExecuteToolAsync("read", "{isso nao e json", userLevel: 1);
 
-            var result = await registry.ExecuteToolAsync("read_file", "{isso nao e json", userLevel: 1);
+            var result = await registry.ExecuteToolAsync("read", "{isso nao e json", userLevel: 1);
             await act.Should().NotThrowAsync();
             result.Should().StartWith("ERRO");
         }
@@ -91,7 +91,7 @@ namespace AIB.Tests
         /// Aponta as skills para uma pasta vazia enquanto o bloco durar.
         /// <para>
         /// Sem isto, o registry passa a depender do que o usuario tem instalado em
-        /// ~/.AIB/skills: a execute_skill so e registrada quando ha alguma skill, e o ensaio
+        /// ~/.AIB/skills: a skill so e registrada quando ha alguma skill, e o ensaio
         /// que conta ferramentas mudaria de resultado conforme a maquina.
         /// </para>
         /// </summary>
@@ -115,30 +115,30 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void FerramentasNativasRegistradas_SaoAsTres()
+        public void FerramentasNativasRegistradas_SaoAsSete()
         {
             using var _ = new SemSkills();
             var registry = new ToolRegistry();
 
             var names = registry.GetActiveTools(9).Select(t => t.FunctionName).OrderBy(n => n).ToList();
 
-            // As quatro estão registradas. run_command e write_file só executam depois do
-            // portão de confirmação — ver ToolRegistryTests do gate.
+            // As sete. shell, write e edit só executam depois do portão de confirmação;
+            // read, glob, grep e mail são leitura e passam direto.
             //
-            // consultar_emails entra mesmo com a triagem desligada, ao contrário da
-            // execute_skill: sem ela o modelo não sabe que "tem algo urgente?" tem resposta
-            // possível e responde de memória. Desligada, ela responde exatamente isso.
-            names.Should().Equal("consultar_emails", "read_file", "run_command", "write_file");
+            // mail entra mesmo com a triagem desligada, ao contrário da skill: sem ela o modelo
+            // não sabe que "tem algo urgente?" tem resposta possível e responde de memória.
+            // Desligada, ela responde exatamente isso.
+            names.Should().Equal("edit", "glob", "grep", "mail", "read", "shell", "write");
         }
 
         [Fact]
         public void ComHabilidadeInstalada_AExecuteSkillEntra()
         {
-            // O outro lado do lazy loading: o schema da execute_skill é reenviado ao modelo em
+            // O outro lado do lazy loading: o schema da skill é reenviado ao modelo em
             // toda requisição, então numa instalação sem skills ela não deve existir.
             using var _ = new SemSkills();
 
-            new ToolRegistry().Contains("execute_skill")
+            new ToolRegistry().Contains("skill")
                 .Should().BeFalse("sem skill instalada, a porta de entrada delas não existe");
 
             string pasta = Path.Combine(SkillService.Raiz, "ensaio");
@@ -146,7 +146,7 @@ namespace AIB.Tests
             File.WriteAllText(Path.Combine(pasta, "SKILL.md"),
                 "---\nname: ensaio\ndescription: d\ninterpreter: markdown\n---\ncorpo");
 
-            new ToolRegistry().Contains("execute_skill").Should().BeTrue();
+            new ToolRegistry().Contains("skill").Should().BeTrue();
         }
 
         [Fact]
@@ -157,7 +157,7 @@ namespace AIB.Tests
             using var _ = new SemSkills();
             var registry = new ToolRegistry();
 
-            registry.Contains("execute_skill").Should().BeFalse();
+            registry.Contains("skill").Should().BeFalse();
 
             string pasta = Path.Combine(SkillService.Raiz, "nova");
             Directory.CreateDirectory(pasta);
@@ -166,13 +166,13 @@ namespace AIB.Tests
 
             registry.Refresh();
 
-            registry.Contains("execute_skill").Should().BeTrue();
+            registry.Contains("skill").Should().BeTrue();
         }
 
         [Theory]
-        [InlineData("read_file")]
-        [InlineData("READ_FILE")]
-        [InlineData("Read_File")]
+        [InlineData("read")]
+        [InlineData("READ")]
+        [InlineData("Read")]
         public void Contains_IgnoraCaixa(string toolName)
         {
             new ToolRegistry().Contains(toolName).Should().BeTrue();
@@ -192,7 +192,7 @@ namespace AIB.Tests
 
             var (natives, dynamics) = registry.GetCategorizedTools();
 
-            natives.Should().HaveCount(4);
+            natives.Should().HaveCount(7);
             dynamics.Should().BeEmpty("no lazy loading as skills não entram no registry");
         }
 
