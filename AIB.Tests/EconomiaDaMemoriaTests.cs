@@ -155,10 +155,39 @@ namespace AIB.Tests
             var r = new TokenReport(12_408, 5_102, 16_384,
                 Cru: 9_000, Memoria: 120, MemoriaDosRegistros: 93, Capitulos: 2, Atos: 1);
 
-            r.Economia.Should().Be(7_306);
-            r.EconomiaPct.Should().Be(59);
+            r.Economia.Should().Be(8_880, "o que a COMPACTAÇÃO fez: o cru menos a memória");
+            r.EconomiaPct.Should().Be(72);
             r.Cru.Should().Be(9_000);
             r.Memoria.Should().Be(120);
+        }
+
+        [Fact]
+        public void AEconomia_NaoEh_ADiferencaDosDoisNumerosDaBarra()
+        {
+            // Total - Contexto inclui o que a REABERTURA descartou. Creditar isso à compactação
+            // a faria parecer melhor por trabalho que não fez — a mesma regra que já vale para
+            // a poda de emergência.
+            var r = new TokenReport(4_292, 1_838, 9_216,
+                Cru: 200, Memoria: 128, MemoriaDosRegistros: 101, Descartado: 2_382, Capitulos: 1);
+
+            r.Economia.Should().Be(72, "a compactação resumiu 200 tokens em 128");
+            r.ForaDoContexto.Should().Be(2_454);
+            (r.Economia + r.Descartado).Should().Be(r.ForaDoContexto,
+                "os dois números da barra têm de fechar com as duas causas");
+        }
+
+        [Fact]
+        public void ReabertaSemCapituloNENHUM_AindaMostra_OCustoCru()
+        {
+            // Nada compactado e mesmo assim o total é maior que o contexto: a reabertura sozinha
+            // já tira as ferramentas do prompt. Esconder isso é o que fazia uma conversa de
+            // 9.144 tokens reaparecer como 1.838 sem explicação.
+            var r = new TokenReport(3_000, 900, 9_216, Descartado: 2_100);
+
+            r.Economia.Should().Be(0, "não houve compactação");
+            r.EconomiaPct.Should().BeNull();
+            r.ForaDoContexto.Should().Be(2_100);
+            r.Total.Should().BeGreaterThan(r.Contexto, "a barra precisa continuar mostrando os dois");
         }
 
         [Fact]

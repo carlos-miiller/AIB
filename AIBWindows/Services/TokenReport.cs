@@ -14,8 +14,14 @@ namespace AIB.Services;
 /// </para>
 /// </summary>
 /// <param name="Total">
-/// O que a conversa custaria sem compactação: o contexto de hoje mais os turnos crus que
-/// viraram capítulo, menos os resumos que os substituíram.
+/// O custo CRU da conversa inteira: o contexto de hoje, mais os turnos que viraram capítulo,
+/// mais o que a reabertura descartou, menos os resumos que substituíram os turnos.
+/// <para>
+/// Sobrevive a fechar e reabrir porque cada parcela vem de disco — <c>chapters.jsonl</c> traz
+/// o custo dos turnos resumidos e <c>raw.jsonl</c> traz as mensagens de ferramenta que não
+/// voltam ao contexto. Sem somar a segunda, uma conversa que pesou 9.144 tokens ao vivo
+/// reaparecia como 1.910, contradizendo quem esteve nela.
+/// </para>
 /// </param>
 /// <param name="Contexto">O que realmente vai ao modelo agora — prompt, memória e conversa viva.</param>
 /// <param name="Max">Teto de tokens do nível do usuário.</param>
@@ -64,8 +70,22 @@ public readonly record struct TokenReport(
     int Atos = 0,
     bool MedidaCompleta = true)
 {
-    /// <summary>Tokens que a memória tirou do prompt. Nunca negativo.</summary>
-    public int Economia => Total > Contexto ? Total - Contexto : 0;
+    /// <summary>
+    /// O que a COMPACTAÇÃO poupou: os turnos crus que ela engoliu menos a faixa de memória que
+    /// entrou no lugar deles. Nunca negativo.
+    /// <para>
+    /// Não é <c>Total - Contexto</c>. Essa diferença inclui o que a reabertura descartou, e
+    /// creditá-la à compactação a faria parecer melhor por trabalho que não fez — a mesma regra
+    /// que já vale para a poda de emergência.
+    /// </para>
+    /// </summary>
+    public int Economia => Cru > Memoria ? Cru - Memoria : 0;
+
+    /// <summary>
+    /// O que existiu na conversa e não está no contexto: o poupado mais o descartado. Fecha a
+    /// conta entre os dois números da barra.
+    /// </summary>
+    public int ForaDoContexto => Total > Contexto ? Total - Contexto : 0;
 
     /// <summary>
     /// O que a faixa cobra além do custo próprio dos capítulos: o cabeçalho do bloco.
@@ -82,7 +102,7 @@ public readonly record struct TokenReport(
     /// não economizou nada, quando a verdade é que ele ainda não teve o que fazer.
     /// </summary>
     public int? EconomiaPct =>
-        Total > 0 && Total > Contexto
-            ? Math.Clamp((int)Math.Round((1.0 - (double)Contexto / Total) * 100), 0, 100)
+        Total > 0 && Economia > 0
+            ? Math.Clamp((int)Math.Round((double)Economia / Total * 100), 0, 100)
             : null;
 }

@@ -1637,7 +1637,11 @@ public partial class ChatWindow : Window
             // O teto do nivel no lugar da porcentagem. Os dois numeros da esquerda ja dizem
             // quanto foi poupado — a porcentagem repetia isso em outra forma, e ocupava o
             // espaco do unico dado que faltava: o quanto ainda cabe.
-            string texto = economia.HasValue
+            // A condição é o TOTAL diferir do contexto, e não haver economia. Uma conversa
+            // reaberta sem capítulo nenhum não poupou nada, mas o custo cru dela continua sendo
+            // maior que o contexto — e esconder isso é o que fazia 9.144 tokens virarem 1.838
+            // sem explicação.
+            string texto = relatorio.Total > relatorio.Contexto
                 ? $"{relatorio.Total:N0} > {relatorio.Contexto:N0} tokens | {relatorio.Max:N0}"
                 : $"{relatorio.Contexto:N0} tokens | {relatorio.Max:N0}";
 
@@ -1689,15 +1693,16 @@ public partial class ChatWindow : Window
         texto.Append($"poupado ................. {r.Economia,8:N0}");
 
         if (r.EconomiaPct is int pct) texto.Append($"  ({pct}%)");
-
-        texto.Append('\n').Append('\n');
-        texto.Append($"vai ao modelo agora ..... {r.Contexto,8:N0}").Append('\n');
-        texto.Append($"teto deste nível ........ {r.Max,8:N0}");
+        texto.Append('\n');
 
         if (r.Descartado > 0)
-            texto.Append('\n').Append('\n')
-                 .Append($"descartado ao reabrir ... {r.Descartado,8:N0}").Append('\n')
-                 .Append("(ferramentas: só as falas voltam ao contexto)");
+            texto.Append($"descartado ao reabrir ... {r.Descartado,8:N0}").Append('\n')
+                 .Append("  (ferramentas: só as falas voltam)").Append('\n');
+
+        texto.Append('\n');
+        texto.Append($"custo cru da conversa ... {r.Total,8:N0}").Append('\n');
+        texto.Append($"vai ao modelo agora ..... {r.Contexto,8:N0}").Append('\n');
+        texto.Append($"teto deste nível ........ {r.Max,8:N0}");
 
         if (!r.MedidaCompleta)
             texto.Append('\n').Append('\n')

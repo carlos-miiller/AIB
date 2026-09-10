@@ -1668,23 +1668,29 @@ public sealed class ConversationService : IMessageStore
                  .Append("  (ficou de fora do prompt)").Append('\n');
         }
 
-        texto.Append($"Poupado ....................... {relatorio.Economia,9:N0}");
+        texto.Append($"Poupado pela compactação ...... {relatorio.Economia,9:N0}");
 
-        if (relatorio.EconomiaPct is int pct) texto.Append($"  ({pct}%)");
-        texto.Append('\n').Append('\n');
+        if (relatorio.EconomiaPct is int pct) texto.Append($"  ({pct}% do cru)");
+        texto.Append('\n');
 
+        if (relatorio.Descartado > 0)
+            texto.Append($"Descartado ao reabrir ......... {relatorio.Descartado,9:N0}").Append('\n');
+
+        texto.Append('\n');
+        texto.Append($"Custo cru da conversa ......... {relatorio.Total,9:N0}").Append('\n');
         texto.Append($"Vai ao modelo agora ........... {relatorio.Contexto,9:N0}").Append('\n');
+        texto.Append($"Fora do contexto .............. {relatorio.ForaDoContexto,9:N0}")
+             .Append("  (= poupado + descartado)").Append('\n');
         texto.Append($"Teto deste nível .............. {relatorio.Max,9:N0}").Append('\n');
 
         if (relatorio.Descartado > 0)
         {
             texto.Append('\n');
-            texto.Append($"Descartado ao reabrir ......... {relatorio.Descartado,9:N0}").Append('\n');
-            texto.Append("São chamadas e resultados de ferramenta. Ao reabrir uma conversa só as ")
-                 .Append("FALAS voltam ao contexto: um tool_calls sem o resultado correspondente ")
-                 .Append("quebra a requisição seguinte. É por isso que a conversa reaberta pesa ")
-                 .Append("bem menos do que pesava ao vivo — e este número não entra na economia, ")
-                 .Append("porque quem descartou foi a reabertura, não a compactação.");
+            texto.Append("O DESCARTADO são chamadas e resultados de ferramenta. Ao reabrir uma ")
+                 .Append("conversa só as FALAS voltam ao contexto: um tool_calls sem o resultado ")
+                 .Append("correspondente quebra a requisição seguinte. Ele entra no custo cru, ")
+                 .Append("porque existiu — mas não entra na economia, porque quem o descartou foi ")
+                 .Append("a reabertura, e não a compactação.");
         }
 
         if (!relatorio.MedidaCompleta)
@@ -1700,7 +1706,11 @@ public sealed class ConversationService : IMessageStore
     private TokenReport Relatorio(int contexto, int max)
     {
         int cru = CruEngolido();
-        int total = contexto - _tokensDeResumo + cru;
+
+        // O descartado ENTRA no total: ele existiu na conversa e some do contexto ao reabrir.
+        // Fora dele o número descreveria a reconstrução, e não a conversa — 1.910 onde a pessoa
+        // se lembra de 9.144. Ele NÃO entra na economia: ver TokenReport.Economia.
+        int total = contexto - _tokensDeResumo + cru + _descartadoAoReabrir;
 
         // Guarda de sanidade: sem nada compactado os dois numeros sao o mesmo. O bloco de
         // memoria pode existir so com fatos ou anexos, e nenhum dos dois entrou no lugar de

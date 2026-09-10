@@ -80,7 +80,8 @@ namespace AIB.Tests
                 WpfHost.GarantirRecursos();
                 var janela = JanelaDeEnsaio.Nova();
 
-                Atualizar(janela, new TokenReport(Total: 12000, Contexto: 3000, Max: 8704));
+                Atualizar(janela, new TokenReport(
+                    Total: 12000, Contexto: 3000, Max: 8704, Cru: 9500, Memoria: 500));
                 var comEconomia = Cor(janela);
 
                 Atualizar(janela, new TokenReport(Total: 1204, Contexto: 1204, Max: 8704));
@@ -100,7 +101,8 @@ namespace AIB.Tests
                 WpfHost.GarantirRecursos();
                 var janela = JanelaDeEnsaio.Nova();
 
-                Atualizar(janela, new TokenReport(Total: 10000, Contexto: 2000, Max: 8704));
+                Atualizar(janela, new TokenReport(
+                    Total: 10000, Contexto: 2000, Max: 8704, Cru: 8300, Memoria: 300));
 
                 Cor(janela).Should().BeSameAs(janela.FindResource("SuccessBrush"));
 
@@ -112,19 +114,52 @@ namespace AIB.Tests
         // A conta, sem interface
         // ─────────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// A porcentagem é a fatia do CUSTO CRU que a compactação tirou — e não a diferença
+        /// entre os dois números da barra.
+        /// <para>
+        /// Os dois passaram a divergir quando o total ganhou o que a reabertura descarta: numa
+        /// conversa reaberta, <c>Total - Contexto</c> é quase todo tráfego de ferramenta que a
+        /// compactação nunca tocou, e usá-lo aqui daria a ela crédito por trabalho alheio.
+        /// </para>
+        /// </summary>
         [Theory]
-        [InlineData(1000, 250, 75)]
-        [InlineData(1000, 900, 10)]
-        [InlineData(3, 1, 67)]
-        public void EconomiaPct_EhAFracaoPoupada(int total, int contexto, int esperado) =>
-            new TokenReport(total, contexto, 8704).EconomiaPct.Should().Be(esperado);
+        [InlineData(1000, 800, 50, 75)]
+        [InlineData(1000, 150, 50, 10)]
+        [InlineData(3, 2, 0, 67)]
+        public void EconomiaPct_EhAFatiaDoCruQueACompactacaoTirou(
+            int total, int cru, int memoria, int esperado) =>
+            new TokenReport(total, 1, 8704, Cru: cru, Memoria: memoria)
+                .EconomiaPct.Should().Be(esperado);
 
         [Theory]
-        [InlineData(1000, 1000)]
         [InlineData(0, 0)]
-        [InlineData(500, 900)]
-        public void SemGanho_NaoHaPorcentagem(int total, int contexto) =>
-            new TokenReport(total, contexto, 8704).EconomiaPct.Should().BeNull(
-                "null diz 'ainda não houve compactação'; zero afirmaria que ela rodou e falhou");
+        [InlineData(500, 500)]
+        [InlineData(300, 900)]
+        public void SemGanho_NaoHaPorcentagem(int cru, int memoria) =>
+            new TokenReport(1000, 900, 8704, Cru: cru, Memoria: memoria)
+                .EconomiaPct.Should().BeNull(
+                    "null diz 'ainda não houve compactação'; zero afirmaria que ela rodou e falhou");
+
+        [Fact]
+        public void ReabertaSemCompactacao_MostraOsDoisNumeros_MesmoSemPorcentagem()
+        {
+            // A barra passou a decidir pelo TOTAL, e não pela economia. Sem isto uma conversa
+            // reaberta sem capítulo nenhum exibia só o contexto — 1.838 onde a pessoa se
+            // lembrava de 9.144, sem nada na tela que explicasse a diferença.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                Atualizar(janela, new TokenReport(
+                    Total: 3000, Contexto: 900, Max: 8704, Descartado: 2100));
+
+                Texto(janela).Should().Contain("3.000 > 900");
+                Texto(janela).Should().NotContain("%");
+
+                janela.Close();
+            });
+        }
     }
 }
