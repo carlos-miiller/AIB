@@ -16,7 +16,13 @@ public enum PaginaDeConfiguracoes
     Conexao,
     Email,
     Shadow,
-    Avancado
+    Avancado,
+
+    /// <summary>
+    /// Diagnóstico: o que a AIB registra e onde. Última da lista de propósito — é a página que
+    /// se procura quando algo deu errado, não a que se configura no primeiro dia.
+    /// </summary>
+    Logs
 }
 
 /// <summary>
@@ -280,6 +286,7 @@ public partial class SettingsWindow : Window
             PaginaDeConfiguracoes.Email => NavEmail,
             PaginaDeConfiguracoes.Shadow => NavShadow,
             PaginaDeConfiguracoes.Avancado => NavAvancado,
+            PaginaDeConfiguracoes.Logs => NavLogs,
             _ => NavIdentidade
         };
 
@@ -292,6 +299,7 @@ public partial class SettingsWindow : Window
         NavEmail.IsChecked == true ? PaginaDeConfiguracoes.Email :
         NavShadow.IsChecked == true ? PaginaDeConfiguracoes.Shadow :
         NavAvancado.IsChecked == true ? PaginaDeConfiguracoes.Avancado :
+        NavLogs.IsChecked == true ? PaginaDeConfiguracoes.Logs :
         PaginaDeConfiguracoes.Identidade;
 
     /// <summary>
@@ -309,6 +317,9 @@ public partial class SettingsWindow : Window
         PaginaEmail.Visibility = Visibilidade(NavEmail);
         PaginaShadow.Visibility = Visibilidade(NavShadow);
         PaginaAvancado.Visibility = Visibilidade(NavAvancado);
+        PaginaLogs.Visibility = Visibilidade(NavLogs);
+
+        if (NavLogs.IsChecked == true) AtualizarPastaDeLogs();
 
         // A página Shadow depende de coisa que muda em OUTRA página: conectar uma caixa
         // acontece em E-mail. Reavaliar ao entrar é o que faz a ajuda parar de dizer "nenhuma
@@ -837,6 +848,10 @@ public partial class SettingsWindow : Window
                 break;
 
             case PaginaDeConfiguracoes.Conexao:
+                // Keep-alive, teto de contexto e system prompt vieram do Avançado: são
+                // parâmetros da CONEXÃO com o modelo, e moravam longe do modelo que configuram.
+                SelecionarKeepAlive(padrao.KeepAlive);
+                SendSystemPromptSwitch.IsChecked = padrao.SendSystemPrompt;
                 // O PROVEDOR e a CHAVE ficam de fora. O padrão do provedor é vazio, que não é
                 // uma preferência: é o sinal de "ainda não passou pelo primeiro arranque", e
                 // restaurá-lo deixaria o programa sem saber com quem falar. A chave é do
@@ -863,12 +878,8 @@ public partial class SettingsWindow : Window
                 break;
 
             case PaginaDeConfiguracoes.Avancado:
-                SelecionarKeepAlive(padrao.KeepAlive);
-                SendSystemPromptSwitch.IsChecked = padrao.SendSystemPrompt;
-                VerboseLoggingSwitch.IsChecked = padrao.VerboseConsoleLogging;
                 IntelligentToolsSwitch.IsChecked = padrao.EnableIntelligentTools;
                 ConfirmDangerousSwitch.IsChecked = padrao.ConfirmDangerousCommands;
-                ExecutionLogSwitch.IsChecked = padrao.ExecutionLogging;
                 ModelThinkingSwitch.IsChecked = padrao.ModelThinking;
                 KeepAssistantSpeechSwitch.IsChecked = padrao.KeepAssistantSpeech;
                 ThinkingInHistorySwitch.IsChecked = padrao.ThinkingInHistory;
@@ -876,9 +887,65 @@ public partial class SettingsWindow : Window
                 CompactionTriggerTextBox.Text = ParaPorcento(padrao.CompactionTrigger);
                 MemoryFractionTextBox.Text = ParaPorcento(padrao.MemoryFraction);
                 break;
+
+            case PaginaDeConfiguracoes.Logs:
+                VerboseLoggingSwitch.IsChecked = padrao.VerboseConsoleLogging;
+                ExecutionLogSwitch.IsChecked = padrao.ExecutionLogging;
+                break;
         }
 
         MarcarSujo();
+    }
+
+    /// <summary>
+    /// Diz onde os arquivos de log ficam, e quantos são.
+    /// <para>
+    /// Uma chave que grava em disco e não diz ONDE obriga o usuário a procurar. Recalculado a
+    /// cada visita à página, e não uma vez na abertura: os arquivos nascem enquanto a tela está
+    /// aberta.
+    /// </para>
+    /// </summary>
+    private void AtualizarPastaDeLogs()
+    {
+        string pasta = DirectoryService.LogsDir;
+
+        try
+        {
+            var arquivos = System.IO.Directory.Exists(pasta)
+                ? System.IO.Directory.GetFiles(pasta, "execucao-*.log")
+                : Array.Empty<string>();
+
+            long bytes = arquivos.Sum(a => { try { return new System.IO.FileInfo(a).Length; } catch { return 0L; } });
+
+            PastaDeLogsTexto.Text = arquivos.Length == 0
+                ? pasta + Environment.NewLine + "(nenhum registro de execução gravado ainda)"
+                : pasta + Environment.NewLine
+                  + $"{arquivos.Length} arquivo(s), {bytes / 1024.0 / 1024:0.#} MB. "
+                  + $"Os {RegistroDeExecucao.ArquivosMantidos} mais recentes ficam; os antigos são apagados.";
+        }
+        catch (Exception ex)
+        {
+            PastaDeLogsTexto.Text = pasta + Environment.NewLine
+                                    + $"(não consegui ler a pasta: {ex.Message})";
+        }
+    }
+
+    /// <summary>Abre a pasta no Explorer. É o gesto que a pessoa faria em seguida, de qualquer jeito.</summary>
+    private void AbrirPastaDeLogs_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(DirectoryService.LogsDir);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = DirectoryService.LogsDir,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CONFIG] não consegui abrir a pasta de logs: {ex.Message}");
+        }
     }
 
     /// <summary>
