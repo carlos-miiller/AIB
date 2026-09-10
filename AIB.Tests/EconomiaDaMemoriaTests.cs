@@ -176,6 +176,35 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void OQueAReaberturaDescarta_TEM_LinhaPropria()
+        {
+            // Medido na sessão real de 10/09: 9.144 tokens de prompt ao vivo, 1.838 ao reabrir.
+            // A diferença são 2.382 tokens de chamada e resultado de ferramenta que a reabertura
+            // não traz de volta — só as falas voltam, porque um tool_calls sem o resultado
+            // correspondente quebra a requisição seguinte.
+            //
+            // Sem esta linha a conta reaberta contradiz a memória de quem esteve na conversa, e
+            // quem confere conclui que o contador está errado.
+            var r = new TokenReport(1_910, 1_838, 9_216,
+                Cru: 200, Memoria: 128, MemoriaDosRegistros: 101, Descartado: 2_382, Capitulos: 1);
+
+            r.Descartado.Should().Be(2_382);
+
+            // E NÃO entra no total: quem descartou foi a reabertura, não a compactação. Mesma
+            // regra da poda de emergência — creditar aqui faria o sistema de capítulos parecer
+            // melhor por trabalho que ele não fez.
+            r.Economia.Should().Be(72);
+        }
+
+        [Fact]
+        public void SemReabertura_NaoHaDescarte_ENemLinha()
+        {
+            // Conversa que nunca foi reaberta não perdeu ferramenta nenhuma. A linha some em vez
+            // de anunciar um zero que faria pensar em perda.
+            new TokenReport(1_000, 900, 9_216).Descartado.Should().Be(0);
+        }
+
+        [Fact]
         public void CapituloAparado_PelaCota_TemOutroNome()
         {
             // Diferença negativa não é cabeçalho: é capítulo que a cota deixou de fora do

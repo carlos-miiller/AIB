@@ -105,6 +105,22 @@ public sealed class ConversationService : IMessageStore
     private int _crusSemMedida;
 
     /// <summary>
+    /// Tokens de ferramenta que a reabertura da conversa NÃO trouxe de volta.
+    /// <para>
+    /// Só as falas voltam ao histórico vivo — um tool_calls sem o resultado correspondente
+    /// quebra a requisição seguinte, e remontar os pares a partir do disco é chance de erro sem
+    /// ganho. O efeito colateral é uma conversa reaberta muito menor que a vivida, e o contador
+    /// não dizia por quê: 9.144 tokens ao vivo viravam 1.838 ao reabrir, sem uma linha de
+    /// explicação.
+    /// </para>
+    /// <para>
+    /// Conta só os turnos que voltaram. Os cobertos por capítulo já estão representados em
+    /// <see cref="Chapter.TokensDosTurnos"/>, com o miolo de ferramentas incluído.
+    /// </para>
+    /// </summary>
+    private int _descartadoAoReabrir;
+
+    /// <summary>
     /// Tokens da faixa narrativa da memoria — atos e capitulos soltos — como ela esta AGORA no
     /// prompt. E o que substituiu os turnos acima, e por isso sai da conta: sem descontar,
     /// a economia apareceria maior do que e.
@@ -275,6 +291,7 @@ public sealed class ConversationService : IMessageStore
             _sessionMemory = NewSessionMemory();
             _turnsRecorded = 0;
             _crusSemMedida = 0;
+            _descartadoAoReabrir = 0;
             _tokensDeResumo = 0;
             _tituloRevisado = false;
             Title = null;
@@ -403,6 +420,7 @@ public sealed class ConversationService : IMessageStore
 
             int ultimoCoberto = _memory.LastCoveredTurn;
             _crusSemMedida = 0;
+            _descartadoAoReabrir = 0;
 
             // Só os turnos cobertos por capítulos que NÃO sabem quanto custaram. Os demais já
             // trazem o número no registro, e recontá-los aqui somaria o mesmo turno duas vezes.
@@ -436,6 +454,10 @@ public sealed class ConversationService : IMessageStore
                             _history.Add(ChatMessage.CreateUserMessage(registro.Text));
                         else if (registro.Role == "assistant")
                             _history.Add(ChatMessage.CreateAssistantMessage(registro.Text));
+                        else
+                            // Fica de fora, mas deixa de sair em silêncio: é a diferença entre
+                            // o que a conversa pesou ao vivo e o que ela pesa reaberta.
+                            _descartadoAoReabrir += _tokenCounter.CountText(registro.Text);
                     }
                 }
             }
@@ -1654,6 +1676,17 @@ public sealed class ConversationService : IMessageStore
         texto.Append($"Vai ao modelo agora ........... {relatorio.Contexto,9:N0}").Append('\n');
         texto.Append($"Teto deste nível .............. {relatorio.Max,9:N0}").Append('\n');
 
+        if (relatorio.Descartado > 0)
+        {
+            texto.Append('\n');
+            texto.Append($"Descartado ao reabrir ......... {relatorio.Descartado,9:N0}").Append('\n');
+            texto.Append("São chamadas e resultados de ferramenta. Ao reabrir uma conversa só as ")
+                 .Append("FALAS voltam ao contexto: um tool_calls sem o resultado correspondente ")
+                 .Append("quebra a requisição seguinte. É por isso que a conversa reaberta pesa ")
+                 .Append("bem menos do que pesava ao vivo — e este número não entra na economia, ")
+                 .Append("porque quem descartou foi a reabertura, não a compactação.");
+        }
+
         if (!relatorio.MedidaCompleta)
         {
             texto.Append('\n');
@@ -1684,6 +1717,7 @@ public sealed class ConversationService : IMessageStore
             // própria em vez de virar um buraco de 27 tokens na conta que o usuário lê.
             _tokensDeResumo,
             _memory.TokensDaMemoria,
+            _descartadoAoReabrir,
             _memory.Chapters.Count,
             _memory.Acts.Count,
             _memory.MedidaCompleta || _crusSemMedida == 0);

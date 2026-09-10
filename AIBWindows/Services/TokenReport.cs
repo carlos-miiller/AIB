@@ -35,6 +35,17 @@ namespace AIB.Services;
 /// pelo cabeçalho da faixa — as duas linhas que abrem o bloco e são pagas uma vez só, existindo
 /// um capítulo ou vinte. Medido: 27 tokens.
 /// </param>
+/// <param name="Descartado">
+/// Tokens de chamada e resultado de ferramenta que a REABERTURA da conversa não trouxe de
+/// volta — só as falas voltam ao histórico vivo, porque um tool_calls sem o resultado
+/// correspondente quebra a requisição seguinte.
+/// <para>
+/// NÃO entra no total, pela mesma regra da poda de emergência: quem descartou foi a
+/// reabertura, e creditar isso à compactação a faria parecer melhor por trabalho que não fez.
+/// Aparece em linha própria porque sem ela a conta reaberta contradiz a memória de quem
+/// esteve na conversa — medido numa sessão real: 9.144 tokens ao vivo, 1.838 ao reabrir.
+/// </para>
+/// </param>
 /// <param name="Capitulos">Quantos capítulos existem.</param>
 /// <param name="Atos">Quantos atos existem.</param>
 /// <param name="MedidaCompleta">
@@ -48,6 +59,7 @@ public readonly record struct TokenReport(
     int Cru = 0,
     int Memoria = 0,
     int MemoriaDosRegistros = 0,
+    int Descartado = 0,
     int Capitulos = 0,
     int Atos = 0,
     bool MedidaCompleta = true)

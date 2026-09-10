@@ -1694,6 +1694,11 @@ public partial class ChatWindow : Window
         texto.Append($"vai ao modelo agora ..... {r.Contexto,8:N0}").Append('\n');
         texto.Append($"teto deste nível ........ {r.Max,8:N0}");
 
+        if (r.Descartado > 0)
+            texto.Append('\n').Append('\n')
+                 .Append($"descartado ao reabrir ... {r.Descartado,8:N0}").Append('\n')
+                 .Append("(ferramentas: só as falas voltam ao contexto)");
+
         if (!r.MedidaCompleta)
             texto.Append('\n').Append('\n')
                  .Append("Capítulos antigos sem medida: o poupado é um piso.");
