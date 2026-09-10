@@ -137,9 +137,24 @@ namespace AIB.Tests
         /// tokens por nível já mudou uma vez e deixou estes testes podando zero mensagens em
         /// silêncio — passavam a impressão de cobrir o Trim sem nunca acioná-lo.
         /// </summary>
-        private static int MensagensParaEstourarNivel1(int charsPorMensagem)
+        private static int MensagensParaEstourarNivel1(int charsPorMensagem) =>
+            MensagensParaEstourar(LevelService.GetMaxTokensForLevel(1), charsPorMensagem);
+
+        /// <summary>
+        /// Quantas mensagens são precisas para estourar a JANELA do modelo — o único teto em
+        /// que a poda ainda age.
+        /// <para>
+        /// O teto do nível deixou de acioná-la: ele é orçamento de compactação, e podar nele
+        /// destruía material que o modelo comportava com folga. Um ensaio de poda que use o
+        /// número do nível não poda nada e passa verde sem cobrir coisa alguma — foi o que já
+        /// aconteceu uma vez, quando a escala de tokens por nível mudou.
+        /// </para>
+        /// </summary>
+        private static int MensagensParaEstourarAJanela(int charsPorMensagem) =>
+            MensagensParaEstourar(ConversationService.TetoDaPoda, charsPorMensagem);
+
+        private static int MensagensParaEstourar(int orcamento, int charsPorMensagem)
         {
-            int orcamento = LevelService.GetMaxTokensForLevel(1);
             var counter = new TokenCounter();
             int porMensagem = counter.CountText(Filler(charsPorMensagem));
             return (orcamento / porMensagem) + 4;
@@ -197,7 +212,7 @@ namespace AIB.Tests
             var conversation = BuildConversation(settings, new FakeProvider(), out _);
 
             conversation.SnapshotHistory()[0].Should().BeOfType<SystemChatMessage>();
-            int quantas = MensagensParaEstourarNivel1(2000);
+            int quantas = MensagensParaEstourarAJanela(2000);
             for (int i = 0; i < quantas; i++) conversation.AppendAssistantText(Filler(2000));
 
             int antes = conversation.SnapshotHistory().Count;
@@ -206,7 +221,7 @@ namespace AIB.Tests
             var depois = conversation.SnapshotHistory();
             depois.Count.Should().BeLessThan(antes);
             depois[0].Should().BeOfType<SystemChatMessage>();
-            conversation.CountTokens().Should().BeLessThanOrEqualTo(LevelService.GetMaxTokensForLevel(1));
+            conversation.CountTokens().Should().BeLessThanOrEqualTo(ConversationService.TetoDaPoda);
         }
 
         [Fact]
@@ -224,7 +239,7 @@ namespace AIB.Tests
 
             conversation.SnapshotHistory().Should().BeEmpty();
             conversation.AppendRecoveredContext("sessao antiga", Filler(4000));
-            int quantas = MensagensParaEstourarNivel1(2000);
+            int quantas = MensagensParaEstourarAJanela(2000);
             for (int i = 0; i < quantas; i++) conversation.AppendAssistantText(Filler(2000));
 
             // O turno vivo passa a ser este. O anterior perde a proteção.
@@ -234,7 +249,58 @@ namespace AIB.Tests
 
             var depois = conversation.SnapshotHistory();
             depois.Should().NotContain(m => TextOf(m).Contains("[CONTEXTO RECUPERADO DO CHAT: sessao antiga]"));
-            conversation.CountTokens().Should().BeLessThanOrEqualTo(LevelService.GetMaxTokensForLevel(1));
+            conversation.CountTokens().Should().BeLessThanOrEqualTo(ConversationService.TetoDaPoda);
+        }
+
+        [Fact]
+        public async Task UmaPassada_FECHA_QuantosCapitulosForemPrecisos()
+        {
+            // Sem a poda cortando no teto do nível, a conversa chega ao fim do turno com
+            // material de VÁRIOS capítulos acumulado. Fechar um só por passada deixaria o resto
+            // para a seguinte, que talvez nunca venha — e enquanto isso o contexto ficaria
+            // acima do gatilho a cada turno.
+            //
+            // O acúmulo é montado direto no histórico, e não por StreamResponseAsync: a
+            // compactação roda ao fim de CADA turno, então um laço de turnos consumiria o
+            // material aos poucos e o ensaio nunca chegaria a exercitar a passada com backlog.
+            var settings = BuildSettings(sendSystemPrompt: false);
+
+            var provider = new FakeProvider { CompleteReply = "Resumo do trecho." };
+            var conversation = BuildConversation(settings, provider, out _);
+
+            // Cada chamada acrescenta um par user+assistant: um turno FECHADO, do jeito que o
+            // TurnSplitter enxerga. Catorze deles — os 2 mais recentes ficam sempre fora e cada
+            // capítulo leva no máximo 8, então sobra material para mais de um.
+            for (int i = 0; i < 14; i++)
+                conversation.AppendRecoveredContext($"pedido {i}", Filler(20000));
+
+            conversation.Chapters.Should().BeEmpty("nada foi compactado ainda");
+
+            await conversation.CompactIfNeededAsync(userLevel: 1);
+
+            conversation.Chapters.Count.Should().BeGreaterThan(1,
+                "uma passada fecha quantos forem precisos, e não um por turno");
+        }
+
+        [Fact]
+        public void OTetoDoNIVEL_NaoPoda_Mais()
+        {
+            // O teto do nível é ORÇAMENTO DE COMPACTAÇÃO: diz quando vale a pena resumir, não o
+            // que o modelo aguenta. Podar nele destruía material que ainda cabia com folga —
+            // medido em 10/09, sete podas cortando em 9.216 numa janela de 16.384, e a
+            // compactação nunca teve o que compactar porque a poda comia antes.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            int quantas = MensagensParaEstourarNivel1(2000);
+            for (int i = 0; i < quantas; i++) conversation.AppendAssistantText(Filler(2000));
+
+            int antes = conversation.SnapshotHistory().Count;
+            conversation.Trim(1);
+
+            conversation.SnapshotHistory().Count.Should().Be(antes,
+                "passou do teto do nível e nada foi descartado: quem resolve isso é a compactação");
+            conversation.CountTokens().Should().BeGreaterThan(LevelService.GetMaxTokensForLevel(1));
         }
 
         [Fact]
@@ -254,7 +320,7 @@ namespace AIB.Tests
             conversation.AppendRecoveredContext("pedido do usuario", "replique este arquivo para os outros tres");
 
             // O miolo do turno: chamadas e resultados grandes, como um arquivo lido.
-            int quantas = MensagensParaEstourarNivel1(2000);
+            int quantas = MensagensParaEstourarAJanela(2000);
             for (int i = 0; i < quantas; i++) conversation.AppendAssistantText(Filler(2000));
 
             conversation.Trim(1);
@@ -262,7 +328,7 @@ namespace AIB.Tests
             var depois = conversation.SnapshotHistory();
             depois.Should().Contain(m => TextOf(m).Contains("replique este arquivo"),
                 "o pedido é a TAREFA, não histórico — podá-lo é apagar o que o turno está fazendo");
-            conversation.CountTokens().Should().BeLessThanOrEqualTo(LevelService.GetMaxTokensForLevel(1),
+            conversation.CountTokens().Should().BeLessThanOrEqualTo(ConversationService.TetoDaPoda,
                 "e o miolo do turno continua podável, que é o que de fato ocupa espaço");
         }
 
@@ -277,7 +343,7 @@ namespace AIB.Tests
             var conversation = BuildConversation(settings, new FakeProvider(), out _);
 
             conversation.AppendRecoveredContext("pedido do usuario", "faz a planilha virar html");
-            int quantas = MensagensParaEstourarNivel1(2000);
+            int quantas = MensagensParaEstourarAJanela(2000);
             for (int i = 0; i < quantas; i++) conversation.AppendAssistantText(Filler(2000));
 
             conversation.Trim(1);

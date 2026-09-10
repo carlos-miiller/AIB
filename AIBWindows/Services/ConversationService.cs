@@ -659,6 +659,21 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private const int CompactionCooldownTurns = 3;
 
+    /// <summary>
+    /// Quantos capítulos uma única passada de compactação pode fechar.
+    /// <para>
+    /// Sem poda no teto do nível, a conversa chega ao fim do turno com muito mais material do
+    /// que um capítulo de oito turnos comporta — e fechar um só deixaria o resto para a passada
+    /// seguinte, que talvez nunca venha. A passada fecha quantos forem precisos.
+    /// </para>
+    /// <para>
+    /// O teto existe porque cada capítulo é uma chamada ao modelo. Dez é folgado para qualquer
+    /// acúmulo real e impede que uma conversa desgovernada prenda a interface por meia hora; o
+    /// que sobrar é compactado no fim do turno seguinte, e o diário registra o corte.
+    /// </para>
+    /// </summary>
+    private const int MaxCapitulosPorPassada = 10;
+
     /// <summary>Turnos que faltam para tentar compactar de novo. Só a thread do portão mexe.</summary>
     private int _compactionCooldown;
 
@@ -690,27 +705,41 @@ public sealed class ConversationService : IMessageStore
             var quota = CurrentQuota(userLevel);
             if (quota.IsOff) return;
 
-            int vivo = LiveTokens();
-            int gatilho = MemoryBudget.CompactionThreshold(
-                quota, _settingsService.LoadSettings().CompactionTrigger);
-            if (vivo <= gatilho) return;
+            double fracao = _settingsService.LoadSettings().CompactionTrigger;
+            int fechados = 0;
 
-            var candidatos = SelectTurnsToCompact(quota, vivo);
-            if (candidatos.Count == 0)
+            // Fecha QUANTOS forem precisos, e nao um por turno. Sem a poda cortando no teto do
+            // nivel, a conversa chega aqui com material de varios capitulos acumulado — e um so
+            // deixaria o resto para a passada seguinte, que talvez nunca venha.
+            while (fechados < MaxCapitulosPorPassada)
             {
-                // "Passou do gatilho e nao compactou" tem causa, e a causa e sempre a mesma:
-                // os turnos recentes ficam fora e nao sobrou turno fechado antes deles. Sem
-                // esta linha o diario mostraria um silencio inexplicavel.
-                _registroDaCompactacao.Pulou(
-                    $"vivo={vivo} > limite={gatilho}, mas nenhum turno elegivel "
-                    + $"(os {KeepRecentTurns} mais recentes ficam sempre fora)");
-                return;
+                int vivo = LiveTokens();
+                int gatilho = MemoryBudget.CompactionThreshold(quota, fracao);
+                if (vivo <= gatilho) break;
+
+                var candidatos = SelectTurnsToCompact(quota, vivo);
+                if (candidatos.Count == 0)
+                {
+                    // "Passou do gatilho e nao compactou" tem causa, e a causa e sempre a mesma:
+                    // os turnos recentes ficam fora e nao sobrou turno fechado antes deles. Sem
+                    // esta linha o diario mostraria um silencio inexplicavel.
+                    _registroDaCompactacao.Pulou(
+                        $"vivo={vivo} > limite={gatilho}, mas nenhum turno elegivel "
+                        + $"(os {KeepRecentTurns} mais recentes ficam sempre fora)");
+                    break;
+                }
+
+                Console.WriteLine($"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > gatilho={gatilho}.");
+                _registroDaCompactacao.Gatilho(vivo, gatilho, quota.Live, candidatos.Count);
+
+                await FecharCapituloAsync(candidatos, quota, ct).ConfigureAwait(false);
+                fechados++;
             }
 
-            Console.WriteLine($"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > gatilho={gatilho}.");
-            _registroDaCompactacao.Gatilho(vivo, gatilho, quota.Live, candidatos.Count);
-
-            await FecharCapituloAsync(candidatos, quota, ct).ConfigureAwait(false);
+            if (fechados >= MaxCapitulosPorPassada)
+                _registroDaCompactacao.Pulou(
+                    $"teto de {MaxCapitulosPorPassada} capitulo(s) por passada atingido; "
+                    + "o resto fica para o fim do turno seguinte");
         }
         catch (OperationCanceledException)
         {
@@ -771,7 +800,10 @@ public sealed class ConversationService : IMessageStore
 
         // Promocao antes de reescrever o bloco: se um ato nascer agora, ele ja entra no mesmo
         // prompt, e o prefixo e invalidado UMA vez em vez de duas.
-        await PromoverAsync(compactor, ChaptersPerAct, ct).ConfigureAwait(false);
+        //
+        // Em laco: uma passada que fecha varios capitulos pode encher mais de um ato, e parar no
+        // primeiro deixaria capitulos soltos que ja tinham material para promover.
+        while (await PromoverAsync(compactor, ChaptersPerAct, ct).ConfigureAwait(false) != null) { }
 
         // Mesma carona: o prefixo ja foi invalidado por esta compactacao, entao revisar o nome
         // da conversa agora nao custa cache nenhum.
@@ -911,8 +943,13 @@ public sealed class ConversationService : IMessageStore
     {
         try
         {
+            // Uma FATIA de tamanho fixo, e nao todos os capitulos soltos de uma vez. Com oito
+            // soltos, um ato unico seria resumo de resumo sobre o dobro do material — e resumo
+            // de resumo e onde a informacao some. Dois atos de quatro preservam mais.
             var soltos = _memory.UncoveredChapters;
             if (soltos.Count < minimo) return null;
+
+            soltos = soltos.Take(minimo).ToList();
 
             Console.WriteLine($"[MEMORIA] Promovendo {soltos.Count} capítulo(s) a ato.");
             _registroDaCompactacao.Ato(
@@ -1510,9 +1547,36 @@ public sealed class ConversationService : IMessageStore
         return -1;
     }
 
+    /// <summary>
+    /// Margem reservada para a resposta dentro da janela do modelo.
+    /// <para>
+    /// O prompt não pode ocupar a janela inteira: o que sobra é onde a resposta é gerada.
+    /// </para>
+    /// </summary>
+    public const int MargemDaResposta = 2048;
+
+    /// <summary>
+    /// Onde a poda de emergência de fato começa a agir.
+    /// <para>
+    /// É a janela REAL do modelo menos a margem da resposta — e não o teto do nível. O teto do
+    /// nível é ORÇAMENTO DE COMPACTAÇÃO: ele diz quando vale a pena resumir, não o que o modelo
+    /// aguenta. Podar nele destruía material que ainda cabia com folga: medido em 10/09, sete
+    /// podas seguidas cortando em 9.216 quando a janela tem 16.384.
+    /// </para>
+    /// <para>
+    /// A poda não desaparece, e é de propósito. Passar da janela não faz o turno "continuar":
+    /// faz o Ollama truncar sozinho, e ele trunca pelo COMEÇO — leva o prompt de sistema e a
+    /// alma do personagem, deixando o miolo de ferramentas. Entre podar aqui e deixar o
+    /// servidor podar o lado errado, esta é a menos ruim.
+    /// </para>
+    /// </summary>
+    public static int TetoDaPoda => Ai.ChatRequestOptions.Default.NumCtx - MargemDaResposta;
+
     public void Trim(int userLevel)
     {
-        int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
+        // O teto do NÍVEL não entra mais aqui. Ele governa a compactação, que substitui o que
+        // tira; a poda descarta sem substituto e por isso só age quando não há alternativa.
+        int maxTokens = TetoDaPoda;
 
         int cortadas = 0;
         int antes, depois;
