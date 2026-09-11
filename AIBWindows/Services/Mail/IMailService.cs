@@ -113,6 +113,38 @@ public interface IMailService
         ImapEndpoint endpoint,
         DateTime desdeUtc,
         CancellationToken ct);
+
+    /// <summary>
+    /// As mensagens de UMA conversa, pela <c>X-GM-THRID</c>.
+    /// <para>
+    /// É o que o botão "Recarregar" de <c>tela-chat-v3.html §3.11</c> precisa: relê a conversa
+    /// no servidor e permite refazer o resumo. A leitura da passada é por JANELA — só olha
+    /// <c>MailWindowDays</c> para trás —, então uma conversa mais antiga que isso nunca é
+    /// revisitada sozinha. Este é o caminho de volta.
+    /// </para>
+    /// <para>
+    /// Continua SOMENTE LEITURA, como todo o resto: a INBOX abre em <c>EXAMINE</c> e os corpos
+    /// descem com <c>BODY.PEEK</c>. Nada é marcado como lido.
+    /// </para>
+    /// <para>
+    /// Devolve vazio quando o provedor não expõe <c>X-GM-THRID</c>. Ali não existe "a conversa"
+    /// para reler — cada mensagem é a própria — e inventar uma busca por assunto traria
+    /// mensagens de outras pessoas com o mesmo título.
+    /// </para>
+    /// </summary>
+    /// <para>
+    /// MEMBRO PADRÃO: devolve vazio. Reler uma conversa só existe onde há <c>X-GM-THRID</c>, e
+    /// quem não a implementa apenas não tem o botão "Recarregar" — não é erro. Sem o padrão,
+    /// cada dublê de ensaio teria de escrever um método que nunca usa, e a interface passaria a
+    /// cobrar de todos uma capacidade de um.
+    /// </para>
+    Task<IReadOnlyList<MensagemDeEmail>> LerConversaAsync(
+        string endereco,
+        string senhaDeApp,
+        ImapEndpoint endpoint,
+        string threadId,
+        CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<MensagemDeEmail>>(Array.Empty<MensagemDeEmail>());
 }
 
 /// <summary>
@@ -192,6 +224,7 @@ public sealed class MailServiceStub : IMailService
         string endereco, string senhaDeApp, ImapEndpoint endpoint,
         DateTime desdeUtc, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<ThreadRespondida>>(Array.Empty<ThreadRespondida>());
+
 
     public Task<MailLoginResult> TestLoginAsync(string endereco, string senhaDeApp, CancellationToken ct)
     {

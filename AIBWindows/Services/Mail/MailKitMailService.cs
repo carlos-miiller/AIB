@@ -503,6 +503,82 @@ public sealed class MailKitMailService : IMailService
     // ─────────────────────────────────────────────────────────────────────────
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Uma conversa só — o "Recarregar" de §3.11
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public async Task<IReadOnlyList<MensagemDeEmail>> LerConversaAsync(
+        string endereco,
+        string senhaDeApp,
+        ImapEndpoint endpoint,
+        string threadId,
+        CancellationToken ct)
+    {
+        // Sem X-GM-THRID não existe "a conversa" para reler: cada mensagem é a própria, e
+        // buscar por assunto traria mensagens de outras pessoas com o mesmo título.
+        if (string.IsNullOrWhiteSpace(threadId) || !ulong.TryParse(threadId, out ulong thrid))
+            return Array.Empty<MensagemDeEmail>();
+
+        using var cliente = NovoCliente();
+
+        try
+        {
+            await cliente.ConnectAsync(endpoint.Host, endpoint.Port,
+                endpoint.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls, ct)
+                .ConfigureAwait(false);
+
+            await cliente.AuthenticateAsync(endereco, senhaDeApp, ct).ConfigureAwait(false);
+
+            // ReadOnly de novo: EXAMINE, e não SELECT. Recarregar não pode marcar como lido o
+            // que o usuário ainda não abriu.
+            var inbox = cliente.Inbox;
+            await inbox.OpenAsync(FolderAccess.ReadOnly, ct).ConfigureAwait(false);
+
+            var uids = await inbox
+                .SearchAsync(SearchQuery.GMailThreadId(thrid), ct)
+                .ConfigureAwait(false);
+
+            if (uids.Count == 0)
+            {
+                Console.WriteLine($"[VIGIA] {endereco}: conversa {threadId} não está mais na caixa.");
+                await DesconectarAsync(cliente).ConfigureAwait(false);
+                return Array.Empty<MensagemDeEmail>();
+            }
+
+            var resumos = await inbox.FetchAsync(uids, PedidoDaTriagem(), ct).ConfigureAwait(false);
+
+            var mensagens = new List<MensagemDeEmail>();
+
+            foreach (var r in resumos.OrderBy(r => r.InternalDate))
+            {
+                ct.ThrowIfCancellationRequested();
+
+                string corpo = await CorpoAsync(inbox, r, ct).ConfigureAwait(false);
+                mensagens.Add(Converter(r, endereco, corpo));
+            }
+
+            Console.WriteLine($"[VIGIA] {endereco}: conversa {threadId} relida — " +
+                              $"{mensagens.Count} mensagem(ns).");
+
+            await DesconectarAsync(cliente).ConfigureAwait(false);
+            return mensagens;
+        }
+        catch (OperationCanceledException)
+        {
+            await DesconectarAsync(cliente).ConfigureAwait(false);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Recarregar é um pedido do usuário sobre UMA conversa. Falhar aqui não pode
+            // derrubar a caixa inteira nem a triagem automática.
+            Console.WriteLine($"[VIGIA] {endereco}: não consegui reler a conversa {threadId} — " +
+                              $"{ex.GetType().Name}: {ex.Message}");
+            await DesconectarAsync(cliente).ConfigureAwait(false);
+            return Array.Empty<MensagemDeEmail>();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // A pasta de enviados — quem espera retorno
     // ─────────────────────────────────────────────────────────────────────────
 

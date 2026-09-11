@@ -415,6 +415,107 @@ public sealed class MailDigestService : IDisposable
         return acordam.Count > 0 && lidas.Any(m => acordam.Contains(m.ThreadId));
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Recarregar uma conversa — §3.11
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Relê uma conversa no servidor, refaz o resumo e ACRESCENTA o veredito ao histórico dela.
+    /// <para>
+    /// É o botão "Recarregar" de <c>tela-chat-v3.html §3.11</c>. Existe porque a passada
+    /// automática só olha <c>MailWindowDays</c> para trás: uma conversa mais antiga que a janela
+    /// nunca é revisitada sozinha, e o arquivo dela envelhece. Este é o caminho de volta, a
+    /// pedido.
+    /// </para>
+    /// <para>
+    /// ACRESCENTA, nunca sobrescreve. O veredito pode ter mudado — e guardar a mudança é o
+    /// ponto: a regra 6 pede poder conferir quando a triagem mudou de ideia, e sobrescrever
+    /// apagaria justamente isso.
+    /// </para>
+    /// <para>
+    /// CUSTA UMA CHAMADA AO MODELO, e nesta máquina isso é minutos. Quem chama tem de
+    /// desabilitar o botão enquanto roda — a spec já pede o ícone girando.
+    /// </para>
+    /// <para>
+    /// O corpo desce para o modelo e morre aqui. Nada dele entra no arquivo: quem grava é o
+    /// <see cref="ArquivoDeConversas"/>, e <see cref="EntradaDaConversa"/> não tem onde pôr.
+    /// </para>
+    /// </summary>
+    /// <returns>O estado atualizado da conversa, ou <c>null</c> quando não deu para reler.</returns>
+    public async Task<ArquivoDeConversas.Estado?> RecarregarConversaAsync(
+        string conta, string threadId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(conta) || string.IsNullOrWhiteSpace(threadId)) return null;
+
+        var config = _settings.LoadSettings();
+
+        var caixa = (config.MailAccounts ?? new List<MailAccountSettings>())
+            .FirstOrDefault(c => string.Equals(c.Address, conta, StringComparison.OrdinalIgnoreCase));
+
+        if (caixa == null)
+        {
+            Console.WriteLine($"[VIGIA] recarregar: a caixa {conta} não está conectada.");
+            return null;
+        }
+
+        string? senha = _cofre.Ler(caixa.Address);
+        if (string.IsNullOrEmpty(senha))
+        {
+            Console.WriteLine($"[VIGIA] recarregar: sem senha no cofre para {conta}.");
+            return null;
+        }
+
+        string chave = ArquivoDeConversas.Chave(conta, threadId, 0);
+
+        var mensagens = await _email.LerConversaAsync(
+            caixa.Address, senha, new ImapEndpoint(caixa.ImapHost, caixa.ImapPort, caixa.UseSsl),
+            threadId, ct).ConfigureAwait(false);
+
+        if (mensagens.Count == 0) return _conversas.EstadoDe(chave);
+
+        IReadOnlyList<VereditoDeEmail> vereditos = Array.Empty<VereditoDeEmail>();
+
+        try
+        {
+            vereditos = await new TriadorDeEmail(
+                    _provedores.GetProvider(config), config.MailTriageThinking)
+                .TriarAsync(mensagens, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Modelo fora do ar não pode apagar o que já se sabia da conversa. Sem veredito, o
+            // histórico fica como estava e a tela mostra o de antes.
+            Console.WriteLine($"[VIGIA] recarregar: triagem falhou — {ex.GetType().Name}: {ex.Message}");
+            return _conversas.EstadoDe(chave);
+        }
+
+        var porUid = vereditos.GroupBy(v => v.Uid).ToDictionary(g => g.Key, g => g.First());
+
+        foreach (var m in mensagens)
+        {
+            // Só o que NÃO é seu ganha veredito: não há o que triar no que você mesmo escreveu.
+            bool minha = string.Equals(
+                ConversaDeEmail.Endereco(m.De), conta, StringComparison.OrdinalIgnoreCase);
+
+            bool achou = porUid.TryGetValue(m.Uid, out var v);
+            bool temVeredito = !minha && achou;
+
+            _conversas.Anotar(chave, new EntradaDaConversa(
+                ArquivoDeConversas.Agora(m.RecebidaUtc),
+                m.Uid, m.De, m.Assunto,
+                temVeredito ? v.Urgencia.ToString() : "",
+                temVeredito ? v.Resumo ?? "" : "",
+                Minha: minha,
+                Origem: "recarregar"), config.MailJournalDays);
+        }
+
+        return _conversas.EstadoDe(chave);
+    }
+
     /// <summary>
     /// Degraus 0 e 1, sobre a lista inteira.
     /// <para>
