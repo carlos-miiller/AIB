@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
@@ -106,18 +106,6 @@ public static class CredentialService
             return Encoding.UTF8.GetString(decryptedData);
         }
         catch { return ""; }
-    }
-
-    public static string ListSystems()
-    {
-        EnsureDir();
-        var systems = Directory.GetFiles(CredentialsDir, "*.bin")
-                               .Select(Path.GetFileNameWithoutExtension)
-                               .ToList();
-        
-        return systems.Count > 0 
-            ? "Sistemas com credenciais seguras: " + string.Join(", ", systems)
-            : "Nenhuma credencial segura armazenada.";
     }
 
     public static void WipeAllCredentials()

@@ -518,13 +518,13 @@ namespace AIB.Tests
     public class MailServiceStubTests
     {
         [Fact]
-        public void OEsqueletoAceita_MasNUNCA_MarcaComoVerificado()
+        public async Task OEsqueletoAceita_MasNUNCA_MarcaComoVerificado()
         {
             // §7 A15 pede que so entre conta cujo login passou. Enquanto nao ha IMAP, o desvio
             // fica VISIVEL na tela: a linha nasce ambar com "verificacao pendente", nunca
             // verde. Nao ha como confundir conta aceita pelo esqueleto com conta conectada.
-            var r = new MailServiceStub()
-                .TestLoginAsync("ana@gmail.com", "senha", default).Result;
+            var r = await new MailServiceStub()
+                .TestLoginAsync("ana@gmail.com", "senha", default);
 
             r.Ok.Should().BeTrue();
             r.Verificado.Should().BeFalse();
@@ -532,9 +532,9 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void SemDominioUtilizavel_OEsqueletoRECUSA()
+        public async Task SemDominioUtilizavel_OEsqueletoRECUSA()
         {
-            var r = new MailServiceStub().TestLoginAsync("lixo", "senha", default).Result;
+            var r = await new MailServiceStub().TestLoginAsync("lixo", "senha", default);
 
             r.Ok.Should().BeFalse();
             r.Erro.Should().Contain("não encontramos o servidor");

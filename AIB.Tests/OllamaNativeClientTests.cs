@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -35,7 +35,12 @@ namespace AIB.Tests
                 )
                 .ReturnsAsync((HttpRequestMessage request, CancellationToken token) =>
                 {
+                    // O callback do ReturnsAsync é síncrono por contrato: ele devolve a
+                    // RESPOSTA, não uma Task. Não há onde pôr um await, e o conteúdo aqui é
+                    // uma StringContent em memória — não há E/S para bloquear.
+#pragma warning disable xUnit1031
                     var content = request.Content?.ReadAsStringAsync(token).GetAwaiter().GetResult();
+#pragma warning restore xUnit1031
                     
                     if (content != null && content.Contains("\"stream\":true"))
                     {

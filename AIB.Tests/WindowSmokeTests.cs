@@ -509,7 +509,13 @@ namespace AIB.Tests
                 card.Descartar();
 
                 card.Resposta.IsCompleted.Should().BeTrue();
+
+                // xUnit1031 avisa contra ler .Result, e está certo no caso geral. Aqui não há
+                // o que esperar: a linha acima acabou de exigir IsCompleted, e este corpo roda
+                // dentro de um Action numa thread STA, onde não existe await para dar.
+#pragma warning disable xUnit1031
                 card.Resposta.Result.Allowed.Should().BeFalse("descarte nunca autoriza");
+#pragma warning restore xUnit1031
             });
         }
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 
 namespace AIB.Services;
@@ -24,7 +24,6 @@ public static class DirectoryService
 
     // Arquivos específicos
     public static string SettingsPath => Path.Combine(DataDir, "profile.dat");
-    public static string MemoryPath => Path.Combine(DataDir, "memory.json");
 
     public static void EnsureDirectories()
     {

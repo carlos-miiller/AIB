@@ -1315,8 +1315,12 @@
          SidePanelWindow.xaml. Só o segundo implementa §6.
          CONFERIDO em 11/09/2026: ContextSidebar não é referenciado em lugar
          nenhum fora dos próprios dois arquivos — nem em XAML, nem em código,
-         nem em ensaio. É código morto que ainda compila, e enquanto compilar
-         vai parecer uma alternativa viável a quem abrir a pasta. Remover.
+         nem em ensaio. NÃO é descuido: o cabeçalho do arquivo diz que ele foi
+         ESTACIONADO de propósito, como depósito das quatro abas que ficaram
+         fora da spec (Lembretes, Memória Recente, Arquivos Recentes, Shadow),
+         a pedido do usuário. Não são dois painéis divergindo: é um painel e um
+         arquivo morto guardado por escrito. A divergência de D7 está fechada;
+         o que fica é a decisão de quando descartar o depósito.
 
      D8. TOOLTIP COM A CASCA NATIVA DO WINDOWS. Não existe nenhum
          Style TargetType="ToolTip" no projeto (procurado em Themes/Controls.xaml,

@@ -679,7 +679,10 @@ public sealed class ConversationService : IMessageStore
 
     private readonly RegistroDaCompactacao _registroDaCompactacao;
 
-    /// <summary>Onde o diario da compactacao esta sendo gravado. Diagnostico e ensaio.</summary>
+    /// <summary>
+    /// Onde o diário da compactação está sendo gravado. Diagnóstico: é a resposta a "liguei o
+    /// log e ele não apareceu" sem ter de adivinhar a pasta da sessão.
+    /// </summary>
     public string? CaminhoDoRegistroDaCompactacao => _registroDaCompactacao.Caminho;
 
     /// <summary>Capítulos fechados nesta sessão. Diagnóstico e teste.</summary>
