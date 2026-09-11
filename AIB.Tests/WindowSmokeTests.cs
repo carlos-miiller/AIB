@@ -29,6 +29,7 @@ namespace AIB.Tests
     /// specs sem precisar abrir o app.
     /// </para>
     /// </summary>
+    [Collection("ContextoGlobal")]
     public class WindowSmokeTests
     {
         /// <summary>

@@ -19,7 +19,7 @@ namespace AIB.Tests
     /// por isso cada ensaio limpa o que sujou. Sem isso um ensaio veria os anexos do outro.
     /// </para>
     /// </summary>
-    [Collection("ContextService")]
+    [Collection("ContextoGlobal")]
     public class AttachedFilesPromptTests : IDisposable
     {
         public void Dispose()

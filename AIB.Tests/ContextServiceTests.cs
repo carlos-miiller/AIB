@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using AIB.Services;
@@ -173,8 +173,19 @@ namespace AIB.Tests
     }
 
     /// <summary>
-    /// Os serviços de painel são estáticos e compartilhados. Sem esta coleção, o xUnit rodaria
-    /// as duas classes em paralelo e uma limparia a lista da outra no meio do ensaio.
+    /// Os serviços de painel são ESTÁTICOS e compartilhados, e o xUnit roda classes em
+    /// paralelo. Sem esta coleção uma classe limpa a lista da outra no meio do ensaio.
+    /// <para>
+    /// Entra aqui TODA classe que escreve em <c>ContextService</c> ou <c>ActionLogService</c> —
+    /// e escrever inclui limpar. Hoje: esta, ActionLogServiceTests, SkillActionDisplayTests,
+    /// ModalGuardTests, AttachedFilesPromptTests, WindowSmokeTests e ConversationServiceTests.
+    /// </para>
+    /// <para>
+    /// AttachedFilesPromptTests morava numa coleção chamada "ContextService", que NUNCA foi
+    /// definida. O xUnit não reclama disso: ele cria uma coleção ad hoc com esse nome, e como
+    /// nenhuma outra classe a usava, o isolamento era de uma classe consigo mesma. Ela rodava
+    /// em paralelo com exatamente quem deveria evitar.
+    /// </para>
     /// </summary>
     [CollectionDefinition("ContextoGlobal", DisableParallelization = true)]
     public class ContextoGlobalCollection { }

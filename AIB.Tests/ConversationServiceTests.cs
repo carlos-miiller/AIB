@@ -14,6 +14,7 @@ using Xunit;
 
 namespace AIB.Tests
 {
+    [Collection("ContextoGlobal")]
     public class ConversationServiceTests : IDisposable
     {
         private readonly string _dir;
