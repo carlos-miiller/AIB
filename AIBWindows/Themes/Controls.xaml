@@ -483,6 +483,71 @@
         </Setter>
     </Style>
 
+    <!-- ═══ §3.11  AS DUAS AÇÕES DO CABEÇALHO DE LEITURA ════════════════════
+         "Abrir no Gmail" e "Recarregar". Menores e mais apagados que os botões
+         de formulário: eles dividem a linha com o CAMINHO, e um par de botões
+         de 36px ali roubaria a leitura do assunto, que é o que diz onde se
+         está. -->
+    <Style x:Key="AcaoDeCabecalho" TargetType="Button">
+        <Setter Property="Height" Value="26"/>
+        <Setter Property="Padding" Value="11,0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        <Setter Property="FontSize" Value="11.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Casca" Background="{TemplateBinding Background}"
+                            BorderBrush="{StaticResource BorderCardBrush}" BorderThickness="1"
+                            CornerRadius="8" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Casca" Property="Background"
+                                    Value="{StaticResource ReadFill05Brush}"/>
+                            <Setter Property="Foreground" Value="{StaticResource TextBodyBrush}"/>
+                        </Trigger>
+                        <!-- Desabilitado NÃO some (§3.11): enquanto o recarregar roda, um botão
+                             que desaparece encolhe a linha e o caminho salta de largura. -->
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ═══ §3.11  O "CAIXA DE ENTRADA" DO CAMINHO ═══════════════════════════
+         Sem borda e sem fundo: é um caminho, não uma ação. Só a cor muda no
+         hover, que é o que diz que ele leva a algum lugar. -->
+    <Style x:Key="CaminhoDeVolta" TargetType="Button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{StaticResource AccentLilacBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- "Cancelar" / "Recusar": outline neutro. -->
     <Style x:Key="OutlineButton" TargetType="Button" BasedOn="{StaticResource InlineButton}">
         <Setter Property="Padding" Value="20,9"/>

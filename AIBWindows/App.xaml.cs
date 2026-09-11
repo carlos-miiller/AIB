@@ -308,11 +308,18 @@ public partial class App : System.Windows.Application
             _vigia.Terminou += () =>
                 Dispatcher.BeginInvoke(new Action(() => _orbe?.PararDeProcessarEmail()));
 
-            // A aba de e-mails do painel mostra o último digest. A conversa não conhece o
-            // vigia: ela só repassa a função.
+            // O modo e-mail da área central mostra o último digest. A conversa não conhece o
+            // vigia: ela só repassa as duas funções.
             _chatWindow.FonteDeEmails = () => _vigia?.Ultimo.Itens
                                               ?? (System.Collections.Generic.IReadOnlyList<MailSummary>)
                                                  Array.Empty<MailSummary>();
+
+            // "Recarregar" (§3.11): relê UMA conversa no servidor e refaz o resumo. Sem vigia
+            // não há o que reler, e a janela avisa em vez de fingir que releu.
+            _chatWindow.RecarregarEmail = (item, ct) =>
+                _vigia == null
+                    ? System.Threading.Tasks.Task.FromResult<MailSummary?>(null)
+                    : _vigia.RecarregarItemAsync(item, ct);
 
             _vigia.Iniciar();
             Exit += (_, _) => _vigia?.Dispose();

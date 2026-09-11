@@ -231,6 +231,7 @@ namespace AIB.Views
         public void PreencherMetadados(MailSummary item, DateTime agora)
         {
             MetadadosTexto.Text = Metadados(item, agora);
+            RemetenteTexto.Text = Remetente(item, agora);
             VezTexto.Text = ConversaDeEmail.DeQuemEhAVez(item?.AwaitingMe ?? true);
 
             // "Nova mensagem" pede ação e fica em lilás; "Aguardando retorno" é estado e fica
@@ -238,6 +239,26 @@ namespace AIB.Views
             VezTexto.SetResourceReference(
                 ForegroundProperty,
                 (item?.AwaitingMe ?? true) ? "AccentLilacBrush" : "TextSecondaryBrush");
+        }
+
+        /// <summary>
+        /// A linha de cima do corpo do acordeão: "fulano@x.com · Hoje · 10/09/2026, 09:12".
+        /// <para>
+        /// Vazia quando não se sabe quem mandou — melhor não ter a linha do que ter um "·"
+        /// solto anunciando um campo que não veio.
+        /// </para>
+        /// </summary>
+        public static string Remetente(MailSummary item, DateTime agora)
+        {
+            if (item == null) return "";
+
+            string quem = (item.De ?? "").Trim();
+            string quando = item.LastMessageAt == default
+                ? ""
+                : ConversaDeEmail.Quando(item.LastMessageAt, agora);
+
+            if (quem.Length == 0) return quando;
+            return quando.Length == 0 ? quem : quem + " · " + quando;
         }
 
         public static string Metadados(MailSummary item, DateTime agora)

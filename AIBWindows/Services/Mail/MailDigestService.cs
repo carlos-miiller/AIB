@@ -517,6 +517,51 @@ public sealed class MailDigestService : IDisposable
     }
 
     /// <summary>
+    /// O mesmo recarregar, devolvendo a LINHA da tela em vez do estado cru — §3.11.
+    /// <para>
+    /// A conversão mora aqui, e não na janela, porque é a janela que tem o item na mão e o
+    /// serviço que sabe o que cada campo do arquivo significa. Deixar a tela montar o
+    /// <see cref="MailSummary"/> a partir de <see cref="ArquivoDeConversas.Estado"/> faria a
+    /// regra de "urgência vem da última mensagem que não é sua" ser reescrita lá.
+    /// </para>
+    /// <para>
+    /// PRESERVA o que o arquivo não guarda: <c>Url</c>, <c>Account</c>, <c>ThreadId</c> e
+    /// <c>ContextTokens</c> vêm do item de entrada. E preserva o que voltou vazio: modelo fora
+    /// do ar devolve estado sem veredito, e sobrescrever com vazio apagaria da tela o resumo
+    /// que já estava certo.
+    /// </para>
+    /// </summary>
+    /// <returns>A linha atualizada, ou <c>null</c> quando não deu para reler.</returns>
+    public async Task<MailSummary?> RecarregarItemAsync(
+        MailSummary item, CancellationToken ct = default)
+    {
+        if (item == null) return null;
+
+        var estado = await RecarregarConversaAsync(item.Account, item.ThreadId, ct)
+            .ConfigureAwait(false);
+
+        if (estado == null) return null;
+
+        return item with
+        {
+            Name = Preferir(estado.Assunto, item.Name),
+            Description = Preferir(estado.Resumo, item.Description),
+            Urgency = Enum.TryParse<MailUrgency>(estado.Urgencia, true, out var u)
+                ? u
+                : item.Urgency,
+            De = Preferir(estado.De, item.De),
+            LastMessageAt = estado.UltimaEm == default
+                ? item.LastMessageAt
+                : estado.UltimaEm.ToLocalTime(),
+            MessageCount = Math.Max(estado.Mensagens, item.MessageCount),
+            AwaitingMe = estado.EsperandoVoce
+        };
+    }
+
+    private static string Preferir(string? novo, string antigo) =>
+        string.IsNullOrWhiteSpace(novo) ? antigo : novo;
+
+    /// <summary>
     /// Degraus 0 e 1, sobre a lista inteira.
     /// <para>
     /// Separa o que sobe do que cai e guarda o porquê de cada queda. A lista de descartados é o
@@ -610,9 +655,12 @@ public sealed class MailDigestService : IDisposable
                 var m = c.Recente;
 
                 var baseDaLinha = porUid.TryGetValue(m.Uid, out var v)
-                    ? new MailSummary(m.Assunto, v.Resumo, v.Urgencia, "", m.De)
+                    // Account é a CAIXA (m.Conta) e De é o REMETENTE (m.De). Já foram o mesmo
+                    // campo: o rótulo "Abrir no Gmail" passou a seguir o provedor de quem mandou,
+                    // e §3.11 não tinha como achar a conta para reler a conversa.
+                    ? new MailSummary(m.Assunto, v.Resumo, v.Urgencia, "", m.Conta, De: m.De)
                     : new MailSummary(m.Assunto, $"De {m.NomeDoRemetente}. O resumo não saiu desta vez.",
-                                      MailUrgency.Media, "", m.De);
+                                      MailUrgency.Media, "", m.Conta, De: m.De);
 
                 string chave = ArquivoDeConversas.Chave(m.Conta, m.ThreadId, m.Uid);
 

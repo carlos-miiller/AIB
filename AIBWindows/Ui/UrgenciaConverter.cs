@@ -58,6 +58,16 @@ public sealed class UrgenciaConverter : IValueConverter
     /// </summary>
     public static Brush CorDe(MailUrgency nivel) => Pincel(Cor(nivel));
 
+    /// <summary>
+    /// O rótulo de um nível, para quem precisa dele FORA de um Binding — o enquadramento que
+    /// abre a leitura de §3.11, por exemplo, que é texto e vai para o modelo.
+    /// <para>
+    /// Pelo mesmo motivo de <see cref="CorDe"/>: "Máxima" digitado na View seria a quarta
+    /// cópia da mesma palavra, e a primeira a não acompanhar uma correção.
+    /// </para>
+    /// </summary>
+    public static string RotuloDe(MailUrgency nivel) => Rotulo(nivel);
+
     private static string Rotulo(MailUrgency nivel) => nivel switch
     {
         MailUrgency.Maxima => "Máxima",

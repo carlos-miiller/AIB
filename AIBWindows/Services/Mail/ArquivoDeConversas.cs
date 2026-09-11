@@ -260,13 +260,19 @@ public sealed class ArquivoDeConversas
     /// </param>
     /// <param name="Resumo">O resumo que acompanha esse veredito.</param>
     /// <param name="Assunto">Assunto da mensagem mais recente.</param>
+    /// <param name="De">
+    /// Quem escreveu a mensagem do veredito — a mesma que dá <see cref="Urgencia"/>, e não a
+    /// mais recente. Se fosse a mais recente, a conversa que você acabou de responder abriria o
+    /// cartão de §3.11 com o seu próprio endereço no lugar do de quem cobrou.
+    /// </param>
     public sealed record Estado(
         int Mensagens,
         DateTime UltimaEm,
         bool EsperandoVoce,
         string Urgencia,
         string Resumo,
-        string Assunto);
+        string Assunto,
+        string De = "");
 
     /// <summary>
     /// Lê o histórico e devolve o que a linha de §3.10 mostra. <c>null</c> quando a conversa
@@ -301,7 +307,8 @@ public sealed class ArquivoDeConversas
             EsperandoVoce: !ultima.Minha,
             Urgencia: comVeredito?.Urgencia ?? "",
             Resumo: comVeredito?.Resumo ?? "",
-            Assunto: ultima.Assunto ?? "");
+            Assunto: ultima.Assunto ?? "",
+            De: comVeredito?.De ?? ultima.De ?? "");
     }
 
     // ─────────────────────────────────────────────────────────────────────────

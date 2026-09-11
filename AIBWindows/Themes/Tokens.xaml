@@ -91,6 +91,7 @@
     <SolidColorBrush x:Key="AccentFill14Brush"  Color="#249B51E0"/>  <!-- pill de nível -->
     <SolidColorBrush x:Key="AccentRing25Brush"  Color="#409B51E0"/>  <!-- anel do spinner -->
     <SolidColorBrush x:Key="AccentEdge24Brush"  Color="#3D9B51E0"/>  <!-- borda da caixa de ícone -->
+    <SolidColorBrush x:Key="AccentFill07Brush"  Color="#129B51E0"/>  <!-- cartão de e-mail em contexto (§3.11) -->
     <SolidColorBrush x:Key="AccentEdge28Brush"  Color="#479B51E0"/>  <!-- círculo do estado vazio -->
 
     <SolidColorBrush x:Key="DangerFill12Brush"  Color="#1FE5484D"/>  <!-- marcador destrutivo do log -->

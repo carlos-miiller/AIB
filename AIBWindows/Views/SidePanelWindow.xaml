@@ -148,7 +148,12 @@
                                Fill="{StaticResource DividerBrush}"/>
                 </Grid>
 
-                <!-- ── BARRA DE 3 ABAS ─────────────────────────────────── -->
+                <!-- ── BARRA DE 3 ABAS ───────────────────────────────────
+                     Histórico | Arquivos | Ações. E-MAILS SAIU: ele virou o modo
+                     e-mail da área central (tela-chat-v3 §3.10/§3.11), onde tem
+                     largura de janela para o acordeão e a leitura com a IA. Duas
+                     portas para a mesma caixa acabariam divergindo, e a de 252px
+                     era a pior das duas. -->
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="14,12,14,6">
 
                     <RadioButton x:Name="AbaHistorico" Style="{StaticResource PanelTab}"
@@ -157,22 +162,6 @@
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
                               StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                               Width="18" Height="18" Stretch="None"/>
-                    </RadioButton>
-
-                    <!-- E4 — a ordem é Histórico | E-mails | Arquivos | Ações.
-                         Stretch Uniform, e não None como as vizinhas: este envelope é o
-                         MESMO desenho da tela de configurações, traçado num quadro de
-                         20x20 (chega a y=15,6). Numa caixa de 18 sem escala ele sairia
-                         cortado à direita e embaixo. -->
-                    <RadioButton x:Name="AbaEmails" Style="{StaticResource PanelTab}"
-                                 Checked="Aba_Checked" ToolTip="E-mails">
-                        <Path Data="M4.2,4.4 L15.8,4.4 A1.8,1.8 0 0 1 17.6,6.2 L17.6,13.8
-                                    A1.8,1.8 0 0 1 15.8,15.6 L4.2,15.6 A1.8,1.8 0 0 1 2.4,13.8
-                                    L2.4,6.2 A1.8,1.8 0 0 1 4.2,4.4 Z
-                                    M3.1,5.6 L10,10.8 L16.9,5.6"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                              StrokeThickness="1.55" StrokeLineJoin="Round"
-                              Width="18" Height="18" Stretch="Uniform"/>
                     </RadioButton>
 
                     <RadioButton x:Name="AbaArquivos" Style="{StaticResource PanelTab}"
@@ -227,126 +216,6 @@
                         <StackPanel x:Name="HistoricoRodapeCaixa" Grid.Row="2" Margin="0,8,0,0">
                             <Rectangle Height="1" Fill="{StaticResource DividerBrush}" Margin="0,0,0,8"/>
                             <TextBlock x:Name="HistoricoRodape" Style="{StaticResource RodapeTexto}"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <!-- ═══ §6.2  E-MAILS ══════════════════════════════ -->
-                    <Grid x:Name="PaneEmails" Visibility="Collapsed">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- A8 — a linha de título fica DE PÉ também no estado sem conta,
-                             e com a mesma altura mínima das outras abas. -->
-                        <Grid MinHeight="27" Margin="0,0,0,8">
-                            <TextBlock Text="E-mails" VerticalAlignment="Center"
-                                       FontSize="12" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextSecondaryBrush}"/>
-                        </Grid>
-
-                        <ScrollViewer x:Name="RoloDeEmails" Grid.Row="1"
-                                      VerticalScrollBarVisibility="Auto">
-                            <StackPanel>
-                                <ItemsControl x:Name="ListaEmails">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <!-- E3 — o MESMO controle do orbe. Aqui o raio é
-                                                 14, para casar com os outros itens do painel,
-                                                 e o hover segue o lilás. -->
-                                            <v:MailListItem Margin="0,0,0,6"
-                                                            CornerRadius="14"
-                                                            RealceLilas="True"/>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-
-                                <!-- Caso (b) de §6.2.1: conta conectada, zero e-mails. É
-                                     lista vazia mesmo, não convite — não há o que configurar. -->
-                                <TextBlock x:Name="EmailsVazio" Text="Nenhum e-mail novo."
-                                           Style="{StaticResource VazioTexto}"/>
-                            </StackPanel>
-                        </ScrollViewer>
-
-                        <!-- §6.2.1 caso (a): sem conta conectada. NÃO é lista vazia — é um
-                             convite, e por isso reusa a composição da conversa vazia (§5.6)
-                             em escala de painel, no LUGAR da lista. -->
-                        <StackPanel x:Name="ConviteDeEmail" Grid.Row="1"
-                                    Visibility="Collapsed"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center">
-
-                            <Border Width="42" Height="42" CornerRadius="21"
-                                    HorizontalAlignment="Center"
-                                    Background="{StaticResource AccentFill12Brush}"
-                                    BorderBrush="{StaticResource AccentBorderBrush}"
-                                    BorderThickness="1">
-                                <Path Data="M4.2,4.4 L15.8,4.4 A1.8,1.8 0 0 1 17.6,6.2 L17.6,13.8
-                                            A1.8,1.8 0 0 1 15.8,15.6 L4.2,15.6 A1.8,1.8 0 0 1 2.4,13.8
-                                            L2.4,6.2 A1.8,1.8 0 0 1 4.2,4.4 Z
-                                            M3.1,5.6 L10,10.8 L16.9,5.6"
-                                      Stroke="{StaticResource AccentLilacBrush}"
-                                      StrokeThickness="1.63" StrokeLineJoin="Round"
-                                      Width="19" Height="19" Stretch="Uniform"
-                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-
-                            <TextBlock Text="Nenhum e-mail conectado"
-                                       Margin="0,4,0,0" HorizontalAlignment="Center"
-                                       FontSize="13.5" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextStrongBrush}"/>
-
-                            <TextBlock Text="Conecte uma conta para a KAI ler, resumir e priorizar sua caixa de entrada."
-                                       Margin="0,4,0,0" MaxWidth="232"
-                                       HorizontalAlignment="Center" TextAlignment="Center"
-                                       FontSize="11.5" LineHeight="17.25"
-                                       TextWrapping="Wrap"
-                                       Foreground="{StaticResource TextSecondaryBrush}"/>
-
-                            <Button x:Name="BotaoConfigurarEmail"
-                                    Margin="0,10,0,0" HorizontalAlignment="Center"
-                                    Click="ConfigurarEmail_Click"
-                                    Background="Transparent" Cursor="Hand"
-                                    Foreground="{StaticResource AccentLilacBrush}">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border x:Name="Casca" Background="Transparent"
-                                                BorderBrush="{StaticResource AccentBorderStrongBrush}"
-                                                BorderThickness="1" CornerRadius="9" Padding="13,7">
-                                            <ContentPresenter/>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Casca" Property="Background"
-                                                        Value="{StaticResource AccentFill12Brush}"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Button.Template>
-                                <StackPanel Orientation="Horizontal">
-                                    <Path Data="M10,7.2 A2.8,2.8 0 0 1 10,12.8 A2.8,2.8 0 0 1 10,7.2 Z
-                                                M10,2.4 L11.1,4.6 L13.5,4.2 L14.3,6.5 L16.4,7.6
-                                                L15.8,10 L16.4,12.4 L14.3,13.5 L13.5,15.8 L11.1,15.4
-                                                L10,17.6 L8.9,15.4 L6.5,15.8 L5.7,13.5 L3.6,12.4
-                                                L4.2,10 L3.6,7.6 L5.7,6.5 L6.5,4.2 L8.9,4.6 Z"
-                                          Stroke="{StaticResource AccentLilacBrush}"
-                                          StrokeThickness="1.31" StrokeLineJoin="Round"
-                                          Width="13" Height="13" Stretch="Uniform"
-                                          VerticalAlignment="Center"/>
-                                    <TextBlock Text="Configurar e-mail" Margin="7,0,0,0"
-                                               VerticalAlignment="Center"
-                                               FontSize="12" FontWeight="SemiBold"
-                                               Foreground="{StaticResource AccentLilacBrush}"/>
-                                </StackPanel>
-                            </Button>
-                        </StackPanel>
-
-                        <StackPanel x:Name="EmailsRodapeCaixa" Grid.Row="2" Margin="0,8,0,0">
-                            <Rectangle Height="1" Fill="{StaticResource DividerBrush}" Margin="0,0,0,8"/>
-                            <!-- Três medidas numa linha só. As urgentes saem em âmbar quando
-                                 existem e em cinza quando são zero — um "0 urgentes" em cor
-                                 de alerta chamaria atenção para a ausência de alerta. -->
-                            <TextBlock x:Name="EmailsRodape" Style="{StaticResource RodapeTexto}"/>
                         </StackPanel>
                     </Grid>
 

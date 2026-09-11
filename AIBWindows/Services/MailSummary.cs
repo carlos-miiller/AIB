@@ -28,7 +28,11 @@ public enum MailUrgency
 /// Endereço que abre a mensagem. As duas caixas do usuário são webmail, então é uma URL do
 /// Gmail com a thread — não há cliente de e-mail para invocar. Vazio desativa o clique.
 /// </param>
-/// <param name="Account">De qual caixa veio. Duas contas exigem dizer qual.</param>
+/// <param name="Account">
+/// De qual CAIXA veio — o endereço da conta conectada, nunca o do remetente. É por ele que se
+/// acha a conta em <c>MailAccounts</c> para reler a conversa (§3.11) e é dele que sai o rótulo
+/// "Abrir no Gmail"/"Abrir no Outlook". Duas contas exigem dizer qual.
+/// </param>
 /// <param name="LastMessageAt">
 /// Data da mensagem mais RECENTE da conversa — não a do primeiro e-mail. Uma conversa de cinco
 /// dias mostrando a data de abertura diria que nada aconteceu desde então.
@@ -45,6 +49,15 @@ public enum MailUrgency
 /// A conversa a que pertence (X-GM-THRID). Vazio em provedor que não o expõe, e aí cada
 /// mensagem é a própria conversa. É a chave que liga a triagem gravada em disco à lista.
 /// </param>
+/// <param name="De">
+/// Quem escreveu a mensagem mais recente, como veio: <c>"Fulano &lt;f@x.com&gt;"</c> ou só o
+/// endereço. É o que o corpo do acordeão mostra e o que abre o cartão de §3.11.
+/// <para>
+/// Separado de <see cref="Account"/> de propósito: os dois já foram o mesmo campo, e o rótulo
+/// do botão secundário passou a seguir o provedor de QUEM MANDOU em vez do da caixa — uma
+/// mensagem do Gmail numa conta Outlook prometia "Abrir no Gmail".
+/// </para>
+/// </param>
 public sealed record MailSummary(
     string Name,
     string Description,
@@ -55,4 +68,5 @@ public sealed record MailSummary(
     int MessageCount = 1,
     bool AwaitingMe = true,
     int ContextTokens = 0,
-    string ThreadId = "");
+    string ThreadId = "",
+    string De = "");
