@@ -971,7 +971,7 @@
        título do chat       ChatTitleText.Text, via AplicarTitulo(string)
        tokens               TokenCounterText, via UpdateTokenCounterUI(TokenReport)
                             + CorDaEconomia(economia) para a cor
-       total de contexto    settings "Máximo de Tokens de Contexto" (§3.8)
+       total de contexto    settings "Orçamento de histórico do seu nível" (§3.8)
        pensando / status    StatusBar + StatusText (a substituir pelo
                             StatusStrip de §5.8)
        gravando             AplicarEstadoDeGravacao(bool)
@@ -3955,7 +3955,7 @@ const SCENARIOS = [
   "tokenCounter": {
     "format": "{used}/{max} tokens ({savingPct}%)",
     "note": "valor entre parênteses = economia de contexto via cache; negativo = economia",
-    "maxComesFrom": "campo 'Máximo de Tokens de Contexto' da tela de Configurações",
+    "maxComesFrom": "campo 'Orçamento de histórico do seu nível' da tela de Configurações, que é LevelService.GetMaxTokensForLevel — um quarto da janela no nível 1, três quartos no 9",
     "colorRules": [
       { "when": "saving >= 50", "color": "#4ADE80" },
       { "when": "saving 20..49", "color": "#E28743" },

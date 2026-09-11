@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace AIB.Services;
 
@@ -34,37 +34,46 @@ public static class LevelService
     }
 
     /// <summary>
-    /// Orçamento de histórico por nível, em tokens.
+    /// Orçamento de histórico por nível, em tokens. DERIVADO da janela, nunca digitado.
     /// <para>
-    /// Teto amarrado ao <c>num_ctx</c> de 16384 pedido ao Ollama: o orçamento é do PROMPT, e a
-    /// geração também consome a janela. Reservamos 4096 para a resposta, então o topo é 12288.
-    /// A escala anterior ia a 53248 — 3,25× a janela real. O Ollama truncava o prompt pela
-    /// frente, arrancando o system prompt que o hard-lock do Trim existe para proteger.
+    /// Nível 1 recebe um quarto da janela e nível 9 recebe três quartos, em oito passos iguais.
+    /// Com <c>num_ctx</c> em 32768 isso dá 8192 no piso — o mesmo de antes, escolhido para caber
+    /// uma alma grande com folga de conversa (o SOUL.MD da Ayano tem ~3900 tokens) — e 24576 no
+    /// topo.
     /// </para>
     /// <para>
-    /// Piso de 8192 (era 3072) para caber uma alma grande com folga de conversa: o SOUL.MD da
-    /// Ayano sozinho tem ~3485 tokens e não cabia no nível 1, deixando o usuário estourado desde
-    /// a primeira mensagem sem que nenhuma poda pudesse recuperar.
+    /// ERA UMA TABELA DE LITERAIS, de 8192 a 12288, e o comentário dela dizia "teto amarrado ao
+    /// num_ctx de 16384". A janela subiu para 32768 e a tabela ficou: o nível 9 passou a usar
+    /// 37% do que o modelo aguenta, e os oito degraus de +512 eram invisíveis — chegar ao topo
+    /// rendia 4096 tokens, metade de um nível 1. A dépendência estava ESCRITA e mesmo assim
+    /// quebrou em silêncio, que é o que uma constante anotada faz quando a outra ponta se mexe.
+    /// Derivar é o que faz a próxima mudança de janela levar a escala junto.
     /// </para>
     /// <para>
-    /// Subir esta escala exige subir o <c>num_ctx</c> junto — e ele precisa ser CONSTANTE na
-    /// sessão inteira: qualquer requisição com num_ctx diferente faz o Ollama recarregar o
-    /// runner e descartar o KV cache (medido: prefill de 343ms volta a 204s).
+    /// O TETO DE 75% não é folclore: a geração também consome a janela, e
+    /// <c>ConversationService.TetoDaPoda</c> é <c>num_ctx - 2048</c>. Em qualquer janela maior
+    /// que 8192, três quartos ficam abaixo dele com margem — e é por isso que este teto pode
+    /// ser proporcional em vez de mais uma constante para envelhecer.
+    /// </para>
+    /// <para>
+    /// Subir a janela sobe a escala junto, e isso é desejado; o que NÃO pode é mudar
+    /// <c>num_ctx</c> no meio da sessão. Qualquer requisição com num_ctx diferente faz o Ollama
+    /// recarregar o runner e descartar o KV cache — medido: prefill de 343ms volta a 204s.
     /// </para>
     /// </summary>
     public static int GetMaxTokensForLevel(int level)
     {
-        return level switch
-        {
-            1 => 8192,
-            2 => 8704,
-            3 => 9216,
-            4 => 9728,
-            5 => 10240,
-            6 => 10752,
-            7 => 11264,
-            8 => 11776,
-            _ => 12288 // Level 9+
-        };
+        int janela = Ai.ChatRequestOptions.Default.NumCtx;
+
+        int piso = janela / 4;
+        int teto = janela * 3 / 4;
+        int passo = (teto - piso) / (NivelMaximo - 1);
+
+        int n = Math.Clamp(level, 1, NivelMaximo);
+
+        return piso + (n - 1) * passo;
     }
+
+    /// <summary>O último nível. Nível acima disso recebe o mesmo orçamento.</summary>
+    public const int NivelMaximo = 9;
 }

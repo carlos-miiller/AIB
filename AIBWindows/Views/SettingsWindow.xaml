@@ -691,8 +691,13 @@
                                         </Grid>
                                     </Border>
 
-                                    <!-- CAMPO 8 — Máximo de Tokens de Contexto. SOMENTE LEITURA:
-                                         vem do nível do usuário, não é preferência. -->
+                                    <!-- CAMPO 8 — Orçamento de histórico. SOMENTE LEITURA: vem do
+                                         NÍVEL do usuário, não é preferência e não é a janela do
+                                         modelo. Dizia "Definido pelo modelo carregado", o que
+                                         era falso nos dois sentidos: não vinha do modelo, e o
+                                         número mostrado é menor que o que o modelo aguenta. Quem
+                                         chegasse ao nível 9 e lesse 24576 concluiria que essa é
+                                         a janela, e não é — são três quartos dela. -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">
                                             <Grid.ColumnDefinitions>
@@ -700,9 +705,9 @@
                                                 <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                                <TextBlock Text="Máximo de Tokens de Contexto" Style="{StaticResource FieldLabelText}"/>
-                                                <TextBlock Text="Definido pelo modelo carregado."
-                                                           Style="{StaticResource FieldHelpText}"/>
+                                                <TextBlock Text="Orçamento de histórico do seu nível" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quanto da conversa é mantido vivo no prompt antes de virar capítulo. Cresce a cada nível: começa num quarto da janela do modelo e chega a três quartos. O resto da janela fica para a resposta."/>
                                             </StackPanel>
                                             <TextBox x:Name="MaxHistoryTextBox" Grid.Column="1"
                                                      Style="{StaticResource ControlTextBoxMono}"

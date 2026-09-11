@@ -645,10 +645,17 @@ NaN
 
  PÁGINA 4 — "Avançado"
  ------------------------------------------------------------------------------
- 8. "Máximo de Tokens de Contexto"
+ 8. "Orçamento de histórico do seu nível"   [RENOMEADO]
     prop:    MaxContextTokens : int   { get; }  — SOMENTE LEITURA
     editor:  TextBox mono readonly
-    ajuda:   "Definido pelo modelo carregado."
+    ajuda:   "Quanto da conversa é mantido vivo no prompt antes de virar
+              capítulo. Cresce a cada nível: começa num quarto da janela do
+              modelo e chega a três quartos. O resto da janela fica para a
+              resposta."
+              O rótulo anterior era "Máximo de Tokens de Contexto" e a ajuda,
+              "Definido pelo modelo carregado" — falso nos dois sentidos: o
+              número não vem do modelo, e é MENOR que a janela dele. Quem
+              chegasse ao topo e lesse 24576 concluiria que essa é a janela.
     exemplo: 8704
     nota:    é o mesmo total exibido no contador do rodapé da tela de chat.
     vazio:   sem modelo carregado, exibir "—" (não 0) e manter readonly.
@@ -1821,8 +1828,8 @@ NaN
                É o mesmo total exibido no contador do rodapé da tela de chat. -->
           <div class="field" data-spec="field.maxContextTokens">
             <span class="f-text">
-              <span class="f-label">Máximo de Tokens de Contexto</span>
-              <span class="f-help">Definido pelo modelo carregado.</span>
+              <span class="f-label">Orçamento de histórico do seu nível</span>
+              <span class="f-help">Quanto da conversa é mantido vivo no prompt antes de virar capítulo. Cresce a cada nível: começa num quarto da janela do modelo e chega a três quartos. O resto da janela fica para a resposta.</span>
             </span>
             <span class="f-control">
               <!-- IMPL: TextBox IsReadOnly="True" Style="ControlReadOnlyMono" -->
@@ -2040,8 +2047,9 @@ NaN
     {
       "id": "advanced", "title": "Avançado",
       "fields": [
-        { "id": "maxContextTokens", "label": "Máximo de Tokens de Contexto",
-          "help": "Definido pelo modelo carregado.",
+        { "id": "maxContextTokens", "label": "Orçamento de histórico do seu nível",
+          "help": "Quanto da conversa é mantido vivo no prompt antes de virar capítulo. Cresce a cada nível: começa num quarto da janela do modelo e chega a três quartos. O resto da janela fica para a resposta.",
+          "comesFrom": "LevelService.GetMaxTokensForLevel — DERIVADO de num_ctx, não do modelo",
           "control": "text", "mono": true, "readOnly": true,
           "prop": "MaxContextTokens", "type": "int", "sample": 8704,
           "note": "mesmo total exibido no contador do rodapé da tela de chat" },
