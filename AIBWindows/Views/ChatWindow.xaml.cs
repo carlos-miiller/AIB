@@ -1495,6 +1495,157 @@ public partial class ChatWindow : Window
         MailAccountList.AlgumaCaixaPronta(
             _settingsService.LoadSettings().MailAccounts, _cofreDeEmail);
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // §3.10  MODO E-MAIL — a caixa de entrada na área central
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Qual conversa está aberta no acordeão. Só uma por vez (§3.10).</summary>
+    private MailSummary? _emailAberto;
+
+    /// <summary>
+    /// Troca o conteúdo da área central.
+    /// <para>
+    /// A barra de input e o rodapé de contexto somem junto: no modo e-mail a área central é só
+    /// a caixa de entrada, de ponta a ponta. Não se fala com a IA a partir daqui — para
+    /// perguntar sobre a caixa, volta-se ao Chat.
+    /// </para>
+    /// <para>
+    /// A janela NÃO muda de tamanho: os dois são irmãos na MESMA linha da grade, e só a
+    /// Visibility troca (§8 A2).
+    /// </para>
+    /// </summary>
+    private void Modo_Checked(object sender, RoutedEventArgs e)
+    {
+        // Durante o InitializeComponent o IsChecked="True" do ModoChat dispara antes de os
+        // elementos existirem.
+        if (CaixaDeEntrada == null) return;
+
+        bool email = ModoEmail.IsChecked == true;
+
+        CaixaDeEntrada.Visibility = email ? Visibility.Visible : Visibility.Collapsed;
+        ChatScrollViewer.Visibility = email ? Visibility.Collapsed : Visibility.Visible;
+        BarraDeInput.Visibility = email ? Visibility.Collapsed : Visibility.Visible;
+        RodapeDeContexto.Visibility = email ? Visibility.Collapsed : Visibility.Visible;
+
+        // O convite de conversa vazia é do CHAT. Deixá-lo visível por cima da caixa de entrada
+        // anunciaria "nenhuma conversa ainda" em cima de uma lista cheia de e-mails.
+        if (!email) AtualizarEstadoVazio();
+        else EmptyState.Visibility = Visibility.Collapsed;
+
+        if (email) MontarCaixaDeEntrada();
+    }
+
+    /// <summary>
+    /// Monta a lista de conversas da caixa. Recalculada a cada entrada no modo: a triagem roda
+    /// de vinte em vinte minutos e a lista muda com a janela aberta.
+    /// </summary>
+    private void MontarCaixaDeEntrada()
+    {
+        bool configurado = HaCaixaDeEmailPronta();
+
+        ConviteDeEmailCentral.Visibility = configurado ? Visibility.Collapsed : Visibility.Visible;
+        RoloDaCaixa.Visibility = configurado ? Visibility.Visible : Visibility.Collapsed;
+        MedidasDaCaixa.Visibility = configurado ? Visibility.Visible : Visibility.Collapsed;
+
+        ListaDaCaixa.Children.Clear();
+        if (!configurado) return;
+
+        var conversas = FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>();
+        var agora = DateTime.Now;
+
+        int urgentes = conversas.Count(c => c.Urgency == MailUrgency.Maxima);
+        int tokens = conversas.Sum(c => c.ContextTokens);
+
+        MedidasDaCaixa.Text =
+            $"{conversas.Count} e-mail(s) · {urgentes} urgente(s) · {tokens:N0} tokens";
+
+        // Urgente em danger quando HÁ urgente, e apagado quando não há: uma contagem em
+        // vermelho dizendo zero treina a pessoa a ignorar o vermelho.
+        MedidasDaCaixa.Foreground = urgentes > 0
+            ? (System.Windows.Media.Brush)FindResource("DangerTextBrush")
+            : (System.Windows.Media.Brush)FindResource("TextMutedBrush");
+
+        string nomeDaIA = ChatTitleText?.Text ?? "a IA";
+
+        foreach (var conversa in conversas)
+        {
+            var item = new MailListItem
+            {
+                DataContext = conversa,
+                CornerRadius = new CornerRadius(12),
+                RealceLilas = true,
+                EscalaDeJanela = true,
+                MostrarMetadados = true,
+                Aberto = ReferenceEquals(conversa, _emailAberto),
+                NomeDaInteligencia = NomeDaInteligencia(),
+                RotuloDoCliente = RotuloDoCliente(conversa),
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+
+            item.PreencherMetadados(conversa, agora);
+
+            var alvo = conversa;
+
+            // Um item aberto por vez: abrir o segundo fecha o primeiro. Dois corpos abertos
+            // empurrariam a lista para fora da tela e desfariam o ganho do acordeão.
+            item.PediuAlternar += (_, _) =>
+            {
+                _emailAberto = ReferenceEquals(alvo, _emailAberto) ? null : alvo;
+                MontarCaixaDeEntrada();
+            };
+
+            item.PediuAbrirNoCliente += (_, _) => AbrirEmailNoCliente(alvo);
+
+            // §3.11 ainda não existe. Em vez de um botão que não faz nada, ele leva para onde
+            // dá para conversar hoje — e a frase diz o que aconteceu.
+            item.PediuAbrirComIA += (_, _) =>
+            {
+                ModoChat.IsChecked = true;
+                InputBox.Text = $"Sobre o e-mail \"{alvo.Name}\": ";
+                InputBox.Focus();
+                InputBox.CaretIndex = InputBox.Text.Length;
+            };
+
+            ListaDaCaixa.Children.Add(item);
+        }
+    }
+
+    /// <summary>
+    /// O nome da personalidade ativa, para "Abrir com &lt;NOME&gt;".
+    /// <para>
+    /// Do MESMO campo que preenche o header — nunca a string "Kai" em hard-code, que é o que já
+    /// deixou o nome cravado em meia dúzia de lugares.
+    /// </para>
+    /// </summary>
+    private string NomeDaInteligencia()
+    {
+        string nome = (ChatTitleText?.Text ?? "").Trim();
+        return nome.Length == 0 ? "a IA" : nome;
+    }
+
+    /// <summary>
+    /// O rótulo do botão secundário segue o PROVEDOR da conta. Desconhecido vira "Abrir no
+    /// cliente": prometer Gmail numa caixa que não é Gmail seria mentir sobre para onde o
+    /// clique leva.
+    /// </summary>
+    private static string RotuloDoCliente(MailSummary conversa)
+    {
+        string conta = (conversa?.Account ?? "").ToLowerInvariant();
+
+        if (conta.Contains("gmail") || conta.Contains("googlemail")) return "Abrir no Gmail";
+        if (conta.Contains("outlook") || conta.Contains("hotmail") || conta.Contains("live"))
+            return "Abrir no Outlook";
+
+        return "Abrir no cliente";
+    }
+
+    /// <summary>Sai do app pelo mesmo caminho das outras telas — ver MailListItem.</summary>
+    private static void AbrirEmailNoCliente(MailSummary conversa) =>
+        MailListItem.AbrirNoNavegador(conversa?.Url);
+
+    private void EngrenagemDoEmail_Click(object sender, RoutedEventArgs e) =>
+        AbrirConfiguracoesDeEmail();
+
     /// <summary>
     /// O botão "Configurar e-mail" do painel. §6.2.1 mandava abrir o modal de §6.5, mas a
     /// página de e-mail da tela de configurações passou a fazer o mesmo e mais — várias caixas,

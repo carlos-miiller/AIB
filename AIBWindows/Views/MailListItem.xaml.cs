@@ -1,95 +1,256 @@
 ﻿using System;
 using System.Windows;
-using System.Windows.Controls;
+using UserControl = System.Windows.Controls.UserControl;
 using System.Windows.Input;
 using AIB.Services;
+using AIB.Services.Mail;
 
-// WinForms entra junto com o WPF em net8.0-windows e traz homonimos.
-using UserControl = System.Windows.Controls.UserControl;
-
-namespace AIB.Views;
-
-/// <summary>
-/// O item de e-mail — o MESMO nas duas telas: a pilha do orbe (shadow-assistant §4.8) e a aba
-/// de e-mails do painel (tela-chat-v3 §6.2).
-/// <para>
-/// PROVISÓRIO: §6.6 E3 avisa que este layout vai mudar. Ele mora num controle próprio
-/// justamente para que a mudança seja em um lugar só.
-/// </para>
-/// <para>
-/// O clique mora AQUI, e não em cada tela que hospeda a lista. As duas specs pedem a mesma
-/// coisa — abrir a mensagem no navegador — e deixar isso com o hospedeiro significaria duas
-/// cópias da mesma regra, incluindo o cuidado de não derrubar a janela quando o navegador
-/// falha.
-/// </para>
-/// </summary>
-public partial class MailListItem : UserControl
+namespace AIB.Views
 {
-    public MailListItem()
-    {
-        InitializeComponent();
-    }
-
     /// <summary>
-    /// Raio dos cantos: 12 no orbe, 14 no painel, para casar com os outros itens de lá.
+    /// O item de e-mail das TRÊS telas: a pilha do orbe (shadow-assistant §4.8), a lista da
+    /// área central (tela-chat-v3 §3.10) e — enquanto existir — o que sobrar do painel.
+    /// <para>
+    /// São o mesmo dado com a mesma leitura de relance, e duas cópias divergiriam na primeira
+    /// correção feita só de um lado. As diferenças vivem em PROPRIEDADES, não em arquivos.
+    /// </para>
     /// </summary>
-    public static readonly DependencyProperty CornerRadiusProperty =
-        DependencyProperty.Register(
-            nameof(CornerRadius), typeof(CornerRadius), typeof(MailListItem),
-            new PropertyMetadata(new CornerRadius(12)));
-
-    public CornerRadius CornerRadius
+    public partial class MailListItem : UserControl
     {
-        get => (CornerRadius)GetValue(CornerRadiusProperty);
-        set => SetValue(CornerRadiusProperty, value);
-    }
-
-    /// <summary>
-    /// Liga o hover lilás do painel. Fica desligado no orbe de propósito: lá a pilha é leitura
-    /// de passagem sobre o desktop, e um realce a cada item sob o cursor viraria ruído.
-    /// </summary>
-    public static readonly DependencyProperty RealceLilasProperty =
-        DependencyProperty.Register(
-            nameof(RealceLilas), typeof(bool), typeof(MailListItem),
-            new PropertyMetadata(false));
-
-    public bool RealceLilas
-    {
-        get => (bool)GetValue(RealceLilasProperty);
-        set => SetValue(RealceLilasProperty, value);
-    }
-
-    private void Item_Click(object sender, MouseButtonEventArgs e)
-    {
-        if (DataContext is not MailSummary email) return;
-
-        AbrirNoNavegador(email.Url);
-    }
-
-    /// <summary>
-    /// Abre a mensagem. URL vazia simplesmente não faz nada — as caixas do usuário são webmail,
-    /// e um e-mail sem endereço de thread não tem para onde levar.
-    /// </summary>
-    /// <remarks>
-    /// Público para os ensaios: sem uma janela na tela não há clique de mouse para simular, e o
-    /// que precisa ser garantido é que URL vazia não vira chamada ao shell.
-    /// </remarks>
-    public static bool AbrirNoNavegador(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return false;
-
-        try
+        public MailListItem()
         {
-            System.Diagnostics.Process.Start(
-                new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
-            return true;
+            InitializeComponent();
         }
-        catch (Exception ex)
+
+        // ─────────────────────────────────────────────────────────────────────
+        // As diferenças permitidas
+        // ─────────────────────────────────────────────────────────────────────
+
+        public static readonly DependencyProperty CornerRadiusProperty =
+            DependencyProperty.Register(
+                nameof(CornerRadius), typeof(CornerRadius), typeof(MailListItem),
+                new PropertyMetadata(new CornerRadius(12)));
+
+        public CornerRadius CornerRadius
         {
-            // Abrir o navegador é conveniência. Falhar aqui não pode derrubar a janela, que
-            // continua sendo a única coisa entre o usuário e a lista que ele acabou de ler.
-            Console.WriteLine($"[EMAIL] Não abriu '{url}': {ex.Message}");
-            return false;
+            get => (CornerRadius)GetValue(CornerRadiusProperty);
+            set => SetValue(CornerRadiusProperty, value);
+        }
+
+        public static readonly DependencyProperty RealceLilasProperty =
+            DependencyProperty.Register(
+                nameof(RealceLilas), typeof(bool), typeof(MailListItem),
+                new PropertyMetadata(false));
+
+        public bool RealceLilas
+        {
+            get => (bool)GetValue(RealceLilasProperty);
+            set => SetValue(RealceLilasProperty, value);
+        }
+
+        /// <summary>
+        /// Escala de JANELA em vez de escala de painel — §3.10.
+        /// <para>
+        /// No orbe e no painel o item vive em 252px e as medidas são apertadas de propósito. Na
+        /// área central há largura de janela, e manter 12.5px ali deixaria a lista parecendo um
+        /// widget colado numa tela grande.
+        /// </para>
+        /// </summary>
+        public static readonly DependencyProperty EscalaDeJanelaProperty =
+            DependencyProperty.Register(
+                nameof(EscalaDeJanela), typeof(bool), typeof(MailListItem),
+                new PropertyMetadata(false));
+
+        public bool EscalaDeJanela
+        {
+            get => (bool)GetValue(EscalaDeJanelaProperty);
+            set => SetValue(EscalaDeJanelaProperty, value);
+        }
+
+        /// <summary>
+        /// A linha de metadados — data, tamanho da conversa e de quem é a vez.
+        /// <para>
+        /// Padrão FALSO porque ela NÃO existe no item do orbe: lá o balão tem 252px e três
+        /// itens, e uma quarta linha de texto por item comeria a pilha inteira. Aqui há largura
+        /// de janela. É a propriedade que a spec pede para o controle poder ser o mesmo nos
+        /// dois lugares.
+        /// </para>
+        /// </summary>
+        public static readonly DependencyProperty MostrarMetadadosProperty =
+            DependencyProperty.Register(
+                nameof(MostrarMetadados), typeof(bool), typeof(MailListItem),
+                new PropertyMetadata(false));
+
+        public bool MostrarMetadados
+        {
+            get => (bool)GetValue(MostrarMetadadosProperty);
+            set => SetValue(MostrarMetadadosProperty, value);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // O acordeão
+        // ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Item aberto: o corpo aparece e o resumo de duas linhas sai.
+        /// <para>
+        /// Sai porque o corpo já traz o resumo INTEIRO, e mantê-lo repetiria a primeira frase
+        /// duas vezes na mesma caixa.
+        /// </para>
+        /// <para>
+        /// Um bool, e não um <c>Expander</c>: o Expander traz chevron e template próprios, e
+        /// a spec desenha outra coisa.
+        /// </para>
+        /// </summary>
+        public static readonly DependencyProperty AbertoProperty =
+            DependencyProperty.Register(
+                nameof(Aberto), typeof(bool), typeof(MailListItem),
+                new PropertyMetadata(false));
+
+        public bool Aberto
+        {
+            get => (bool)GetValue(AbertoProperty);
+            set => SetValue(AbertoProperty, value);
+        }
+
+        /// <summary>
+        /// O rótulo do botão primário: "Abrir com Kai", "Abrir com Ayano".
+        /// <para>
+        /// Vem do MESMO campo que preenche o nome no header, e muda quando a personalidade
+        /// muda. Nunca a string inteira em hard-code — foi o que deixou "Kai" cravado em meia
+        /// dúzia de lugares.
+        /// </para>
+        /// </summary>
+        public static readonly DependencyProperty NomeDaInteligenciaProperty =
+            DependencyProperty.Register(
+                nameof(NomeDaInteligencia), typeof(string), typeof(MailListItem),
+                new PropertyMetadata("a IA"));
+
+        public string NomeDaInteligencia
+        {
+            get => (string)GetValue(NomeDaInteligenciaProperty);
+            set => SetValue(NomeDaInteligenciaProperty, value);
+        }
+
+        /// <summary>
+        /// O rótulo do botão secundário, pelo PROVEDOR da conta: "Abrir no Gmail", "Abrir no
+        /// Outlook". Provedor desconhecido vira "Abrir no cliente".
+        /// </summary>
+        public static readonly DependencyProperty RotuloDoClienteProperty =
+            DependencyProperty.Register(
+                nameof(RotuloDoCliente), typeof(string), typeof(MailListItem),
+                new PropertyMetadata("Abrir no cliente"));
+
+        public string RotuloDoCliente
+        {
+            get => (string)GetValue(RotuloDoClienteProperty);
+            set => SetValue(RotuloDoClienteProperty, value);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // O que o item pede
+        // ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>Clique no item: a lista decide quem abre e quem fecha (um por vez).</summary>
+        public event EventHandler? PediuAlternar;
+
+        /// <summary>"Abrir com &lt;NOME&gt;": traz o e-mail para dentro do chat (§3.11).</summary>
+        public event EventHandler? PediuAbrirComIA;
+
+        /// <summary>"Abrir no Gmail": sai do app, para o webmail ou cliente configurado.</summary>
+        public event EventHandler? PediuAbrirNoCliente;
+
+        private void Item_Click(object sender, MouseButtonEventArgs e)
+        {
+            // O clique no item NÃO abre mais o cliente de e-mail — isso virou o botão
+            // secundário do corpo. Ele EXPANDE, que é o gesto que revela a decisão em vez de
+            // tomá-la por você.
+            PediuAlternar?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void AbrirComIA_Click(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;   // não deixa o clique subir e fechar o acordeão
+            PediuAbrirComIA?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void AbrirNoCliente_Click(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;
+            PediuAbrirNoCliente?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Abre um endereço fora do app. Devolve false quando não havia o que abrir.
+        /// <para>
+        /// URL vazia não pode virar <c>Process.Start("")</c>, que levanta exceção. O item vive
+        /// em três telas: falhar aqui derrubaria o orbe, que é a única coisa entre o usuário e a
+        /// lista que ele acabou de ler.
+        /// </para>
+        /// <para>
+        /// Estático e aqui, e não copiado em cada tela: é o mesmo gesto nos três lugares, e a
+        /// segunda cópia perderia o guarda na primeira correção feita só de um lado.
+        /// </para>
+        /// </summary>
+        public static bool AbrirNoNavegador(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return false;
+
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[EMAIL] não consegui abrir o endereço: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // A linha de metadados, montada
+        // ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// "Hoje · 10/09/2026, 09:12 · 3 respostas" — a parte neutra da linha.
+        /// <para>
+        /// Montada aqui e não no XAML: são três regras de texto (dia relativo até sete dias,
+        /// plural do tamanho, separador) e um MultiBinding faria cada uma virar um converter.
+        /// </para>
+        /// </summary>
+        /// <summary>
+        /// Preenche a linha de metadados. Em código e não por binding: são três regras de texto
+        /// — dia relativo até sete dias, plural do tamanho, separador — e um MultiBinding faria
+        /// cada uma virar um converter próprio.
+        /// </summary>
+        public void PreencherMetadados(MailSummary item, DateTime agora)
+        {
+            MetadadosTexto.Text = Metadados(item, agora);
+            VezTexto.Text = ConversaDeEmail.DeQuemEhAVez(item?.AwaitingMe ?? true);
+
+            // "Nova mensagem" pede ação e fica em lilás; "Aguardando retorno" é estado e fica
+            // apagado junto do resto da linha. Ler os dois na mesma cor esconderia o primeiro.
+            VezTexto.SetResourceReference(
+                ForegroundProperty,
+                (item?.AwaitingMe ?? true) ? "AccentLilacBrush" : "TextSecondaryBrush");
+        }
+
+        public static string Metadados(MailSummary item, DateTime agora)
+        {
+            if (item == null) return "";
+
+            string quando = item.LastMessageAt == default
+                ? ""
+                : ConversaDeEmail.Quando(item.LastMessageAt, agora);
+
+            string tamanho = ConversaDeEmail.Tamanho(item.MessageCount);
+
+            return quando.Length == 0 ? tamanho : quando + " · " + tamanho;
         }
     }
 }
