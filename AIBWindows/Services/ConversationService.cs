@@ -923,6 +923,53 @@ public sealed class ConversationService : IMessageStore
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
+    /// Compacta o que der, AGORA: fecha um capítulo e, se sobrarem capítulos soltos
+    /// suficientes, promove um ato em seguida. É o <c>/compact</c>.
+    /// <para>
+    /// Um comando e não dois porque a escolha entre capítulo e ato não é do usuário: depende
+    /// de quantos turnos fechados existem e de quantos capítulos estão soltos, dois números que
+    /// ele não tem como saber antes de pedir. Quem sabe é este método.
+    /// </para>
+    /// <para>
+    /// FAZ OS DOIS quando dá. Fechar um capítulo é justamente o que pode completar a conta
+    /// para um ato; parar no primeiro deixaria o segundo passo esperando um comando que o
+    /// usuário não tem mais como dar.
+    /// </para>
+    /// <para>
+    /// Anuncia na faixa de sistema e aceita interrupção, como a compactação automática: nesta
+    /// máquina cada resumo é uma chamada ao modelo, e isso é minutos. Um comando manual que
+    /// congela a tela em silêncio seria o mesmo defeito com outro gatilho.
+    /// </para>
+    /// </summary>
+    /// <returns>A frase que a interface mostra, dizendo o que aconteceu — ou por que não.</returns>
+    public async Task<string> ForcarCompactacaoAsync(int userLevel, CancellationToken ct = default)
+    {
+        _desistencia?.Dispose();
+        _desistencia = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var token = _desistencia.Token;
+
+        try
+        {
+            CompactacaoAndou?.Invoke(new PassoDaCompactacao("capítulo", _memory.NextChapterIndex, 0));
+
+            string doCapitulo = await ForcarCapituloAsync(userLevel, token).ConfigureAwait(false);
+
+            // A promoção só é tentada quando há material: <see cref="ForcarAtoAsync"/> recusa
+            // com menos de dois soltos, e anunciar "arco" para depois recusar faria a faixa
+            // piscar um trabalho que não vai acontecer.
+            if (_memory.UncoveredChapters.Count < 2) return doCapitulo;
+
+            string doAto = await ForcarAtoAsync(userLevel, token).ConfigureAwait(false);
+
+            return doCapitulo + "\n\n" + doAto;
+        }
+        finally
+        {
+            CompactacaoAcabou?.Invoke();
+        }
+    }
+
+    /// <summary>
     /// Fecha um capitulo AGORA, com as mensagens que existem, sem esperar o gatilho de tokens.
     /// <para>
     /// Segura o mesmo portao do turno: compactar no meio de uma resposta mexeria no historico

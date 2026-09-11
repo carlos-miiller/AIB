@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using AIB.Services;
@@ -414,6 +415,40 @@ namespace AIB.Tests
                 // Ela mora dentro de AcoesDaLeitura, que só aparece na leitura.
                 Achar<StackPanel>(janela, "AcoesDaLeitura").Visibility
                     .Should().Be(Visibility.Collapsed);
+
+                janela.Close();
+            });
+        }
+
+        [Theory]
+        [InlineData("/compact")]
+        [InlineData("/memoria")]
+        [InlineData("/skills")]
+        public void ALista_De_Barra_SO_OfereceComandoQueEXISTE(string comando)
+        {
+            // Ela sugeria /clear, /help e /vault, e nenhum dos três era tratado: escolher um
+            // deles mandava o texto ao modelo como pergunta. Uma lista que inventa comandos
+            // ensina o atalho errado e só desmente depois do envio.
+            //
+            // O ensaio confere pelo caminho do usuário — digitar "/" e ver o que aparece — e
+            // não pelo campo, que poderia estar certo com a lista na tela vindo de outro lugar.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                var caixa = Achar<System.Windows.Controls.TextBox>(janela, "InputBox");
+                caixa.Text = "/";
+
+                var lista = Achar<System.Windows.Controls.ListBox>(janela, "CommandsList");
+                var oferecidos = lista.ItemsSource.Cast<string>().ToList();
+
+                oferecidos.Should().Contain(comando);
+                oferecidos.Should().NotContain(new[] { "/clear", "/help", "/vault" });
+
+                // Trapaça de desenvolvimento não é recurso: oferecê-la na lista a transformaria
+                // em recurso.
+                oferecidos.Should().NotContain("/unlock_level");
 
                 janela.Close();
             });

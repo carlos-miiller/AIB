@@ -1625,5 +1625,40 @@ namespace AIB.Tests
             ChatHistoryService.ConversasDoUsuario()
                 .Should().Contain(c => c.Content.Contains(marca));
         }
+
+        // ──────────────────────────────────────────────────────────
+        // /compact — um comando, os dois trabalhos
+        // ──────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task Compact_SemMaterial_EXPLICA_EmVezDeCalar()
+        {
+            // Um "não deu" sem motivo é pior que não ter o comando.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            string resposta = await conversation.ForcarCompactacaoAsync(userLevel: 1);
+
+            resposta.Should().NotBeNullOrWhiteSpace();
+            resposta.ToLowerInvariant().Should().Contain("nada a compactar");
+        }
+
+        [Fact]
+        public async Task Compact_ANUNCIA_EAcabaNaFaixa()
+        {
+            // Cada resumo é uma chamada ao modelo, e nesta máquina isso é minutos. Um comando
+            // manual que congela a tela em silêncio seria o mesmo defeito com outro gatilho.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            int anuncios = 0, fins = 0;
+            conversation.CompactacaoAndou += _ => anuncios++;
+            conversation.CompactacaoAcabou += () => fins++;
+
+            await conversation.ForcarCompactacaoAsync(userLevel: 1);
+
+            anuncios.Should().BeGreaterThan(0, "a faixa precisa aparecer");
+            fins.Should().Be(1, "e precisa sumir uma vez, mesmo sem ter havido o que fazer");
+        }
     }
 }

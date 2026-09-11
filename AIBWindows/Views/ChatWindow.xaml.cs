@@ -936,17 +936,16 @@ public partial class ChatWindow : Window
             return;
         }
 
-        // Memoria a pedido: fecha um capitulo ou um ato agora, sem esperar o gatilho.
-        if (text.Equals("/capitulo", StringComparison.OrdinalIgnoreCase)
-            || text.Equals("/capítulo", StringComparison.OrdinalIgnoreCase))
+        // Memória a pedido: fecha um capítulo agora e promove um ato se der, sem esperar o
+        // gatilho de tokens.
+        //
+        // UM comando, e não os dois que havia antes. A escolha entre capítulo e ato depende de
+        // quantos turnos fechados existem e de quantos capítulos estão soltos — dois números
+        // que o usuário não tem como saber antes de pedir. Fazer ele escolher era fazer ele
+        // adivinhar, e errar custava um comando e uma recusa.
+        if (text.Equals("/compact", StringComparison.OrdinalIgnoreCase))
         {
-            await RodarComandoDeMemoria(text, nivel => _conversation.ForcarCapituloAsync(nivel));
-            return;
-        }
-
-        if (text.Equals("/ato", StringComparison.OrdinalIgnoreCase))
-        {
-            await RodarComandoDeMemoria(text, nivel => _conversation.ForcarAtoAsync(nivel));
+            await RodarComandoDeMemoria(text, nivel => _conversation.ForcarCompactacaoAsync(nivel));
             return;
         }
 
@@ -1369,7 +1368,20 @@ public partial class ChatWindow : Window
     // Handlers de controle da janela
     // ─────────────────────────────────────────────────────────────────────────
 
-    private readonly string[] _slashCommands = { "/skills", "/clear", "/help", "/vault" };
+    /// <summary>
+    /// O que a lista de "/" oferece. SÓ comandos que existem.
+    /// <para>
+    /// Ela sugeria <c>/clear</c>, <c>/help</c> e <c>/vault</c>, e nenhum dos três era tratado
+    /// em <c>SendButton_Click</c>: escolher um deles mandava o texto para o modelo como
+    /// pergunta. Uma lista de comandos que inventa comandos é pior que lista nenhuma — ela
+    /// ensina o atalho errado e só desmente depois do envio.
+    /// </para>
+    /// <para>
+    /// <c>/unlock_level</c> fica de fora de propósito: é trapaça de desenvolvimento, não
+    /// recurso. Oferecê-lo na lista o transformaria em recurso.
+    /// </para>
+    /// </summary>
+    private readonly string[] _slashCommands = { "/compact", "/memoria", "/skills" };
 
     private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
     {
