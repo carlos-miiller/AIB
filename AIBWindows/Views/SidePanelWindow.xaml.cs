@@ -191,7 +191,9 @@ public partial class SidePanelWindow : Window
 
     private void MontarHistorico()
     {
-        var sessoes = ChatHistoryService.LoadHistory();
+        // As nascidas de um e-mail (§3.11) ficam de fora — quem decide isso é o serviço, e o
+        // porquê está lá. Elas são gravadas normalmente e voltam pelo próprio e-mail.
+        var sessoes = ChatHistoryService.ConversasDoUsuario();
         string? ativa = _sessaoAtiva?.Invoke();
         ListaHistorico.Items.Clear();
 

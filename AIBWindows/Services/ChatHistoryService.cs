@@ -23,6 +23,23 @@ namespace AIB.Services
         /// </para>
         /// </summary>
         public string MemorySessionId { get; set; } = "";
+
+        /// <summary>
+        /// A thread de e-mail que originou esta conversa — <c>conta|thr:id</c>. Vazia nas
+        /// conversas comuns, que é o caso normal.
+        /// <para>
+        /// Faz dois trabalhos. Tira a conversa da LISTA do painel (§6.1), que é das conversas
+        /// que o usuário começou — uma caixa movimentada encheria a lista de linhas que ele
+        /// nunca abriu. E é por ela que "Abrir com &lt;NOME&gt;" reencontra o que já foi
+        /// conversado sobre aquele e-mail, em vez de começar do zero toda vez.
+        /// </para>
+        /// <para>
+        /// Guarda a CHAVE, que é conta mais identificador de thread — nunca assunto nem
+        /// remetente. Ver a nota de <see cref="AIB.Services.Mail.ArquivoDeConversas"/> sobre
+        /// por que nome de conversa não vira nome de nada.
+        /// </para>
+        /// </summary>
+        public string MailThreadKey { get; set; } = "";
     }
 
     /// <summary>
@@ -125,7 +142,7 @@ namespace AIB.Services
         /// </param>
         public static void SaveCurrentSession(
             List<ChatMessage> currentHistory, string? titulo = null, string? id = null,
-            string? memorySessionId = null)
+            string? memorySessionId = null, string? mailThreadKey = null)
         {
             if (currentHistory == null || currentHistory.Count <= 1) return; // Only system prompt
 
@@ -136,6 +153,7 @@ namespace AIB.Services
 
             if (!string.IsNullOrWhiteSpace(id)) session.Id = id!;
             if (!string.IsNullOrWhiteSpace(memorySessionId)) session.MemorySessionId = memorySessionId!;
+            if (!string.IsNullOrWhiteSpace(mailThreadKey)) session.MailThreadKey = mailThreadKey!;
 
             var lines = new List<string>();
             string firstUserMessage = "Novo Chat";
@@ -173,6 +191,40 @@ namespace AIB.Services
             {
                 Persistir(session);
             }
+        }
+
+        /// <summary>
+        /// O que a LISTA do painel mostra (§6.1): as conversas que o usuário começou.
+        /// <para>
+        /// Fora ficam as nascidas de um e-mail (§3.11). Não por serem menos conversa — elas são
+        /// gravadas igual e têm memória igual —, mas porque a lista é curta e uma caixa
+        /// movimentada a encheria de linhas que ninguém abriu, enterrando as que foram abertas.
+        /// Elas são reencontradas pelo próprio e-mail, em <see cref="ConversaDoEmail"/>.
+        /// </para>
+        /// <para>
+        /// Aqui, e não na View: o filtro escrito lá seria invisível para o ensaio e, no dia em
+        /// que houvesse uma segunda tela de histórico, só uma das duas o teria.
+        /// </para>
+        /// </summary>
+        public static List<ChatSession> ConversasDoUsuario() =>
+            LoadHistory().Where(h => string.IsNullOrEmpty(h.MailThreadKey)).ToList();
+
+        /// <summary>
+        /// A conversa já havida sobre uma thread de e-mail, ou <c>null</c> se é a primeira vez.
+        /// <para>
+        /// A mais RECENTE, se houver mais de uma: as antigas são de antes de o vínculo existir,
+        /// ou de uma reabertura que não encontrou a anterior. Continuar a última é o que
+        /// corresponde ao que o usuário lembra.
+        /// </para>
+        /// </summary>
+        public static ChatSession? ConversaDoEmail(string? chaveDaThread)
+        {
+            if (string.IsNullOrWhiteSpace(chaveDaThread)) return null;
+
+            return LoadHistory()
+                .Where(h => string.Equals(h.MailThreadKey, chaveDaThread, StringComparison.Ordinal))
+                .OrderByDescending(h => h.Timestamp)
+                .FirstOrDefault();
         }
 
         /// <summary>Insere ou substitui a sessão no arquivo. Sempre sob <see cref="Trava"/>.</summary>

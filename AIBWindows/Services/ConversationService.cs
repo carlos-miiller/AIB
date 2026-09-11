@@ -270,24 +270,18 @@ public sealed class ConversationService : IMessageStore
     public IReadOnlyList<ChatMessage> SnapshotHistory() => Snapshot();
 
     /// <summary>
-    /// Esta conversa NÃO entra na lista de chats do painel (§6.1).
+    /// A thread de e-mail que originou a conversa corrente, ou vazio na conversa comum.
     /// <para>
-    /// É a conversa aberta por cima de um e-mail (§3.11). A lista do painel é das conversas que
-    /// o usuário começou; uma caixa movimentada encheria a lista de linhas que ele não abriu e
-    /// enterraria as que abriu.
-    /// </para>
-    /// <para>
-    /// SÓ o histórico do painel. A sessão de memória continua existindo — <c>raw.jsonl</c>,
-    /// capítulos, atos —, porque economia de contexto é necessária em qualquer conversa, e
-    /// porque o que se grava ali é o veredito da triagem, nunca o corpo.
+    /// Ela é GRAVADA como qualquer outra — o que muda é que sai da LISTA do painel e passa a
+    /// ser reencontrável pelo próprio e-mail. Foi por não gravar que a primeira resposta da
+    /// Kai sobre um e-mail existiu só no <c>raw.jsonl</c>, sem porta de volta pela interface.
     /// </para>
     /// </summary>
-    public bool ForaDoHistorico { get; private set; }
+    public string ChaveDoEmail { get; private set; } = "";
 
-    /// <summary>
-    /// Tira a conversa CORRENTE da lista do painel. Vale até a próxima <see cref="ResetHistory"/>.
-    /// </summary>
-    public void ManterForaDoHistorico() => ForaDoHistorico = true;
+    /// <summary>Marca a conversa CORRENTE como sendo sobre uma thread de e-mail.</summary>
+    public void VincularAEmail(string? chaveDaThread) =>
+        ChaveDoEmail = (chaveDaThread ?? "").Trim();
 
     /// <summary>Salva a sessão atual e recria o system prompt (SOUL/skills/home dir).</summary>
     public void ResetHistory() => ResetHistory(conversaNova: true);
@@ -323,7 +317,7 @@ public sealed class ConversationService : IMessageStore
         // termina aqui, e conversa nova nasce normal. Limpar só quando havia transcrição
         // deixaria a marca presa quando se abre um e-mail e se desiste antes do primeiro turno
         // — e a conversa seguinte, essa de verdade, sumiria da lista.
-        if (conversaNova) ForaDoHistorico = false;
+        if (conversaNova) ChaveDoEmail = "";
 
         // Histórico zerado é sessão nova: pasta nova em memory/sessions e contagem de turnos
         // reiniciada. Continuar gravando na pasta anterior misturaria duas conversas num
@@ -1426,12 +1420,6 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private void ArquivarConversaViva()
     {
-        // Um guarda só, aqui, e não em cada um dos três pontos que chamam este método — fim de
-        // turno, troca de conversa e renomeação. Três cópias da mesma condição divergiriam na
-        // primeira correção feita só de um lado, e a que escapasse gravaria a conversa de
-        // e-mail na lista mesmo assim.
-        if (ForaDoHistorico) return;
-
         try
         {
             List<ChatMessage> transcricao;
@@ -1443,7 +1431,7 @@ public sealed class ConversationService : IMessageStore
             transcricao.Insert(0, ChatMessage.CreateSystemMessage(""));
 
             ChatHistoryService.SaveCurrentSession(
-                transcricao, Title, _sessionId, _sessionMemory.SessionId);
+                transcricao, Title, _sessionId, _sessionMemory.SessionId, ChaveDoEmail);
             OnHistoryChanged?.Invoke();
         }
         catch (Exception ex)

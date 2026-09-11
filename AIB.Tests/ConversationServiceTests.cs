@@ -1529,84 +1529,101 @@ namespace AIB.Tests
             turnosCobertos.Should().BeLessThanOrEqualTo(8);
         }
 
+ 
         // ──────────────────────────────────────────────────────────
-        // Conversa de e-mail fica FORA da lista de chats do painel
+        // A conversa nascida de um e-mail — gravada, marcada, e fora da LISTA
         // ──────────────────────────────────────────────────────────
 
         private ConversationService NovaConversaDeEnsaio() =>
             BuildConversation(BuildSettings(true), new FakeProvider(), out _);
 
         [Fact]
-        public void ForaDoHistorico_NASCE_Falso()
+        public void ChaveDoEmail_NASCE_Vazia()
         {
-            // A conversa comum é o caso normal; a de e-mail é que pede a marca.
-            NovaConversaDeEnsaio().ForaDoHistorico.Should().BeFalse();
+            // A conversa comum é o caso normal; a de e-mail é que pede o vínculo.
+            NovaConversaDeEnsaio().ChaveDoEmail.Should().BeEmpty();
         }
 
         [Fact]
-        public void ForaDoHistorico_LIGA_ESeApagaNaConversaSeguinte()
+        public void ChaveDoEmail_LIGA_ESeApagaNaConversaSeguinte()
         {
-            // A marca é da conversa que termina no ResetHistory. Conversa nova nasce normal —
+            // O vínculo é da conversa que termina no ResetHistory. Conversa nova nasce comum —
             // senão abrir um e-mail sumiria com todas as conversas dali em diante.
             var conversa = NovaConversaDeEnsaio();
 
-            conversa.ManterForaDoHistorico();
-            conversa.ForaDoHistorico.Should().BeTrue();
+            conversa.VincularAEmail("eu@x.com|thr:1");
+            conversa.ChaveDoEmail.Should().Be("eu@x.com|thr:1");
 
             conversa.ResetHistory();
-            conversa.ForaDoHistorico.Should().BeFalse();
+            conversa.ChaveDoEmail.Should().BeEmpty();
         }
 
         [Fact]
-        public async Task ComAMarca_OTurnoNAO_ChegaAoHistorico()
-        {
-            // O ponto todo. ArquivarConversaViva roda ao fim de CADA turno — não só ao trocar
-            // de conversa —, e é por isso que o guarda mora lá dentro e não nos chamadores.
-            //
-            // Conferido pelo evento, e não pelo arquivo: OnHistoryChanged é disparado DEPOIS de
-            // gravar, então ele não soar prova que não se gravou — sem pôr este ensaio para
-            // escrever no chat_history.json que as outras classes leem em paralelo.
-            var settings = BuildSettings(sendSystemPrompt: false);
-            var conversation = BuildConversation(settings, new FakeProvider(), out _);
-
-            int avisos = 0;
-            conversation.OnHistoryChanged += () => avisos++;
-
-            conversation.ManterForaDoHistorico();
-
-            await foreach (var _ in conversation.StreamResponseAsync("oi", _ => { })) { }
-
-            avisos.Should().Be(0, "conversa de e-mail não entra na lista do painel");
-        }
-
-        [Fact]
-        public async Task SemAMarca_OTurnoCHEGA_AoHistorico()
-        {
-            // O contrapeso do anterior: se o guarda passasse a barrar tudo, o ensaio de cima
-            // continuaria verde e o histórico inteiro teria sumido em silêncio.
-            var settings = BuildSettings(sendSystemPrompt: false);
-            var conversation = BuildConversation(settings, new FakeProvider(), out _);
-
-            int avisos = 0;
-            conversation.OnHistoryChanged += () => avisos++;
-
-            await foreach (var _ in conversation.StreamResponseAsync("oi", _ => { })) { }
-
-            avisos.Should().BeGreaterThan(0);
-        }
-
-        [Fact]
-        public void ForaDoHistorico_SeApaga_MesmoSemTranscricao()
+        public void ChaveDoEmail_SeApaga_MesmoSemTranscricao()
         {
             // Abrir um e-mail e desistir antes do primeiro turno deixa a conversa vazia. Se a
-            // limpeza dependesse de haver transcrição, a marca ficaria presa e a conversa
-            // SEGUINTE — essa de verdade — sumiria da lista.
+            // limpeza dependesse de haver transcrição, o vínculo ficaria preso e a conversa
+            // SEGUINTE — essa de verdade — sumiria da lista do painel.
             var conversa = NovaConversaDeEnsaio();
 
-            conversa.ManterForaDoHistorico();
+            conversa.VincularAEmail("eu@x.com|thr:1");
             conversa.ResetHistory();
 
-            conversa.ForaDoHistorico.Should().BeFalse();
+            conversa.ChaveDoEmail.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task OTurnoDeEmail_EH_Gravado_EReencontravelPelaThread()
+        {
+            // O DEFEITO QUE ISTO TRAVA: a primeira versão não gravava a conversa de e-mail, e a
+            // resposta da IA passou a existir só no raw.jsonl — sem nenhuma porta de volta pela
+            // interface. Tirar da LISTA não pode virar tirar da EXISTÊNCIA.
+            string chave = "eu@x.com|thr:" + Guid.NewGuid().ToString("N");
+
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            conversation.VincularAEmail(chave);
+
+            await foreach (var _ in conversation.StreamResponseAsync("sobre o e-mail", _ => { })) { }
+
+            var achada = ChatHistoryService.ConversaDoEmail(chave);
+
+            achada.Should().NotBeNull("a conversa de e-mail é gravada como qualquer outra");
+            achada!.Content.Should().Contain("sobre o e-mail");
+            achada.MailThreadKey.Should().Be(chave);
+        }
+
+        [Fact]
+        public async Task OTurnoDeEmail_NAO_ApareceNaListaDoPainel()
+        {
+            string chave = "eu@x.com|thr:" + Guid.NewGuid().ToString("N");
+
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            conversation.VincularAEmail(chave);
+
+            await foreach (var _ in conversation.StreamResponseAsync("sobre o e-mail", _ => { })) { }
+
+            ChatHistoryService.ConversasDoUsuario()
+                .Should().NotContain(c => c.MailThreadKey == chave);
+        }
+
+        [Fact]
+        public async Task AConversaCOMUM_APARECE_NaListaDoPainel()
+        {
+            // O contrapeso. Se o filtro passasse a barrar tudo, o ensaio de cima continuaria
+            // verde e a lista inteira teria sumido em silêncio.
+            string marca = "conversa comum " + Guid.NewGuid().ToString("N");
+
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync(marca, _ => { })) { }
+
+            ChatHistoryService.ConversasDoUsuario()
+                .Should().Contain(c => c.Content.Contains(marca));
         }
     }
 }

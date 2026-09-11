@@ -351,6 +351,55 @@ public partial class ChatWindow
     /// </para>
     /// </summary>
     /// <summary>
+    /// Volta à conversa que já existia sobre este e-mail. Devolve false se não deu para ler.
+    /// <para>
+    /// Nenhum turno é enviado: as bolhas voltam à tela, o histórico volta ao contexto e o
+    /// vínculo com a thread é refeito. Reabrir um e-mail não custa uma chamada ao modelo.
+    /// </para>
+    /// </summary>
+    private bool RetomarConversaDoEmail(ChatSession sessao, MailSummary alvo)
+    {
+        var falas = ChatHistoryService.Parse(sessao.Content);
+        if (falas.Count == 0) return false;
+
+        DescartarConfirmacaoPendente();
+
+        _conversation.LoadConversation(falas, sessao.MemorySessionId, sessao.Id);
+        _conversation.VincularAEmail(sessao.MailThreadKey);
+
+        MessagesPanel.Children.Clear();
+        _cadeiaAtual = null;
+
+        // O CARTÃO entra no lugar da PRIMEIRA fala, que foi o enquadramento — e não algo que o
+        // usuário tenha escrito. Mostrá-la como bolha aqui seria pôr na boca dele um texto
+        // montado pelo programa.
+        bool primeira = true;
+
+        foreach (var fala in falas)
+        {
+            if (fala.DoUsuario && primeira)
+            {
+                MessagesPanel.Children.Add(CartaoDoEmail(alvo));
+                primeira = false;
+                continue;
+            }
+
+            primeira = false;
+
+            if (fala.DoUsuario) AddUserBubble(fala.Texto);
+            else AddAgentBubble(fala.Texto);
+        }
+
+        EntrarNaLeitura(alvo);
+
+        UpdateTokenCounterUI(_conversation.CurrentTokenReport);
+        AtualizarEstadoVazio();
+        ChatScrollViewer.ScrollToEnd();
+
+        return true;
+    }
+
+    /// <summary>
     /// Põe a tela no estado de LEITURA. Só a tela: nada é enviado ao modelo daqui.
     /// <para>
     /// Separado de <see cref="AbrirEmailNoChat"/> porque o estado da tela e o turno têm custos
@@ -376,6 +425,14 @@ public partial class ChatWindow
     {
         if (alvo == null) return;
 
+        string chave = ArquivoDeConversas.Chave(alvo.Account, alvo.ThreadId, 0);
+        var anterior = ChatHistoryService.ConversaDoEmail(chave);
+
+        // JÁ SE CONVERSOU SOBRE ESTE E-MAIL: volta de onde parou, em vez de recomeçar. A
+        // conversa pertence à thread, e o custo de reabrir é zero — nenhum turno novo é
+        // enviado, só as bolhas voltam à tela e o histórico ao contexto.
+        if (anterior != null && RetomarConversaDoEmail(anterior, alvo)) return;
+
         // NOVA CONVERSA PRIMEIRO, e depois o estado da tela. Invertido, o AtualizarEstadoVazio
         // de dentro de NovaConversa acendia "Nenhuma conversa ainda" por cima do cartão — a
         // última palavra sobre o estado vazio tem de ser de AplicarEstadoDoModo.
@@ -384,9 +441,10 @@ public partial class ChatWindow
         // sobre nada.
         NovaConversa(comBoasVindas: false);
 
-        // ANTES do primeiro turno: o arquivamento acontece no fim de CADA turno, e uma marca
-        // posta depois não desfaz a linha já gravada na lista do painel.
-        _conversation.ManterForaDoHistorico();
+        // ANTES do primeiro turno: o arquivamento acontece no fim de CADA turno, e um vínculo
+        // posto depois deixaria a primeira gravação sem ele — a conversa apareceria na lista do
+        // painel e não seria reencontrada pelo e-mail.
+        _conversation.VincularAEmail(chave);
 
         EntrarNaLeitura(alvo);
 
