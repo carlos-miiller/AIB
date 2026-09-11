@@ -22,6 +22,7 @@ namespace AIB.Tests
     /// pasta do histórico no meio faria os ensaios das outras classes gravarem nela.
     /// </para>
     /// </summary>
+    [Collection("Historico")]
     public class ChatHistoryArchiveTests
     {
         private static readonly string Marca = Guid.NewGuid().ToString("N")[..8];

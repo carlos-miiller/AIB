@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using AIB.Services;
 using FluentAssertions;
 using Xunit;
@@ -14,6 +14,7 @@ namespace AIB.Tests
     /// do modelo. Estes ensaios cobrem esse caminho de volta.
     /// </para>
     /// </summary>
+    [Collection("Historico")]
     public class ChatHistoryParseTests
     {
         [Fact]

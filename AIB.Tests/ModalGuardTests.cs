@@ -1,4 +1,4 @@
-using AIB.Services;
+﻿using AIB.Services;
 using FluentAssertions;
 using Xunit;
 
@@ -12,6 +12,13 @@ namespace AIB.Tests
     /// precisava do atalho global para trazê-lo de volta.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// Na coleção global porque <c>ModalGuard._depth</c> é um contador ESTÁTICO do processo, e a
+    /// ChatWindow o incrementa toda vez que abre um modal. Qualquer ensaio de janela rodando em
+    /// paralelo deixava o contador acima de zero enquanto estes ensaios afirmavam que ele estava
+    /// zerado — os três da classe falhavam juntos, e só às vezes.
+    /// </remarks>
+    [Collection("ContextoGlobal")]
     public class ModalGuardTests
     {
         [Fact]

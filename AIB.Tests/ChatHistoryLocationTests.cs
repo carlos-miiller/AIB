@@ -16,6 +16,7 @@ namespace AIB.Tests
     /// isso a checagem é de ensaio e não de olho.
     /// </para>
     /// </summary>
+    [Collection("Historico")]
     public class ChatHistoryLocationTests
     {
         [Fact]
