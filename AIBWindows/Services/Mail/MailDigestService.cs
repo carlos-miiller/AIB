@@ -53,6 +53,7 @@ public sealed class MailDigestService : IDisposable
     private readonly VigiasDoEmail _vigias;
     private readonly MarcoDoVigia _marco;
     private readonly DiarioDeTriagem _diario;
+    private readonly ArquivoDeConversas _conversas;
 
     private readonly CancellationTokenSource _parada = new();
     private Timer? _relogio;
@@ -95,7 +96,8 @@ public sealed class MailDigestService : IDisposable
         string? caminhoDasRegras = null,
         VigiasDoEmail? vigias = null,
         string? raizDeDados = null,
-        DiarioDeTriagem? diario = null)
+        DiarioDeTriagem? diario = null,
+        ArquivoDeConversas? conversas = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _email = email ?? throw new ArgumentNullException(nameof(email));
@@ -106,6 +108,7 @@ public sealed class MailDigestService : IDisposable
         _caminhoDasRegras = caminhoDasRegras ?? RegrasDoVigia.CaminhoPadrao();
         _vigias = vigias ?? new VigiasDoEmail();
         _diario = diario ?? new DiarioDeTriagem(raizDeDados);
+        _conversas = conversas ?? new ArquivoDeConversas(raizDeDados);
         _marco = new MarcoDoVigia(raizDeDados);
     }
 
@@ -300,15 +303,50 @@ public sealed class MailDigestService : IDisposable
 
             // A pasta de enviados diz em que conversas ELE escreveu. Sai de graça, sem modelo,
             // e é o que sustenta "quem responde geralmente espera retorno".
-            respondidas.AddRange(await _email.ThreadsRespondidasAsync(
+            var minhas = await _email.ThreadsRespondidasAsync(
                 caixa.Address, senha, endpoint,
-                DateTime.UtcNow.AddDays(-VigiasDoEmail.DiasDeVigia), ct).ConfigureAwait(false));
+                DateTime.UtcNow.AddDays(-VigiasDoEmail.DiasDeVigia), ct).ConfigureAwait(false);
+
+            respondidas.AddRange(minhas);
+
+            // E agora também viram ESTADO: uma mensagem sua não é triada — não há o que decidir
+            // sobre o que você mesmo escreveu — mas ela vira a vez da conversa, de "Nova
+            // mensagem" para "Aguardando retorno". Sem isto, responder não mudava nada na tela.
+            foreach (var minha in minhas)
+            {
+                if (string.IsNullOrWhiteSpace(minha.Thrid)) continue;
+
+                // A hora vem da MENSAGEM, e não de agora: a passada roda de vinte em vinte
+                // minutos, e carimbar tudo com o instante da varredura faria a conversa parecer
+                // mais recente do que é — justamente o campo que a tela ordena.
+                //
+                // Uid 0 porque a mensagem enviada não tem uid na caixa de entrada. Ela conta
+                // como UMA mensagem da conversa, e o dedupe por (uid, origem) impede que a
+                // mesma resposta sua entre a cada passada.
+                _conversas.Anotar(
+                    ArquivoDeConversas.Chave(caixa.Address, minha.Thrid, 0),
+                    new EntradaDaConversa(
+                        ArquivoDeConversas.Agora(minha.QuandoUtc),
+                        Uid: 0,
+                        De: caixa.Address,
+                        Assunto: "",
+                        Minha: true,
+                        Origem: "enviados"),
+                    config.MailJournalDays);
+            }
         }
 
         var vigiadas = VigiasDoEmail.Atualizar(_vigias.Ler(), respondidas, DateTime.UtcNow);
         _vigias.Gravar(vigiadas);
 
         var threadsVigiadas = new HashSet<string>(vigiadas.Select(v => v.Thrid), StringComparer.Ordinal);
+
+        // TER HISTÓRICO é motivo de vigia. Sem isto, a resposta a uma conversa já triada podia
+        // ser descartada pelo funil — mala-direta, envio em massa, remetente desconhecido — e o
+        // arquivo da conversa ficaria parado sem ninguém notar, com a tela mostrando uma
+        // contagem que parou de crescer e nenhum sinal de que algo foi perdido.
+        foreach (string thrid in _conversas.ThreadsComHistorico())
+            threadsVigiadas.Add(thrid);
 
         // A rajada é vista sobre o conjunto, e não caixa a caixa: o mesmo firewall pode estar
         // mandando para as duas contas, e contar separado esconderia metade do incidente.
@@ -338,6 +376,10 @@ public sealed class MailDigestService : IDisposable
 
         // Anota ANTES de publicar. Publicar dispara evento de interface; anotar é disco, e o
         // que a conversa vai consultar depois não pode depender de a tela ter aceitado o aviso.
+        // As conversas paradas saem junto com o diário, pela mesma chave. O arquivo de e-mail é
+        // APAGÁVEL, ao contrário do raw.jsonl da conversa com a IA.
+        _conversas.Limpar(config.MailJournalDays);
+
         _diario.Gravar(
             new PassadaAnotada(
                 DateTime.UtcNow.ToString("o"),
@@ -471,11 +513,26 @@ public sealed class MailDigestService : IDisposable
                     : new MailSummary(m.Assunto, $"De {m.NomeDoRemetente}. O resumo não saiu desta vez.",
                                       MailUrgency.Media, "", m.De);
 
+                string chave = ArquivoDeConversas.Chave(m.Conta, m.ThreadId, m.Uid);
+
+                // O veredito desta mensagem vai para o histórico da conversa ANTES de a linha
+                // ser montada: é dele que "3 respostas" passa a ser verdade na passada seguinte.
+                _conversas.Anotar(chave, new EntradaDaConversa(
+                    ArquivoDeConversas.Agora(m.RecebidaUtc),
+                    m.Uid, m.De, m.Assunto,
+                    baseDaLinha.Urgency.ToString(), baseDaLinha.Description,
+                    Minha: false, Origem: "vigia"), config.MailJournalDays);
+
+                // Derivado do ARQUIVO, nunca do lote. O agrupamento por lote só enxerga UMA
+                // passada: a thread triada ontem que recebe resposta hoje chegaria como
+                // "1 mensagem" numa conversa de três.
+                var estado = _conversas.EstadoDe(chave);
+
                 return baseDaLinha with
                 {
-                    LastMessageAt = m.RecebidaUtc.ToLocalTime(),
-                    MessageCount = c.Mensagens,
-                    AwaitingMe = c.EsperandoVoce,
+                    LastMessageAt = (estado?.UltimaEm ?? m.RecebidaUtc).ToLocalTime(),
+                    MessageCount = Math.Max(estado?.Mensagens ?? 0, c.Mensagens),
+                    AwaitingMe = estado?.EsperandoVoce ?? c.EsperandoVoce,
                     ThreadId = m.ThreadId ?? ""
                 };
             })
