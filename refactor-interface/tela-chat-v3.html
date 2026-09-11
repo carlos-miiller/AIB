@@ -1011,7 +1011,7 @@
        Status : enum { Done, Failed }
        Timestamp : DateTime
 
-     MailSummary           (§6.2)  — MESMA classe do Shadow Assistant (§4.8 lá).
+     MailSummary           (§3.10) — MESMA classe do Shadow Assistant (§4.8 lá).
        Id            : string      identificador na caixa (UID IMAP)
        Name          : string      assunto OU remetente, como vier do servidor
        Description   : string      resumo gerado pela IA a partir do corpo
@@ -1024,15 +1024,18 @@
                                    "Aguardando retorno"  [NOVO]
        OpenCommand   : ICommand    abre no cliente de e-mail padrão
 
-     MailAccountViewModel  (§6.2 / §6.2.1)
-       IsConfigured   : bool       false -> §6.2.1; true -> lista (§6.2).
+     MailAccountViewModel  (§3.10)
+       IsConfigured   : bool       false -> convite central; true -> lista.
                                    Espelha MailAccountConfigured da tela de
                                    configurações; endereço e senha de app
                                    pertencem àquela tela, não a esta.
        Mails          : ObservableCollection<MailSummary>
        TotalCount     : int  => Mails.Count
-       UrgentCount    : int  => Maxima + Media   (rodapé, §6.2)
-       ContextTokens  : int  => soma de MailSummary.ContextTokens
+       UrgentCount    : int  => Maxima + Media   (linha de título, §3.10)
+       ContextTokens  : int  => soma de MailSummary.ContextTokens. Chega ZERO
+                                da triagem, que monta a linha antes de existir
+                                contador: quem mostra a medida mede assunto +
+                                resumo em vez de somar zeros.
 
      HistoryFooterViewModel (§6.1)
        ChatCount    : int
@@ -1053,11 +1056,18 @@
        CloseButton_Click       EsconderTudo() — esconde, NÃO fecha
        AbrirChat(sessao) / RecuperarChat / ExcluirChat   §6.1
        Adicionar_Click         §6.3 "+ Adicionar" (no painel)
-       ConfigurarEmail_Click   §6.2.1 "Configurar e-mail" (no painel)
-       Aba_Checked             troca de aba do painel
+       Aba_Checked             troca de aba do painel (três abas)
+       Modo_Checked                 §3.3(d) switch Chat/E-mail
+       EngrenagemDoEmail_Click      §3.10 engrenagem da linha de título E
+                                    botão do convite central — o MESMO handler
+       VoltarParaCaixa_Click        §3.11 "Caixa de entrada" do caminho
+       AbrirNoClienteDaLeitura_Click §3.11 "Abrir no <provedor>"
+       RecarregarEmail_Click        §3.11 "Recarregar"
+       EntrarNaLeitura(mail)        §3.11 só o ESTADO da tela; separado do
+                                    envio do turno porque um é instantâneo e o
+                                    outro são minutos nesta máquina
      AINDA SEM HANDLER (previstos nesta spec, não implementados):
-       "Compactar" de §5.4 · "Tentar agora" de §5.7 · engrenagem da linha de
-       título da aba de e-mails (§6.2) · varredura manual de e-mail
+       "Compactar" de §5.4 · "Tentar agora" de §5.7 · varredura manual de e-mail
 
     ============================================================================
      §6.6  PLANO DE IMPLEMENTAÇÃO DAS ADIÇÕES DE E-MAIL
@@ -1071,30 +1081,34 @@
      E2. UrgencyToBrush / UrgencyToLabel converters. Três níveis, cores em §2:
          Maxima #E5484D, Media #E8A33D, Baixa #8B8794. O fundo do selo é a
          MESMA cor a 13% (Baixa: branco a 5%). Não criar um quarto nível.
-     E3. MailListItem.xaml — UserControl do item (§6.2). É o MESMO controle do
+     E3. MailListItem.xaml — UserControl do item (§3.10). É o MESMO controle do
          Shadow Assistant (shadow-assistant.html §4.8); se aquele já existe,
          reusar e só sobrescrever CornerRadius (14 aqui, 12 lá) e o hover
          (lilás do painel). Marcar como PROVISÓRIO no topo do arquivo: este
          layout vai mudar.
-     E4. Quarta aba no painel: o botão (ícone de envelope 18px) entra em
-         SEGUNDO lugar, entre Histórico de Chats e Arquivos no Contexto. A
-         ordem é: Histórico | E-mails | Arquivos | Ações.
-     E5. Pane de e-mails: .panel-title-row ("E-mails", canto direito vazio e
-         reservado) + ItemsControl rolável + .panel-foot. Ordenação: urgência
-         decrescente, e dentro do nível o mais recente no topo.
-     E6. Rodapés de contagem (.panel-foot) nas QUATRO abas. Uma linha só,
-         MinHeight 25, NoWrap nos filhos, rótulos curtos. Confira a base dos
-         quatro rodapés na mesma altura ao alternar de aba (§8 A8, A16).
-     E7. Estado §6.2.1 (sem conta). UM DataTrigger em IsConfigured controla
-         quatro elementos: lista Collapsed, rodapé Collapsed, engrenagem do
-         título Collapsed, convite Visible (§8 A17). A linha de título
-         permanece.
-     E8. Rota para as configurações: a engrenagem do título e o botão do
-         convite chamam OpenSettingsCommand(ActiveSection.Mail). Os campos e a
-         guarda da senha estão em tela-configuracoes.html (§5 campos 6 e 7,
-         §7 A12) — nada disso é implementado aqui.
+     E4. [SUPERSEDIDO por §3.3(d)] Era a quarta aba do painel. A caixa foi
+         para a ÁREA CENTRAL, atrás do switch Chat/E-mail: no painel de 252px
+         não cabem nem o acordeão de §3.10 nem a leitura de §3.11, e duas
+         portas para a mesma caixa divergiriam na primeira correção feita só
+         de um lado. O painel ficou com três abas.
+     E5. [SUPERSEDIDO por §3.10] A lista é a mesma; o que mudou é o lugar e a
+         escala. Ordenação inalterada: urgência decrescente, e dentro do
+         nível o mais recente no topo.
+     E6. Rodapés de contagem (.panel-foot) nas TRÊS abas que sobraram. Uma
+         linha só, MinHeight 25, NoWrap nos filhos, rótulos curtos. Confira a
+         base dos três rodapés na mesma altura ao alternar de aba (§8 A8,
+         A16). As contagens de e-mail viraram a LINHA DE TÍTULO de §3.10.
+     E7. [SUPERSEDIDO por §3.10] O estado sem conta continua existindo, com a
+         mesma composição, centralizado na área central. A amarra de §8 A17
+         continua valendo: lista, medidas e engrenagem pertencem à LISTA e
+         desaparecem junto.
+     E8. Rota para as configurações: a engrenagem da linha de título e o botão
+         do convite chamam o MESMO handler, que abre a tela de configurações
+         na página E-mail. Os campos e a guarda da senha estão em
+         tela-configuracoes.html (§5 campos 6 e 7, §7 A12) — nada disso é
+         implementado aqui.
      E9. Ao voltar das configurações com login válido, MailAccountConfigured
-         passa a true: a aba troca o convite pela lista e dispara a primeira
+         passa a true: o modo troca o convite pela lista e dispara a primeira
          varredura.
      E10. Rodapé do histórico (§6.1): ChatCount e DiskBytes = chat + capítulos
          + atos. O cálculo é do serviço de persistência, não da View.
@@ -1141,7 +1155,7 @@
      .mail-thread         | StackPanel de .row        | §3.11    [NOVO]
      .mail-context        | Border + Grid 2 colunas   | §3.11    [NOVO]
      .mail-item           | Border + Grid 3 colunas   | §3.10 (= shadow §4.8)
-     .panel-empty-state   | Grid centralizado         | §6.2.1, no lugar da lista
+     .panel-empty-state   | Grid centralizado         | §3.10, no lugar da lista
      .btn-empty-action    | Button outline            | abre o modal de §6.5
      .btn-title-icon      | Button 26x26 + ToolTip    | engrenagem da aba 2
      .panel-foot          | StackPanel Horizontal     | NoWrap, MinHeight 25
@@ -1208,11 +1222,14 @@
      A15. (livre — era a guarda da senha de app, hoje em
          tela-configuracoes.html §7 A12.)
      A16. (ver A12 — mesma armadilha; o texto de §6.2 e §6.3 cita "A16".)
-     A17. CONTAGENS E ENGRENAGEM VISÍVEIS SEM CONTA. O rodapé e o botão de
-         configurações da aba de e-mails pertencem à LISTA, não ao pane:
-         quando §6.2.1 está ativo desaparecem junto. "4 e-mails • 2 urgentes"
-         embaixo de "Nenhum e-mail conectado" é contradição direta. Amarre
-         lista + rodapé + engrenagem + convite ao MESMO trigger.
+     A17. CONTAGENS E ENGRENAGEM VISÍVEIS SEM CONTA. As três medidas e o botão
+         de configurações pertencem à LISTA, não ao modo: sem conta conectada
+         desaparecem junto com ela. "4 e-mails • 2 urgentes" embaixo de
+         "Nenhum e-mail conectado" é contradição direta. Amarre lista +
+         medidas + engrenagem + convite ao MESMO trigger.
+         O MESMO vale na LEITURA de §3.11, por outro motivo: lá há conta e há
+         caixa, mas as medidas descrevem a CAIXA e se está dentro de um item.
+         Elas continuariam certas respondendo a outra pergunta.
 
      §8.2  CHECKLIST DE ACEITE
      ---------------------------------------------------------------------------
@@ -1258,9 +1275,16 @@
      [ ] Engrenagem do modo E-mail abre a tela de configurações na página
          "E-mail".
      [ ] Aba de arquivos: total, KB e tokens.
-     [ ] Sem conta conectada: aba de e-mails mostra o convite de §6.2.1 com o
+     [ ] Sem conta conectada: o modo E-mail mostra o convite central com o
          botão "Configurar e-mail", que abre a tela de configurações na página
          "E-mail". Nenhum formulário de e-mail dentro do chat.
+     [ ] O painel lateral NÃO tem mais aba de e-mails.  [NOVO]
+     [ ] Em §3.11 o cartão de e-mail em contexto ocupa a coluna inteira, sem
+         os 74% das bolhas, e NÃO tem autor.  [NOVO]
+     [ ] Em §3.11 o que desce para o modelo é o veredito — remetente, assunto,
+         urgência e resumo — e NUNCA o corpo.  [NOVO]
+     [ ] "Recarregar" desabilita o botão e gira o ícone; o botão não some, para
+         a linha não pular de largura.  [NOVO]
      [ ] Aba de arquivos: ícone pelo TIPO; operação só na pill de origem.
      [ ] Clique em arquivo/entrada abre o Explorer com o item selecionado.
      [ ] Clique no X de remover não abre o Explorer.
@@ -1279,18 +1303,20 @@
      D2. EMOJI NOS TEXTOS DE STATUS. "🧠 Pensando...", "👁 Lendo tela...",
          "🎙 Ouvindo...", "⏳ AIB conectando e aquecendo motores...".
          Trocar pelos Path de 14px do design system (§5.8).
-     D3. SEM CAMINHO PARA A CONFIGURAÇÃO DE E-MAIL COM CONTA CONECTADA.
-         A engrenagem da linha de título da aba de e-mails (§6.2) não existe em
-         SidePanelWindow.xaml; o único acesso é o convite, que some quando a
-         conta existe. AbrirConfiguracoesDeEmail() já está pronto no ChatWindow.
+     D3. [RESOLVIDA] A engrenagem existe, na linha de título do modo e-mail
+         (§3.10), e chama o MESMO handler do botão do convite. A aba do painel,
+         onde ela faltava, deixou de existir.
      D4. PLACEHOLDER "0/8192 tokens" no rodapé. O total não corresponde a
          nenhum campo de Configurações (§3.8) — usar 8704 ou deixar vazio.
      D5. "Compactar" (§5.4) e "Tentar agora" (§5.7) não têm handler.
-     D6. COMENTÁRIO DESATUALIZADO em SidePanelWindow.xaml: "BARRA DE 3 ABAS"
-         sobre uma barra de quatro. Trocar para 4.
+     D6. [RESOLVIDA] O comentário "BARRA DE 3 ABAS" de SidePanelWindow.xaml
+         voltou a ser verdade: a aba de e-mails saiu e sobraram três.
      D7. DOIS PAINÉIS NO PROJETO: ContextSidebar.xaml convive com
-         SidePanelWindow.xaml. Só o segundo implementa §6. Confirmar se o
-         primeiro ainda é usado e, se não, remover — dois painéis divergem.
+         SidePanelWindow.xaml. Só o segundo implementa §6.
+         CONFERIDO em 11/09/2026: ContextSidebar não é referenciado em lugar
+         nenhum fora dos próprios dois arquivos — nem em XAML, nem em código,
+         nem em ensaio. É código morto que ainda compila, e enquanto compilar
+         vai parecer uma alternativa viável a quem abrir a pasta. Remover.
 
      D8. TOOLTIP COM A CASCA NATIVA DO WINDOWS. Não existe nenhum
          Style TargetType="ToolTip" no projeto (procurado em Themes/Controls.xaml,
@@ -2209,7 +2235,7 @@
   }
   .btn-add-file:hover { background: rgba(155, 81, 224, 0.12); border-color: rgba(155, 81, 224, 0.6); }
 
-  /* botão de ÍCONE na linha de título (aba de e-mails, §6.2).
+  /* botão de ÍCONE na linha de título do modo e-mail (§3.10).
      Quadrado 26x26 em vez do outline com rótulo do .btn-add-file: aqui a ação
      é secundária e a coluna é estreita. Discreto em repouso (textSecondary,
      sem borda) e lilás no hover — mesma leitura dos botões do header. */
@@ -3246,7 +3272,7 @@
 <div class="scenarios" id="scenarios" data-spec="MOCK-ONLY">
   <span class="tag">cenários do mock — não faz parte do produto</span>
   <!-- os botões de cenário são injetados aqui pelo <script>;
-       o alternador da aba de e-mails (§6.2 / §6.2.1) entra no fim da fila -->
+       o alternador do modo e-mail (§3.10 / §3.11) entra no fim da fila -->
 </div>
 
 </div>
@@ -3783,8 +3809,10 @@ const SCENARIOS = [
     "perTabContentIn": "sidePanelTabs[].footer"
   },
   "mailPane": {
+    "spec": "§3.10 — ÁREA CENTRAL, não mais aba do painel",
     "sameItemAs": "shadow-assistant.html §4.8",
     "provisional": true,
+    "windowScale": "na área central o item cresce (13.5/12 em vez de 12.5/11.5) e ganha a linha de metadados; no orbe segue em 252px e sem ela",
     "item": {
       "radius": 14, "padding": [9, 11, 10, 9], "gap": 6,
       "columns": ["3px urgencyBar", "*", "auto badge"],
@@ -3802,11 +3830,34 @@ const SCENARIOS = [
     },
     "sort": "urgency desc, then receivedAt desc",
     "scrolls": true,
-    "itemClick": "abre o e-mail no cliente padrão",
+    "itemClick": "EXPANDE o item (acordeão, um aberto por vez); a ação de sair do app virou botão do corpo",
+    "bodyButtons": ["Abrir com <NomeDaInteligencia>", "Abrir no <provedor da CAIXA>"],
     "emptyStates": {
-      "notConfigured": { "spec": "§6.2.1", "hasActionButton": true },
+      "notConfigured": { "spec": "§3.10 convite central", "hasActionButton": true },
       "configuredNoMail": { "text": "Nenhum e-mail novo." }
     }
+  },
+  "mailThread": {
+    "spec": "§3.11 — leitura do e-mail com a IA",
+    "reachedFrom": "botão \"Abrir com <NOME>\" do corpo de um item",
+    "keepsMode": "E-mail; o switch NÃO muda",
+    "head": {
+      "title": "vira caminho: \"Caixa de entrada › <assunto>\"; só o assunto encolhe",
+      "removes": ["as três medidas", "a engrenagem"],
+      "actions": ["Abrir no <provedor>", "Recarregar"],
+      "reloadWhileRunning": "ícone girando e botão desabilitado; o botão NÃO some"
+    },
+    "conversation": "a MESMA do chat — mesmas bolhas, mesmo histórico, mesma compactação",
+    "contextCard": {
+      "isBubble": false,
+      "width": "coluna inteira, sem o MaxWidth de 74%",
+      "bar": "3px na cor da urgência",
+      "label": "E-MAIL EM CONTEXTO",
+      "background": "rgba(155,81,224,0.07)", "border": "rgba(155,81,224,0.28)",
+      "standsInFor": "a bolha do usuário do turno que abre a leitura"
+    },
+    "whatReachesTheModel": "o VEREDITO — remetente, assunto, urgência, resumo. NUNCA o corpo: ele iria para o raw.jsonl e o resumidor de capítulos leria e-mail alheio semanas depois",
+    "inputBar": { "returns": true, "placeholder": "Fale com a <NOME> sobre este e-mail...", "contextFooter": "segue Collapsed" }
   },
   "mailEmptyState": {
     "glyph": { "size": 42, "icon": 19, "background": "rgba(155,81,224,0.12)", "border": "rgba(155,81,224,0.30)" },
@@ -3966,11 +4017,11 @@ const SCENARIOS = [
     {
       "id": "history", "title": "Histórico de Chats",
       "emptyState": "Nenhum chat salvo.",
-      "onItemClick": "restaura a conversa: mensagens + título + contador + abas 3 e 4",
+      "onItemClick": "restaura a conversa: mensagens + título + contador + abas de arquivos e ações",
       "restoreSteps": [
         "persistir a conversa atual se houver mensagens não salvas",
         "carregar do disco e repovoar a coleção de mensagens na ordem original",
-        "restaurar título do chat, contador de tokens, aba de arquivos (3) e aba de ações (4)",
+        "restaurar título do chat, contador de tokens, aba de arquivos (2) e aba de ações (3)",
         "rolar a lista de mensagens para o fim",
         "marcar o item como ativo na lista"
       ],
@@ -3978,25 +4029,6 @@ const SCENARIOS = [
       "footer": { "parts": ["N chats", "N MB em disco"],
                   "diskBytes": "soma por chat de: arquivo do chat + capítulos + atos",
                   "hiddenWhenEmpty": true }
-    },
-    {
-      "id": "mail", "title": "E-mails",
-      "spec": "§6.2",
-      "provisionalItemLayout": true,
-      "itemSameAs": "shadow-assistant.html §4.8 — ver mailPane neste JSON",
-      "emptyState": "Nenhum e-mail novo.",
-      "notConfiguredState": "§6.2.1 — convite que abre a tela de configurações na página E-mail",
-      "iconMeaning": "envelope; a aba é a 2ª, entre histórico e arquivos",
-      "titleRowButton": { "type": "icon", "box": 26, "icon": 15, "align": "right",
-                          "tooltip": "Configurações de e-mail",
-                          "opens": "tela-configuracoes.html na página E-mail (OpenSettingsCommand(Mail))",
-                          "hiddenWhenNotConfigured": true },
-      "order": "urgência decrescente, depois mais recente no topo",
-      "scrolls": true,
-      "onItemClick": "abre o e-mail no cliente padrão",
-      "footer": { "parts": ["N e-mails", "N urgentes", "N tokens"],
-                  "urgentes": "urgência Máxima + Média, em #E8A33D",
-                  "hiddenWhenNotConfigured": true }
     },
     {
       "id": "files", "title": "Arquivos no Contexto",
