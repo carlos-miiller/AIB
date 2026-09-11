@@ -1,3 +1,5 @@
+﻿using System;
+
 namespace AIB.Services;
 
 /// <summary>Quanto um e-mail pede atenção — shadow-assistant.html §4.8.</summary>
@@ -27,9 +29,30 @@ public enum MailUrgency
 /// Gmail com a thread — não há cliente de e-mail para invocar. Vazio desativa o clique.
 /// </param>
 /// <param name="Account">De qual caixa veio. Duas contas exigem dizer qual.</param>
+/// <param name="LastMessageAt">
+/// Data da mensagem mais RECENTE da conversa — não a do primeiro e-mail. Uma conversa de cinco
+/// dias mostrando a data de abertura diria que nada aconteceu desde então.
+/// </param>
+/// <param name="MessageCount">
+/// Tamanho da conversa: quantas mensagens ela tem. Um vira "1 mensagem"; mais, "N respostas".
+/// </param>
+/// <param name="AwaitingMe">
+/// A última palavra é do outro lado, então a resposta é sua. Sai de comparar o remetente da
+/// última mensagem com os endereços da conta conectada — NÃO é campo do servidor.
+/// </param>
+/// <param name="ContextTokens">Peso do resumo no prompt. Zero quando ainda não foi medido.</param>
+/// <param name="ThreadId">
+/// A conversa a que pertence (X-GM-THRID). Vazio em provedor que não o expõe, e aí cada
+/// mensagem é a própria conversa. É a chave que liga a triagem gravada em disco à lista.
+/// </param>
 public sealed record MailSummary(
     string Name,
     string Description,
     MailUrgency Urgency,
     string Url = "",
-    string Account = "");
+    string Account = "",
+    DateTime LastMessageAt = default,
+    int MessageCount = 1,
+    bool AwaitingMe = true,
+    int ContextTokens = 0,
+    string ThreadId = "");

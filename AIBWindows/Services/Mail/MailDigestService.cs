@@ -398,6 +398,20 @@ public sealed class MailDigestService : IDisposable
         return (sobem, caem);
     }
 
+    /// Os endereços das caixas conectadas.
+    /// <para>
+    /// É contra eles que se decide "Nova mensagem" ou "Aguardando retorno": se quem escreveu
+    /// por último foi você, a bola está com o outro lado. Sem a lista, TODA conversa apareceria
+    /// como esperando resposta sua — inclusive as que você acabou de responder.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<string> EnderecosDoUsuario(UserAppSettings config) =>
+        (config?.MailAccounts ?? new List<MailAccountSettings>())
+            .Select(c => c.Address ?? "")
+            .Where(e => e.Length > 0)
+            .ToList();
+
+    /// <summary>
     /// <summary>
     /// Degrau 3. Manda o lote ao modelo e casa cada veredito com a mensagem dele.
     /// <para>
@@ -442,11 +456,29 @@ public sealed class MailDigestService : IDisposable
 
         var porUid = vereditos.GroupBy(v => v.Uid).ToDictionary(g => g.Key, g => g.First());
 
-        var todos = lote
-            .Select(m => porUid.TryGetValue(m.Uid, out var v)
-                ? new MailSummary(m.Assunto, v.Resumo, v.Urgencia, "", m.De)
-                : new MailSummary(m.Assunto, $"De {m.NomeDoRemetente}. O resumo não saiu desta vez.",
-                                  MailUrgency.Media, "", m.De))
+        // A lista da tela é por CONVERSA, e não por mensagem. Cinco respostas da mesma thread
+        // eram cinco itens repetindo o mesmo assunto; agora são um, com "5 respostas" e a data
+        // da última. Ver tela-chat-v3.html §3.10.
+        var conversas = ConversaDeEmail.Agrupar(lote, EnderecosDoUsuario(config));
+
+        var todos = conversas
+            .Select(c =>
+            {
+                var m = c.Recente;
+
+                var baseDaLinha = porUid.TryGetValue(m.Uid, out var v)
+                    ? new MailSummary(m.Assunto, v.Resumo, v.Urgencia, "", m.De)
+                    : new MailSummary(m.Assunto, $"De {m.NomeDoRemetente}. O resumo não saiu desta vez.",
+                                      MailUrgency.Media, "", m.De);
+
+                return baseDaLinha with
+                {
+                    LastMessageAt = m.RecebidaUtc.ToLocalTime(),
+                    MessageCount = c.Mensagens,
+                    AwaitingMe = c.EsperandoVoce,
+                    ThreadId = m.ThreadId ?? ""
+                };
+            })
             .ToList();
 
         // BAIXA não vai para a tela. Visto em produção: de 21 mensagens triadas, o modelo

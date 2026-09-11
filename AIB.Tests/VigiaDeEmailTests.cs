@@ -28,11 +28,24 @@ namespace AIB.Tests
         /// <summary>A fabrica montada pelo ultimo MontarCompleto. Serve so aos ensaios.</summary>
         private static FabricaFixa? UltimaFabrica;
 
+        /// <summary>
+        /// Uma mensagem de andaime. Cada uma nasce na PRÓPRIA conversa por padrão.
+        /// <para>
+        /// Antes todas carregavam o ThreadId fixo <c>"thr"</c>, o que dizia que "Contrato",
+        /// "Newsletter" e "Promo" eram respostas umas das outras. Passou despercebido enquanto a
+        /// lista era por mensagem; quando ela passou a ser por CONVERSA, as três viraram um item
+        /// só e o ensaio quebrou — o andaime é que estava errado, não o agrupamento.
+        /// </para>
+        /// <para>
+        /// Quem precisar de duas mensagens na MESMA conversa passa o mesmo <paramref name="thread"/>.
+        /// </para>
+        /// </summary>
         private static MensagemDeEmail Msg(
             uint uid = 1, string de = "ana@empresa.com", string assunto = "assunto",
             bool direto = true, bool importante = false, string[]? rotulos = null,
-            DateTime? quando = null, string corpo = "", bool emMassa = false)
-            => new(uid, "thr", de, "Ana", assunto, quando ?? DateTime.UtcNow,
+            DateTime? quando = null, string corpo = "", bool emMassa = false,
+            string? thread = null)
+            => new(uid, thread ?? $"thr{uid}", de, "Ana", assunto, quando ?? DateTime.UtcNow,
                    direto, importante, rotulos ?? Array.Empty<string>(), true, corpo, emMassa);
 
         /// <summary>Um cabeçalho com os headers pedidos, como o FETCH devolveria.</summary>
@@ -773,10 +786,10 @@ namespace AIB.Tests
             FiltroDeTriagem.Avaliar(avisoDaEmpresa, RegrasDoVigia.Vazias).Sobe
                 .Should().BeTrue("o Gmail marcou como importante");
 
-            var naConversa = Msg(de: "suporte@fornecedor.com", emMassa: true);
+            var naConversa = Msg(de: "suporte@fornecedor.com", emMassa: true, thread: "vigiada");
 
             FiltroDeTriagem.Avaliar(naConversa, RegrasDoVigia.Vazias,
-                                    new HashSet<string> { "thr" })
+                                    new HashSet<string> { "vigiada" })
                 .Sobe.Should().BeTrue("e uma conversa que voce comecou");
 
             var fonte = RegrasDoVigia.Interpretar(new[]
@@ -1104,6 +1117,31 @@ namespace AIB.Tests
             digesto.Lidas.Should().Be(3, "a contagem continua inteira");
             digesto.Descartadas.Should().Contain(d => d.Motivo.Contains("nao pedem nada")
                                                    || d.Motivo.Contains("não pedem nada"));
+        }
+
+        [Fact]
+        public async Task AMesmaCONVERSA_VIRA_UmItemSo_ComAContagem()
+        {
+            // tela-chat-v3.html §3.10: a lista é por conversa. Cinco respostas da mesma thread
+            // eram cinco linhas repetindo o assunto — mostrar tudo o que se leu é o oposto de
+            // triar.
+            var (vigia, _, _, _) = MontarComPasta(
+                lidas: new[]
+                {
+                    Msg(uid: 1, assunto: "Contrato Vertex", thread: "T1",
+                        quando: DateTime.UtcNow.AddHours(-2)),
+                    Msg(uid: 2, assunto: "RE: Contrato Vertex", thread: "T1",
+                        quando: DateTime.UtcNow.AddHours(-1))
+                },
+                resposta: "[{\"uid\":1,\"urgencia\":\"maxima\",\"resumo\":\"assinar\"}," +
+                          "{\"uid\":2,\"urgencia\":\"maxima\",\"resumo\":\"responderam\"}]");
+
+            var digesto = await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            digesto.Itens.Should().HaveCount(1, "duas mensagens, uma conversa");
+            digesto.Itens[0].MessageCount.Should().Be(2);
+            digesto.Itens[0].Name.Should().Be("RE: Contrato Vertex", "o assunto é o da mais recente");
+            digesto.Lidas.Should().Be(2, "a contagem de leitura continua por MENSAGEM");
         }
 
         // ─────────────────────────────────────────────────────────────────
