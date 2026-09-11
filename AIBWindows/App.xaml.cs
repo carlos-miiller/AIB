@@ -321,6 +321,12 @@ public partial class App : System.Windows.Application
                     ? System.Threading.Tasks.Task.FromResult<MailSummary?>(null)
                     : _vigia.RecarregarItemAsync(item, ct);
 
+            // ANTES de ligar o laço: a tela tem de abrir com o que já se sabe. A primeira
+            // sondagem só acontece minutos depois, e a partir do ponteiro de UID — sem isto, a
+            // caixa passava esse intervalo vazia e, quando a passada vinha, só trazia mensagem
+            // NOVA. O que já tinha sido triado nunca mais voltava para a tela.
+            _vigia.Reconstituir();
+
             _vigia.Iniciar();
             Exit += (_, _) => _vigia?.Dispose();
 

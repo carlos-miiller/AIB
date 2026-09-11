@@ -1145,6 +1145,115 @@ namespace AIB.Tests
         }
 
         // ─────────────────────────────────────────────────────────────────
+        // A caixa volta do disco ao ligar
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Grava uma conversa direto no arquivo, como se uma passada anterior a tivesse triado
+        /// e o programa tivesse sido fechado depois.
+        /// </summary>
+        private static void JaTriado(string pasta, string thrid, string assunto,
+                                     string urgencia, DateTime quandoUtc)
+        {
+            new ArquivoDeConversas(pasta).Anotar(
+                ArquivoDeConversas.Chave("eu@empresa.com", thrid, 0),
+                new EntradaDaConversa(
+                    ArquivoDeConversas.Agora(quandoUtc),
+                    1, "cliente@x.com", assunto, urgencia, "resumo de " + assunto));
+        }
+
+        private static readonly DateTime Ontem = new(2026, 9, 3, 9, 0, 0, DateTimeKind.Utc);
+
+        [Fact]
+        public void AoLigar_ACaixaVOLTA_DoDisco()
+        {
+            // O digesto morre com o processo; os vereditos não. Sem esta volta, reabrir o AIB
+            // mostrava caixa vazia com o trabalho todo gravado — e a passada seguinte não
+            // trazia nada, porque o ponteiro de UID já tinha avançado e só mensagem NOVA é
+            // triada. Cada reinicialização apagava a triagem da tela para sempre.
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+
+            vigia.Ultimo.Itens.Should().BeEmpty("nada foi lido neste arranque");
+
+            JaTriado(pasta, "10", "Contrato", "Maxima", Ontem);
+
+            vigia.Reconstituir().Should().Be(1);
+            vigia.Ultimo.Itens.Should().ContainSingle().Which.Name.Should().Be("Contrato");
+        }
+
+        [Fact]
+        public void AoVoltarDoDisco_NadaFOI_LidoAgora()
+        {
+            // Escrever "21 lidas" aqui creditaria a este arranque o trabalho do anterior.
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+
+            JaTriado(pasta, "10", "Contrato", "Maxima", Ontem);
+            vigia.Reconstituir();
+
+            vigia.Ultimo.Lidas.Should().Be(0);
+            vigia.Ultimo.Descartadas.Should().BeEmpty();
+            vigia.Ultimo.Rajadas.Should().BeEmpty();
+        }
+
+        [Fact]
+        public void AoVoltarDoDisco_OOrbeNaoANUNCIA()
+        {
+            // Reconstituir não é passada. Disparar Pronto faria o orbe anunciar e-mail velho
+            // como novidade toda vez que o programa abrisse.
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+
+            JaTriado(pasta, "10", "Contrato", "Maxima", Ontem);
+
+            bool anunciou = false;
+            vigia.Pronto += _ => anunciou = true;
+
+            vigia.Reconstituir();
+
+            anunciou.Should().BeFalse();
+        }
+
+        [Fact]
+        public void AoVoltarDoDisco_ABaixaFICA_DeFora()
+        {
+            // A MESMA regra da passada viva. Se as duas divergissem, a caixa mudaria de
+            // conteúdo só por ter reiniciado.
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+
+            JaTriado(pasta, "10", "Boletim", "Baixa", Ontem);
+
+            vigia.Reconstituir().Should().Be(0);
+            vigia.Ultimo.Itens.Should().BeEmpty();
+        }
+
+        [Fact]
+        public void AoVoltarDoDisco_AOrdemEh_UrgenciaEDepoisRecencia()
+        {
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+
+            JaTriado(pasta, "1", "media antiga", "Media", Ontem);
+            JaTriado(pasta, "2", "media nova", "Media", Ontem.AddHours(2));
+            JaTriado(pasta, "3", "maxima", "Maxima", Ontem.AddHours(1));
+
+            vigia.Reconstituir();
+
+            vigia.Ultimo.Itens.Select(i => i.Name)
+                 .Should().Equal("maxima", "media nova", "media antiga");
+        }
+
+        [Fact]
+        public void ComDiarioDESLIGADO_NadaVOLTA()
+        {
+            // MailJournalDays = 0 é a regra 3 estrita, e ela continua valendo aqui.
+            var (vigia, _, _, pasta) = MontarComPasta(
+                Array.Empty<MensagemDeEmail>(), null, ajuste: c => c.MailJournalDays = 0);
+
+            JaTriado(pasta, "10", "Contrato", "Maxima", Ontem);
+
+            vigia.Reconstituir().Should().Be(0);
+            vigia.Ultimo.Itens.Should().BeEmpty();
+        }
+
+        // ─────────────────────────────────────────────────────────────────
         // Andaimes
         // ─────────────────────────────────────────────────────────────────
 
@@ -1156,9 +1265,12 @@ namespace AIB.Tests
         }
 
         private static (MailDigestService, ProviderFalso, EmailFalso, string) MontarComPasta(
-            IReadOnlyList<MensagemDeEmail> lidas, string? resposta, bool modeloQuebra = false)
+            IReadOnlyList<MensagemDeEmail> lidas, string? resposta, bool modeloQuebra = false,
+            Action<UserAppSettings>? ajuste = null)
         {
-            var (v, prov, mail) = MontarCompleto(true, lidas, resposta, modeloQuebra, out string pasta);
+            var (v, prov, mail) = MontarCompleto(
+                true, lidas, resposta, modeloQuebra, out string pasta, ajuste);
+
             return (v, prov, mail, pasta);
         }
 
@@ -1167,9 +1279,14 @@ namespace AIB.Tests
             bool modeloQuebra = false)
             => MontarCompleto(triagemLigada, lidas, resposta, modeloQuebra, out _);
 
+        /// <param name="ajuste">
+        /// Mexe na configuração ANTES de o serviço existir. Tem de ser antes: o
+        /// <see cref="SettingsService"/> guarda o que leu em cache, então reescrever o arquivo
+        /// com outra instância depois não chega ao vigia — ele segue com a cópia da abertura.
+        /// </param>
         private static (MailDigestService, ProviderFalso, EmailFalso) MontarCompleto(
             bool triagemLigada, IReadOnlyList<MensagemDeEmail> lidas, string? resposta,
-            bool modeloQuebra, out string pastaUsada)
+            bool modeloQuebra, out string pastaUsada, Action<UserAppSettings>? ajuste = null)
         {
             string pasta = Path.Combine(Path.GetTempPath(), "aib-vigia-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(pasta);
@@ -1187,6 +1304,7 @@ namespace AIB.Tests
             {
                 new() { Address = "eu@empresa.com", ImapHost = "imap.gmail.com", ImapPort = 993, IsPrimary = true }
             };
+            ajuste?.Invoke(config);
             settings.SaveSettings(config);
 
             var cofre = new MailVault(pasta);

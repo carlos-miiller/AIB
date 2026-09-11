@@ -702,7 +702,7 @@ public sealed class MailDigestService : IDisposable
         // menor que a verdade.
         _anotados = lote.Select(m => Anotar(m, porUid)).ToList();
 
-        return todos.Where(i => i.Urgency != MailUrgency.Baixa).ToList();
+        return Ordenar(todos.Where(i => i.Urgency != MailUrgency.Baixa));
     }
 
     /// <summary>
@@ -763,6 +763,94 @@ public sealed class MailDigestService : IDisposable
             LastTriageUtc = DateTime.UtcNow
         });
     }
+
+    /// <summary>
+    /// Repovoa <see cref="Ultimo"/> a partir do que está gravado, na abertura do programa.
+    /// <para>
+    /// O digesto vive em memória e morre com o processo. Os VEREDITOS, não: eles ficam em
+    /// <see cref="ArquivoDeConversas"/> desde que o arquivo por conversa passou a existir. Sem
+    /// esta leitura, reabrir o AIB mostrava caixa vazia com o trabalho todo no disco — e a
+    /// passada seguinte NÃO trazia nada de volta, porque o ponteiro de UID já tinha avançado e
+    /// só mensagem nova é triada. Na prática, cada reinicialização apagava a triagem da tela
+    /// para sempre.
+    /// </para>
+    /// <para>
+    /// NÃO é uma passada: nada foi lido do servidor agora, nada foi descartado agora, e por
+    /// isso <c>Lidas</c> e <c>Descartadas</c> ficam zerados — escrever "21 lidas" aqui seria
+    /// creditar a este arranque o trabalho do anterior. Também NÃO dispara <c>Pronto</c>: o
+    /// orbe anunciaria e-mail velho como novidade toda vez que o programa abrisse.
+    /// </para>
+    /// <para>
+    /// Com <c>MailJournalDays = 0</c> não há diário e não há o que restaurar — é a regra 3
+    /// estrita, e ela continua valendo aqui.
+    /// </para>
+    /// </summary>
+    /// <returns>Quantas linhas voltaram para a tela.</returns>
+    public int Reconstituir()
+    {
+        try
+        {
+            var config = _settings.LoadSettings();
+            if (config.MailJournalDays <= 0) return 0;
+
+            var itens = new List<MailSummary>();
+
+            foreach (var g in _conversas.Guardadas())
+            {
+                var e = g.Estado;
+
+                // BAIXA não vai para a tela, aqui pelo MESMO motivo da passada viva: mostrar
+                // tudo o que se leu é o oposto de triar. Se as duas regras divergissem, a
+                // caixa mudaria de conteúdo só por ter reiniciado.
+                if (!Enum.TryParse<MailUrgency>(e.Urgencia, true, out var urgencia)) continue;
+                if (urgencia == MailUrgency.Baixa) continue;
+
+                itens.Add(new MailSummary(
+                    Name: e.Assunto,
+                    Description: e.Resumo,
+                    Urgency: urgencia,
+                    Url: "",
+                    Account: g.Conta,
+                    LastMessageAt: e.UltimaEm == default ? default : e.UltimaEm.ToLocalTime(),
+                    MessageCount: Math.Max(1, e.Mensagens),
+                    AwaitingMe: e.EsperandoVoce,
+                    ThreadId: g.ThreadId,
+                    De: e.De));
+            }
+
+            if (itens.Count == 0) return 0;
+
+            Ultimo = new DigestoDeEmail(
+                Ordenar(itens),
+                Lidas: 0,
+                Descartadas: Array.Empty<Descartada>(),
+                Rajadas: Array.Empty<Rajada>(),
+                QuandoUtc: itens.Max(i => i.LastMessageAt).ToUniversalTime());
+
+            Console.WriteLine($"[VIGIA] {itens.Count} conversa(s) de volta do disco.");
+            return itens.Count;
+        }
+        catch (Exception ex)
+        {
+            // Caixa vazia é ruim; não abrir é pior. Restaurar é conforto, não pré-requisito.
+            Console.WriteLine($"[VIGIA] não consegui reconstituir a caixa — " +
+                              $"{ex.GetType().Name}: {ex.Message}");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// A ordem da tela: urgência decrescente e, dentro do nível, a mais recente no topo.
+    /// <para>
+    /// Um lugar só para a passada viva e para o que volta do disco. Enquanto a ordenação morava
+    /// na View, ela sumiu junto com a aba do painel e a lista da área central passou a sair na
+    /// ordem em que o agrupamento devolveu.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<MailSummary> Ordenar(IEnumerable<MailSummary> itens) =>
+        itens.OrderByDescending(i => i.Urgency)
+             .ThenByDescending(i => i.LastMessageAt)
+             .ToList();
 
     private DigestoDeEmail Publicar(DigestoDeEmail digesto)
     {

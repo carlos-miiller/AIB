@@ -204,6 +204,9 @@ public partial class ChatWindow
         ListaDaCaixa.Children.Clear();
         if (!configurado) return;
 
+        // JÁ vem ordenada do vigia — urgência decrescente, mais recente no topo dentro do
+        // nível. Reordenar aqui seria a segunda cópia da regra, e foi assim que a ordem se
+        // perdeu quando a aba do painel saiu: ela morava na View que morreu junto.
         var conversas = FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>();
         var agora = DateTime.Now;
 

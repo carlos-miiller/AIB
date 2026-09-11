@@ -264,5 +264,70 @@ namespace AIB.Tests
 
             _arquivo.Ler(chave).Should().HaveCount(1);
         }
+
+        // ──────────────────────────────────────────────────────────────
+        // A volta do disco — o digesto morre com o processo, isto aqui não
+        // ──────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void Guardadas_DEVOLVE_ContaThreadEEstado()
+        {
+            string chave = ArquivoDeConversas.Chave("eu@gmail.com", "777", 0);
+            _arquivo.Anotar(chave, Deles(11, Base_));
+
+            var guardadas = _arquivo.Guardadas();
+
+            guardadas.Should().HaveCount(1);
+            guardadas[0].Conta.Should().Be("eu@gmail.com");
+            guardadas[0].ThreadId.Should().Be("777");
+            guardadas[0].Estado.Assunto.Should().Be("Contrato");
+            guardadas[0].Estado.Urgencia.Should().Be("Maxima");
+            guardadas[0].Estado.De.Should().Be("cliente@x.com");
+        }
+
+        [Fact]
+        public void Guardadas_TRAZ_OHistoricoInteiro_NaoSoAUltimaPassada()
+        {
+            // É o ponto todo: o que volta para a tela depois de reiniciar tem de ser a conversa
+            // como ela está, e não a mensagem solta que por acaso foi gravada por último.
+            string chave = ArquivoDeConversas.Chave("eu@gmail.com", "888", 0);
+
+            _arquivo.Anotar(chave, Deles(1, Base_));
+            _arquivo.Anotar(chave, Minha(Base_.AddHours(1)));
+            _arquivo.Anotar(chave, Deles(2, Base_.AddHours(2), resumo: "cobrando de novo"));
+
+            var g = _arquivo.Guardadas().Single();
+
+            g.Estado.Mensagens.Should().Be(3);
+            g.Estado.EsperandoVoce.Should().BeTrue();
+            g.Estado.Resumo.Should().Be("cobrando de novo");
+        }
+
+        [Fact]
+        public void Guardadas_PULA_PastaSemEntradaLegivel()
+        {
+            // Uma pasta corrompida não pode derrubar a leitura das outras trezentas.
+            _arquivo.Anotar(ArquivoDeConversas.Chave("eu@gmail.com", "1", 0), Deles(1, Base_));
+
+            string orfa = Path.Combine(
+                _arquivo.Pasta, ArquivoDeConversas.NomeDaPasta("eu@gmail.com|thr:9"));
+
+            Directory.CreateDirectory(orfa);
+            File.WriteAllText(
+                Path.Combine(orfa, ArquivoDeConversas.NomeDaChave), "eu@gmail.com|thr:9");
+
+            _arquivo.Guardadas().Should().HaveCount(1);
+        }
+
+        [Theory]
+        [InlineData("eu@gmail.com|thr:42", "eu@gmail.com", "42")]
+        [InlineData("eu@gmail.com|uid:7", "eu@gmail.com", "")]
+        [InlineData("", "", "")]
+        [InlineData("sembarra", "", "")]
+        public void AChave_SE_PARTE_EmContaEThread(string chave, string conta, string thread)
+        {
+            ArquivoDeConversas.ContaDaChave(chave).Should().Be(conta);
+            ArquivoDeConversas.ThreadDaChave(chave).Should().Be(thread);
+        }
     }
 }

@@ -396,13 +396,10 @@ public sealed class ArquivoDeConversas
                     if (!File.Exists(arquivo)) continue;
 
                     string chave = File.ReadAllText(arquivo, SemBom).Trim();
-                    int marca = chave.IndexOf("|thr:", StringComparison.Ordinal);
 
                     // Conversa sem thread (provedor que não expõe X-GM-THRID) não tem o que
                     // vigiar: cada mensagem é a própria conversa e não existe "a resposta".
-                    if (marca < 0) continue;
-
-                    string thrid = chave[(marca + 5)..];
+                    string thrid = ThreadDaChave(chave);
                     if (thrid.Length > 0) saida.Add(thrid);
                 }
                 catch { }
@@ -414,6 +411,77 @@ public sealed class ArquivoDeConversas
         }
 
         return saida;
+    }
+
+    /// <summary>
+    /// Uma conversa como ela está no disco: a chave, suas partes e o estado derivado.
+    /// </summary>
+    /// <param name="Chave">A chave inteira, como gravada em <c>chave.txt</c>.</param>
+    /// <param name="Conta">A caixa de onde ela veio.</param>
+    /// <param name="ThreadId">A thread, ou vazio em provedor que não expõe X-GM-THRID.</param>
+    /// <param name="Estado">O que a lista mostra — ver <see cref="Resumir"/>.</param>
+    public sealed record Guardada(string Chave, string Conta, string ThreadId, Estado Estado);
+
+    /// <summary>
+    /// TUDO o que está guardado, pronto para virar linha de tela.
+    /// <para>
+    /// Existe porque o último digesto vive em memória e morre com o programa, enquanto os
+    /// vereditos ficam aqui. Sem esta leitura, reabrir o AIB esvaziava a caixa na tela enquanto
+    /// o trabalho seguia gravado — e a passada seguinte não trazia nada de volta, porque o
+    /// ponteiro de UID já tinha avançado e só mensagem NOVA é triada.
+    /// </para>
+    /// <para>
+    /// Conversa sem entrada legível é pulada em silêncio: uma pasta corrompida não pode
+    /// derrubar a leitura das outras trezentas.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<Guardada> Guardadas()
+    {
+        var saida = new List<Guardada>();
+
+        try
+        {
+            if (!Directory.Exists(_pasta)) return saida;
+
+            foreach (string dir in Directory.GetDirectories(_pasta))
+            {
+                try
+                {
+                    string arquivoDaChave = Path.Combine(dir, NomeDaChave);
+                    if (!File.Exists(arquivoDaChave)) continue;
+
+                    string chave = File.ReadAllText(arquivoDaChave, SemBom).Trim();
+                    if (chave.Length == 0) continue;
+
+                    var entradas = Ler(chave);
+                    if (entradas.Count == 0) continue;
+
+                    saida.Add(new Guardada(
+                        chave, ContaDaChave(chave), ThreadDaChave(chave), Resumir(entradas)));
+                }
+                catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[VIGIA] não consegui reler as conversas guardadas: {ex.Message}");
+        }
+
+        return saida;
+    }
+
+    /// <summary>A caixa, da chave <c>conta|thr:...</c>. Vazio se a chave não tiver o formato.</summary>
+    public static string ContaDaChave(string? chave)
+    {
+        int barra = (chave ?? "").IndexOf('|');
+        return barra <= 0 ? "" : chave![..barra];
+    }
+
+    /// <summary>A thread, da chave. Vazio em conversa gravada por uid.</summary>
+    public static string ThreadDaChave(string? chave)
+    {
+        int marca = (chave ?? "").IndexOf("|thr:", StringComparison.Ordinal);
+        return marca < 0 ? "" : chave![(marca + 5)..];
     }
 
     /// <summary>Quantas conversas existem em disco. Diagnóstico e tela.</summary>
