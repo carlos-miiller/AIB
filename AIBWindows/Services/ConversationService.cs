@@ -635,7 +635,45 @@ public sealed class ConversationService : IMessageStore
     /// estouravam em toda tentativa.
     /// </para>
     /// </summary>
-    private static readonly TimeSpan SummaryTimeout = TimeSpan.FromMinutes(4);
+    // O PRAZO FOI REMOVIDO. Eram quatro minutos medidos, e mesmo assim estouravam: nesta
+    // máquina o prefill anda a ~30 tok/s e um capítulo grande passa disso sem estar travado.
+    // Um prazo que corta trabalho válido e devolve "cancelada" é pior que espera nenhuma — o
+    // usuário perde os quatro minutos E o capítulo.
+    //
+    // Quem decide desistir agora é quem está esperando, com o botão da faixa de sistema. Para
+    // isso a tela precisa saber que há algo em curso, e é o que os eventos abaixo dizem.
+
+    /// <summary>
+    /// Onde a compactação está, para a tela poder mostrar que não travou.
+    /// </summary>
+    /// <param name="Fase">"capítulo" ou "arco" — o que está sendo resumido agora.</param>
+    /// <param name="Numero">O índice do capítulo ou ato em questão.</param>
+    /// <param name="Feitos">Quantos já fecharam nesta passada.</param>
+    public sealed record PassoDaCompactacao(string Fase, int Numero, int Feitos);
+
+    /// <summary>Disparado a cada capítulo ou ato que COMEÇA. A tela usa para o aviso.</summary>
+    public event Action<PassoDaCompactacao>? CompactacaoAndou;
+
+    /// <summary>Disparado uma vez quando a passada acaba — por fim, falha ou interrupção.</summary>
+    public event Action? CompactacaoAcabou;
+
+    /// <summary>
+    /// A desistência do usuário. Trocada a cada passada: um CTS cancelado não se reaproveita.
+    /// </summary>
+    private CancellationTokenSource? _desistencia;
+
+    /// <summary>
+    /// Interrompe a compactação em curso, a pedido de quem está esperando.
+    /// <para>
+    /// Nada se perde: o capítulo só remove turnos do contexto DEPOIS de existir, então desistir
+    /// no meio deixa a conversa exatamente como estava. O que muda é que a poda de emergência
+    /// volta a ser quem cuida do contexto pelos próximos turnos.
+    /// </para>
+    /// </summary>
+    public void InterromperCompactacao()
+    {
+        try { _desistencia?.Cancel(); } catch (ObjectDisposedException) { }
+    }
 
     /// <summary>
     /// Teto de turnos por capítulo.
@@ -651,9 +689,9 @@ public sealed class ConversationService : IMessageStore
     /// <summary>
     /// Turnos de descanso depois de uma compactação que falhou.
     /// <para>
-    /// A falha custa o <see cref="SummaryTimeout"/> inteiro, e ele é cobrado do usuário: a
-    /// compactação segura o portão, então o turno SEGUINTE espera por ela. Sem descanso, um
-    /// resumidor lento transforma toda mensagem daí em diante numa espera de quatro minutos.
+    /// A falha custa a espera inteira, e ela é cobrada do usuário: a compactação segura o
+    /// portão, então o turno SEGUINTE espera por ela. Sem descanso, um resumidor lento
+    /// transforma toda mensagem daí em diante numa espera de minutos.
     /// Melhor deixar a poda de emergência cuidar do contexto por alguns turnos.
     /// </para>
     /// </summary>
@@ -711,6 +749,12 @@ public sealed class ConversationService : IMessageStore
             double fracao = _settingsService.LoadSettings().CompactionTrigger;
             int fechados = 0;
 
+            // Linkado ao token do turno: cancelar o turno segue cancelando a compactação. O que
+            // este acrescenta é a desistência avulsa, sem derrubar o turno junto.
+            _desistencia?.Dispose();
+            _desistencia = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var token = _desistencia.Token;
+
             // Fecha QUANTOS forem precisos, e nao um por turno. Sem a poda cortando no teto do
             // nivel, a conversa chega aqui com material de varios capitulos acumulado — e um so
             // deixaria o resto para a passada seguinte, que talvez nunca venha.
@@ -735,7 +779,10 @@ public sealed class ConversationService : IMessageStore
                 Console.WriteLine($"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > gatilho={gatilho}.");
                 _registroDaCompactacao.Gatilho(vivo, gatilho, quota.Live, candidatos.Count);
 
-                await FecharCapituloAsync(candidatos, quota, ct).ConfigureAwait(false);
+                CompactacaoAndou?.Invoke(new PassoDaCompactacao(
+                    "capítulo", _memory.NextChapterIndex, fechados));
+
+                await FecharCapituloAsync(candidatos, quota, token).ConfigureAwait(false);
                 fechados++;
             }
 
@@ -746,14 +793,24 @@ public sealed class ConversationService : IMessageStore
         }
         catch (OperationCanceledException)
         {
+            // Dois motivos chegam aqui e o diário precisa distingui-los: o usuário desistiu de
+            // esperar, ou o turno inteiro foi cancelado. "Cancelada" sem dizer por quem manda
+            // procurar defeito onde houve escolha.
+            bool foiPedido = ct.IsCancellationRequested == false;
+
             _compactionCooldown = CompactionCooldownTurns;
+
+            string motivo = foiPedido
+                ? "interrompida pelo usuário"
+                : "o turno foi cancelado";
+
             Console.WriteLine(
-                $"[MEMORIA] Compactação cancelada (teto de {SummaryTimeout.TotalMinutes:F0} min). " +
-                $"Os turnos seguem no contexto vivo; nova tentativa em {CompactionCooldownTurns} turno(s).");
+                $"[MEMORIA] Compactação {motivo}. Os turnos seguem no contexto vivo; " +
+                $"nova tentativa em {CompactionCooldownTurns} turno(s).");
+
             _registroDaCompactacao.Falhou("compactacao",
-                $"cancelada no teto de {SummaryTimeout.TotalMinutes:F0} min. Os turnos seguem "
-                + $"vivos e a poda de emergencia assume; nova tentativa em "
-                + $"{CompactionCooldownTurns} turno(s)");
+                $"{motivo}. Os turnos seguem vivos e a poda de emergencia assume; "
+                + $"nova tentativa em {CompactionCooldownTurns} turno(s)");
         }
         catch (Exception ex)
         {
@@ -764,6 +821,13 @@ public sealed class ConversationService : IMessageStore
             _registroDaCompactacao.Falhou("compactacao",
                 $"{ex.GetType().Name}: {ex.Message}. Nova tentativa em "
                 + $"{CompactionCooldownTurns} turno(s)");
+        }
+        finally
+        {
+            // Sempre — inclusive nos retornos por cooldown e quota desligada, que saem antes.
+            // Uma faixa de "compactando" que fica na tela depois do fim é a mesma mentira que
+            // este bloco existe para evitar.
+            CompactacaoAcabou?.Invoke();
         }
     }
 
@@ -779,14 +843,11 @@ public sealed class ConversationService : IMessageStore
         var compactor = new Compactor(
             _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter);
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(SummaryTimeout);
-
         _registroDaCompactacao.Capitulo(
             _memory.NextChapterIndex, candidatos.Count, candidatos[0].Index, candidatos[^1].Index);
 
         var capitulo = await compactor
-            .SummarizeAsync(_memory.NextChapterIndex, candidatos, timeout.Token)
+            .SummarizeAsync(_memory.NextChapterIndex, candidatos, ct)
             .ConfigureAwait(false);
 
         // Medido ANTES da remocao, e sobre as mensagens originais: e este o custo que o
@@ -863,8 +924,7 @@ public sealed class ConversationService : IMessageStore
         }
         catch (OperationCanceledException)
         {
-            return $"O resumidor passou de {SummaryTimeout.TotalMinutes:F0} minutos e foi interrompido. "
-                 + "As mensagens continuam no contexto.";
+            return "O resumo foi interrompido. As mensagens continuam no contexto.";
         }
         catch (Exception ex)
         {
@@ -958,11 +1018,11 @@ public sealed class ConversationService : IMessageStore
             _registroDaCompactacao.Ato(
                 _memory.NextActIndex, soltos.Count, soltos[0].Index, soltos[^1].Index);
 
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(SummaryTimeout);
+            CompactacaoAndou?.Invoke(new PassoDaCompactacao(
+                "arco", _memory.NextActIndex, soltos.Count));
 
             var ato = await compactor
-                .PromoteAsync(_memory.NextActIndex, soltos, timeout.Token)
+                .PromoteAsync(_memory.NextActIndex, soltos, ct)
                 .ConfigureAwait(false);
 
             _memory.Add(ato);

@@ -45,6 +45,14 @@ public partial class ChatWindow : Window
         _settingsService = settingsService;
         _conversation = conversation;
         _conversation.OnTokenCountChanged += UpdateTokenCounterUI;
+
+        // A compactação roda atrás do portão, depois do turno, e pode levar minutos. Sem estes
+        // dois a espera era silêncio total — e silêncio longo não se distingue de travamento.
+        _conversation.CompactacaoAndou += p =>
+            Dispatcher.BeginInvoke(new Action(() => AnunciarCompactacao(p)));
+
+        _conversation.CompactacaoAcabou += () =>
+            Dispatcher.BeginInvoke(new Action(EsconderEspera));
         _conversation.OnWarmupStateChanged += HandleWarmupState;
         _conversation.OnTitleChanged += AplicarTitulo;
         _conversation.OnHistoryChanged += AtualizarPainelDeHistorico;
@@ -1490,6 +1498,144 @@ public partial class ChatWindow : Window
 
     private System.Windows.Threading.DispatcherTimer? _timerDaFaixa;
 
+    /// <summary>Bate de segundo em segundo enquanto uma espera longa está na faixa.</summary>
+    private System.Windows.Threading.DispatcherTimer? _relogioDaFaixa;
+
+    /// <summary>Quando a espera começou, para o contador de decorrido.</summary>
+    private DateTime _esperaComecou;
+
+    /// <summary>A frase da espera sem o tempo — o tempo é concatenado a cada batida.</summary>
+    private string _fraseDaEspera = "";
+
+    /// <summary>O que o botão da faixa faz agora. Nulo quando não há botão.</summary>
+    private Action? _acaoDaFaixa;
+
+    /// <summary>
+    /// Uma espera LONGA na faixa de sistema, com anel girando, tempo decorrido e saída.
+    /// <para>
+    /// É o par do aviso de aquecimento, e existe pelo mesmo motivo: numa máquina que faz
+    /// prefill a ~30 tok/s, uma espera de cinco minutos sem sinal nenhum é indistinguível de um
+    /// travamento. O anel diz que está vivo; o tempo diz quanto já custou; o botão devolve a
+    /// decisão a quem está esperando.
+    /// </para>
+    /// <para>
+    /// NÃO some sozinha: quem abre, fecha. Uma espera que desaparece por conta própria com o
+    /// trabalho ainda rodando volta a mentir sobre travamento.
+    /// </para>
+    /// </summary>
+    private void MostrarEspera(string frase, string rotuloDaAcao, Action acao)
+    {
+        if (StatusBar == null || StatusText == null) return;
+
+        _timerDaFaixa?.Stop();
+
+        _fraseDaEspera = frase;
+        _esperaComecou = DateTime.Now;
+        _acaoDaFaixa = acao;
+
+        AtualizarDecorrido();
+
+        AcaoDaFaixa.Content = rotuloDaAcao;
+        AcaoDaFaixa.IsEnabled = true;
+        AcaoDaFaixa.Visibility = Visibility.Visible;
+
+        AnelDaFaixa.Visibility = Visibility.Visible;
+        Girar(GiroDaFaixa, true);
+
+        StatusBar.Visibility = Visibility.Visible;
+
+        _relogioDaFaixa?.Stop();
+        _relogioDaFaixa = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _relogioDaFaixa.Tick += (_, _) => AtualizarDecorrido();
+        _relogioDaFaixa.Start();
+    }
+
+    private void AtualizarDecorrido()
+    {
+        var d = DateTime.Now - _esperaComecou;
+
+        string tempo = d.TotalMinutes >= 1
+            ? $"{(int)d.TotalMinutes}min{d.Seconds:00}"
+            : $"{d.Seconds}s";
+
+        StatusText.Text = $"{_fraseDaEspera} · {tempo}";
+    }
+
+    /// <summary>Fecha a espera. Só mexe na faixa se ela ainda for a da espera.</summary>
+    public void EsconderEspera()
+    {
+        if (StatusBar == null) return;
+        if (_acaoDaFaixa == null) return;   // outra coisa tomou a faixa; não é nossa para fechar
+
+        _relogioDaFaixa?.Stop();
+        _relogioDaFaixa = null;
+        _acaoDaFaixa = null;
+
+        Girar(GiroDaFaixa, false);
+        AnelDaFaixa.Visibility = Visibility.Collapsed;
+        AcaoDaFaixa.Visibility = Visibility.Collapsed;
+        StatusBar.Visibility = Visibility.Collapsed;
+    }
+
+    private void AcaoDaFaixa_Click(object sender, RoutedEventArgs e)
+    {
+        // Desabilita ANTES de agir: interromper duas vezes não interrompe mais, e o botão
+        // seguir clicável depois do primeiro clique sugere que o primeiro não pegou.
+        AcaoDaFaixa.IsEnabled = false;
+        StatusText.Text = "Interrompendo…";
+
+        var acao = _acaoDaFaixa;
+        acao?.Invoke();
+    }
+
+    /// <summary>
+    /// O giro de §4.2: 360° em 0,9s, linear, para sempre. Um lugar só — a faixa e o botão
+    /// "Recarregar" de §3.11 usam o MESMO movimento, e duas cópias divergiriam na primeira
+    /// mudança feita só de um lado.
+    /// </summary>
+    private static void Girar(System.Windows.Media.RotateTransform? alvo, bool ligado)
+    {
+        if (alvo == null) return;
+
+        if (!ligado)
+        {
+            alvo.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);
+            alvo.Angle = 0;
+            return;
+        }
+
+        alvo.BeginAnimation(
+            System.Windows.Media.RotateTransform.AngleProperty,
+            new System.Windows.Media.Animation.DoubleAnimation
+            {
+                From = 0,
+                To = 360,
+                Duration = new Duration(TimeSpan.FromSeconds(0.9)),
+                RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever
+            });
+    }
+
+    /// <summary>
+    /// A compactação começou um capítulo ou um arco — §5.4.
+    /// <para>
+    /// Cada um é UMA chamada ao modelo, e nesta máquina isso é minutos. O aviso existe porque
+    /// até aqui a espera acontecia em silêncio, atrás do portão, e a única saída era um prazo
+    /// automático que cortava trabalho válido.
+    /// </para>
+    /// </summary>
+    public void AnunciarCompactacao(ConversationService.PassoDaCompactacao passo)
+    {
+        string frase = passo.Feitos > 0
+            ? $"Compactando a memória — {passo.Fase} {passo.Numero} ({passo.Feitos} pronto(s))"
+            : $"Compactando a memória — {passo.Fase} {passo.Numero}";
+
+        MostrarEspera(frase, "Interromper", () => _conversation.InterromperCompactacao());
+    }
+
+
     /// <summary>
     /// Uma frase curta na faixa de sistema (§5.4), que some sozinha.
     /// <para>
@@ -1591,17 +1737,29 @@ public partial class ChatWindow : Window
         }));
     }
 
-    private void ClearButton_Click(object sender, RoutedEventArgs e)
+    private void ClearButton_Click(object sender, RoutedEventArgs e) => NovaConversa();
+
+    /// <summary>
+    /// Começa uma conversa do zero. A anterior NÃO se perde: <c>ResetHistory</c> arquiva o que
+    /// havia antes de zerar, e abre uma sessão nova em <c>memory/sessions</c>.
+    /// </summary>
+    /// <param name="comBoasVindas">
+    /// Falso quando algo já vai entrar na conversa em seguida — o cartão de §3.11, por
+    /// exemplo. A saudação antes de um e-mail seria uma fala sobre nada.
+    /// </param>
+    private void NovaConversa(bool comBoasVindas = true)
     {
         DescartarConfirmacaoPendente();
         MessagesPanel.Children.Clear();
         _cadeiaAtual = null;
         _conversation.ResetHistory();
+
         int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
         UpdateTokenCounterUI(new TokenReport(0, 0, maxTokens));
+
         ChatTitleText.Text = "Nova conversa";
-        AddWelcomeBubble();
+        if (comBoasVindas) AddWelcomeBubble();
         AtualizarEstadoVazio();
     }
 

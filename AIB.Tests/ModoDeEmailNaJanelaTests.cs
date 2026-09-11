@@ -297,6 +297,86 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void OPlaceholder_USA_ONomeDaPersonalidade_NaoOTituloDaConversa()
+        {
+            // Já saiu na tela "Fale com Nova conversa sobre este e-mail...": o nome vinha de
+            // ChatTitleText, que é o TÍTULO DA CONVERSA. Os dois campos ficam perto e têm nomes
+            // parecidos; só um deles é um nome próprio.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                Achar<RadioButton>(janela, "ModoEmail").IsChecked = true;
+                janela.EntrarNaLeitura(Email());
+
+                string texto = Achar<TextBlock>(janela, "InputPlaceholder").Text;
+
+                texto.Should().NotContain("Nova conversa");
+
+                // A MESMA fonte do nome no header: se os dois divergirem, um dos dois mente.
+                string noHeader = Achar<TextBlock>(janela, "AgentNameText").Text;
+                texto.ToUpperInvariant().Should().Contain(noHeader);
+
+                janela.Close();
+            });
+        }
+
+        // ──────────────────────────────────────────────────────────
+        // A faixa de espera — §5.4
+        // ──────────────────────────────────────────────────────────
+
+        [Fact]
+        public void AFaixaDeEspera_MOSTRA_AnelTempoEBotao()
+        {
+            // Numa máquina que faz prefill a ~30 tok/s, espera sem sinal nenhum é
+            // indistinguível de travamento. O anel diz que está vivo; o botão devolve a
+            // decisão a quem está esperando.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                janela.AnunciarCompactacao(
+                    new ConversationService.PassoDaCompactacao("capítulo", 3, 1));
+
+                Achar<Border>(janela, "StatusBar").Visibility.Should().Be(Visibility.Visible);
+                Achar<System.Windows.Shapes.Ellipse>(janela, "AnelDaFaixa").Visibility
+                    .Should().Be(Visibility.Visible);
+
+                var botao = Achar<Button>(janela, "AcaoDaFaixa");
+                botao.Visibility.Should().Be(Visibility.Visible);
+                botao.Content.Should().Be("Interromper");
+
+                Achar<TextBlock>(janela, "StatusText").Text.Should().Contain("capítulo 3");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void AFaixaDeEspera_SOME_QuandoACompactacaoAcaba()
+        {
+            // Uma faixa de "compactando" que fica na tela depois do fim é a mesma mentira que
+            // ela existe para desfazer.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                janela.AnunciarCompactacao(
+                    new ConversationService.PassoDaCompactacao("arco", 1, 0));
+
+                janela.EsconderEspera();
+
+                Achar<Border>(janela, "StatusBar").Visibility.Should().Be(Visibility.Collapsed);
+                Achar<Button>(janela, "AcaoDaFaixa").Visibility.Should().Be(Visibility.Collapsed);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void ORotuloDoBotaoSecundario_SEGUE_OProvedorDaCAIXA()
         {
             // Da caixa, e não de quem mandou: prometer "Abrir no Gmail" numa conta Outlook

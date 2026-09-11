@@ -222,8 +222,6 @@ public partial class ChatWindow
             ? (System.Windows.Media.Brush)FindResource("DangerTextBrush")
             : (System.Windows.Media.Brush)FindResource("TextMutedBrush");
 
-        string nomeDaIA = ChatTitleText?.Text ?? "a IA";
-
         foreach (var conversa in conversas)
         {
             var item = new MailListItem
@@ -285,16 +283,23 @@ public partial class ChatWindow
     private readonly TokenCounter _contadorDaCaixa = new();
 
     /// <summary>
-    /// O nome da personalidade ativa, para "Abrir com &lt;NOME&gt;".
+    /// O nome da personalidade ativa, para "Abrir com &lt;NOME&gt;" e para o placeholder.
     /// <para>
-    /// Do MESMO campo que preenche o header — nunca a string "Kai" em hard-code, que é o que já
-    /// deixou o nome cravado em meia dúzia de lugares.
+    /// De <c>ActiveCharacter</c>, que é a MESMA fonte do nome no header e do "Fale com KAI..."
+    /// de §3.7(b). Nunca a string "Kai" em hard-code, que é o que já deixou o nome cravado em
+    /// meia dúzia de lugares.
+    /// </para>
+    /// <para>
+    /// Já leu <c>ChatTitleText</c>, e isso era o TÍTULO DA CONVERSA, não a personalidade: numa
+    /// conversa ainda sem título, o botão do acordeão dizia "Abrir com Nova conversa" e o campo
+    /// de texto, "Fale com Nova conversa sobre este e-mail...". Os dois campos ficam perto na
+    /// tela e têm nomes parecidos; só um deles é um nome próprio.
     /// </para>
     /// </summary>
     private string NomeDaInteligencia()
     {
-        string nome = (ChatTitleText?.Text ?? "").Trim();
-        return nome.Length == 0 ? "a IA" : nome;
+        string nome = (_settingsService.LoadSettings().ActiveCharacter ?? "").Trim();
+        return nome.Length == 0 ? "AIB" : nome;
     }
 
     /// <summary>
@@ -334,9 +339,15 @@ public partial class ChatWindow
     /// semanas depois. É a regra 3, e ela não tem exceção nesta tela.
     /// </para>
     /// <para>
-    /// A conversa é a MESMA do chat, de propósito: o turno é um turno de verdade, entra no
-    /// histórico, conta para a compactação e pode chamar ferramenta. Uma conversa paralela
-    /// exigiria segunda sessão, segundo <c>raw.jsonl</c> e segunda memória.
+    /// Abre uma CONVERSA NOVA. A máquina é a mesma do chat — turno de verdade, histórico,
+    /// compactação, ferramentas —, mas o assunto não é: quem estava discutindo código e foi
+    /// olhar a caixa não pediu para colar um e-mail no meio daquilo. Emendar os dois
+    /// contaminava o contexto do que estava em andamento e, pior, punha o e-mail no
+    /// <c>raw.jsonl</c> de uma sessão sobre outra coisa — o resumidor de capítulos costuraria
+    /// os dois assuntos semanas depois.
+    /// </para>
+    /// <para>
+    /// Nada se perde: <c>ResetHistory</c> arquiva a conversa anterior antes de zerar.
     /// </para>
     /// </summary>
     /// <summary>
@@ -364,6 +375,14 @@ public partial class ChatWindow
     private void AbrirEmailNoChat(MailSummary alvo)
     {
         if (alvo == null) return;
+
+        // NOVA CONVERSA PRIMEIRO, e depois o estado da tela. Invertido, o AtualizarEstadoVazio
+        // de dentro de NovaConversa acendia "Nenhuma conversa ainda" por cima do cartão — a
+        // última palavra sobre o estado vazio tem de ser de AplicarEstadoDoModo.
+        //
+        // Sem boas-vindas: o cartão entra logo abaixo, e uma saudação antes dele seria uma fala
+        // sobre nada.
+        NovaConversa(comBoasVindas: false);
 
         EntrarNaLeitura(alvo);
 
@@ -566,30 +585,8 @@ public partial class ChatWindow
         }
     }
 
-    /// <summary>O mesmo giro do spinner de §4.2: 360° em 0,9s, linear, para sempre.</summary>
-    private void GirarSetaDeRecarregar(bool ligado)
-    {
-        if (GiroDoRecarregar == null) return;
-
-        if (!ligado)
-        {
-            GiroDoRecarregar.BeginAnimation(
-                System.Windows.Media.RotateTransform.AngleProperty, null);
-            GiroDoRecarregar.Angle = 0;
-            return;
-        }
-
-        var giro = new System.Windows.Media.Animation.DoubleAnimation
-        {
-            From = 0,
-            To = 360,
-            Duration = new Duration(TimeSpan.FromSeconds(0.9)),
-            RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever
-        };
-
-        GiroDoRecarregar.BeginAnimation(
-            System.Windows.Media.RotateTransform.AngleProperty, giro);
-    }
+    /// <summary>O mesmo giro de §4.2 usado pela faixa de sistema — ver <c>Girar</c>.</summary>
+    private void GirarSetaDeRecarregar(bool ligado) => Girar(GiroDoRecarregar, ligado);
 
     private void EngrenagemDoEmail_Click(object sender, RoutedEventArgs e) =>
         AbrirConfiguracoesDeEmail();
