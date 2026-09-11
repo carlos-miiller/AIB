@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
 using AIB.Services;
@@ -144,8 +144,9 @@ namespace AIB.Tests
         [Fact]
         public void NaLEITURA_ABarraDeInputVOLTA_ComPlaceholderProprio()
         {
-            // É o ÚNICO ponto do modo e-mail em que ela aparece. O rodapé de contexto segue
-            // fora: ele descreve a conversa inteira, e aqui a atenção é de um e-mail só.
+            // É o ÚNICO ponto do modo e-mail em que ela aparece. O rodapé de contexto sai de
+            // vista — ele descreve a conversa inteira, e aqui a atenção é de um e-mail só —,
+            // mas guardando o lugar: ver NaLEITURA_ORodapeFicaOCULTO_MasNaoCOLAPSADO.
             EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
@@ -155,7 +156,7 @@ namespace AIB.Tests
                 janela.EntrarNaLeitura(Email());
 
                 Achar<Grid>(janela, "BarraDeInput").Visibility.Should().Be(Visibility.Visible);
-                Achar<Grid>(janela, "RodapeDeContexto").Visibility.Should().Be(Visibility.Collapsed);
+                Achar<Grid>(janela, "RodapeDeContexto").Visibility.Should().NotBe(Visibility.Visible);
                 Achar<TextBlock>(janela, "InputPlaceholder").Text
                     .Should().Contain("sobre este e-mail");
 
@@ -177,6 +178,73 @@ namespace AIB.Tests
                 Achar<Grid>(janela, "CaixaDeEntrada").Visibility.Should().Be(Visibility.Collapsed);
                 Achar<Grid>(janela, "CabecalhoDoEmail").Visibility.Should().Be(Visibility.Visible);
                 Achar<ScrollViewer>(janela, "ChatScrollViewer").Visibility.Should().Be(Visibility.Visible);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void NaLEITURA_OTopoDaConversaNaoSOMA_ComOCabecalho()
+        {
+            // No CHAT os 24px de topo do rolo afastam a primeira bolha da divisória do header.
+            // Na LEITURA quem afasta é o cabeçalho, e os dois somados empurravam o cartão quase
+            // cinquenta pixels para baixo — numa janela de 520 isso é um décimo da altura.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                double noChat = Achar<ScrollViewer>(janela, "ChatScrollViewer").Padding.Top;
+
+                Achar<RadioButton>(janela, "ModoEmail").IsChecked = true;
+                janela.EntrarNaLeitura(Email());
+
+                Achar<ScrollViewer>(janela, "ChatScrollViewer").Padding.Top
+                    .Should().BeLessThan(noChat);
+
+                // E volta ao normal quando se volta ao chat: um rolo que fica apertado para
+                // sempre seria a mesma falha com o sinal trocado.
+                Achar<RadioButton>(janela, "ModoChat").IsChecked = true;
+                Achar<ScrollViewer>(janela, "ChatScrollViewer").Padding.Top.Should().Be(noChat);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void NaLEITURA_ORodapeFicaOCULTO_MasNaoCOLAPSADO()
+        {
+            // A barra de input não tem margem de baixo própria: quem sempre deu o chão dela foi
+            // o rodapé de contexto. Colapsá-lo fazia o input encostar na borda arredondada da
+            // janela e aparecer cortado. Hidden guarda o lugar.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                Achar<RadioButton>(janela, "ModoEmail").IsChecked = true;
+                janela.EntrarNaLeitura(Email());
+
+                Achar<Grid>(janela, "RodapeDeContexto").Visibility
+                    .Should().Be(Visibility.Hidden);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void NaLISTA_ORodapeCOLAPSA_DeVerdade()
+        {
+            // Ali não há input embaixo para sustentar, e a lista ganha a linha inteira.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                Achar<RadioButton>(janela, "ModoEmail").IsChecked = true;
+
+                Achar<Grid>(janela, "RodapeDeContexto").Visibility
+                    .Should().Be(Visibility.Collapsed);
 
                 janela.Close();
             });

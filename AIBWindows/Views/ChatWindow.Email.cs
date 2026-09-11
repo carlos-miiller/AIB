@@ -137,11 +137,28 @@ public partial class ChatWindow
         // de balões, cadeia de ações e confirmação — e a primeira a divergir.
         ChatScrollViewer.Visibility = lista ? Visibility.Collapsed : Visibility.Visible;
 
+        // No CHAT os 24px de topo afastam a primeira bolha da divisória do header. Na LEITURA
+        // quem faz esse afastamento é o cabeçalho, e os dois somados empurravam o cartão quase
+        // cinquenta pixels para baixo — numa janela de 520 isso é um décimo da altura.
+        ChatScrollViewer.Padding = leitura
+            ? new Thickness(26, 4, 26, 24)
+            : new Thickness(26, 24, 26, 24);
+
         // A barra de input volta na LEITURA — é o único ponto do modo e-mail em que ela
-        // aparece (§3.11). O rodapé de contexto segue fora: ele descreve a conversa inteira, e
-        // aqui a atenção é de um e-mail só.
+        // aparece (§3.11).
         BarraDeInput.Visibility = lista ? Visibility.Collapsed : Visibility.Visible;
-        RodapeDeContexto.Visibility = email ? Visibility.Collapsed : Visibility.Visible;
+
+        // O rodapé de contexto sai da LEITURA porque descreve a conversa inteira, e aqui a
+        // atenção é de um e-mail só. Mas sai COLAPSANDO SÓ O CONTEÚDO, não a linha: a barra de
+        // input não tem margem de baixo própria — quem sempre deu o chão dela foi este rodapé.
+        // Collapsed aqui fazia o input encostar na borda arredondada da janela e aparecer
+        // cortado. Hidden guarda o lugar, e o input fica exatamente onde fica no chat.
+        //
+        // Na LISTA ele pode colapsar de verdade: não há input embaixo para sustentar, e a lista
+        // ganha a linha inteira.
+        RodapeDeContexto.Visibility = lista
+            ? Visibility.Collapsed
+            : leitura ? Visibility.Hidden : Visibility.Visible;
 
         // As duas caras do cabeçalho.
         TituloDaCaixa.Visibility = lista ? Visibility.Visible : Visibility.Collapsed;

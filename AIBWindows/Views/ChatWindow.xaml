@@ -264,7 +264,7 @@
                          saltaria.
                          Fica FORA das duas áreas de conteúdo porque sobrevive às
                          duas: na leitura a lista some, mas o cabeçalho fica. -->
-                    <Grid x:Name="CabecalhoDoEmail" Grid.Row="0" Margin="20,16,20,6"
+                    <Grid x:Name="CabecalhoDoEmail" Grid.Row="0" Margin="20,10,20,8"
                           Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
