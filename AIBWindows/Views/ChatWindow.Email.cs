@@ -384,6 +384,10 @@ public partial class ChatWindow
         // sobre nada.
         NovaConversa(comBoasVindas: false);
 
+        // ANTES do primeiro turno: o arquivamento acontece no fim de CADA turno, e uma marca
+        // posta depois não desfaz a linha já gravada na lista do painel.
+        _conversation.ManterForaDoHistorico();
+
         EntrarNaLeitura(alvo);
 
         // O CARTÃO é a fala que abre o turno: ele entra no lugar da bolha do usuário.

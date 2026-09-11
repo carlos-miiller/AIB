@@ -1528,5 +1528,85 @@ namespace AIB.Tests
 
             turnosCobertos.Should().BeLessThanOrEqualTo(8);
         }
+
+        // ──────────────────────────────────────────────────────────
+        // Conversa de e-mail fica FORA da lista de chats do painel
+        // ──────────────────────────────────────────────────────────
+
+        private ConversationService NovaConversaDeEnsaio() =>
+            BuildConversation(BuildSettings(true), new FakeProvider(), out _);
+
+        [Fact]
+        public void ForaDoHistorico_NASCE_Falso()
+        {
+            // A conversa comum é o caso normal; a de e-mail é que pede a marca.
+            NovaConversaDeEnsaio().ForaDoHistorico.Should().BeFalse();
+        }
+
+        [Fact]
+        public void ForaDoHistorico_LIGA_ESeApagaNaConversaSeguinte()
+        {
+            // A marca é da conversa que termina no ResetHistory. Conversa nova nasce normal —
+            // senão abrir um e-mail sumiria com todas as conversas dali em diante.
+            var conversa = NovaConversaDeEnsaio();
+
+            conversa.ManterForaDoHistorico();
+            conversa.ForaDoHistorico.Should().BeTrue();
+
+            conversa.ResetHistory();
+            conversa.ForaDoHistorico.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task ComAMarca_OTurnoNAO_ChegaAoHistorico()
+        {
+            // O ponto todo. ArquivarConversaViva roda ao fim de CADA turno — não só ao trocar
+            // de conversa —, e é por isso que o guarda mora lá dentro e não nos chamadores.
+            //
+            // Conferido pelo evento, e não pelo arquivo: OnHistoryChanged é disparado DEPOIS de
+            // gravar, então ele não soar prova que não se gravou — sem pôr este ensaio para
+            // escrever no chat_history.json que as outras classes leem em paralelo.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            int avisos = 0;
+            conversation.OnHistoryChanged += () => avisos++;
+
+            conversation.ManterForaDoHistorico();
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi", _ => { })) { }
+
+            avisos.Should().Be(0, "conversa de e-mail não entra na lista do painel");
+        }
+
+        [Fact]
+        public async Task SemAMarca_OTurnoCHEGA_AoHistorico()
+        {
+            // O contrapeso do anterior: se o guarda passasse a barrar tudo, o ensaio de cima
+            // continuaria verde e o histórico inteiro teria sumido em silêncio.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            int avisos = 0;
+            conversation.OnHistoryChanged += () => avisos++;
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi", _ => { })) { }
+
+            avisos.Should().BeGreaterThan(0);
+        }
+
+        [Fact]
+        public void ForaDoHistorico_SeApaga_MesmoSemTranscricao()
+        {
+            // Abrir um e-mail e desistir antes do primeiro turno deixa a conversa vazia. Se a
+            // limpeza dependesse de haver transcrição, a marca ficaria presa e a conversa
+            // SEGUINTE — essa de verdade — sumiria da lista.
+            var conversa = NovaConversaDeEnsaio();
+
+            conversa.ManterForaDoHistorico();
+            conversa.ResetHistory();
+
+            conversa.ForaDoHistorico.Should().BeFalse();
+        }
     }
 }

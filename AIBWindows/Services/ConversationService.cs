@@ -269,8 +269,44 @@ public sealed class ConversationService : IMessageStore
     /// <summary>Cópia do histórico para persistência/diagnóstico. Somente leitura.</summary>
     public IReadOnlyList<ChatMessage> SnapshotHistory() => Snapshot();
 
+    /// <summary>
+    /// Esta conversa NÃO entra na lista de chats do painel (§6.1).
+    /// <para>
+    /// É a conversa aberta por cima de um e-mail (§3.11). A lista do painel é das conversas que
+    /// o usuário começou; uma caixa movimentada encheria a lista de linhas que ele não abriu e
+    /// enterraria as que abriu.
+    /// </para>
+    /// <para>
+    /// SÓ o histórico do painel. A sessão de memória continua existindo — <c>raw.jsonl</c>,
+    /// capítulos, atos —, porque economia de contexto é necessária em qualquer conversa, e
+    /// porque o que se grava ali é o veredito da triagem, nunca o corpo.
+    /// </para>
+    /// </summary>
+    public bool ForaDoHistorico { get; private set; }
+
+    /// <summary>
+    /// Tira a conversa CORRENTE da lista do painel. Vale até a próxima <see cref="ResetHistory"/>.
+    /// </summary>
+    public void ManterForaDoHistorico() => ForaDoHistorico = true;
+
     /// <summary>Salva a sessão atual e recria o system prompt (SOUL/skills/home dir).</summary>
-    public void ResetHistory()
+    public void ResetHistory() => ResetHistory(conversaNova: true);
+
+    /// <summary>
+    /// O mesmo trabalho, sabendo se é uma CONVERSA NOVA ou só a remontagem do prompt.
+    /// <para>
+    /// O método sempre teve dois papel: "o usuário começou outra conversa" e "o histórico está
+    /// vazio e o prompt de sistema precisa existir antes deste turno" — o segundo acontece
+    /// DENTRO de <see cref="StreamResponseAsync"/>, no meio de uma conversa que está
+    /// começando, não terminando.
+    /// </para>
+    /// <para>
+    /// A diferença não importava até existir algo que valesse "por conversa". Agora existe:
+    /// <see cref="ForaDoHistorico"/>. Apagar a marca na remontagem do prompt fazia a conversa
+    /// de e-mail voltar a ser arquivada no primeiro turno — exatamente o que ela não pode.
+    /// </para>
+    /// </summary>
+    private void ResetHistory(bool conversaNova)
     {
         bool tinhaConversa;
         lock (_gate)
@@ -282,6 +318,12 @@ public sealed class ConversationService : IMessageStore
         // IO de disco fora do lock: nada bloqueante segura o histórico.
         // A gravação final é por cima da mesma entrada que os turnos já vinham atualizando.
         if (tinhaConversa) ArquivarConversaViva();
+
+        // DEPOIS de arquivar, e SEM depender de tinhaConversa: a marca é da conversa que
+        // termina aqui, e conversa nova nasce normal. Limpar só quando havia transcrição
+        // deixaria a marca presa quando se abre um e-mail e se desiste antes do primeiro turno
+        // — e a conversa seguinte, essa de verdade, sumiria da lista.
+        if (conversaNova) ForaDoHistorico = false;
 
         // Histórico zerado é sessão nova: pasta nova em memory/sessions e contagem de turnos
         // reiniciada. Continuar gravando na pasta anterior misturaria duas conversas num
@@ -1236,7 +1278,10 @@ public sealed class ConversationService : IMessageStore
         {
             bool needsPrompt;
             lock (_gate) { needsPrompt = _history.Count == 0; }
-            if (needsPrompt) ResetHistory();
+
+            // conversaNova: FALSO. Aqui não começa conversa nenhuma — só se garante que o
+            // prompt de sistema existe antes deste turno, que é desta mesma conversa.
+            if (needsPrompt) ResetHistory(conversaNova: false);
 
             lock (_gate) { _history.Add(ChatMessage.CreateUserMessage(userMessage)); }
 
@@ -1381,6 +1426,12 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private void ArquivarConversaViva()
     {
+        // Um guarda só, aqui, e não em cada um dos três pontos que chamam este método — fim de
+        // turno, troca de conversa e renomeação. Três cópias da mesma condição divergiriam na
+        // primeira correção feita só de um lado, e a que escapasse gravaria a conversa de
+        // e-mail na lista mesmo assim.
+        if (ForaDoHistorico) return;
+
         try
         {
             List<ChatMessage> transcricao;
