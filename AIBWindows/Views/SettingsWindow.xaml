@@ -1041,9 +1041,12 @@
                                                 <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                                <TextBlock Text="Guardar o que foi triado (dias)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Guardar o que a triagem leu (dias)" Style="{StaticResource FieldLabelText}"/>
                                                 <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
-                                                           Text="Permite perguntar no chat &quot;quantos e-mails hoje&quot; ou &quot;tem algo urgente&quot;. Grava remetente, assunto e o resumo de uma linha — nunca o corpo. Em 0, nada fica gravado e o chat não sabe nada sobre a caixa."/>
+                                                           Text="Vale para o que a triagem lê SOZINHA: remetente, assunto e o resumo de uma linha — nunca o corpo. É o que permite perguntar no chat &quot;quantos e-mails hoje&quot; ou &quot;tem algo urgente&quot;. Em 0, esse registro é apagado e o chat deixa de saber da caixa."/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Margin="0,6,0,0"
+                                                           Text="NÃO vale para as conversas que você abre sobre um e-mail: essas são conversas suas e ficam guardadas como as outras, até você descartá-las pelo botão da lixeira na própria leitura."/>
                                             </StackPanel>
                                             <TextBox x:Name="MailJournalTextBox" Grid.Column="1"
                                                      Style="{StaticResource ControlTextBoxMono}"

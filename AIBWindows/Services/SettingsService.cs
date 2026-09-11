@@ -242,6 +242,22 @@ public sealed class UserAppSettings
     /// configurável, e é o que sobrou da regra 3 como regra.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Retenção do que a TRIAGEM AUTOMÁTICA leu: o diário e o arquivo por conversa. Zero
+    /// apaga tudo e devolve a regra 3 estrita.
+    /// <para>
+    /// NÃO governa a conversa que o usuário abre sobre um e-mail (§3.11). São atos diferentes:
+    /// um é a máquina lendo correspondência sozinha, o outro é uma pessoa decidindo conversar.
+    /// Pôr os dois no mesmo relógio apagaria conversas do usuário por decurso de prazo — o que
+    /// não acontece com nenhuma outra conversa do app.
+    /// </para>
+    /// <para>
+    /// E não adiantaria: o <c>raw.jsonl</c> guarda o mesmo texto e, por regra do projeto, nunca
+    /// é apagado. Amarrar só o <c>chat_history.json</c> aqui apagaria UMA das duas cópias e
+    /// faria o mostrador parecer completo sem ser. Apagar pela metade é pior que não apagar:
+    /// cria confiança falsa exatamente onde ela custa caro.
+    /// </para>
+    /// </summary>
     public int MailJournalDays { get; set; } = PadraoDeDiasDeDiario;
 
     // Gamificação / Sistema de Níveis

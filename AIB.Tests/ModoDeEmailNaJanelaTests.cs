@@ -377,6 +377,49 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void NaLEITURA_EXISTE_ComoDescartarAConversa()
+        {
+            // A conversa de e-mail ficou FORA da lista do painel, e com ela ficou fora do botão
+            // direito → Excluir. "Não aparece na lista" não pode virar "não dá para
+            // administrar": o único lugar onde ela é alcançável é o próprio e-mail.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                Achar<RadioButton>(janela, "ModoEmail").IsChecked = true;
+                janela.EntrarNaLeitura(Email());
+
+                var lixeira = Achar<Button>(janela, "BotaoDescartarConversa");
+
+                lixeira.Should().NotBeNull();
+                lixeira.ToolTip.Should().Be("Descartar esta conversa");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void NaLISTA_ALixeiraNaoAPARECE()
+        {
+            // Ela descarta a conversa DESTE e-mail. Na lista não há "este e-mail", e um botão
+            // de ação sem alvo é um convite a descobrir o alvo do jeito ruim.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                Achar<RadioButton>(janela, "ModoEmail").IsChecked = true;
+
+                // Ela mora dentro de AcoesDaLeitura, que só aparece na leitura.
+                Achar<StackPanel>(janela, "AcoesDaLeitura").Visibility
+                    .Should().Be(Visibility.Collapsed);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void ORotuloDoBotaoSecundario_SEGUE_OProvedorDaCAIXA()
         {
             // Da caixa, e não de quem mandou: prometer "Abrir no Gmail" numa conta Outlook

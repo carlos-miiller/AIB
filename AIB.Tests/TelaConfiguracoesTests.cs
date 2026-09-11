@@ -13,7 +13,7 @@ using Xunit;
 namespace AIB.Tests
 {
     /// <summary>
-    /// A tela de Configurações reestruturada — refactor-interface/tela-configuracoes (3).html.
+    /// A tela de Configurações reestruturada — refactor-interface/tela-configuracoes.html.
     /// <para>
     /// O que se afirma aqui é o que a spec chama de normativo: as quatro páginas com os rótulos
     /// verbatim, o menu que troca a View sem descartar edição (§7 A11), e a lista de caixas de
@@ -1014,6 +1014,68 @@ namespace AIB.Tests
                 System.Threading.CancellationToken ct)
                 => System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<ThreadRespondida>>(
                     System.Array.Empty<ThreadRespondida>());
+        }
+
+        // ────────────────────────────────────────────────────────────
+        // O mostrador de retenção não pode prometer o que não governa
+        // ────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void OTextoDoDiario_NaoPROMETE_QueNadaFicaGravado()
+        {
+            // A frase era "Em 0, nada fica gravado". Ficou falsa quando §3.11 passou a existir:
+            // uma conversa aberta sobre um e-mail grava remetente, assunto e resumo no
+            // chat_history.json E no raw.jsonl, com o mostrador em zero.
+            //
+            // Amarrar essas gravações ao mostrador NÃO era a correção: o raw.jsonl nunca é
+            // apagado por regra do projeto, então o mostrador apagaria UMA das duas cópias e
+            // pareceria completo sem ser. O que se corrigiu foi a promessa.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var (janela, _, _) = Nova();
+
+                string ajuda = TextoDeAjudaDe(janela, "MailJournalTextBox");
+
+                // Contra o aprovado vazio: se a extração falhasse e devolvesse "", os dois
+                // NotContain abaixo passariam sem ter lido nada.
+                ajuda.Should().Contain("triagem", "a extração precisa ter achado o texto");
+
+                ajuda.Should().NotContain("nada fica gravado");
+                ajuda.ToLowerInvariant().Should().Contain("conversas",
+                    "o texto tem de dizer o que ele NÃO governa");
+
+                janela.Close();
+            });
+        }
+
+        /// <summary>
+        /// Todo o texto de ajuda do campo — os FieldHelpText que vivem na mesma linha dele.
+        /// </summary>
+        private static string TextoDeAjudaDe(Window janela, string nomeDoCampo)
+        {
+            var campo = (FrameworkElement)janela.FindName(nomeDoCampo)!;
+
+            DependencyObject? no = campo;
+            while (no != null && no is not Grid) no = System.Windows.Media.VisualTreeHelper.GetParent(no);
+
+            var linha = (Grid)no!;
+
+            return string.Join(" ", Descendentes(linha).OfType<TextBlock>().Select(t => t.Text));
+        }
+
+        private static System.Collections.Generic.IEnumerable<DependencyObject> Descendentes(
+            DependencyObject raiz)
+        {
+            int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(raiz);
+
+            for (int i = 0; i < n; i++)
+            {
+                var filho = System.Windows.Media.VisualTreeHelper.GetChild(raiz, i);
+                yield return filho;
+
+                foreach (var neto in Descendentes(filho)) yield return neto;
+            }
         }
     }
 }

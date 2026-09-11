@@ -571,6 +571,66 @@ public partial class ChatWindow
         };
     }
 
+    /// <summary>
+    /// Joga fora a conversa havida sobre ESTE e-mail — §3.11.
+    /// <para>
+    /// Existe porque a conversa de e-mail ficou fora da lista do painel, e com ela ficou fora
+    /// do botão direito → Excluir. "Não aparece na lista" não pode virar "não dá para
+    /// administrar": o único lugar onde essa conversa é alcançável é o próprio e-mail, então é
+    /// aqui que ela tem de poder ser descartada.
+    /// </para>
+    /// <para>
+    /// O que fica: a sessão de memória em <c>memory/sessions</c>, com o <c>raw.jsonl</c>, que
+    /// por regra do projeto nunca é apagado. A confirmação diz isso — prometer apagamento
+    /// total seria mentir sobre o que o botão faz.
+    /// </para>
+    /// <para>
+    /// NÃO manda turno novo depois. Quem acabou de dizer "jogue isto fora" não pediu que a
+    /// máquina gastasse minutos recomeçando sozinha.
+    /// </para>
+    /// </summary>
+    private void DescartarConversaDoEmail_Click(object sender, RoutedEventArgs e)
+    {
+        var alvo = _emailEmLeitura;
+        if (alvo == null) return;
+
+        string chave = ArquivoDeConversas.Chave(alvo.Account, alvo.ThreadId, 0);
+        var anterior = ChatHistoryService.ConversaDoEmail(chave);
+
+        bool confirmado;
+        using (ModalGuard.Enter())
+        {
+            confirmado = ConfirmDialog.Perguntar(
+                this,
+                "Descartar a conversa sobre este e-mail?",
+                "As falas saem do histórico e não é possível recuperá-las pela interface. O "
+                + "e-mail e a triagem dele não são tocados, e o registro da sessão em "
+                + "memory/sessions continua onde está.",
+                ferramenta: "histórico",
+                alvo: alvo.Name,
+                dica: "não há desfazer");
+        }
+
+        if (!confirmado) return;
+
+        if (anterior != null) ChatHistoryService.DeleteSession(anterior.Id);
+
+        // Começa limpo, ainda dentro da leitura: o cartão volta e o campo espera. O vínculo é
+        // refeito para que o próximo turno já nasça preso a esta thread.
+        NovaConversa(comBoasVindas: false);
+        _conversation.VincularAEmail(chave);
+
+        MessagesPanel.Children.Add(CartaoDoEmail(alvo));
+
+        EntrarNaLeitura(alvo);
+
+        AtualizarEstadoVazio();
+        ChatScrollViewer.ScrollToEnd();
+        InputBox.Focus();
+
+        _painel?.Recarregar();
+    }
+
     private void VoltarParaCaixa_Click(object sender, RoutedEventArgs e)
     {
         _emailEmLeitura = null;

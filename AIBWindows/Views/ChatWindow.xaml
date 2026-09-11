@@ -361,6 +361,31 @@
                                     <TextBlock Text="Recarregar" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
+
+                            <!-- DESCARTAR a conversa deste e-mail.
+                                 SÓ ÍCONE, e não um terceiro botão de texto igual aos
+                                 dois ao lado: é a única ação desta linha que não
+                                 tem desfazer, e três rótulos de mesmo peso convidam
+                                 ao clique errado. Mesma caixa de 26px da
+                                 engrenagem de §3.10.
+                                 Existe porque a conversa de e-mail ficou FORA
+                                 da lista do painel, e com ela ficou fora do
+                                 botão direito -> Excluir. Sem gerir por aqui,
+                                 não se gere em lugar nenhum. -->
+                            <Button x:Name="BotaoDescartarConversa" Margin="8,0,0,0"
+                                    Style="{StaticResource IconButton}"
+                                    Width="26" Height="26"
+                                    Click="DescartarConversaDoEmail_Click"
+                                    ToolTip="Descartar esta conversa">
+                                <Path Data="M4.6,5.8 H15.4 M8.2,5.8 V4.4 A0.9,0.9 0 0 1 9.1,3.5
+                                            H10.9 A0.9,0.9 0 0 1 11.8,4.4 V5.8
+                                            M6.1,5.8 L6.8,15.6 A1,1 0 0 0 7.8,16.5
+                                            H12.2 A1,1 0 0 0 13.2,15.6 L13.9,5.8
+                                            M8.6,8.4 V13.6 M11.4,8.4 V13.6"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.3" StrokeLineJoin="Round"
+                                      Width="15" Height="15" Stretch="Uniform"/>
+                            </Button>
                         </StackPanel>
                     </Grid>
 
