@@ -17,7 +17,14 @@
    (b) uma especificação anotada, e
    (c) um mapa de conversão para XAML.
 
+ LEITOR: um agente de codificação. Leia de cima para baixo UMA vez e depois
+ consulte por âncora (§N) e por data-spec. Toda medida citada em prosa também
+ existe em número no JSON do fim do arquivo — em divergência, o JSON vence.
+ Comentários "IMPL:" no markup são instrução direta de XAML; "MOCK-ONLY" /
+ "NÃO IMPLEMENTAR" marcam o que existe só no protótipo.
+
  A ordem recomendada de leitura para implementar:
+   0. §-1 PLANO DE IMPLEMENTAÇÃO    — ordem de trabalho e arquivos sugeridos.
    1. §0  CONTRATO DE IMPLEMENTAÇÃO  — o que é obrigatório e o que é livre.
    2. §1  DESIGN TOKENS             — cole em App.xaml antes de qualquer coisa.
    3. §2  ÁRVORE VISUAL             — a hierarquia de containers.
@@ -35,9 +42,7 @@
  medidas em JSON — use-o quando precisar dos valores de forma programática,
  em vez de reler os comentários.
 
-================================================================================
- §0  CONTRATO DE IMPLEMENTAÇÃO
-================================================================================
+NaN
  OBRIGATÓRIO (não desviar; são decisões já validadas com o usuário):
    O1. NENHUM campo pode ser adicionado, removido, renomeado ou reordenado.
        A lista canônica está em §5. Os rótulos são texto do produto, em
@@ -48,8 +53,13 @@
        Ordem e offsets exatos em §1 `neon`.
    O4. DropShadowEffect na moldura externa é obrigatório. Sem ela a janela
        não lê como flutuante. Ver §3.1.
-   O5. Os três cabeçalhos de seção usam o MESMO estilo. Não voltar a colorir
-       uma seção de azul, outra de magenta, outra de laranja. Ver §7 A2.
+   O5. As quatro páginas usam o MESMO estilo de cabeçalho (§3.4). Não voltar a
+       colorir uma seção de azul, outra de magenta, outra de laranja (§7 A2).
+   O9. As seções são PÁGINAS atrás do menu lateral de §3.10, não uma lista
+       rolável única. Um ViewModel serve as quatro; trocar de página não
+       descarta edição pendente (§7 A11).
+   O10. A senha de app (campo 7) e a API Key (campo 4) nunca são reexibidas e
+       vão para o armazenamento protegido (DPAPI) — §7 A12.
    O6. Grade de campo: rótulo à esquerda, controle à direita com largura FIXA
        de 210px, para que todos os controles alinhem verticalmente. §3.5.
    O7. "Salvar" nasce desabilitado e só habilita quando algo muda (IsDirty).
@@ -149,13 +159,19 @@
  link.inline (debug)        | 11px   | 400    | accentLilac   | underline no hover
 
  --- ESPAÇAMENTO -------------------------------------------------------------
- window            620 x 560 px (fixo neste desenho; ver §7 A5 sobre resize)
+ window            880 x 560 px (fixo neste desenho; ver §7 A5 sobre resize)
+ nav.width         200px  (coluna do menu, fixa)
+ nav.padding       14px 10px
+ nav.gap           2px
+ navItem.padding   9px 11px  (altura resultante ~34px)
+ pageHead.padding  12px 16px   (faixa de título, cantos retos)
+ page.gap          14px   (entre a faixa de título e o grupo de campos)
+ fieldGroup.padding 0 24px 20px 40px   (o respiro é do grupo, não da área)
  header.padding    20px 16px 16px 24px   (top right bottom left)
  header.gap        10px
- settings.padding  20px 24px 22px
- settings.gap      18px   (entre seções)
- section.gap       10px   (entre cabeçalho e card)
- card.padding      4px 16px
+ settings.padding  0      (a faixa de título encosta nas laterais)
+ settings.gap      18px   (entre grupos, quando uma página tem mais de um)
+ section.gap       10px   (entre cabeçalho interno e grupo, se usado)
  field.padding     13px 0
  field.gap         16px   (entre texto e controle)
  control.width     210px  (coluna fixa)
@@ -167,18 +183,19 @@
 ================================================================================
  §2  ÁRVORE VISUAL
 ================================================================================
- Window (chrome=None, transparent, 620x560)
+ Window (chrome=None, transparent, 880x560)
  └── Border  .window-border      neon gradient + padding 1.5 + shadow + r20
      └── Border  .window         glass + r18.5 + ClipToBounds
          ├── Grid  .header       Height=Auto, arrastável, divider embaixo
          │   ├── TextBlock ✦
          │   ├── StackPanel { title, sub }
          │   └── Button  fechar (X)
-         ├── ScrollViewer  .settings   (ÚNICA área elástica; Grid.Row=1, *)
-         │   └── StackPanel
-         │       ├── Section  "Identidade (Soul)"   → 1 campo
-         │       ├── Section  "Conexão LLM"         → 4 campos
-         │       └── Section  "Avançado"            → 4 campos
+         ├── Grid  .body-row     Grid.Row=1, ColumnDefinitions="200,*"
+         │   ├── ListBox  .nav         coluna 0 — 4 entradas, não rola
+         │   └── ScrollViewer .settings  coluna 1 — ÚNICA área elástica
+         │       └── a PÁGINA ativa (uma de 4)
+         │           ├── Border .page-head   faixa de título, cantos retos
+         │           └── StackPanel .card    grupo de campos, sem fundo
          └── Grid  .footer       Height=Auto, divider em cima
              ├── Button Reset de Fábrica   (esquerda)
              ├── (espaçador *)
@@ -188,17 +205,28 @@
  Grid da janela: RowDefinitions="Auto,*,Auto".
  O `*` na linha do meio é o que faz o rodapé nunca sair da tela. Ver §7 A4.
 
- Section (template repetido 3x):
- └── StackPanel
-     ├── Grid  .section-head   { TextBlock UPPER | Rectangle 1px divider * }
-     └── Border .card          surfaceCard + borderCard + r16 + padding 4,16
-         └── StackPanel de Field
+ Página (template repetido 4x):
+ └── StackPanel  gap 14
+     ├── Border .page-head   surfaceCard + borderCard + r0 + padding 12,16
+     │     └── StackPanel { título 15/600, subtítulo 11.5 }
+     └── StackPanel .card    sem fundo, padding 40,0,24,20
+           └── os Field da página
 
- Field (template repetido 9x):
+ Field (template repetido 11x):
  └── Border  BorderThickness="0,0,0,1" BorderBrush=dividerField  (último: 0)
      └── Grid  ColumnDefinitions="*,210"  Margin="0,13"
          ├── StackPanel  { label, help? }
          └── ContentControl  o controle
+
+ ÁRVORE (depois do menu lateral):
+   Border .window-border            Grid raiz da janela
+     └── Border .window
+           ├── Grid .header         Row 0 — largura total, arrasta a janela
+           ├── Grid .body-row       Row 1 — ColumnDefinitions="200,*"
+           │     ├── ListBox .nav       coluna 0, fixa, não rola
+           │     └── ScrollViewer .settings   coluna 1, ÚNICA área que rola
+           │           └── .page ativa   cabeçalho + cards + campos
+           └── Grid .footer         Row 2 — largura total, fixo
 
 ================================================================================
  §3  ESPECIFICAÇÃO POR COMPONENTE
@@ -208,7 +236,10 @@
  ------------------------------------------------------------------------------
  WindowStyle=None, AllowsTransparency=True, Background=Transparent,
  ResizeMode=NoResize (este desenho é de tamanho fixo), ShowInTaskbar=False,
- SizeToContent=Manual, Width=620, Height=560, WindowStartupLocation=CenterOwner.
+ SizeToContent=Manual, Width=880, Height=560, WindowStartupLocation=CenterOwner.
+ A largura subiu de 620 para 880 quando as seções deixaram de ser uma lista
+ rolável única e passaram a ser PÁGINAS atrás de um menu lateral de 200px
+ (§3.10). A área de conteúdo continua com a mesma largura útil de antes.
  Topmost: seguir o mesmo comportamento da janela de chat.
  A moldura externa recebe o DropShadowEffect (§1 windowShadow). Como a sombra
  precisa de área para desenhar, a Window deve ter Margin/Padding suficiente OU
@@ -241,16 +272,57 @@
  Arraste: MouseLeftButtonDown -> DragMove() no container do header. Excluir os
  filhos interativos (o botão fechar já consome o clique).
 
- §3.4  SEÇÃO  (data-spec="section")
+ §3.4  PÁGINA  (data-spec="page")
  ------------------------------------------------------------------------------
- Cabeçalho: TextBlock 10px/600, textSecondary, TextTransform manual (escrever
- o texto já em maiúsculas OU aplicar via converter), CharacterSpacing
- equivalente a letter-spacing 0.10em → no WPF use
- TextBlock.CharacterSpacing="100" (1/1000 em) como aproximação.
- Após o texto, um Rectangle Height=1 Fill=`divider` com Grid coluna `*`,
- alinhado ao centro vertical, gap 10px.
- Os três títulos, VERBATIM: "Identidade (Soul)", "Conexão LLM", "Avançado".
- Card: Border surfaceCard + 1px borderCard + r16 + Padding="16,4".
+ Cada entrada do menu (§3.10) mostra UMA página. Só a página ativa existe na
+ árvore visual; as outras são Collapsed (ou um ContentControl com o template da
+ seção ativa — as duas formas servem).
+ Estrutura da página: cabeçalho + um ou mais cards, gap 14px.
+ CABEÇALHO DA PÁGINA (.page-head): faixa com Background surfaceCard, borda 1px
+ borderCard e CornerRadius 0 — cantos RETOS de propósito, porque a faixa
+ encosta nas laterais da área de conteúdo. Padding 12,16; gap 3px:
+   • título    15px/600 textStrong, tracking −0.01em. VERBATIM:
+               "Identidade (Soul)", "Conexão LLM", "E-mail", "Avançado".
+   • subtítulo 11.5px textSecondary, LineHeight 1.45. VERBATIM:
+               "Quem responde, e com que personalidade."
+               "Onde o modelo roda e com qual chave."
+               "A IA lê a caixa de entrada por IMAP, resume e prioriza. Nada é
+                enviado sem sua confirmação."
+               "Contexto, memória do modelo e diagnóstico."
+ GRUPO DE CAMPOS (.card): sem fundo e sem borda. A área de conteúdo NÃO tem
+ padding (a faixa de título encosta nas laterais), então o respiro é do próprio
+ grupo: Padding="40,0,24,20" — o recuo maior à esquerda separa as opções da
+ faixa de título. Com o menu lateral, a página
+ já é delimitada pela divisória do menu e pelo próprio título, e o cartão
+ virava uma caixa dentro de uma caixa. IMPL: StackPanel simples — nada de
+ Border. A separação entre campos continua sendo a divisória de 1px de §3.5.
+ O cabeçalho ANTIGO de seção (10px maiúsculo com régua, .section-head) sai da
+ tela: o título da página cumpre esse papel. O estilo fica no CSS porque ainda
+ serve para agrupar campos DENTRO de uma página, caso alguma cresça.
+
+ §3.10  MENU LATERAL  (data-spec="nav")
+ ------------------------------------------------------------------------------
+ Coluna FIXA de 200px à esquerda do conteúdo, divisória 1px `divider` à
+ direita, padding 14,10. Uma entrada por página, na ordem de §5, gap 2px.
+ IMPL: ListBox ItemsSource="{Sections}" SelectedItem="{ActiveSection}", com
+ ItemContainerStyle próprio — o realce azul default do WPF tem de sair.
+ NÃO rola: a lista é curta e fixa (se um dia passar de ~8 itens, envolver num
+ ScrollViewer).
+ ITEM (.nav-item): altura resultante ~34px, padding 9,11, r10, gap 9 entre
+ ícone e rótulo, ícone 16px, rótulo 12.5px/500 com ellipsis.
+   • repouso      Foreground textSecondary, sem fundo, sem borda.
+   • hover        Foreground textNormal, Background rgba(255,255,255,0.05).
+   • SELECIONADO  Background rgba(155,81,224,0.12), BorderBrush accentBorder
+                  1px, Foreground textNormal e o ÍCONE em accentLilac.
+                  É o mesmo tratamento do item ativo das listas do painel de
+                  chat — não inventar um realce novo.
+ Ícones (stroke 1.6/1.5, viewBox 0 0 20 20): pessoa (Identidade), chip
+ (Conexão LLM), envelope (E-mail), engrenagem (Avançado). O envelope é o MESMO
+ da aba de e-mails do painel de chat.
+ TECLADO: setas ↑/↓ trocam de página quando o foco está no menu; Tab entra na
+ página. Trocar de página NUNCA descarta edições pendentes (§7 A11).
+ ROTA DIRETA: OpenSettingsCommand aceita a seção de destino, para que a aba de
+ e-mails do chat abra esta tela já em "E-mail" (tela-chat-v3.html §6.2).
 
  §3.5  CAMPO  (data-spec="field")
  ------------------------------------------------------------------------------
@@ -319,11 +391,112 @@
      #FFFFFF, Padding="24,9", r10.
      IsEnabled = IsDirty. Desabilitado: Opacity=0.45, Cursor=Arrow.
 
+ §3.12  LISTA DE CONTAS DE E-MAIL  (data-spec="list.mailAccounts")
+ ------------------------------------------------------------------------------
+ Vive dentro do .card da página "E-mail" e é o único conteúdo dela. Substitui
+ o par e-mail + senha de app que existia antes: a tela passou a ser MULTI-CONTA.
+
+ CONTÊINER
+   ItemsControl ItemsSource="{Binding MailAccounts}", ItemsPanel = StackPanel
+   vertical com 6px entre as linhas (StackPanel não tem Spacing no .NET antigo:
+   usar Margin="0,0,0,6" no ItemTemplate ou um StackPanel com Spacing no .NET 9).
+   NÃO usar ListBox nem DataGrid: não existe seleção nesta lista — cada linha
+   carrega as suas próprias ações. Um ListBox traria o realce azul do sistema,
+   foco de item e navegação por setas que aqui não têm significado.
+   Sem virtualização: a lista tem tipicamente 1 a 5 contas.
+
+ LINHA  (.acct)  →  Border > Grid ColumnDefinitions="Auto,*,Auto"
+   Border: Background=surfaceCard rgba(255,255,255,0.035),
+           BorderBrush=borderCard rgba(255,255,255,0.08), BorderThickness=1,
+           CornerRadius=10, Padding="12,11".
+   Coluna 0 — ponto de estado: Ellipse 7x7, VerticalAlignment=Center,
+           Margin="0,0,10,0". Cor por Status:
+             Ok       #3FBF7F   ToolTip "Conectada"
+             Checking #E2A03F   ToolTip "Verificando…"
+             Error    #E5484D   ToolTip "Falha de login"
+           IMPL: DataTrigger sobre Status, ou um IValueConverter
+           Status→SolidColorBrush. Não animar o ponto (sem pulso).
+   Coluna 1 — bloco de texto, duas linhas, 3px entre elas, min-width 0:
+           linha 1: e-mail em monoespaçada 12px textStrong #F5F4F7,
+                    TextTrimming=CharacterEllipsis (endereços longos cortam,
+                    NUNCA quebram em duas linhas);
+                    ao lado, o selo "Principal" quando IsPrimary.
+           linha 2: StatusText 10.5px textMuted #6F6A7A — servidor, porta e
+                    hora da última leitura ("imap.empresa.com:993 · última
+                    leitura 12:04"). Com Status=Error, o MESMO TextBlock passa a
+                    dangerText #FF8A8D e mostra a mensagem do servidor em
+                    linguagem de usuário ("senha de app recusada — altere a
+                    senha"), não a exceção do MailKit. Uma linha só, com
+                    ellipsis; o texto completo do erro vai no ToolTip.
+   Coluna 2 — ações: StackPanel horizontal, 4px entre botões, Center.
+
+ SELO "Principal"  (.acct-badge)
+   Border r5, Padding="6,2", Background rgba(155,81,224,0.12),
+   BorderBrush rgba(155,81,224,0.30) 1px, texto 9.5px/600 accentLilac #C79EF0,
+   MAIÚSCULAS com CharacterSpacing ≈ 80. Visibility ligada a IsPrimary.
+   É o MESMO tratamento do item ativo do menu (§3.10) — não inventar outra cor.
+
+ BOTÕES DE AÇÃO DA LINHA  (.acct-btn)
+   28x28, r7, Background=Transparent, sem borda, ícone stroke 1.6 de 15px,
+   fg textSecondary #8B8794. Hover: bg branco 6% + fg textNormal.
+   Variante destrutiva (lixeira): hover bg danger 16% + fg danger #E5484D.
+   Ordem, da esquerda para a direita, e ToolTip VERBATIM:
+     1. estrela  "Tornar principal"      SetPrimaryMailAccountCommand(conta)
+        Collapsed na conta que já é principal (não deixar desabilitado e
+        visível: a linha da principal tem 2 botões, as outras 3).
+     2. cadeado  "Alterar senha de app"  ChangeMailPasswordCommand(conta)
+     3. lixeira  "Remover conta"         RemoveMailAccountCommand(conta)
+   Os botões NÃO aparecem só no hover da linha: ficam sempre visíveis (uma
+   lista curta com ações escondidas gera clique exploratório).
+   Ícones (viewBox 0 0 20 20, stroke 1.6, linecap/linejoin round):
+     estrela  path "M10 3.5l2 4.2 4.5.6-3.3 3.2.8 4.5L10 13.9 6 16l.8-4.5
+              L3.5 8.3 8 7.7z"
+     cadeado  rect 4,9 12x8 r2  +  path "M7 9V6.5a3 3 0 0 1 6 0V9"
+     lixeira  path "M4.5 6.5h11M8 6.5V5h4v1.5M6.5 6.5l.6 9h5.8l.6-9"
+
+ BOTÃO "Adicionar conta"  (.acct-add)
+   Última linha da lista, largura total, Height=36, r10, Background=Transparent,
+   BorderBrush rgba(255,255,255,0.18) 1px TRACEJADO (WPF: StrokeDashArray="3 2"
+   num Rectangle sobreposto, ou uma Border com um Path pontilhado — o tracejado
+   é o que diferencia "acrescentar" de "confirmar"). Conteúdo centralizado:
+   ícone "+" 14px + rótulo "Adicionar conta" 12px/600 #CBC8D1, 7px de gap.
+   Hover: borda accentFocus + bg lilás 10% + fg textNormal.
+   Clique: IsAddingAccount = true.
+
+ FORMULÁRIO DE NOVA CONTA  (.acct-form)
+   Aparece NO LUGAR do botão (o botão vira Collapsed), dentro da mesma lista,
+   para o usuário não perder a referência das contas já conectadas.
+   Border r10, Background=surfaceCard, BorderBrush rgba(155,81,224,0.30) 1px
+   (borda lilás = "em edição"), Padding="12,4,12,12".
+   Dentro, DOIS .field iguais aos das outras páginas (§3.5): rótulo + ajuda à
+   esquerda, controle de 210px à direita, divisória 1px entre eles.
+     campo 1  "E-mail"        TextBox mono, placeholder "voce@exemplo.com"
+     campo 2  "Senha de app"  PasswordBox mono, placeholder "senha de app"
+   Rodapé do formulário: dois botões à direita, 8px de gap, 12px acima.
+     "Cancelar"        .btn-quiet — 32px, sem borda, fg textSecondary,
+                       hover bg branco 5%. Limpa os dois campos e fecha.
+     "Conectar conta"  .btn-solid — 32px, gradiente `primary`, #FFF 12px/600.
+                       IsEnabled = os dois campos preenchidos e e-mail válido.
+                       Durante o teste de login: texto "Conectando…",
+                       IsEnabled=false, ponto de estado da futura linha ainda
+                       não existe (a conta só entra na lista se o login passar).
+   Esc dentro do formulário = Cancelar (e NÃO fecha a janela de configurações);
+   Enter = "Conectar conta" quando habilitado.
+   Uma conta por vez: enquanto IsAddingAccount, o botão "Adicionar conta" não
+   volta a aparecer.
+
+ ESTADO VAZIO
+   Sem nenhuma conta, a página mostra APENAS o botão "Adicionar conta" abaixo do
+   subtítulo. Não desenhar ilustração, não escrever texto de estado vazio — o
+   subtítulo da página já explica o que a IA faz com o e-mail.
+
 ================================================================================
  §4  ESTADOS E INTERAÇÕES  (matriz completa)
 ================================================================================
  componente          | hover                       | focus            | disabled
  --------------------|-----------------------------|------------------|-------------
+ item do menu        | fg textNormal + bg branco 5% | anel de foco WPF | —
+ item do menu ATIVO  | (mantém o realce lilás)      | idem             | —
  botão fechar        | bg danger 16% / fg danger    | —                | —
  ComboBox / TextBox  | borda accentFocus            | borda accentFocus| —
  TextBox readonly    | (nenhuma mudança)            | —                | —
@@ -333,12 +506,26 @@
  Reset de Fábrica    | bg danger 12% + borda 55%    | idem hover       | —
  Cancelar            | borda 30%                    | idem hover       | —
  Salvar              | (sem mudança)                | —                | opacity .45
+ linha de conta      | (sem estado de hover)        | —                | —
+ ação estrela/cadeado| bg branco 6% + fg textNormal | anel de foco WPF | —
+ ação lixeira        | bg danger 16% / fg danger    | idem hover       | opacity .45
+                     |   (principal com outra conta na lista: desabilitada)
+ Adicionar conta     | borda accentFocus + bg 10%   | idem hover       | —
+                     |   (Collapsed enquanto IsAddingAccount)
+ Cancelar (form)     | bg branco 5% + fg textNormal | idem hover       | —
+ Conectar conta      | (sem mudança)                | —                | opacity .45
+                     |   (desabilitado até e-mail válido + senha preenchida;
+                     |    "Conectando…" durante TestMailLoginCommand)
 
  GATILHOS DE IsDirty (habilita "Salvar"):
    • qualquer SelectionChanged de ComboBox
    • qualquer TextChanged de TextBox editável
    • qualquer Checked/Unchecked de switch
  Não marcar dirty por foco, hover ou scroll.
+ NÃO marcam dirty as operações de conta de e-mail: adicionar, remover, promover
+ e trocar senha são aplicadas na hora e persistidas por elas mesmas (§7 A15).
+ Digitar no formulário de nova conta também NÃO marca dirty — aquele par de
+ campos não pertence ao Salvar do rodapé.
 
  SCROLL:
    Só a área de seções rola (VerticalScrollBarVisibility=Auto). Cabeçalho e
@@ -346,26 +533,37 @@
    setas e sem trilho visível.
 
  TECLADO:
-   Esc   -> Cancelar
-   Enter -> Salvar, se IsDirty
-   Tab   -> ordem natural, de cima para baixo, campo por campo.
+   Esc      -> Cancelar
+   Enter    -> Salvar, se IsDirty
+   Tab      -> menu primeiro, depois os campos da página, depois o rodapé.
+   ↑ / ↓    -> troca de página quando o foco está no menu (§3.10).
+   Ctrl+Tab -> próxima página (opcional; se implementar, ciclar na ordem de §5).
+
+ NAVEGAÇÃO ENTRE PÁGINAS:
+   Trocar de página é só troca de View. IsDirty é global e NÃO é afetado; os
+   valores já digitados nas outras páginas continuam no ViewModel e são
+   gravados juntos no "Salvar" (§7 A11). A página ativa não é persistida entre
+   aberturas: a tela sempre abre em "Identidade", exceto quando aberta por
+   OpenSettingsCommand(section), que respeita a seção pedida.
 
 ================================================================================
- §5  MODELO DE DADOS (ViewModel)  — lista CANÔNICA de campos
+ §5  MODELO DE DADOS (ViewModel)  — lista CANÔNICA de campos (11)
 ================================================================================
  Ordem, rótulos e tipos abaixo são normativos. Rótulos VERBATIM em português.
 
- SEÇÃO 1 — "Identidade (Soul)"
+ PÁGINA 1 — "Identidade (Soul)"
  ------------------------------------------------------------------------------
  1. "Personagem Ativo"
     prop:    ActiveCharacter : string
     editor:  ComboBox (itens = Inteligências disponíveis)
     ajuda:   "A Inteligência escolhida na tela de seleção."
+    vazio:   se nenhuma Inteligência foi escolhida ainda, o ComboBox abre sem
+             seleção e "Salvar" só habilita depois de escolher uma.
     exemplo: "Kai"  (demais: Ayano Kikuchi, Sora Tanaka, Ren Okabe)
     nota:    é o mesmo nome exibido no header da janela de chat; trocar aqui
              troca lá.
 
- SEÇÃO 2 — "Conexão LLM"
+ PÁGINA 2 — "Conexão LLM"
  ------------------------------------------------------------------------------
  2. "Provedor de IA"
     prop:    Provider : enum { Ollama, OpenAI, Anthropic, LmStudio }
@@ -383,31 +581,89 @@
     editor:  TextBox mono do tipo password + botão "Alterar"
     ajuda:   "Não necessário para Ollama."
     valida:  obrigatório quando Provider ∈ { OpenAI, Anthropic }.
+    guarda:  SecretStore/DPAPI. O TextBox mostra vazio com placeholder
+             "chave salva" quando já existe uma; "Alterar" troca (§3.7).
  5. "Modelo LLM (Principal)"
     prop:    MainModel : string
     editor:  ComboBox mono, populado pelo provedor
     exemplo: "qwen3.5:9b"  (demais: llama3.2:8b, mistral:7b)
+    vazio:   se o provedor não responder, manter o valor atual e desabilitar o
+             ComboBox — não limpar a seleção do usuário.
 
- SEÇÃO 3 — "Avançado"
+ PÁGINA 3 — "E-mail"   (MULTI-CONTA — substitui o modal que existia na tela de
+                        chat e o par e-mail+senha único da versão anterior)
  ------------------------------------------------------------------------------
- 6. "Máximo de Tokens de Contexto"
+ 6. LISTA DE CONTAS   (§3.12)
+    prop:    MailAccounts : ObservableCollection<MailAccount>
+             MailAccount { Address : string; HasPassword : bool;
+                           IsPrimary : bool; Status : enum{Ok,Checking,Error};
+                           StatusText : string;   /* "imap.x:993 · última
+                           leitura 12:04" ou a mensagem de erro */ }
+    editor:  ItemsControl (NÃO ListBox — não há seleção). Uma linha por conta:
+             ponto de estado · e-mail em mono · selo "Principal" na primária ·
+             StatusText em textMuted (dangerText quando Status=Error) ·
+             três botões de ícone de 28px à direita.
+    ações da linha:
+             SetPrimaryMailAccountCommand(conta)   ícone estrela — oculto na
+                     conta que já é principal.
+             ChangeMailPasswordCommand(conta)      ícone cadeado — abre o fluxo
+                     de troca; a senha atual nunca é exibida (§7 A12).
+             RemoveMailAccountCommand(conta)       ícone lixeira — pede
+                     confirmação (§0 O8); desabilitado na conta principal
+                     enquanto existir outra conta (§7 A15).
+    vazio:   com a lista vazia, mostrar só o botão "Adicionar conta" —
+             não desenhar estado vazio ilustrado.
+    principal: exatamente UMA conta tem IsPrimary; é dela que sai qualquer
+             envio. Promover outra rebaixa a anterior no mesmo comando.
+    leitura: a IA lê TODAS as contas com Status=Ok; contas em erro são
+             ignoradas até religar. A aba de e-mails do chat mistura as caixas
+             em uma lista só (tela-chat-v3.html §6.2).
+ 7. FORMULÁRIO DE NOVA CONTA   (colapsado; ocupa o lugar do botão)
+    prop:    IsAddingAccount : bool  — controla a Visibility do par
+             botão "Adicionar conta" / formulário.
+    campos:  NewAccountAddress : string      TextBox mono
+               ajuda "Servidor e porta são deduzidos do domínio."
+               valida formato em LostFocus (não a cada tecla) e recusa um
+               e-mail que já esteja na lista (§7 A15).
+               deduz: do domínio saem servidor IMAP, porta e SSL. Domínio
+               desconhecido: erro no campo e pedir os dados manualmente
+               (fluxo ainda não desenhado — não inventar UI agora).
+             NewAccountAppPassword : SecureString   TextBox password mono
+               ajuda "Não use a senha da conta. Gere uma senha de app no seu
+               provedor — como gerar." — "como gerar" é link inline
+               (accentLilac) que abre a documentação do provedor no navegador.
+               guarda: DPAPI / ProtectedData escopo CurrentUser. Nunca em
+               texto puro, nunca em log, nunca reexibida. Ver §7 A12.
+               nota: NÃO é a senha da conta e NÃO existe OAuth aqui.
+    ações:   "Cancelar" (btn-quiet) descarta o par e fecha o formulário.
+             "Conectar conta" (btn-solid) chama TestMailLoginCommand e só
+             acrescenta a conta à lista quando o login IMAP passa. Falha mantém
+             o formulário aberto com o erro no campo da senha.
+    efeito:  a primeira conta conectada entra como principal e liga o painel de
+             e-mails do chat: MailAccountConfigured = true
+             (tela-chat-v3.html §6.2.1).
+
+ PÁGINA 4 — "Avançado"
+ ------------------------------------------------------------------------------
+ 8. "Máximo de Tokens de Contexto"
     prop:    MaxContextTokens : int   { get; }  — SOMENTE LEITURA
     editor:  TextBox mono readonly
     ajuda:   "Definido pelo modelo carregado."
     exemplo: 8704
     nota:    é o mesmo total exibido no contador do rodapé da tela de chat.
- 7. "Tempo de Memória da IA (Keep-Alive)"
+    vazio:   sem modelo carregado, exibir "—" (não 0) e manter readonly.
+ 9. "Tempo de Memória da IA (Keep-Alive)"
     prop:    KeepAlive : enum { OneMinute, FiveMinutes, ThirtyMinutes, Always }
     editor:  ComboBox
     default: "5 Minutos (Recomendado)"
     rótulos: "1 Minuto", "5 Minutos (Recomendado)", "30 Minutos",
              "Sempre carregado"
- 8. "Enviar System Prompt a cada requisição"
+ 10. "Enviar System Prompt a cada requisição"
     prop:    SendSystemPromptEveryRequest : bool
     editor:  switch
     ajuda:   "KV Caching."
     default: true
- 9. "Logs detalhados no console"
+ 11. "Logs detalhados no console"
     prop:    VerboseLogging : bool
     editor:  switch
     ajuda:   "Modo debug." — a palavra "debug" é um link inline (accentLilac)
@@ -416,11 +672,24 @@
 
  COMANDOS
  ------------------------------------------------------------------------------
+ ActiveSection  : enum { Identity, Llm, Mail, Advanced }
+                  ligada ao SelectedItem do menu (§3.10). OpenSettingsCommand
+                  aceita um valor desta enum, para abrir a tela já na página
+                  certa (a aba de e-mails do chat usa Mail).
+ MailAccountConfigured : bool  { get; }  — true quando existe pelo menos UMA
+                  conta em MailAccounts com HasPassword e login IMAP aprovado. É
+                  a propriedade que a aba de e-mails do chat observa.
+
  SaveCommand    CanExecute = IsDirty
  CancelCommand  se IsDirty, confirmar descarte antes de fechar
  ResetCommand   confirmação destrutiva obrigatória; restaura defaults e
                 marca IsDirty
  ChangeApiKeyCommand  abre o fluxo de troca da chave
+ ChangeMailPasswordCommand(conta)   troca a senha de app de UMA conta
+ TestMailLoginCommand(conta)        chamado ao conectar/religar uma conta
+ AddMailAccountCommand              acrescenta a conta recém-testada à lista
+ RemoveMailAccountCommand(conta)    remove com confirmação (§0 O8)
+ SetPrimaryMailAccountCommand(conta) promove a conta e rebaixa a anterior
 
 ================================================================================
  §6  MAPA HTML -> XAML  (conversão direta)
@@ -435,10 +704,16 @@
  .header-title       | TextBlock               | 20/600
  .header-sub         | TextBlock               | 12.5, textSecondary
  .icon-btn           | Button + Style          | 34x34, r8
- .settings           | ScrollViewer>StackPanel | única área com `*`
- .section            | StackPanel              |
- .section-head       | Grid{TextBlock,Rect}    | Rect Height=1 col `*`
- .card               | Border                  | r16, Padding="16,4"
+ .body-row           | Grid("200,*")           | Row 1 da janela
+ .nav                | ListBox + ItemContainer | 200px, não rola
+ .nav-item           | ListBoxItem + Style     | ativo = lilás 12% + borda
+ .nav-ico            | Path                    | accentLilac quando ativo
+ .settings           | ScrollViewer            | única área com `*`
+ .page               | ContentControl/StackPanel| só a ativa é visível
+ .page-head          | Border>StackPanel       | surfaceCard, r0, pad 12,16
+ .section            | StackPanel              | agrupamento interno (opcional)
+ .section-head       | Grid{TextBlock,Rect}    | não usado nas páginas atuais
+ .card               | StackPanel              | sem fundo/borda (§3.4)
  .field              | Border>Grid("*,210")    | Border faz a divisória
  .f-label            | TextBlock               | 13, textStrong
  .f-help             | TextBlock               | 11, textMuted
@@ -448,6 +723,18 @@
  .control.readonly   | + IsReadOnly            |
  .select-wrap .arrow | Path no ControlTemplate | IsHitTestVisible=False
  .btn-inline         | Button + Style outline  |
+ .acct-list          | ItemsControl            | ItemsSource=MailAccounts (§3.12)
+ .acct               | Border>Grid("Auto,*,Auto")| ItemTemplate; r10, pad 12,11
+ .acct-dot           | Ellipse 7x7             | cor por Status (converter)
+ .acct-mail          | TextBlock mono          | TextTrimming=CharacterEllipsis
+ .acct-badge         | Border>TextBlock        | Visibility=IsPrimary
+ .acct-meta          | TextBlock               | 10.5, textMuted / dangerText
+ .acct-btn           | Button + Style          | 28x28, r7, ícone Path 15px
+ .acct-btn.danger    | + hover danger          | lixeira
+ .acct-add           | Button + Style tracejado| Collapsed se IsAddingAccount
+ .acct-form          | Border>StackPanel       | Visibility=IsAddingAccount
+ .btn-quiet          | Button + Style discreto | 32px, sem borda
+ .btn-solid          | Button + Style primary  | 32px, gradiente primary
  .switch             | ToggleButton + Template |
  .footer             | Grid                    | 3 colunas + espaçador
  .btn-reset          | Button + Style danger   |
@@ -463,6 +750,12 @@
    flex: 0 0 210px     -> ColumnDefinition Width="210"
    overflow-y: auto    -> ScrollViewer VerticalScrollBarVisibility="Auto"
    appearance: none    -> ControlTemplate próprio do ComboBox
+   border: 1px dashed  -> Rectangle StrokeDashArray="3 2" sobreposto à Border
+                          (a Border do WPF não tem tracejado)
+   display:none nas páginas -> Visibility="Collapsed" ou ContentControl com o
+                              template da seção ativa (as duas formas servem)
+   border-radius: 0     -> CornerRadius="0" (a faixa de título é reta de
+                              propósito — §7 A14)
 
 ================================================================================
  §7  ARMADILHAS  (erros reais, já pagos — não repetir)
@@ -478,25 +771,57 @@
  A4. ROD APÉ EMPURRADO PARA FORA. Se a área de seções não tiver altura
      definida/`*`, ela cresce com o conteúdo e empurra o rodapé fora da
      janela. RowDefinitions="Auto,*,Auto" e a lista com `*`.
- A5. TAMANHO. 620x560 é o desenho de referência. Se a janela virar
-     redimensionável, apenas a área de seções cresce; a coluna de controle
-     permanece em 210px (não esticar controles).
+ A5. TAMANHO. 880x560 é o desenho de referência (era 620 antes do menu
+     lateral). Se a janela virar redimensionável, apenas a área da página
+     cresce; o menu permanece em 200px e a coluna de controle em 210px (não
+     esticar controles).
  A6. PLACEHOLDER COMO AJUDA. "(não necessário para Ollama)" era placeholder e
      desaparecia ao digitar. Agora é linha de ajuda, sempre visível. Não
      voltar a usar placeholder para informação necessária.
  A7. CAMPO EMPILHADO. Rótulo em cima + campo largo embaixo dobrava a altura da
-     tela e criava scroll. Rótulo à esquerda, controle à direita, 210px.
+     tela e criava scroll. Rótulo à esquerda, controle à direita, 210px. Com
+     880px de largura a coluna de texto fica ~370px: se ela aparecer estreita
+     (ajuda quebrando em 3 linhas), a janela não está com a largura certa.
  A8. "Salvar" SEMPRE ATIVO. Sem IsDirty o usuário não sabe se mexeu em algo.
  A9. POPUP BRANCO. O ComboBox default abre um popup claro que quebra o tema;
      estilizar o Popup junto com o controle.
+ A11. TROCAR DE PÁGINA DESCARTANDO EDIÇÕES. O menu (§3.10) só troca a View: o
+     ViewModel é UM só para as quatro páginas, e IsDirty é global. Ir em
+     "E-mail", voltar em "Avançado" e salvar tem de gravar as duas coisas.
+     Não instanciar um ViewModel por página, não resetar campos ao navegar.
+ A12. TRATAR A SENHA DE APP COMO TEXTO. É SecureString, guardada com DPAPI
+     (CurrentUser), nunca exibida de novo (placeholder "senha salva"), nunca
+     em log. E não renomear o campo para "senha": é senha de APP.
+ A13. MENU COM O REALCE DEFAULT DO WPF. ListBox pinta o item selecionado de
+     azul do sistema e o hover de cinza claro — as duas coisas destoam. O
+     ItemContainerStyle precisa ser reescrito (§3.10).
+ A14. TÍTULO DE SEÇÃO DUPLICADO. Com o menu, o cabeçalho maiúsculo com régua
+     virou redundante: cada página tem UM título, o de §3.4. Não desenhar os
+     dois.
  A10. VALORES TÉCNICOS EM FONTE DE UI. URL, modelo e token em Segoe UI ficam
      difíceis de conferir. Use mono nesses quatro campos.
+
+ A15. TRATAR AS CONTAS DE E-MAIL COMO UM CAMPO SÓ. MailAccounts é uma coleção:
+      adicionar, remover e promover são comandos que agem NA HORA (não esperam
+      o Salvar do rodapé) — só entram na lista contas cujo login IMAP passou.
+      Recusar e-mail duplicado, garantir exatamente uma IsPrimary e não deixar
+      remover a principal enquanto houver outra conta para promover.
+ A16. GUARDAR UMA SENHA PARA TODAS AS CONTAS. Cada MailAccount tem a SUA senha
+      de app, protegida por DPAPI individualmente, e a troca é por conta.
 
 ================================================================================
  §8  CHECKLIST DE ACEITE
 ================================================================================
- [ ] 9 campos, na ordem de §5, com rótulos verbatim.
- [ ] 3 cabeçalhos de seção visualmente idênticos entre si.
+ [ ] 11 campos, na ordem de §5, com rótulos verbatim.
+ [ ] Menu lateral de 200px com 4 entradas, ícone + rótulo, na ordem de §5.
+ [ ] Item selecionado com fundo lilás 12%, borda accentBorder e ícone lilás.
+ [ ] Só a página ativa visível; trocar de página não perde edições.
+ [ ] Cada página com UM título (15/600) e subtítulo verbatim.
+ [ ] Página de E-mail: lista de contas com ponto de estado, selo "Principal" em
+     UMA conta e as três ações de linha; senha nunca reexibida.
+ [ ] "Adicionar conta" abre o formulário inline no lugar do botão; "Conectar
+     conta" só acrescenta à lista com o login IMAP aprovado.
+ [ ] A aba de e-mails do chat abre esta tela já na página "E-mail".
  [ ] Nenhum blur; fundo = cor sólida Argb(230,18,18,22).
  [ ] Moldura: 4 paradas na ordem roxo→azul→magenta→laranja, 1.5px.
  [ ] DropShadow presente e não recortada.
@@ -506,9 +831,113 @@
  [ ] 2 switches (não checkboxes), ambos ligados por default.
  [ ] "Salvar" desabilitado ao abrir; habilita ao alterar qualquer campo.
  [ ] "Reset de Fábrica" com outline vermelho e confirmação antes de agir.
- [ ] Cabeçalho e rodapé fixos; só a área de seções rola.
+ [ ] Cabeçalho, menu e rodapé fixos; só a página ativa rola.
  [ ] Cabeçalho arrasta a janela.
  [ ] Esc cancela; Enter salva quando há alterações.
+ [ ] Setas trocam de página com o foco no menu.
+ [ ] Faixa de título com cantos RETOS, encostando nas laterais da área.
+ [ ] Grupo de campos sem fundo, recuado 40px à esquerda.
+ [ ] Janela com 880px de largura (com 620 a coluna de texto fica esmagada).
+ [ ] API Key e senha de app com placeholder de "já salva" e botão "Alterar".
+ [ ] Remover a conta principal com outra conta na lista está bloqueado.
+ [ ] Conta com falha aparece na lista, em vermelho, e é ignorada pela leitura.
+
+================================================================================
+ §9  PLANO DE IMPLEMENTAÇÃO — MULTI-CONTA DE E-MAIL
+================================================================================
+ Ordem sugerida. Cada passo é verificável sozinho.
+
+ 1. MODELO
+    public enum MailAccountStatus { Ok, Checking, Error }
+
+    public sealed class MailAccount : INotifyPropertyChanged
+    {
+        public string Address     { get; set; }   // chave: comparar em
+                                                  // OrdinalIgnoreCase
+        public string ImapHost    { get; set; }   // deduzido do domínio
+        public int    ImapPort    { get; set; }   // 993 por padrão
+        public bool   UseSsl      { get; set; }   // true por padrão
+        public bool   HasPassword { get; set; }   // existe blob DPAPI salvo
+        public bool   IsPrimary   { get; set; }
+        public MailAccountStatus Status { get; set; }
+        public string StatusText  { get; set; }   // "host:porta · última
+                                                  // leitura HH:mm" ou o erro
+        public DateTime? LastReadUtc { get; set; }
+    }
+
+    A senha NÃO é propriedade do modelo. Fica no cofre (passo 2), indexada pelo
+    Address, para nunca cair em bind, log ou serialização.
+
+ 2. PERSISTÊNCIA
+    settings.json (mesmo arquivo das outras configurações):
+      "mailAccounts": [
+        { "address": "ana.ribeiro@empresa.com", "imapHost": "imap.empresa.com",
+          "imapPort": 993, "useSsl": true, "isPrimary": true }
+      ]
+    Nunca gravar senha, Status nem StatusText — os dois últimos são de runtime.
+    Cofre: um arquivo por conta, %AppData%/AIB/secrets/{sha256(address)}.bin,
+    conteúdo = ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser).
+    Remover a conta apaga o arquivo do cofre no mesmo comando.
+
+ 3. DEDUÇÃO DE SERVIDOR
+    Tabela de domínios conhecidos (gmail.com, outlook.com/hotmail.com/live.com,
+    yahoo.com, icloud.com, zoho.com) → host/porta/SSL. Domínio corporativo:
+    tentar imap.{dominio}:993 e, falhando, mail.{dominio}:993. Se as duas
+    falharem, o erro do formulário é "não encontramos o servidor de
+    {dominio}" — a tela de servidor manual ainda NÃO existe; não inventar.
+
+ 4. SERVIÇO IMAP
+    IMailService.TestLoginAsync(address, password, ct) -> (ok, host, port, erro)
+    IMailService.FetchAsync(account, since, ct)        -> mensagens
+    Uma sessão por conta, executadas em paralelo com limite de 3; timeout de
+    15s por conta. Erro de login marca Status=Error e NÃO tenta de novo em loop:
+    nova tentativa só em "Alterar senha de app" ou no próximo ciclo agendado.
+
+ 5. VIEWMODEL
+    ObservableCollection<MailAccount> MailAccounts
+    bool IsAddingAccount, string NewAccountAddress, PasswordBox → SecureString
+    bool MailAccountConfigured => MailAccounts.Any(a => a.HasPassword)
+    Comandos: AddMailAccountCommand, RemoveMailAccountCommand(conta),
+              SetPrimaryMailAccountCommand(conta),
+              ChangeMailPasswordCommand(conta), TestMailLoginCommand(conta)
+    Invariantes checadas em TODA mutação da coleção:
+      • zero ou uma conta com IsPrimary; com a lista não vazia, exatamente uma;
+      • Address único (OrdinalIgnoreCase);
+      • remover a última conta zera MailAccountConfigured e desliga a aba de
+        e-mails do chat (tela-chat-v3.html §6.2.1);
+      • remover a principal com outras contas na lista é proibido —
+        CanExecute=false, ToolTip explicando que é preciso promover outra.
+
+ 6. FLUXO DE ADIÇÃO (passo a passo, como o mock)
+    clique em "Adicionar conta" → IsAddingAccount=true, foco no campo e-mail
+    → usuário digita e-mail (validação em LostFocus) e senha de app
+    → "Conectar conta": botão vira "Conectando…", IsEnabled=false
+    → dedução de servidor (passo 3) + TestLoginAsync (passo 4)
+       • sucesso: grava a senha no cofre, acrescenta a MailAccount à coleção
+         (principal se for a primeira), IsAddingAccount=false, campos limpos,
+         a linha nasce com Status=Ok;
+       • falha:   o formulário FICA aberto, senha preservada no campo, erro sob
+         o campo da senha no padrão de erro de campo. Nada é gravado.
+    Cancelar a qualquer momento descarta o par e fecha o formulário.
+
+ 7. INTEGRAÇÃO COM O CHAT
+    A aba de e-mails (tela-chat-v3.html §6.2) passa a listar as mensagens de
+    TODAS as contas com Status=Ok, ordenadas por urgência e depois por data.
+    Cada item precisa saber de qual conta veio (necessário para responder pela
+    conta certa) — o rótulo da conta no item ainda NÃO está desenhado: guardar
+    o dado no modelo agora e desenhar depois.
+    Qualquer ENVIO sai da conta principal, e só com confirmação do usuário.
+    O botão de configurações do cabeçalho daquela aba chama
+    OpenSettingsCommand(Mail) e cai direto nesta página.
+
+ 8. TESTES MÍNIMOS
+    [ ] adicionar 1ª conta → vira principal e liga a aba de e-mails do chat
+    [ ] adicionar e-mail repetido → recusado com erro no campo
+    [ ] senha errada → formulário permanece, nada gravado no cofre
+    [ ] promover a 2ª conta → selo migra, a antiga perde IsPrimary
+    [ ] remover a principal com 2 contas → bloqueado; com 1 conta → permitido
+    [ ] fechar e reabrir o app → contas voltam, senhas continuam no cofre
+    [ ] uma conta em erro → as outras continuam sendo lidas normalmente
 ================================================================================
 -->
 
@@ -540,9 +969,10 @@
      Não converter para BorderBrush — ver §7 A3.
      ========================================================================== */
   .window-border {
-    width: 620px;                 /* §1 window */
+    width: 880px;                 /* §1 window — era 620; o menu lateral de
+                                     §3.10 acrescentou 200px + divisória */
     height: 560px;
-    flex: 0 0 620px;
+    flex: 0 0 auto;               /* a largura manda; não repetir o valor aqui */
     margin: auto;                 /* centraliza só quando há espaço sobrando */
     border-radius: 20px;          /* radiusWindowOuter */
     padding: 1.5px;               /* espessura do stroke neon */
@@ -605,6 +1035,68 @@
      É a ÚNICA área elástica. min-height:0 é o que permite encolher e rolar
      em vez de empurrar o rodapé para fora — ver §7 A4.
      ========================================================================== */
+  /* ==========================================================================
+     §3.10  CORPO EM DUAS COLUNAS  →  Grid ColumnDefinitions="200,*"
+     O cabeçalho e o rodapé continuam de largura total (Grid.Row 0 e 2); só a
+     faixa do meio se divide entre o menu e a página ativa.
+     IMPL: <Grid Grid.Row="1"><Grid.ColumnDefinitions>
+             <ColumnDefinition Width="200"/><ColumnDefinition Width="*"/>
+           </Grid.ColumnDefinitions>…</Grid>
+     ========================================================================== */
+  .body-row {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: stretch;
+  }
+
+  /* MENU LATERAL — uma seção por item; NÃO rola (a lista é curta e fixa).
+     IMPL: ListBox com ItemsSource="{Sections}" e SelectedItem="{ActiveSection}",
+     ItemContainerStyle sem o realce azul default do WPF. */
+  .nav {
+    flex: 0 0 200px;
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 14px 10px;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);   /* divider */
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 11px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #8B8794;                                      /* textSecondary */
+    font-size: 12.5px; font-weight: 500; font-family: inherit;
+    text-align: left; cursor: pointer;
+    transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  }
+  .nav-item:hover { color: #E8E6EC; background: rgba(255, 255, 255, 0.05); }
+  /* SELECIONADO: fundo lilás 12%, borda accentBorder, texto e ícone lilás.
+     É o MESMO tratamento do item ativo das listas do painel de chat. */
+  .nav-item.active {
+    color: #E8E6EC;
+    background: rgba(155, 81, 224, 0.12);
+    border-color: rgba(155, 81, 224, 0.30);
+  }
+  .nav-item.active .nav-ico { color: #C79EF0; }
+  .nav-ico { flex: 0 0 16px; display: flex; color: inherit; }
+  .nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* PÁGINA — só a página ativa é renderizada; as outras são Collapsed.
+     Cada página tem seu próprio título (§3.11) e seus cards. */
+  .page { display: flex; flex-direction: column; gap: 14px; }
+  /* Cabeçalho da página: faixa com fundo surfaceCard e divisória, CANTOS RETOS
+     (não arredondar — ela encosta nas laterais da área de conteúdo).
+     IMPL: Border Background=surfaceCard, BorderThickness=1, CornerRadius=0. */
+  .page-head {
+    display: flex; flex-direction: column; gap: 3px;
+    background: rgba(255, 255, 255, 0.035);      /* surfaceCard */
+    border: 1px solid rgba(255, 255, 255, 0.08); /* borderCard */
+    padding: 12px 16px;
+  }
+  .page-title { font-size: 15px; font-weight: 600; color: #F5F4F7; letter-spacing: -0.01em; }
+  .page-sub { font-size: 11.5px; color: #8B8794; line-height: 1.45; }
+
   .settings {
     flex: 1 1 auto;
     min-height: 0;
@@ -612,7 +1104,8 @@
     display: flex;
     flex-direction: column;
     gap: 18px;                            /* settings.gap entre seções */
-    padding: 20px 24px 22px;              /* settings.padding */
+    padding: 0;                           /* sem padding: a faixa de título de
+                                             §3.4 encosta nas laterais e no topo */
   }
   .settings::-webkit-scrollbar { width: 6px; }
   .settings::-webkit-scrollbar-thumb {
@@ -620,9 +1113,13 @@
     border-radius: 3px;
   }
 
+  /* .section continua existindo para agrupar campos DENTRO de uma página
+     (hoje só a página de E-mail usa dois grupos). */
   .section { display: flex; flex-direction: column; gap: 10px; }
 
-  /* Cabeçalho de seção — IDÊNTICO nas três seções (§0 O5, §7 A2).
+  /* Cabeçalho INTERNO de grupo — não usado pelas páginas atuais; fica aqui
+     para o caso de uma página precisar de dois grupos nomeados. O título da
+     página (§3.4) é que cumpre esse papel hoje (§7 A14).
      A régua é o ::after: no XAML, um Rectangle Height=1 na coluna "*". */
   .section-head {
     display: flex; align-items: center; gap: 10px;
@@ -638,12 +1135,16 @@
     background: rgba(255, 255, 255, 0.06);   /* divider */
   }
 
-  /* Card da seção — mesma casca da bolha da IA e dos itens do painel lateral */
+  /* Grupo de campos. Com o menu lateral (§3.10) a página já tem contorno e
+     título próprios, então o card perdeu fundo e borda: sobraram as
+     divisórias entre campos. IMPL: um StackPanel simples, sem Border. */
   .card {
-    background: rgba(255, 255, 255, 0.035);      /* surfaceCard */
-    border: 1px solid rgba(255, 255, 255, 0.08); /* borderCard */
-    border-radius: 16px;                         /* radiusCard */
-    padding: 4px 16px;                           /* card.padding */
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    /* respiro próprio (a área de conteúdo não tem padding): recuo maior à
+       esquerda para separar as opções da faixa de título */
+    padding: 0 24px 20px 40px;
   }
 
   /* ==========================================================================
@@ -738,6 +1239,106 @@
   }
 
   /* ==========================================================================
+     §3.12  LISTA DE CONTAS DE E-MAIL  (NOVO — a página de E-mail agora é
+     multi-conta). Estrutura XAML: ItemsControl(MailAccounts) > Border(.acct)
+     > Grid ColumnDefinitions="8,*,Auto". Não é ListBox: não há seleção — as
+     ações moram na própria linha.
+     ========================================================================== */
+  .acct-list { display: flex; flex-direction: column; gap: 6px; }
+  .acct {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 12px;
+    background: rgba(255, 255, 255, 0.035);        /* surfaceCard */
+    border: 1px solid rgba(255, 255, 255, 0.08);   /* borderCard */
+    border-radius: 10px;
+  }
+  /* ponto de estado da conexão IMAP: verde = conectada, âmbar = verificando,
+     vermelho = falha de login (a mensagem vai no .acct-meta). */
+  .acct-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; }
+  .acct-dot.ok    { background: #3FBF7F; }
+  .acct-dot.warn  { background: #E2A03F; }
+  .acct-dot.error { background: #E5484D; }
+  .acct-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .acct-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .acct-mail {
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 12px; color: #F5F4F7;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* selo da conta principal — é dela que sai qualquer envio (uma só) */
+  .acct-badge {
+    flex: 0 0 auto;
+    font-size: 9.5px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #C79EF0;
+    background: rgba(155, 81, 224, 0.12);
+    border: 1px solid rgba(155, 81, 224, 0.30);
+    border-radius: 5px; padding: 2px 6px;
+  }
+  .acct-meta { font-size: 10.5px; color: #6F6A7A; }   /* textMuted */
+  .acct-meta.error { color: #FF8A8D; }
+  .acct-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; }
+  /* botão de ação da linha: só ícone, 28px, sem moldura em repouso */
+  .acct-btn {
+    width: 28px; height: 28px; flex: 0 0 28px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; border-radius: 7px;
+    background: transparent; color: #8B8794;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .acct-btn:hover { background: rgba(255, 255, 255, 0.06); color: #E8E6EC; }
+  .acct-btn.danger:hover { background: rgba(229, 72, 77, 0.16); color: #E5484D; }
+
+  /* "Adicionar conta": outline tracejado de largura total, alinhado à lista */
+  .acct-add {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    height: 36px;
+    background: transparent;
+    border: 1px dashed rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    color: #CBC8D1;
+    font-size: 12px; font-weight: 600; font-family: inherit;
+    cursor: pointer;
+    transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+  }
+  .acct-add:hover {
+    border-color: rgba(155, 81, 224, 0.45);
+    background: rgba(155, 81, 224, 0.10);
+    color: #E8E6EC;
+  }
+
+  /* FORMULÁRIO DE NOVA CONTA — aparece no lugar do botão, dentro da lista.
+     Reaproveita .field/.control; só o rodapé de ações é novo. */
+  .acct-form {
+    display: flex; flex-direction: column; gap: 0;
+    padding: 4px 12px 12px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(155, 81, 224, 0.30);
+    border-radius: 10px;
+  }
+  .acct-form .field { padding: 11px 0; }
+  .acct-form-actions {
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    padding-top: 12px;
+  }
+  .btn-quiet {
+    height: 32px; padding: 0 14px;
+    background: transparent; border: none; border-radius: 8px;
+    color: #8B8794; font-size: 12px; font-weight: 600; font-family: inherit;
+    cursor: pointer;
+  }
+  .btn-quiet:hover { color: #E8E6EC; background: rgba(255, 255, 255, 0.05); }
+  /* confirmar: mesmo preenchimento do Salvar do rodapé, em tamanho compacto */
+  .btn-solid {
+    height: 32px; padding: 0 16px;
+    border: none; border-radius: 8px;
+    background: linear-gradient(135deg, #9B51E0, #3182CE);
+    color: #FFFFFF; font-size: 12px; font-weight: 600; font-family: inherit;
+    cursor: pointer;
+  }
+
+  /* ==========================================================================
      §3.8  SWITCH — substitui as CheckBoxes da tela antiga
      WPF: ToggleButton com ControlTemplate; o círculo desloca 16px no X.
      ========================================================================== */
@@ -828,7 +1429,7 @@
      JANELA  (data-spec="window")
      IMPL: <Window WindowStyle="None" AllowsTransparency="True"
                    Background="Transparent" ResizeMode="NoResize"
-                   Width="620" Height="560"/>
+                   Width="880" Height="560"/>
      ============================================================================ -->
 <div class="window-border" data-spec="window.border">
   <div class="window" data-spec="window.glass">
@@ -859,18 +1460,79 @@
     </div>
 
     <!-- ========================================================================
-         §3.4  ÁREA DE SEÇÕES  (data-spec="settings")   Grid.Row=1, Height="*"
-         IMPL: <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
-         ÚNICA área que rola. Cabeçalho e rodapé são fixos.
+         §3.10  CORPO EM DUAS COLUNAS   Grid.Row=1, ColumnDefinitions="200,*"
+         ESQUERDA: menu de seções (não rola). DIREITA: a página ativa (rola).
+         ======================================================================== -->
+    <div class="body-row" data-spec="body">
+
+      <!-- ====================================================================
+           MENU LATERAL  (data-spec="nav")
+           IMPL: ListBox ItemsSource="{Sections}" SelectedItem="{ActiveSection}".
+           Uma entrada por página, na MESMA ordem de §5. O item selecionado é o
+           único com fundo; não usar o realce azul default do WPF.
+           Sem rolagem: a lista é fixa e curta. Se um dia passar de ~8 itens,
+           aí sim envolver num ScrollViewer.
+           ==================================================================== -->
+      <div class="nav" data-spec="nav">
+
+        <button class="nav-item active" data-nav="identity" data-spec="nav.identity">
+          <span class="nav-ico">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="10" cy="7.2" r="3.1"></circle>
+              <path d="M3.9 16.6c0-2.9 2.7-4.6 6.1-4.6s6.1 1.7 6.1 4.6"></path>
+            </svg>
+          </span>
+          <span class="nav-label">Identidade</span>
+        </button>
+
+        <button class="nav-item" data-nav="llm" data-spec="nav.llm">
+          <span class="nav-ico">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5.4" y="5.4" width="9.2" height="9.2" rx="2.2"></rect>
+              <path d="M8.2 2.6v2.8M11.8 2.6v2.8M8.2 14.6v2.8M11.8 14.6v2.8M2.6 8.2h2.8M2.6 11.8h2.8M14.6 8.2h2.8M14.6 11.8h2.8"></path>
+            </svg>
+          </span>
+          <span class="nav-label">Conexão LLM</span>
+        </button>
+
+        <button class="nav-item" data-nav="mail" data-spec="nav.mail">
+          <span class="nav-ico">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2.4" y="4.4" width="15.2" height="11.2" rx="1.8"></rect>
+              <path d="M3.1 5.6L10 10.8l6.9-5.2"></path>
+            </svg>
+          </span>
+          <span class="nav-label">E-mail</span>
+        </button>
+
+        <button class="nav-item" data-nav="advanced" data-spec="nav.advanced">
+          <span class="nav-ico">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="10" cy="10" r="2.6"></circle>
+              <path d="M10 1.9v2.3M10 15.8v2.3M3.9 3.9l1.6 1.6M14.5 14.5l1.6 1.6M1.9 10h2.3M15.8 10h2.3M3.9 16.1l1.6-1.6M14.5 5.5l1.6-1.6"></path>
+            </svg>
+          </span>
+          <span class="nav-label">Avançado</span>
+        </button>
+
+      </div>
+
+    <!-- ========================================================================
+         §3.4  ÁREA DA PÁGINA ATIVA  (data-spec="settings")  Grid coluna 1
+         IMPL: <ScrollViewer VerticalScrollBarVisibility="Auto"><ContentControl
+                 Content="{ActiveSection}"/></ScrollViewer>
+         ÚNICA área que rola. Cabeçalho, menu e rodapé são fixos.
          ======================================================================== -->
     <div class="settings" data-spec="settings">
 
       <!-- ====================================================================
-           SEÇÃO 1 — IDENTIDADE (SOUL)   §5 campo 1
+           PÁGINA 1 — IDENTIDADE   §5 campo 1
            ==================================================================== -->
-      <div class="section" data-spec="section.identity">
-        <!-- IMPL: Grid { TextBlock UPPER | Rectangle Height=1 Width=* } -->
-        <div class="section-head">Identidade (Soul)</div>
+      <div class="page" data-page="identity" data-spec="page.identity">
+        <div class="page-head">
+          <span class="page-title">Identidade (Soul)</span>
+          <span class="page-sub">Quem responde, e com que personalidade.</span>
+        </div>
 
         <div class="card">
           <!-- CAMPO 1/9 — ActiveCharacter : string -->
@@ -902,10 +1564,13 @@
       </div>
 
       <!-- ====================================================================
-           SEÇÃO 2 — CONEXÃO LLM   §5 campos 2 a 5
+           PÁGINA 2 — CONEXÃO LLM   §5 campos 2 a 5
            ==================================================================== -->
-      <div class="section" data-spec="section.llm">
-        <div class="section-head">Conexão LLM</div>
+      <div class="page" data-page="llm" data-spec="page.llm" style="display: none;">
+        <div class="page-head">
+          <span class="page-title">Conexão LLM</span>
+          <span class="page-sub">Onde o modelo roda e com qual chave.</span>
+        </div>
 
         <div class="card">
 
@@ -984,10 +1649,171 @@
       </div>
 
       <!-- ====================================================================
-           SEÇÃO 3 — AVANÇADO   §5 campos 6 a 9
+           PÁGINA 3 — E-MAIL   §5 campo 6 (MULTI-CONTA)
+           Substitui o modal que existia na tela de chat: a aba de e-mails do
+           painel manda para cá (tela-chat-v3.html §6.2 / §6.2.1).
+           A página deixou de ser um par e-mail+senha e passou a ser uma LISTA
+           de contas (§3.12): ItemsControl sobre MailAccounts + formulário de
+           adição inline. O par e-mail/senha de app agora só existe dentro do
+           formulário de nova conta e do fluxo "alterar senha" de uma linha.
            ==================================================================== -->
-      <div class="section" data-spec="section.advanced">
-        <div class="section-head">Avançado</div>
+      <div class="page" data-page="mail" data-spec="page.mail" style="display: none;">
+        <div class="page-head">
+          <span class="page-title">E-mail</span>
+          <span class="page-sub">A IA lê a caixa de entrada por IMAP, resume e prioriza. Nada é enviado sem sua confirmação.</span>
+        </div>
+
+        <div class="card">
+
+          <!-- CAMPO 6/11 — MailAccounts : ObservableCollection<MailAccount>
+               §3.12. Uma linha por conta. Sem seleção: as ações estão na linha.
+               MailAccount { Address, HasPassword, IsPrimary, Status, StatusText }
+               A senha de app NUNCA aparece aqui (§7 A12) — só o fato de existir.
+               IMPL: ItemsControl ItemsSource="{Binding MailAccounts}". -->
+          <div class="acct-list" data-spec="list.mailAccounts">
+
+            <!-- conta principal: selo "Principal"; é dela que sai qualquer
+                 envio, e ela não pode ser removida sem antes promover outra. -->
+            <div class="acct" data-spec="item.mailAccount">
+              <span class="acct-dot ok" title="Conectada"></span>
+              <span class="acct-main">
+                <span class="acct-line">
+                  <span class="acct-mail">ana.ribeiro@empresa.com</span>
+                  <span class="acct-badge">Principal</span>
+                </span>
+                <span class="acct-meta">imap.empresa.com:993 · última leitura 12:04</span>
+              </span>
+              <span class="acct-actions">
+                <!-- ChangeMailPasswordCommand(conta) — abre o fluxo de troca -->
+                <button class="acct-btn" title="Alterar senha de app">
+                  <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="9" width="12" height="8" rx="2"></rect>
+                    <path d="M7 9V6.5a3 3 0 0 1 6 0V9"></path>
+                  </svg>
+                </button>
+                <!-- RemoveMailAccountCommand(conta) — desabilitada na principal
+                     enquanto houver outra conta para promover (§7 A15) -->
+                <button class="acct-btn danger" title="Remover conta">
+                  <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4.5 6.5h11M8 6.5V5h4v1.5M6.5 6.5l.6 9h5.8l.6-9"></path>
+                  </svg>
+                </button>
+              </span>
+            </div>
+
+            <!-- conta secundária: sem selo; a ação extra é "tornar principal" -->
+            <div class="acct" data-spec="item.mailAccount">
+              <span class="acct-dot ok" title="Conectada"></span>
+              <span class="acct-main">
+                <span class="acct-line">
+                  <span class="acct-mail">ana@gmail.com</span>
+                </span>
+                <span class="acct-meta">imap.gmail.com:993 · última leitura 11:58</span>
+              </span>
+              <span class="acct-actions">
+                <!-- SetPrimaryMailAccountCommand(conta) -->
+                <button class="acct-btn" title="Tornar principal">
+                  <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 3.5l2 4.2 4.5.6-3.3 3.2.8 4.5L10 13.9 6 16l.8-4.5L3.5 8.3 8 7.7z"></path>
+                  </svg>
+                </button>
+                <button class="acct-btn" title="Alterar senha de app">
+                  <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="9" width="12" height="8" rx="2"></rect>
+                    <path d="M7 9V6.5a3 3 0 0 1 6 0V9"></path>
+                  </svg>
+                </button>
+                <button class="acct-btn danger" title="Remover conta">
+                  <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4.5 6.5h11M8 6.5V5h4v1.5M6.5 6.5l.6 9h5.8l.6-9"></path>
+                  </svg>
+                </button>
+              </span>
+            </div>
+
+            <!-- conta com falha de login: ponto vermelho e o erro no lugar do
+                 servidor. A conta continua na lista; a IA a ignora até religar. -->
+            <div class="acct" data-spec="item.mailAccount">
+              <span class="acct-dot error" title="Falha de login"></span>
+              <span class="acct-main">
+                <span class="acct-line">
+                  <span class="acct-mail">ana.r@consultoria.com.br</span>
+                </span>
+                <span class="acct-meta error">senha de app recusada — altere a senha</span>
+              </span>
+              <span class="acct-actions">
+                <button class="acct-btn" title="Tornar principal">
+                  <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 3.5l2 4.2 4.5.6-3.3 3.2.8 4.5L10 13.9 6 16l.8-4.5L3.5 8.3 8 7.7z"></path>
+                  </svg>
+                </button>
+                <button class="acct-btn" title="Alterar senha de app">
+                  <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="9" width="12" height="8" rx="2"></rect>
+                    <path d="M7 9V6.5a3 3 0 0 1 6 0V9"></path>
+                  </svg>
+                </button>
+                <button class="acct-btn danger" title="Remover conta">
+                  <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4.5 6.5h11M8 6.5V5h4v1.5M6.5 6.5l.6 9h5.8l.6-9"></path>
+                  </svg>
+                </button>
+              </span>
+            </div>
+
+            <!-- CAMPO 7/11 — formulário de NOVA CONTA (colapsado por padrão).
+                 Aparece no lugar do botão; Salvar chama TestMailLoginCommand e
+                 só então acrescenta a conta à lista. Cancelar descarta o par. -->
+            <button class="acct-add" data-spec="button.addMailAccount" data-add-open>
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                <path d="M10 5v10M5 10h10"></path>
+              </svg>
+              Adicionar conta
+            </button>
+
+            <div class="acct-form" data-spec="form.newMailAccount" data-add-form style="display: none;">
+              <!-- NewAccountAddress : string — valida em LostFocus, não a cada
+                   tecla; erro também se o e-mail já estiver na lista (§7 A15). -->
+              <div class="field" data-spec="field.newMailAddress">
+                <span class="f-text">
+                  <span class="f-label">E-mail</span>
+                  <span class="f-help">Servidor e porta são deduzidos do domínio.</span>
+                </span>
+                <span class="f-control">
+                  <input class="control mono" type="email" placeholder="voce@exemplo.com" value="">
+                </span>
+              </div>
+
+              <!-- NewAccountAppPassword : SecureString — nunca reexibida,
+                   guardada com DPAPI/ProtectedData (CurrentUser). §7 A12. -->
+              <div class="field" data-spec="field.newMailAppPassword">
+                <span class="f-text">
+                  <span class="f-label">Senha de app</span>
+                  <span class="f-help">Não use a senha da conta. Gere uma senha de app no seu provedor — <a class="inline-link" href="#senha-de-app">como gerar</a>.</span>
+                </span>
+                <span class="f-control">
+                  <input class="control mono" type="password" placeholder="senha de app" value="">
+                </span>
+              </div>
+
+              <div class="acct-form-actions">
+                <button class="btn-quiet" data-add-cancel>Cancelar</button>
+                <button class="btn-solid" data-add-confirm>Conectar conta</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           PÁGINA 4 — AVANÇADO   §5 campos 8 a 11
+           ==================================================================== -->
+      <div class="page" data-page="advanced" data-spec="page.advanced" style="display: none;">
+        <div class="page-head">
+          <span class="page-title">Avançado</span>
+          <span class="page-sub">Contexto, memória do modelo e diagnóstico.</span>
+        </div>
 
         <div class="card">
 
@@ -1055,6 +1881,7 @@
       </div>
 
     </div>
+    </div><!-- /.body-row -->
 
     <!-- ========================================================================
          §3.9  RODAPÉ  (data-spec="footer")   Grid.Row=2, Height=Auto
@@ -1086,7 +1913,8 @@
   "screen": "settings",
   "target": "csharp-wpf",
   "window": {
-    "width": 620, "height": 560,
+    "width": 880, "height": 560,
+    "widthNote": "era 620; +200 do menu lateral de §3.10 + divisória",
     "chrome": "none", "transparent": true, "resize": "none",
     "radiusOuter": 20, "radiusInner": 18.5, "neonStroke": 1.5,
     "shadow": { "blurRadius": 60, "shadowDepth": 15, "opacity": 0.55, "color": "#000000" },
@@ -1245,14 +2073,62 @@
         "enabledWhen": "IsDirty", "disabledOpacity": 0.45 }
     ]
   },
+  "layout": {
+    "rows": ["header:auto", "body:*", "footer:auto"],
+    "bodyColumns": ["nav:200", "content:*"],
+    "scrolls": "content only",
+    "contentPadding": 0
+  },
+  "nav": {
+    "width": 200, "padding": [14, 10], "gap": 2,
+    "dividerRight": "rgba(255,255,255,0.06)",
+    "scrolls": false,
+    "item": { "padding": [9, 11], "radius": 10, "gap": 9, "icon": 16,
+              "label": { "size": 12.5, "weight": 500, "trimming": "CharacterEllipsis" },
+              "rest": { "fg": "#8B8794" },
+              "hover": { "fg": "#E8E6EC", "bg": "rgba(255,255,255,0.05)" },
+              "selected": { "fg": "#E8E6EC", "bg": "rgba(155,81,224,0.12)",
+                            "border": "rgba(155,81,224,0.30)", "iconFg": "#C79EF0" } },
+    "items": [
+      { "id": "identity", "label": "Identidade", "icon": "pessoa" },
+      { "id": "llm",      "label": "Conexão LLM", "icon": "chip" },
+      { "id": "mail",     "label": "E-mail", "icon": "envelope (= aba do chat)" },
+      { "id": "advanced", "label": "Avançado", "icon": "engrenagem" }
+    ],
+    "keyboard": "setas trocam de página com o foco no menu",
+    "deepLink": "OpenSettingsCommand(ActiveSection) — a aba de e-mails do chat abre em 'mail'"
+  },
+  "pages": [
+    { "id": "identity", "title": "Identidade (Soul)",
+      "subtitle": "Quem responde, e com que personalidade.", "fields": [1] },
+    { "id": "llm", "title": "Conexão LLM",
+      "subtitle": "Onde o modelo roda e com qual chave.", "fields": [2, 3, 4, 5] },
+    { "id": "mail", "title": "E-mail",
+      "subtitle": "A IA lê a caixa de entrada por IMAP, resume e prioriza. Nada é enviado sem sua confirmação.",
+      "fields": [6, 7],
+      "multiAccount": true,
+      "collection": "MailAccounts : MailAccount { Address, HasPassword, IsPrimary, Status, StatusText }",
+      "rowCommands": ["SetPrimaryMailAccountCommand", "ChangeMailPasswordCommand", "RemoveMailAccountCommand"],
+      "addFlow": "IsAddingAccount → formulário inline → TestMailLoginCommand → AddMailAccountCommand",
+      "replaces": "o modal de configuração que existia em tela-chat-v3.html",
+      "onSaveSuccess": "MailAccountConfigured = true (≥ 1 conta aprovada)" },
+    { "id": "advanced", "title": "Avançado",
+      "subtitle": "Contexto, memória do modelo e diagnóstico.", "fields": [8, 9, 10, 11] }
+  ],
+  "fieldGroup": { "background": "none", "border": "none", "padding": [0, 24, 20, 40],
+                  "note": "sem card; a divisória de campo é a única separação" },
+  "pageHead": { "title": { "size": 15, "weight": 600 }, "subtitle": { "size": 11.5, "lineHeight": 1.45 }, "gap": 3,
+                "background": "rgba(255,255,255,0.035)", "border": "rgba(255,255,255,0.08)",
+                "radius": 0, "padding": [12, 16] },
   "keyboard": { "Escape": "cancel", "Enter": "save (se IsDirty)" },
   "dirtyTriggers": ["combo.SelectionChanged", "text.TextChanged", "switch.Toggled"],
   "constraints": [
     "sem blur nativo; vidro = cor sólida Argb(230,18,18,22)",
     "borda neon é a única cor saturada da moldura",
-    "os três cabeçalhos de seção usam o mesmo estilo",
+    "um ViewModel para as quatro páginas; IsDirty é global",
+    "senha de app: SecureString + DPAPI por conta, nunca reexibida",
     "coluna de controle fixa em 210px",
-    "nenhum campo adicionado, removido ou renomeado",
+    "a página de E-mail é uma lista de contas, não um par e-mail+senha",
     "rótulos em português, verbatim"
   ]
 }
@@ -1272,6 +2148,45 @@
                      Checked/Unchecked). Foco, hover e scroll NÃO marcam dirty.
     ==========================================================================
   */
+  (function () {
+    /* MENU LATERAL (§3.10): equivale a ListBox.SelectedItem = seção clicada.
+       Trocar de página NÃO marca IsDirty e NÃO descarta o que já foi editado
+       nas outras páginas — o ViewModel é um só (§7 A11). */
+    var navs  = document.querySelectorAll('.nav-item');
+    var pages = document.querySelectorAll('.page');
+    Array.prototype.forEach.call(navs, function (n) {
+      n.addEventListener('click', function () {
+        Array.prototype.forEach.call(navs, function (x) { x.classList.remove('active'); });
+        n.classList.add('active');
+        Array.prototype.forEach.call(pages, function (p) {
+          p.style.display = p.dataset.page === n.dataset.nav ? 'flex' : 'none';
+        });
+      });
+    });
+  })();
+
+  (function () {
+    /* FORMULÁRIO DE NOVA CONTA (§3.12): o botão dá lugar ao formulário.
+       No WPF, IsAddingAccount : bool controla a Visibility dos dois.
+       "Conectar conta" = TestMailLoginCommand → AddMailAccountCommand. */
+    var addBtn  = document.querySelector('[data-add-open]');
+    var addForm = document.querySelector('[data-add-form]');
+    if (!addBtn || !addForm) return;
+    function close() {
+      addForm.style.display = 'none';
+      addBtn.style.display = 'flex';
+      Array.prototype.forEach.call(addForm.querySelectorAll('input'), function (i) { i.value = ''; });
+    }
+    addBtn.addEventListener('click', function () {
+      addForm.style.display = 'flex';
+      addBtn.style.display = 'none';
+      var first = addForm.querySelector('input');
+      if (first) first.focus();
+    });
+    addForm.querySelector('[data-add-cancel]').addEventListener('click', close);
+    addForm.querySelector('[data-add-confirm]').addEventListener('click', close);
+  })();
+
   (function () {
     var save = document.getElementById('saveBtn');
 

@@ -530,24 +530,30 @@ namespace AIB.Tests
                 ActionLogService.Clear();
 
                 // Arquivos: um criado pela IA, um lido, um anexado pelo usuário.
-                ContextService.AddFile(@"C:\Users\Carlo\CPAPS\AIB\AIBWindows\Ui\ShrinkWrap.cs",
+                //
+                // Caminhos INVENTADOS, e não arquivos reais desta máquina. O que este ensaio
+                // mede é o desenho da linha — ícone pelo tipo, pill pela origem, reticencias no
+                // meio do caminho — e nada disso depende de o arquivo existir. Apontar para
+                // arquivo de verdade fazia o ensaio depender do disco de quem roda: um deles
+                // era .planning\MEMORIA-HIERARQUICA.md, que deixou de existir.
+                ContextService.AddFile(@"C:\projeto\src\Ui\ShrinkWrap.cs",
                                        ContextOrigin.CreatedByAi);
-                ContextService.AddFile(@"C:\Users\Carlo\CPAPS\AIB\.planning\MEMORIA-HIERARQUICA.md",
+                ContextService.AddFile(@"C:\projeto\docs\MEMORIA-HIERARQUICA.md",
                                        ContextOrigin.ReadByAi);
-                ContextService.AddFile(@"C:\Users\Carlo\Downloads\relatorio-de-erros.log",
+                ContextService.AddFile(@"C:\Users\alguem\Downloads\relatorio-de-erros.log",
                                        ContextOrigin.AttachedByUser);
 
                 // Ações: escrita, leitura e uma falha.
                 ActionLogService.Add(ActionLogService.Construir(
                     "write",
                     new Artifact(ArtifactKind.FileWritten, "write",
-                                 @"C:\Users\Carlo\CPAPS\AIB\AIBWindows\Ui\ShrinkWrap.cs", false, "2,1 KB"),
+                                 @"C:\projeto\src\Ui\ShrinkWrap.cs", false, "2,1 KB"),
                     falhou: false, detalhe: null, saidaBruta: null));
 
                 ActionLogService.Add(ActionLogService.Construir(
                     "read",
                     new Artifact(ArtifactKind.FileRead, "read",
-                                 @"C:\Users\Carlo\CPAPS\AIB\.planning\MEMORIA-HIERARQUICA.md", false),
+                                 @"C:\projeto\docs\MEMORIA-HIERARQUICA.md", false),
                     falhou: false, detalhe: null, saidaBruta: null));
 
                 ActionLogService.Add(ActionLogService.Construir(
