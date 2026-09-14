@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Avaliação do prompt contra o modelo de verdade. Manda o primeiro envio de uma conversa nova
+    para cada caso e confere a resposta — SEM executar ferramenta nenhuma: o que se mede é o
+    que o modelo PEDIU. Não é ensaio do xUnit porque depende do Ollama no ar e leva minutos.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+
+    <!-- O app é self-contained, e o SDK só deixa projeto de ensaio referenciar executável
+         assim. A avaliação usa as classes, não o executável. -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AIBWindows\AIB.csproj" />
+  </ItemGroup>
+
+</Project>

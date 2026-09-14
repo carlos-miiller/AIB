@@ -24,6 +24,23 @@ public sealed class ConversationService : IMessageStore
     // System prompt curto de propósito: modelos pequenos seguem melhor poucas regras diretivas,
     // e cada linha aqui é paga em TODA requisição da sessão.
     //
+    // AVALIADO em 2026-09-14 (AIB.Avaliacao, qwen3.5:4b, persona Kai, 11 casos × 3 repetições).
+    // Uma reestruturação no desenho dos guias para modelos grandes perdeu para ESTE prompt em
+    // tudo e foi desfeita. Relatórios em AIB.Avaliacao/resultados. Antes de mexer aqui, meça.
+    //   - 33/33 contra 27/33. O pacote tinha: identidade única, persona depois das regras,
+    //     regras em tom brando, notas de autor tiradas da alma e dos manuais, corpo do SKILL.md
+    //     fora do prompt, e data/hora/vigia colados na fala do usuário.
+    //   - "crie o arquivo X" caiu para 0/3: o modelo respondia "Criei o arquivo." sem chamar
+    //     write. A §5 da alma do Kai, que parece nota de autor, descreve exatamente essa falha e
+    //     serve ao modelo de EXEMPLO NEGATIVO — sem ela, ele escreve a frase.
+    //   - "de quem são os e-mails urgentes desta semana?" caiu para 0/3, com remetentes
+    //     INVENTADOS. Com a linha do vigia aqui, o modelo chama 'mail' (3/3).
+    //   - Tempo total 950s contra 1518s: o pacote ficou 60% mais lento, apesar de 276 tokens a
+    //     menos. O cache de prefixo do Ollama rendeu menos, não mais.
+    //   - Uma amostra por caso não decide nada: na mesma versão, o mesmo caso passou e falhou.
+    // As peças não foram medidas uma a uma — a identidade dupla ("Você é Kai" na alma, "Você é
+    // o AIB" aqui) continua, e é a candidata mais barata a um teste isolado.
+    //
     // Removido em 2026-08-21:
     //   - "chame manage_memory(action=recall)": a ferramenta não existe desde o refactor. O
     //     modelo obedecia e gastava uma iteração inteira para receber "não encontrada".
@@ -2091,15 +2108,22 @@ public sealed class ConversationService : IMessageStore
     /// <summary>A mensagem que a simulação põe no lugar da primeira fala do usuário.</summary>
     public const string MensagemDaSimulacao = "oi";
 
+    /// <summary>Tudo o que o primeiro turno de uma conversa nova entrega ao provider.</summary>
+    public sealed record PrimeiroEnvio(
+        string Modelo,
+        IReadOnlyList<ChatMessage> Mensagens,
+        IReadOnlyList<ChatTool> Ferramentas,
+        ChatRequestOptions Opcoes);
+
     /// <summary>
-    /// Refaz o processamento do primeiro turno de uma conversa NOVA e devolve o corpo JSON que
-    /// iria ao modelo — sem mandar. É o "Imprimir o prompt" da aba Logs.
+    /// Refaz o processamento do primeiro turno de uma conversa NOVA e devolve o que iria ao
+    /// provider — sem mandar. Base do "Imprimir o prompt" da aba Logs e da avaliação de prompt
+    /// (projeto AIB.Avaliacao), que manda isto ao modelo sem executar ferramenta nenhuma.
     /// <para>
     /// Segue os mesmos passos, na mesma ordem, pelas mesmas funções: <see cref="ResetHistory"/>
     /// monta o prompt de sistema e o bloco de memória (conversa nova: só fatos e anexos, sem
     /// capítulos nem atos); <see cref="StreamResponseAsync"/> acrescenta a fala; o AgentLoop
-    /// escolhe as ferramentas do nível; o OllamaProvider aplica o keep_alive padrão e omite a
-    /// lista vazia; o <see cref="OllamaNativeClient"/> serializa. O ensaio
+    /// escolhe as ferramentas do nível. O ensaio
     /// <c>ASimulacao_BATE_ComOQueOPrimeiroTurnoMandaDeVerdade</c> amarra os dois caminhos:
     /// se o turno ganhar um passo que a simulação não tem, ele quebra.
     /// </para>
@@ -2108,7 +2132,7 @@ public sealed class ConversationService : IMessageStore
     /// lê é das configurações salvas e do disco.
     /// </para>
     /// </summary>
-    public string SimularPrimeiroEnvio(string primeiraMensagem = MensagemDaSimulacao)
+    public PrimeiroEnvio MontarPrimeiroEnvio(string primeiraMensagem = MensagemDaSimulacao)
     {
         var settings = _settingsService.LoadSettings();
         int nivel = LevelService.GetLevel(settings.MessageCount);
@@ -2129,18 +2153,29 @@ public sealed class ConversationService : IMessageStore
 
         // StreamResponseAsync
         mensagens.Add(ChatMessage.CreateUserMessage(primeiraMensagem));
-        var opcoes = OpcoesDoTurno(settings);
 
         // AgentLoop: ferramentas desligadas não mandam definição nenhuma.
         IReadOnlyList<ChatTool> ferramentas = settings.EnableIntelligentTools
             ? _toolRegistry.GetActiveTools(nivel)
             : Array.Empty<ChatTool>();
 
-        // OllamaProvider → OllamaNativeClient
+        return new PrimeiroEnvio(settings.ModelName ?? "", mensagens, ferramentas, OpcoesDoTurno(settings));
+    }
+
+    /// <summary>
+    /// O corpo JSON que o <see cref="MontarPrimeiroEnvio"/> daria no fio: o que o OllamaProvider
+    /// faz (keep_alive padrão, lista vazia omitida) e o que o <see cref="OllamaNativeClient"/>
+    /// serializa.
+    /// </summary>
+    public string SimularPrimeiroEnvio(string primeiraMensagem = MensagemDaSimulacao)
+    {
+        var envio = MontarPrimeiroEnvio(primeiraMensagem);
+        var opcoes = envio.Opcoes;
+
         return OllamaNativeClient.CorpoDaRequisicao(
-            settings.ModelName ?? "",
-            mensagens,
-            ferramentas.Count > 0 ? ferramentas : null,
+            envio.Modelo,
+            envio.Mensagens,
+            envio.Ferramentas.Count > 0 ? envio.Ferramentas : null,
             opcoes.Temperature,
             stream: true,
             opcoes.NumCtx,

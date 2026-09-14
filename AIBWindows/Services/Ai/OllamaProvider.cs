@@ -224,17 +224,15 @@ public sealed class OllamaProvider : IChatProvider
         {
             Console.WriteLine($"[WARMUP] Iniciando trava de memória (Keep-Alive Infinita) para {Model}...");
 
-            // num_ctx=16384: ajustado de 8192 após observação de que respostas vazias
-            // ("Ação executada com sucesso") ocorrem quando o histórico + tool results
-            // somam ~5500 tokens e gemma4 decide não gerar resposta por falta de espaço.
-            // Gemma4:e2b suporta nominalmente 131k; 16k é equilíbrio entre folga e custo
-            // de prefill em CPU. Se sentir lentidão excessiva, voltar para 12288 ou 8192.
-            // Ollama mantém esse num_ctx para todas as chamadas enquanto keep_alive=-1.
+            // num_ctx IGUAL ao do turno. Era 16384 fixo, de quando a janela era essa; ela subiu
+            // para 32768 e o aquecimento ficou. Como o Ollama recarrega o modelo quando o num_ctx
+            // muda, toda abertura do app carregava o modelo em 16k aqui e o recarregava em 32k no
+            // CompleteAsync do WarmupService logo em seguida — uma carga inteira jogada fora.
             var payload = new
             {
                 model = Model,
                 keep_alive = KeepAliveLockSeconds,
-                options = new { num_ctx = 16384 }
+                options = new { num_ctx = ChatRequestOptions.Default.NumCtx }
             };
 
             var content = new StringContent(
