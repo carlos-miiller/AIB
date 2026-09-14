@@ -47,6 +47,21 @@ public sealed class ConversationService : IMessageStore
     //   - instrução para escrever <think>...</think>: qwen3.5 e demais modelos de raciocínio
     //     usam o campo separado message.thinking. Pedir a tag fazia o modelo emitir marcação
     //     redundante no canal de conteúdo.
+    /// <summary>A primeira linha do prompt quando NÃO há persona.</summary>
+    private const string IdentidadeDoAib = "Você é o AIB, agente local de IA no Windows do usuário.";
+
+    /// <summary>
+    /// A mesma linha quando HÁ persona. A alma já diz quem responde ("Você é Kai"); declarar
+    /// "Você é o AIB" logo depois deixava duas identidades no prompt. Aqui o AIB vira o lugar
+    /// onde a persona opera, não uma segunda pessoa.
+    /// <para>
+    /// MEDIDO (AIB.Avaliacao, 14/09, qwen3.5:4b, Kai, 3 repetições): com as duas identidades, a
+    /// resposta a "quem é você?" era "Sou um operador de sala de controle" — sem nome, nas três.
+    /// Com esta linha, "Sou Kai Nomura", nas três. Chamadas de ferramenta e tempo empataram.
+    /// </para>
+    /// </summary>
+    private const string IdentidadeSobPersona = "Você opera dentro do AIB, agente local de IA no Windows do usuário.";
+
     private const string SYSTEM_PROMPT =
         """
         Você é o AIB, agente local de IA no Windows do usuário.
@@ -2062,15 +2077,17 @@ public sealed class ConversationService : IMessageStore
         var settings = _settingsService.LoadSettings();
         if (!settings.SendSystemPrompt) return null;
 
-        var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var contextualPrompt = SYSTEM_PROMPT + $"\n\nContexto Local:\n- Diretório Home do Usuário (Raiz): {userHome}";
-
-        contextualPrompt += EstadoDoVigia(settings, _diarioDeTriagem, DateTime.Now);
-
         // A alma do personagem ativo vem ANTES das instruções operacionais: é ela que define
         // quem responde, e o resto do prompt define o que ele pode fazer.
         var soul = LoadActiveCharacterSoul(settings.ActiveCharacter);
-        if (!string.IsNullOrWhiteSpace(soul))
+        bool comPersona = !string.IsNullOrWhiteSpace(soul);
+
+        var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var contextualPrompt = PromptBase(comPersona) + $"\n\nContexto Local:\n- Diretório Home do Usuário (Raiz): {userHome}";
+
+        contextualPrompt += EstadoDoVigia(settings, _diarioDeTriagem, DateTime.Now);
+
+        if (comPersona)
             contextualPrompt = soul + "\n\n---\n\n" + contextualPrompt;
 
         try
@@ -2183,6 +2200,15 @@ public sealed class ConversationService : IMessageStore
             opcoes.Think,
             opcoes.NumPredict);
     }
+
+    /// <summary>
+    /// As regras operacionais, com a primeira linha certa para quem responde: o AIB, ou a persona
+    /// que opera dentro dele. Pública para o ensaio que impede a constante e a linha do prompt de
+    /// se desencontrarem — se isso acontecer, a troca não pega e as duas identidades voltam sem
+    /// ninguém perceber.
+    /// </summary>
+    public static string PromptBase(bool comPersona) =>
+        comPersona ? SYSTEM_PROMPT.Replace(IdentidadeDoAib, IdentidadeSobPersona) : SYSTEM_PROMPT;
 
     /// <summary>
     /// O que a triagem automática já fez, em NÚMEROS, para o modelo não precisar perguntar nem

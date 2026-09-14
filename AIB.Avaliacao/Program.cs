@@ -71,7 +71,9 @@ var casos = new List<Caso>
             ? Passou() : Falhou("devia responder em texto, sem ferramenta")),
 
     new("identidade", "quem é você?",
-        r => r.Texto.Contains(persona, StringComparison.OrdinalIgnoreCase)
+        // Sem a assinatura: "Kai online." contém o nome, e com ela a resposta "Sou um operador de
+        // sala de controle" — que não diz quem é — passava. Foi o que a identidade dupla produzia.
+        r => SemAssinatura(r.Texto).Contains(persona, StringComparison.OrdinalIgnoreCase)
              && (persona == "AIB" || !Regex.IsMatch(r.Texto, @"\bsou (o |a )?AIB\b", RegexOptions.IgnoreCase))
             ? Passou() : Falhou($"devia se apresentar como {persona}, sem se dizer outro")),
 
@@ -157,6 +159,9 @@ finally
 return;
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+static string SemAssinatura(string texto) =>
+    Regex.Replace(texto.TrimStart(), @"^\S+ online\.\s*", "");
 
 static bool RespondeuPeloResumo(Resultado r, string resumo)
 {
