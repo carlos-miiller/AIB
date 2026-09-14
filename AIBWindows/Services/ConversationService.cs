@@ -1233,7 +1233,7 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private void RefreshMemoryMessage(MemoryQuota quota)
     {
-        var (bloco, narrativa) = MontarBlocoDeMemoria(quota);
+        var (bloco, narrativa) = MontarBlocoDeMemoria(_memory, quota);
 
         lock (_gate)
         {
@@ -1269,18 +1269,19 @@ public sealed class ConversationService : IMessageStore
 
     /// <summary>
     /// O TEXTO do bloco de memória, sem tocar o histórico. Separado de
-    /// <see cref="RefreshMemoryMessage"/> para o retrato do prompt mostrar o bloco que o
-    /// próximo turno vai montar sem já montá-lo.
+    /// <see cref="RefreshMemoryMessage"/>, e com a camada de memória como parâmetro, para
+    /// <see cref="SimularPrimeiroEnvio"/> montar o bloco de uma conversa NOVA — sem capítulos
+    /// nem atos — pelo mesmo caminho, sem mexer na conversa aberta.
     /// </summary>
-    private (string Bloco, string Narrativa) MontarBlocoDeMemoria(MemoryQuota quota)
+    private (string Bloco, string Narrativa) MontarBlocoDeMemoria(MemoryLayer memoria, MemoryQuota quota)
     {
         // Relido do disco a cada montagem: facts.md é do usuário, e ele pode tê-lo editado com
         // o app aberto. Custa uma leitura de arquivo pequeno, e só acontece quando um capítulo
         // ou ato nasce.
-        _memory.SetFacts(_facts.ReadFacts());
+        memoria.SetFacts(_facts.ReadFacts());
 
-        string narrativa = _memory.RenderNarrative(quota, _tokenCounter);
-        string bloco = _memory.Render(quota, _tokenCounter);
+        string narrativa = memoria.RenderNarrative(quota, _tokenCounter);
+        string bloco = memoria.Render(quota, _tokenCounter);
 
         // Os arquivos anexados viajam na MESMA mensagem da memória, e não numa terceira.
         //
@@ -2075,8 +2076,8 @@ public sealed class ConversationService : IMessageStore
     }
 
     /// <summary>
-    /// As opções de toda requisição de conversa. Uma função só, usada pelo turno e pelo
-    /// retrato do prompt: o arquivo não pode descrever opções que o turno não manda.
+    /// As opções de toda requisição de conversa. Uma função só, usada pelo turno e pela
+    /// simulação do primeiro envio: o arquivo não pode descrever opções que o turno não manda.
     /// </summary>
     public static ChatRequestOptions OpcoesDoTurno(UserAppSettings settings) =>
         // Think null = não manda o campo e o modelo decide; false = manda desligado.
@@ -2087,185 +2088,65 @@ public sealed class ConversationService : IMessageStore
             Think = settings.ModelThinking ? (bool?)null : false
         };
 
+    /// <summary>A mensagem que a simulação põe no lugar da primeira fala do usuário.</summary>
+    public const string MensagemDaSimulacao = "oi";
+
     /// <summary>
-    /// O prefixo de sistema que vai ao modelo, por escrito — o botão "Imprimir o prompt" da
-    /// aba Logs.
+    /// Refaz o processamento do primeiro turno de uma conversa NOVA e devolve o corpo JSON que
+    /// iria ao modelo — sem mandar. É o "Imprimir o prompt" da aba Logs.
     /// <para>
-    /// NÃO é o <see cref="BuildSystemPrompt"/> chamado de novo. O prompt de sistema é montado
-    /// quando a conversa começa e fica congelado nela; o bloco de memória é remontado a cada
-    /// turno. Um retrato que remontasse tudo a partir das configurações mostraria o prompt de
-    /// uma conversa hipotética, e a pergunta de quem aperta o botão é "o que o modelo está
-    /// lendo". Por isso: prompt base da conversa viva, bloco de memória como o próximo turno
-    /// vai montá-lo, ferramentas e opções pelas mesmas funções do turno, e o corpo JSON pela
-    /// mesma serialização da requisição. Quando o prompt congelado já difere do que uma
-    /// conversa nova receberia, o arquivo diz.
+    /// Segue os mesmos passos, na mesma ordem, pelas mesmas funções: <see cref="ResetHistory"/>
+    /// monta o prompt de sistema e o bloco de memória (conversa nova: só fatos e anexos, sem
+    /// capítulos nem atos); <see cref="StreamResponseAsync"/> acrescenta a fala; o AgentLoop
+    /// escolhe as ferramentas do nível; o OllamaProvider aplica o keep_alive padrão e omite a
+    /// lista vazia; o <see cref="OllamaNativeClient"/> serializa. O ensaio
+    /// <c>ASimulacao_BATE_ComOQueOPrimeiroTurnoMandaDeVerdade</c> amarra os dois caminhos:
+    /// se o turno ganhar um passo que a simulação não tem, ele quebra.
     /// </para>
     /// <para>
-    /// Com um turno no ar o portão está com ele, e mexer na memória agora correria com a
-    /// compactação. Nesse caso o retrato é o histórico como está — que é, literalmente, o que
-    /// está sendo enviado.
-    /// </para>
-    /// <para>
-    /// As falas da conversa ficam FORA: o pedido é o prompt, e as falas podem trazer o que a
-    /// ferramenta de e-mail leu. O arquivo diz quantas mensagens seguem o prefixo.
+    /// Não toca a conversa aberta: nem histórico, nem memória, nem portão de turno. Tudo o que
+    /// lê é das configurações salvas e do disco.
     /// </para>
     /// </summary>
-    public string RetratoDoPrompt(DateTime agora)
+    public string SimularPrimeiroEnvio(string primeiraMensagem = MensagemDaSimulacao)
     {
         var settings = _settingsService.LoadSettings();
         int nivel = LevelService.GetLevel(settings.MessageCount);
+
+        var mensagens = new List<ChatMessage>();
+
+        // ResetHistory
+        string? prompt = BuildSystemPrompt();
+        if (prompt != null)
+        {
+            var alicerce = ChatMessage.CreateSystemMessage(prompt);
+            mensagens.Add(alicerce);
+
+            var cota = CotaCom(nivel, _tokenCounter.CountMessages(new[] { alicerce }));
+            string bloco = MontarBlocoDeMemoria(new MemoryLayer(), cota).Bloco;
+            if (bloco.Length > 0) mensagens.Add(ChatMessage.CreateSystemMessage(bloco));
+        }
+
+        // StreamResponseAsync
+        mensagens.Add(ChatMessage.CreateUserMessage(primeiraMensagem));
         var opcoes = OpcoesDoTurno(settings);
 
-        // Mesma regra do AgentLoop: ferramentas desligadas não mandam definição nenhuma.
+        // AgentLoop: ferramentas desligadas não mandam definição nenhuma.
         IReadOnlyList<ChatTool> ferramentas = settings.EnableIntelligentTools
             ? _toolRegistry.GetActiveTools(nivel)
             : Array.Empty<ChatTool>();
 
-        var prefixo = new List<ChatMessage>();
-        int daConversa;
-        bool promptCongelado;
-
-        bool ocioso = _turnGate.Wait(0);
-        try
-        {
-            var vivo = Snapshot();
-            int deSistema = vivo.TakeWhile(m => m is SystemChatMessage).Count();
-            daConversa = vivo.Count - deSistema;
-            promptCongelado = vivo.Count > 0;
-
-            if (!ocioso)
-            {
-                prefixo.AddRange(vivo.Take(deSistema));
-            }
-            else
-            {
-                // O que StreamResponseAsync faz antes de mandar: histórico vazio ganha prompt
-                // novo; histórico que já começou sem prompt de sistema segue sem.
-                ChatMessage? alicerce = deSistema > 0 ? vivo[0] : null;
-
-                if (vivo.Count == 0)
-                {
-                    string? novo = BuildSystemPrompt();
-                    if (novo != null) alicerce = ChatMessage.CreateSystemMessage(novo);
-                }
-
-                if (alicerce != null)
-                {
-                    prefixo.Add(alicerce);
-
-                    var cota = CotaCom(nivel, _tokenCounter.CountMessages(new[] { alicerce }));
-                    string bloco = MontarBlocoDeMemoria(cota).Bloco;
-                    if (bloco.Length > 0) prefixo.Add(ChatMessage.CreateSystemMessage(bloco));
-                }
-            }
-        }
-        finally
-        {
-            if (ocioso) _turnGate.Release();
-        }
-
-        static string Texto(ChatMessage m) =>
-            m.Content == null ? "" : string.Concat(m.Content.Where(p => p?.Text != null).Select(p => p.Text));
-
-        string? enviado = prefixo.Count > 0 ? Texto(prefixo[0]) : null;
-        bool divergiu = promptCongelado
-            && !string.Equals(enviado, BuildSystemPrompt(), StringComparison.Ordinal);
-
-        string corpo = OllamaNativeClient.CorpoDaRequisicao(
+        // OllamaProvider → OllamaNativeClient
+        return OllamaNativeClient.CorpoDaRequisicao(
             settings.ModelName ?? "",
-            prefixo,
-            ferramentas,
+            mensagens,
+            ferramentas.Count > 0 ? ferramentas : null,
             opcoes.Temperature,
             stream: true,
             opcoes.NumCtx,
             opcoes.KeepAliveSeconds ?? OllamaProvider.KeepAliveLockSeconds,
             opcoes.Think,
-            opcoes.NumPredict,
-            paraLeitura: true);
-
-        string regua = new string('═', 72);
-        static string SimNao(bool v) => v ? "ligado" : "desligado";
-
-        var sb = new StringBuilder();
-        sb.AppendLine($"AIB · retrato do prompt · {agora:yyyy-MM-dd HH:mm:ss}");
-        sb.AppendLine();
-        sb.AppendLine(ocioso
-            ? "Nenhum turno em andamento: isto é o que o PRÓXIMO turno envia."
-            : "Um turno está em andamento: isto é o que está sendo enviado AGORA.");
-        sb.AppendLine($"Provedor: {settings.AiProvider} · modelo: {settings.ModelName}");
-        sb.AppendLine($"Nível {nivel} · orçamento de histórico {LevelService.GetMaxTokensForLevel(nivel)} · num_ctx {opcoes.NumCtx}");
-        sb.AppendLine($"Enviar prompt de sistema: {SimNao(settings.SendSystemPrompt)} · " +
-                      $"ferramentas inteligentes: {SimNao(settings.EnableIntelligentTools)} ({ferramentas.Count}) · " +
-                      $"raciocínio: {(settings.ModelThinking ? "o modelo decide" : "desligado")}");
-        sb.AppendLine($"Personagem: {(string.IsNullOrWhiteSpace(settings.ActiveCharacter) ? "(nenhum)" : settings.ActiveCharacter)}");
-        sb.AppendLine($"Conversa: {daConversa} mensagem(ns) seguem este prefixo no envio e NÃO estão neste arquivo.");
-
-        if (divergiu)
-        {
-            sb.AppendLine();
-            sb.AppendLine("ATENÇÃO: uma conversa NOVA receberia um prompt de sistema diferente deste. Ele foi");
-            sb.AppendLine("montado quando esta conversa começou, e o que mudou desde então — configurações,");
-            sb.AppendLine("personagem, skills, contagem do vigia — só entra quando a conversa recomeça.");
-        }
-
-        if (!string.Equals(settings.AiProvider, "Ollama", StringComparison.Ordinal))
-        {
-            sb.AppendLine();
-            sb.AppendLine("O corpo JSON abaixo está no formato do /api/chat do Ollama. O seu provedor recebe as");
-            sb.AppendLine("mesmas mensagens e ferramentas num envelope diferente.");
-        }
-
-        if (prefixo.Count == 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine(regua);
-            sb.AppendLine("Nenhuma mensagem de sistema é enviada.");
-            sb.AppendLine(settings.SendSystemPrompt
-                ? "Esta conversa começou com \"Enviar prompt de sistema\" desligado; ligar vale a partir da próxima."
-                : "\"Enviar prompt de sistema\" está desligado — quem instrui o modelo é o Modelfile dele.");
-        }
-
-        for (int i = 0; i < prefixo.Count; i++)
-        {
-            string texto = Texto(prefixo[i]);
-            string nome = i == 0 ? "prompt de sistema" : "memória e arquivos anexados";
-
-            sb.AppendLine();
-            sb.AppendLine(regua);
-            sb.AppendLine($"SYSTEM {i + 1}/{prefixo.Count} · {nome} · ~{_tokenCounter.CountText(texto)} tokens");
-            sb.AppendLine(regua);
-            sb.AppendLine(texto);
-        }
-
-        sb.AppendLine();
-        sb.AppendLine(regua);
-        sb.AppendLine($"FERRAMENTAS · {ferramentas.Count}");
-        sb.AppendLine(regua);
-        sb.AppendLine(ferramentas.Count == 0
-            ? "(nenhuma)"
-            : string.Join(Environment.NewLine, ferramentas.Select(f => "- " + f.FunctionName)));
-
-        sb.AppendLine();
-        sb.AppendLine(regua);
-        sb.AppendLine("CORPO DA REQUISIÇÃO · a mesma serialização do envio, com recuo e acentos legíveis");
-        sb.AppendLine("(as mensagens da conversa foram omitidas; no envio real elas vêm depois das de sistema)");
-        sb.AppendLine(regua);
-        sb.AppendLine(corpo);
-
-        return sb.ToString();
-    }
-
-    /// <summary>
-    /// Grava o retrato em <paramref name="pasta"/> e devolve o caminho. <c>prompt-*.txt</c>, e
-    /// não <c>execucao-*.log</c>: a poda do registro de execução apaga por esse padrão, e um
-    /// retrato não pode sumir por causa de um log que ele não é.
-    /// </summary>
-    public static string GravarRetratoDoPrompt(string texto, string pasta, DateTime agora)
-    {
-        Directory.CreateDirectory(pasta);
-        string caminho = Path.Combine(pasta, $"prompt-{agora:yyyy-MM-dd-HHmmss}.txt");
-        File.WriteAllText(caminho, texto, new UTF8Encoding(false));
-        return caminho;
+            opcoes.NumPredict);
     }
 
     /// <summary>

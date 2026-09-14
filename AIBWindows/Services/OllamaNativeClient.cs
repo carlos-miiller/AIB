@@ -212,15 +212,11 @@ public class OllamaNativeClient
     /// <summary>
     /// O corpo JSON de <c>/api/chat</c>, montado num lugar só.
     /// <para>
-    /// Público para o retrato do prompt da tela de Logs: um arquivo que diz mostrar "o que vai
-    /// ao modelo" tem de sair da MESMA serialização que a requisição usa. Uma cópia do
+    /// Público para a simulação do primeiro envio da aba Logs: um arquivo que diz mostrar "o
+    /// que iria ao modelo" tem de sair da MESMA serialização que a requisição usa. Uma cópia do
     /// objeto anônimo lá fora seria uma segunda descrição do envio, e descrições envelhecem.
     /// </para>
     /// </summary>
-    /// <param name="paraLeitura">
-    /// Recuo e acentos legíveis. Mesmo valor JSON — mesmos campos, mesmos textos —, só muda o
-    /// espaço em branco e o escape de caracteres não ASCII.
-    /// </param>
     public static string CorpoDaRequisicao(
         string model,
         IReadOnlyList<ChatMessage> history,
@@ -230,8 +226,7 @@ public class OllamaNativeClient
         int numCtx,
         int? keepAliveSeconds,
         bool? think,
-        int? numPredict,
-        bool paraLeitura = false)
+        int? numPredict)
     {
         var requestObj = new
         {
@@ -253,12 +248,6 @@ public class OllamaNativeClient
         {
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
         };
-
-        if (paraLeitura)
-        {
-            opcoes.WriteIndented = true;
-            opcoes.Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
-        }
 
         return JsonSerializer.Serialize(requestObj, opcoes);
     }

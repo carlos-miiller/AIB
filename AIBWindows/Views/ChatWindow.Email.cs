@@ -731,7 +731,7 @@ public partial class ChatWindow
         var janela = new SettingsWindow(_settingsService, PaginaDeConfiguracoes.Email)
         {
             Owner = this,
-            RetratoDoPrompt = () => _conversation.RetratoDoPrompt(DateTime.Now)
+            SimularPrimeiroEnvio = () => _conversation.SimularPrimeiroEnvio()
         };
         janela.ShowDialog();
         this.Deactivated += Window_Deactivated;

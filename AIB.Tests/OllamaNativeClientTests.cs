@@ -110,28 +110,45 @@ namespace AIB.Tests
         }
     
         [Fact]
-        public void OCorpoParaLeitura_TEM_OMesmoValorQueOEnviado()
+        public async Task OCorpoPublico_EH_OMesmoQueStreamChatAsyncManda()
         {
-            // O retrato do prompt imprime a versão legível. Se ela divergisse do corpo de
-            // verdade em qualquer campo, o arquivo seria mais uma descrição do envio — e a
-            // razão de existir dele é não ser.
+            // A simulação do primeiro envio usa CorpoDaRequisicao. Se o envio real montasse o
+            // corpo por outro caminho, o arquivo seria uma descrição — e o ponto é não ser.
+            string? recebido = null;
+
+            var handler = new Mock<HttpMessageHandler>();
+            handler
+                .Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync((HttpRequestMessage request, CancellationToken token) =>
+                {
+#pragma warning disable xUnit1031
+                    recebido = request.Content!.ReadAsStringAsync(token).GetAwaiter().GetResult();
+#pragma warning restore xUnit1031
+                    return new HttpResponseMessage
+                    {
+                        StatusCode = HttpStatusCode.OK,
+                        Content = new StringContent("{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"done\":true}")
+                    };
+                });
+
+            var client = new OllamaNativeClient("http://localhost:11434", new HttpClient(handler.Object));
+
             var historico = new List<ChatMessage>
             {
-                ChatMessage.CreateSystemMessage("Você é a Ayano. Ação, atenção, \"aspas\" e \\barra."),
-                ChatMessage.CreateSystemMessage("Fatos:\n- mora em São Paulo")
+                ChatMessage.CreateSystemMessage("Você é a Ayano.\nAção, atenção e \"aspas\"."),
+                ChatMessage.CreateUserMessage("oi")
             };
+            var ferramentas = new List<ChatTool> { ChatTool.CreateFunctionTool("read", "lê um arquivo") };
 
-            string enviado = OllamaNativeClient.CorpoDaRequisicao(
-                "gemma", historico, null, 0.1f, stream: true, 32768, -1, false, null);
-            string legivel = OllamaNativeClient.CorpoDaRequisicao(
-                "gemma", historico, null, 0.1f, stream: true, 32768, -1, false, null, paraLeitura: true);
+            await foreach (var _ in client.StreamChatAsync(
+                "gemma", historico, ferramentas, 0.1f, false, CancellationToken.None, 32768, -1, false, null)) { }
 
-            legivel.Should().NotBe(enviado, "senão o parâmetro não faz nada");
-            legivel.Should().Contain("São Paulo", "acentos legíveis, não \\u00E3");
-
-            System.Text.Json.Nodes.JsonNode.DeepEquals(
-                System.Text.Json.Nodes.JsonNode.Parse(enviado),
-                System.Text.Json.Nodes.JsonNode.Parse(legivel)).Should().BeTrue();
+            recebido.Should().Be(OllamaNativeClient.CorpoDaRequisicao(
+                "gemma", historico, ferramentas, 0.1f, stream: true, 32768, -1, false, null));
         }
 }
 }

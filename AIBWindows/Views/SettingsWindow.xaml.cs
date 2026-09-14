@@ -118,11 +118,11 @@ public partial class SettingsWindow : Window
     private bool _sujo;
 
     /// <summary>
-    /// Quem sabe o que a conversa está mandando ao modelo. Nulo quando a janela não foi aberta
-    /// pelo chat — nesse caso não há conversa para retratar, e o botão diz isso em vez de
-    /// inventar um prompt a partir das configurações.
+    /// Refaz o processamento do primeiro envio de uma conversa nova e devolve o corpo JSON.
+    /// Nulo quando a janela não foi aberta pelo chat: sem o serviço de conversa não há com o
+    /// que simular, e o botão diz isso em vez de montar uma aproximação.
     /// </summary>
-    public Func<string>? RetratoDoPrompt { get; set; }
+    public Func<string>? SimularPrimeiroEnvio { get; set; }
 
     public SettingsWindow(SettingsService settingsService,
                           PaginaDeConfiguracoes pagina = PaginaDeConfiguracoes.Identidade,
@@ -1177,15 +1177,14 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// Grava o retrato do prompt e abre o arquivo. Gravar e abrir falham por motivos
-    /// diferentes, e a mensagem não pode dizer que o arquivo não existe quando só o editor
-    /// não abriu.
+    /// Simula, grava e abre o arquivo. Gravar e abrir falham por motivos diferentes, e a
+    /// mensagem não pode dizer que o arquivo não existe quando só o editor não abriu.
     /// </summary>
     private void ImprimirPrompt_Click(object sender, RoutedEventArgs e)
     {
         RetratoDoPromptTexto.Visibility = Visibility.Visible;
 
-        if (RetratoDoPrompt == null)
+        if (SimularPrimeiroEnvio == null)
         {
             RetratoDoPromptTexto.Text = "Sem conversa ligada a esta janela. Abra as configurações pela janela do chat.";
             return;
@@ -1194,20 +1193,28 @@ public partial class SettingsWindow : Window
         string caminho;
         try
         {
-            caminho = ConversationService.GravarRetratoDoPrompt(
-                RetratoDoPrompt(), DirectoryService.LogsDir, DateTime.Now);
+            var agora = DateTime.Now;
+            caminho = AIB.Services.Ai.RetratoDoEnvio.Gravar(
+                AIB.Services.Ai.RetratoDoEnvio.Renderizar(SimularPrimeiroEnvio(), agora),
+                DirectoryService.LogsDir, agora);
         }
         catch (Exception ex)
         {
-            RetratoDoPromptTexto.Text = $"Não consegui gravar o arquivo: {ex.Message}";
+            RetratoDoPromptTexto.Text = $"Não consegui simular o envio: {ex.Message}";
             return;
         }
 
-        // Mudança não salva não vai ao modelo. Sem o aviso, quem acabou de trocar o
-        // personagem aqui leria o prompt do anterior e concluiria que a troca não pegou.
-        RetratoDoPromptTexto.Text = _sujo
-            ? caminho + Environment.NewLine + "Há mudanças não salvas nesta tela: o arquivo mostra o que está salvo, que é o que a conversa usa."
-            : caminho;
+        var linhas = new List<string> { caminho };
+
+        // Mudança não salva não entra na simulação. Sem o aviso, quem acabou de trocar o
+        // personagem aqui leria a alma do anterior e concluiria que a troca não pegou.
+        if (_sujo)
+            linhas.Add("Há mudanças não salvas nesta tela: a simulação usou o que está salvo.");
+
+        if (!string.Equals(_currentSettings.AiProvider, "Ollama", StringComparison.Ordinal))
+            linhas.Add("O corpo está no formato do Ollama; o seu provedor recebe as mesmas mensagens e ferramentas em outro envelope.");
+
+        RetratoDoPromptTexto.Text = string.Join(Environment.NewLine, linhas);
 
         try
         {
@@ -1219,7 +1226,7 @@ public partial class SettingsWindow : Window
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[CONFIG] retrato gravado, mas não consegui abri-lo: {ex.Message}");
+            Console.WriteLine($"[CONFIG] simulação gravada, mas não consegui abrir o arquivo: {ex.Message}");
         }
     }
 

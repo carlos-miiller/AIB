@@ -45,6 +45,9 @@ namespace AIB.Tests
             public string Model => "fake";
 
             public List<ChatMessage> LastCompleteMessages { get; } = new();
+
+            /// <summary>O que o PRIMEIRO StreamAsync recebeu: mensagens, ferramentas e opções.</summary>
+            public (List<ChatMessage> Mensagens, IReadOnlyList<ChatTool> Ferramentas, ChatRequestOptions Opcoes)? PrimeiroStream { get; private set; }
             public int WarmupCalls { get; private set; }
 
             /// <summary>O resumidor de capitulos passa por CompleteAsync, nao por StreamAsync.</summary>
@@ -61,6 +64,7 @@ namespace AIB.Tests
                 [EnumeratorCancellation] CancellationToken ct)
             {
                 await Task.Yield();
+                PrimeiroStream ??= (messages.ToList(), tools, options);
                 foreach (var c in _turn) yield return c;
             }
 
@@ -1662,108 +1666,77 @@ namespace AIB.Tests
         }
     
         // ─────────────────────────────────────────────────────────────────────
-        // Retrato do prompt — o botão "Imprimir o prompt" da aba Logs
+        // Simulação do primeiro envio — o botão "Imprimir o prompt" da aba Logs
         // ─────────────────────────────────────────────────────────────────────
 
         [Fact]
-        public void ORetratoDoPrompt_MOSTRA_OPromptQueAConversaEstaMandando()
+        public async Task ASimulacao_BATE_ComOQueOPrimeiroTurnoMandaDeVerdade()
         {
+            // A garantia inteira do botão. A simulação refaz os passos do turno em vez de
+            // chamá-lo; se o turno ganhar um passo que ela não tem, é aqui que aparece.
             var settings = BuildSettings(sendSystemPrompt: true);
-            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+            var provider = new FakeProvider();
+            var conversation = BuildConversation(settings, provider, out _);
 
-            string enviado = TextOf(conversation.Snapshot()[0]);
-            string retrato = conversation.RetratoDoPrompt(new DateTime(2026, 9, 14, 15, 30, 0));
+            string simulado = conversation.SimularPrimeiroEnvio("oi");
 
-            // O prompt INTEIRO, byte a byte — não um trecho que por acaso bate.
-            enviado.Should().Contain("Contexto Local");
-            retrato.Should().Contain(enviado);
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
 
-            retrato.Should().Contain("Nenhum turno em andamento");
-            retrato.Should().Contain("\"num_ctx\": " + ChatRequestOptions.Default.NumCtx);
-            retrato.Should().Contain("\"model\": \"modelo-de-teste\"");
-            retrato.Should().NotContain("ATENÇÃO", "nada mudou desde que a conversa começou");
+            var (mensagens, ferramentas, opcoes) = provider.PrimeiroStream!.Value;
+
+            // O que o OllamaProvider faria com o que recebeu.
+            string real = OllamaNativeClient.CorpoDaRequisicao(
+                settings.LoadSettings().ModelName ?? "",
+                mensagens,
+                ferramentas.Count > 0 ? ferramentas : null,
+                opcoes.Temperature,
+                stream: true,
+                opcoes.NumCtx,
+                opcoes.KeepAliveSeconds ?? OllamaProvider.KeepAliveLockSeconds,
+                opcoes.Think,
+                opcoes.NumPredict);
+
+            mensagens.Should().HaveCountGreaterThan(1, "senão não há prompt de sistema e o ensaio compara pouco");
+            simulado.Should().Be(real);
         }
 
         [Fact]
-        public void ORetratoDoPrompt_NAO_LevaAsFalasDaConversa()
+        public void ASimulacao_NAO_TocaAConversaAberta()
         {
             var settings = BuildSettings(sendSystemPrompt: true);
             var conversation = BuildConversation(settings, new FakeProvider(), out _);
-
-            conversation.AppendAssistantText("FALA-QUE-NAO-PODE-SAIR-7731");
-
-            string retrato = conversation.RetratoDoPrompt(DateTime.Now);
-
-            retrato.Should().NotContain("FALA-QUE-NAO-PODE-SAIR-7731");
-            retrato.Should().Contain("1 mensagem(ns) seguem este prefixo",
-                "o arquivo omite as falas, mas não esconde que elas existem");
-        }
-
-        [Fact]
-        public void ORetratoDoPrompt_NAO_MexeNoHistorico()
-        {
-            // Fotografar não pode mudar o que é fotografado: o retrato monta o bloco de memória
-            // do próximo turno SEM inseri-lo.
-            var settings = BuildSettings(sendSystemPrompt: true);
-            var conversation = BuildConversation(settings, new FakeProvider(), out _);
-            conversation.AppendAssistantText("uma fala qualquer");
+            conversation.AppendAssistantText("FALA-DA-CONVERSA-ABERTA-7731");
 
             var antes = conversation.Snapshot().Select(TextOf).ToList();
             int tokensAntes = conversation.CountTokens();
 
-            conversation.RetratoDoPrompt(DateTime.Now);
+            string simulado = conversation.SimularPrimeiroEnvio();
+
+            // Conversa NOVA: o que foi dito na aberta não entra.
+            simulado.Should().NotContain("FALA-DA-CONVERSA-ABERTA-7731");
+            simulado.Should().Contain("\"content\":\"oi\"");
 
             conversation.Snapshot().Select(TextOf).Should().Equal(antes);
             conversation.CountTokens().Should().Be(tokensAntes);
         }
 
         [Fact]
-        public void SemPromptDeSistema_ORetrato_DIZ_EmVezDeInventarUm()
+        public void ASimulacao_USA_AsConfiguracoesSalvasAgora()
         {
-            var settings = BuildSettings(sendSystemPrompt: false);
-            var conversation = BuildConversation(settings, new FakeProvider(), out _);
-
-            string retrato = conversation.RetratoDoPrompt(DateTime.Now);
-
-            retrato.Should().Contain("Nenhuma mensagem de sistema é enviada");
-            retrato.Should().Contain("Modelfile");
-            retrato.Should().NotContain("SYSTEM 1/");
-            retrato.Should().NotContain("Contexto Local");
-        }
-
-        [Fact]
-        public void PromptCongeladoDiferenteDoDeUmaConversaNova_ORetrato_AVISA()
-        {
-            // O prompt de sistema é montado quando a conversa começa. Quem desliga "Enviar
-            // prompt de sistema" no meio dela e imprime o prompt precisa ler que o desligamento
-            // ainda não pegou — e não um prompt que parece contradizer a chave.
+            // A conversa aberta nasceu com prompt de sistema; desligar a chave depois vale para
+            // a próxima conversa — que é justamente a que a simulação monta.
             var settings = BuildSettings(sendSystemPrompt: true);
             var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            conversation.SimularPrimeiroEnvio().Should().Contain("\"role\":\"system\"");
 
             var mudado = settings.LoadSettings();
             mudado.SendSystemPrompt = false;
             settings.SaveSettings(mudado);
 
-            string retrato = conversation.RetratoDoPrompt(DateTime.Now);
-
-            retrato.Should().Contain("Contexto Local", "a conversa viva ainda manda o prompt dela");
-            retrato.Should().Contain("ATENÇÃO: uma conversa NOVA receberia um prompt de sistema diferente");
-        }
-
-        [Fact]
-        public void ORetratoGravado_NAO_CaiNaPodaDoRegistroDeExecucao()
-        {
-            string pasta = Path.Combine(_dir, "logs");
-            var quando = new DateTime(2026, 9, 14, 15, 30, 5);
-
-            string caminho = ConversationService.GravarRetratoDoPrompt("conteúdo ção", pasta, quando);
-
-            File.ReadAllText(caminho).Should().Be("conteúdo ção");
-            Path.GetFileName(caminho).Should().Be("prompt-2026-09-14-153005.txt");
-
-            // A poda apaga execucao-*.log. Um retrato com esse padrão sumiria na vigésima
-            // execução seguinte, sem ninguém ter pedido.
-            Directory.GetFiles(pasta, "execucao-*.log").Should().BeEmpty();
+            string simulado = conversation.SimularPrimeiroEnvio();
+            simulado.Should().NotContain("\"role\":\"system\"");
+            simulado.Should().Contain("\"role\":\"user\"");
         }
 }
 }
