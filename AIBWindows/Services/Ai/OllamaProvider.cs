@@ -21,7 +21,7 @@ public sealed class OllamaProvider : IChatProvider
     /// Omitir o campo faz o Ollama reaplicar o default de 5 minutos e desfazer a trava
     /// feita pelo aquecimento — por isso o provider envia -1 quando ninguém pediu outro valor.
     /// </summary>
-    private const int KeepAliveLockSeconds = -1;
+    public const int KeepAliveLockSeconds = -1;
 
     private readonly OllamaNativeClient _client;
     private readonly string _baseUrl;

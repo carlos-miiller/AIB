@@ -67,23 +67,8 @@ public class OllamaNativeClient
         bool? think = null,
         int? numPredict = null)
     {
-        var requestObj = new
-        {
-            model = model,
-            messages = FormatMessages(history),
-            stream = true,
-            // keep_alive precisa viajar em TODA requisição de chat: o Ollama reaplica o valor
-            // recebido e, quando o campo é omitido, volta ao default de 5 minutos — desfazendo
-            // em silêncio a trava de VRAM feita pelo aquecimento (keep_alive=-1).
-            keep_alive = keepAliveSeconds,
-            // Nulos somem do JSON (WhenWritingNull): omitir o campo deixa o modelo no padrão
-            // dele, que é o comportamento certo para a conversa normal.
-            think = think,
-            options = new { temperature = temperature, num_ctx = numCtx, num_predict = numPredict },
-            tools = FormatTools(tools)
-        };
-
-        var json = JsonSerializer.Serialize(requestObj, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+        var json = CorpoDaRequisicao(
+            model, history, tools, temperature, stream: true, numCtx, keepAliveSeconds, think, numPredict);
         if (debug) Console.WriteLine($"\n[PROVIDER_DEBUG_REQUEST]:\n{json}\n");
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -194,18 +179,8 @@ public class OllamaNativeClient
         bool? think = null,
         int? numPredict = null)
     {
-        var requestObj = new
-        {
-            model = model,
-            messages = FormatMessages(history),
-            stream = false,
-            keep_alive = keepAliveSeconds,
-            think = think,
-            options = new { temperature = temperature, num_ctx = numCtx, num_predict = numPredict },
-            tools = FormatTools(tools)
-        };
-
-        var json = JsonSerializer.Serialize(requestObj, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+        var json = CorpoDaRequisicao(
+            model, history, tools, temperature, stream: false, numCtx, keepAliveSeconds, think, numPredict);
         if (debug) Console.WriteLine($"\n[PROVIDER_DEBUG_REQUEST (Warmup)]:\n{json}\n");
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -234,7 +209,61 @@ public class OllamaNativeClient
         return dto;
     }
 
-    private List<object> FormatMessages(IReadOnlyList<ChatMessage> history)
+    /// <summary>
+    /// O corpo JSON de <c>/api/chat</c>, montado num lugar só.
+    /// <para>
+    /// Público para o retrato do prompt da tela de Logs: um arquivo que diz mostrar "o que vai
+    /// ao modelo" tem de sair da MESMA serialização que a requisição usa. Uma cópia do
+    /// objeto anônimo lá fora seria uma segunda descrição do envio, e descrições envelhecem.
+    /// </para>
+    /// </summary>
+    /// <param name="paraLeitura">
+    /// Recuo e acentos legíveis. Mesmo valor JSON — mesmos campos, mesmos textos —, só muda o
+    /// espaço em branco e o escape de caracteres não ASCII.
+    /// </param>
+    public static string CorpoDaRequisicao(
+        string model,
+        IReadOnlyList<ChatMessage> history,
+        IEnumerable<ChatTool>? tools,
+        float temperature,
+        bool stream,
+        int numCtx,
+        int? keepAliveSeconds,
+        bool? think,
+        int? numPredict,
+        bool paraLeitura = false)
+    {
+        var requestObj = new
+        {
+            model = model,
+            messages = FormatMessages(history),
+            stream = stream,
+            // keep_alive precisa viajar em TODA requisição de chat: o Ollama reaplica o valor
+            // recebido e, quando o campo é omitido, volta ao default de 5 minutos — desfazendo
+            // em silêncio a trava de VRAM feita pelo aquecimento (keep_alive=-1).
+            keep_alive = keepAliveSeconds,
+            // Nulos somem do JSON (WhenWritingNull): omitir o campo deixa o modelo no padrão
+            // dele, que é o comportamento certo para a conversa normal.
+            think = think,
+            options = new { temperature = temperature, num_ctx = numCtx, num_predict = numPredict },
+            tools = FormatTools(tools)
+        };
+
+        var opcoes = new JsonSerializerOptions
+        {
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        };
+
+        if (paraLeitura)
+        {
+            opcoes.WriteIndented = true;
+            opcoes.Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
+        }
+
+        return JsonSerializer.Serialize(requestObj, opcoes);
+    }
+
+    private static List<object> FormatMessages(IReadOnlyList<ChatMessage> history)
     {
         var list = new List<object>();
         foreach (var msg in history)
@@ -309,7 +338,7 @@ public class OllamaNativeClient
         }
     }
 
-    private object? FormatTools(IEnumerable<ChatTool>? tools)
+    private static object? FormatTools(IEnumerable<ChatTool>? tools)
     {
         if (tools == null || !tools.Any()) return null;
 

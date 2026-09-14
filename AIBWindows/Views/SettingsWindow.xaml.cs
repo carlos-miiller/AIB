@@ -117,6 +117,13 @@ public partial class SettingsWindow : Window
 
     private bool _sujo;
 
+    /// <summary>
+    /// Quem sabe o que a conversa está mandando ao modelo. Nulo quando a janela não foi aberta
+    /// pelo chat — nesse caso não há conversa para retratar, e o botão diz isso em vez de
+    /// inventar um prompt a partir das configurações.
+    /// </summary>
+    public Func<string>? RetratoDoPrompt { get; set; }
+
     public SettingsWindow(SettingsService settingsService,
                           PaginaDeConfiguracoes pagina = PaginaDeConfiguracoes.Identidade,
                           IMailService? servicoDeEmail = null,
@@ -1166,6 +1173,53 @@ public partial class SettingsWindow : Window
         catch (Exception ex)
         {
             Console.WriteLine($"[CONFIG] não consegui abrir a pasta de logs: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Grava o retrato do prompt e abre o arquivo. Gravar e abrir falham por motivos
+    /// diferentes, e a mensagem não pode dizer que o arquivo não existe quando só o editor
+    /// não abriu.
+    /// </summary>
+    private void ImprimirPrompt_Click(object sender, RoutedEventArgs e)
+    {
+        RetratoDoPromptTexto.Visibility = Visibility.Visible;
+
+        if (RetratoDoPrompt == null)
+        {
+            RetratoDoPromptTexto.Text = "Sem conversa ligada a esta janela. Abra as configurações pela janela do chat.";
+            return;
+        }
+
+        string caminho;
+        try
+        {
+            caminho = ConversationService.GravarRetratoDoPrompt(
+                RetratoDoPrompt(), DirectoryService.LogsDir, DateTime.Now);
+        }
+        catch (Exception ex)
+        {
+            RetratoDoPromptTexto.Text = $"Não consegui gravar o arquivo: {ex.Message}";
+            return;
+        }
+
+        // Mudança não salva não vai ao modelo. Sem o aviso, quem acabou de trocar o
+        // personagem aqui leria o prompt do anterior e concluiria que a troca não pegou.
+        RetratoDoPromptTexto.Text = _sujo
+            ? caminho + Environment.NewLine + "Há mudanças não salvas nesta tela: o arquivo mostra o que está salvo, que é o que a conversa usa."
+            : caminho;
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = caminho,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CONFIG] retrato gravado, mas não consegui abri-lo: {ex.Message}");
         }
     }
 

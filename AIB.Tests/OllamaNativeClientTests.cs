@@ -108,5 +108,30 @@ namespace AIB.Tests
             streamRoot.TryGetProperty("tools", out _).Should().BeTrue();
             completeRoot.TryGetProperty("tools", out _).Should().BeTrue();
         }
-    }
+    
+        [Fact]
+        public void OCorpoParaLeitura_TEM_OMesmoValorQueOEnviado()
+        {
+            // O retrato do prompt imprime a versão legível. Se ela divergisse do corpo de
+            // verdade em qualquer campo, o arquivo seria mais uma descrição do envio — e a
+            // razão de existir dele é não ser.
+            var historico = new List<ChatMessage>
+            {
+                ChatMessage.CreateSystemMessage("Você é a Ayano. Ação, atenção, \"aspas\" e \\barra."),
+                ChatMessage.CreateSystemMessage("Fatos:\n- mora em São Paulo")
+            };
+
+            string enviado = OllamaNativeClient.CorpoDaRequisicao(
+                "gemma", historico, null, 0.1f, stream: true, 32768, -1, false, null);
+            string legivel = OllamaNativeClient.CorpoDaRequisicao(
+                "gemma", historico, null, 0.1f, stream: true, 32768, -1, false, null, paraLeitura: true);
+
+            legivel.Should().NotBe(enviado, "senão o parâmetro não faz nada");
+            legivel.Should().Contain("São Paulo", "acentos legíveis, não \\u00E3");
+
+            System.Text.Json.Nodes.JsonNode.DeepEquals(
+                System.Text.Json.Nodes.JsonNode.Parse(enviado),
+                System.Text.Json.Nodes.JsonNode.Parse(legivel)).Should().BeTrue();
+        }
+}
 }

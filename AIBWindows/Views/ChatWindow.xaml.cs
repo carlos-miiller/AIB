@@ -1692,6 +1692,7 @@ public partial class ChatWindow : Window
         this.Deactivated -= Window_Deactivated; // Previne esconder o chat
         var settingsWin = new SettingsWindow(_settingsService);
         settingsWin.Owner = this;
+        settingsWin.RetratoDoPrompt = () => _conversation.RetratoDoPrompt(DateTime.Now);
         settingsWin.ShowDialog();
         this.Deactivated += Window_Deactivated; // Retorna o comportamento
 

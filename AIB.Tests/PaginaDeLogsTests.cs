@@ -56,6 +56,31 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void SemConversaLigada_OBotaoDoPrompt_DIZ_EmVezDeInventar()
+        {
+            // A janela aberta fora do chat não tem conversa para retratar. Montar um prompt a
+            // partir das configurações mostraria o de uma conversa que não existe.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new SettingsWindow(ServicoDescartavel());
+                janela.IrPara(PaginaDeConfiguracoes.Logs);
+
+                var botao = (Button)janela.FindName("ImprimirPrompt");
+                var aviso = (TextBlock)janela.FindName("RetratoDoPromptTexto");
+
+                aviso.Visibility.Should().Be(Visibility.Collapsed, "antes do clique não há o que dizer");
+
+                botao.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
+                aviso.Visibility.Should().Be(Visibility.Visible);
+                aviso.Text.Should().Contain("Sem conversa ligada");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void OQueEhDaCONEXAO_MudouDePagina()
         {
             // Keep-alive e "enviar system prompt" configuram a conversa com o MODELO, e moravam

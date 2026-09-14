@@ -730,7 +730,8 @@ public partial class ChatWindow
         this.Deactivated -= Window_Deactivated;
         var janela = new SettingsWindow(_settingsService, PaginaDeConfiguracoes.Email)
         {
-            Owner = this
+            Owner = this,
+            RetratoDoPrompt = () => _conversation.RetratoDoPrompt(DateTime.Now)
         };
         janela.ShowDialog();
         this.Deactivated += Window_Deactivated;

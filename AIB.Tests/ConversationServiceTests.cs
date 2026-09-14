@@ -1660,5 +1660,110 @@ namespace AIB.Tests
             anuncios.Should().BeGreaterThan(0, "a faixa precisa aparecer");
             fins.Should().Be(1, "e precisa sumir uma vez, mesmo sem ter havido o que fazer");
         }
-    }
+    
+        // ─────────────────────────────────────────────────────────────────────
+        // Retrato do prompt — o botão "Imprimir o prompt" da aba Logs
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void ORetratoDoPrompt_MOSTRA_OPromptQueAConversaEstaMandando()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            string enviado = TextOf(conversation.Snapshot()[0]);
+            string retrato = conversation.RetratoDoPrompt(new DateTime(2026, 9, 14, 15, 30, 0));
+
+            // O prompt INTEIRO, byte a byte — não um trecho que por acaso bate.
+            enviado.Should().Contain("Contexto Local");
+            retrato.Should().Contain(enviado);
+
+            retrato.Should().Contain("Nenhum turno em andamento");
+            retrato.Should().Contain("\"num_ctx\": " + ChatRequestOptions.Default.NumCtx);
+            retrato.Should().Contain("\"model\": \"modelo-de-teste\"");
+            retrato.Should().NotContain("ATENÇÃO", "nada mudou desde que a conversa começou");
+        }
+
+        [Fact]
+        public void ORetratoDoPrompt_NAO_LevaAsFalasDaConversa()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            conversation.AppendAssistantText("FALA-QUE-NAO-PODE-SAIR-7731");
+
+            string retrato = conversation.RetratoDoPrompt(DateTime.Now);
+
+            retrato.Should().NotContain("FALA-QUE-NAO-PODE-SAIR-7731");
+            retrato.Should().Contain("1 mensagem(ns) seguem este prefixo",
+                "o arquivo omite as falas, mas não esconde que elas existem");
+        }
+
+        [Fact]
+        public void ORetratoDoPrompt_NAO_MexeNoHistorico()
+        {
+            // Fotografar não pode mudar o que é fotografado: o retrato monta o bloco de memória
+            // do próximo turno SEM inseri-lo.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+            conversation.AppendAssistantText("uma fala qualquer");
+
+            var antes = conversation.Snapshot().Select(TextOf).ToList();
+            int tokensAntes = conversation.CountTokens();
+
+            conversation.RetratoDoPrompt(DateTime.Now);
+
+            conversation.Snapshot().Select(TextOf).Should().Equal(antes);
+            conversation.CountTokens().Should().Be(tokensAntes);
+        }
+
+        [Fact]
+        public void SemPromptDeSistema_ORetrato_DIZ_EmVezDeInventarUm()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            string retrato = conversation.RetratoDoPrompt(DateTime.Now);
+
+            retrato.Should().Contain("Nenhuma mensagem de sistema é enviada");
+            retrato.Should().Contain("Modelfile");
+            retrato.Should().NotContain("SYSTEM 1/");
+            retrato.Should().NotContain("Contexto Local");
+        }
+
+        [Fact]
+        public void PromptCongeladoDiferenteDoDeUmaConversaNova_ORetrato_AVISA()
+        {
+            // O prompt de sistema é montado quando a conversa começa. Quem desliga "Enviar
+            // prompt de sistema" no meio dela e imprime o prompt precisa ler que o desligamento
+            // ainda não pegou — e não um prompt que parece contradizer a chave.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            var mudado = settings.LoadSettings();
+            mudado.SendSystemPrompt = false;
+            settings.SaveSettings(mudado);
+
+            string retrato = conversation.RetratoDoPrompt(DateTime.Now);
+
+            retrato.Should().Contain("Contexto Local", "a conversa viva ainda manda o prompt dela");
+            retrato.Should().Contain("ATENÇÃO: uma conversa NOVA receberia um prompt de sistema diferente");
+        }
+
+        [Fact]
+        public void ORetratoGravado_NAO_CaiNaPodaDoRegistroDeExecucao()
+        {
+            string pasta = Path.Combine(_dir, "logs");
+            var quando = new DateTime(2026, 9, 14, 15, 30, 5);
+
+            string caminho = ConversationService.GravarRetratoDoPrompt("conteúdo ção", pasta, quando);
+
+            File.ReadAllText(caminho).Should().Be("conteúdo ção");
+            Path.GetFileName(caminho).Should().Be("prompt-2026-09-14-153005.txt");
+
+            // A poda apaga execucao-*.log. Um retrato com esse padrão sumiria na vigésima
+            // execução seguinte, sem ninguém ter pedido.
+            Directory.GetFiles(pasta, "execucao-*.log").Should().BeEmpty();
+        }
+}
 }
