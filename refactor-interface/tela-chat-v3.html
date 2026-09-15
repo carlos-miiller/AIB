@@ -480,7 +480,8 @@
              desconhecido, "Abrir no cliente".
            – "IGNORAR"  [NOVO · 15/09/2026] — texto, geometria do SECUNDÁRIO,
              à direita dele. Tira a conversa da lista, do orbe e do que volta do
-             disco no arranque, SEM confirmação e sem tocar o servidor. Ela VOLTA
+             disco no arranque, DEPOIS DE CONFIRMAR (não há desfazer pela tela)
+             e sem tocar o servidor. Ela VOLTA
              quando chegar mensagem nova. Cada passada põe as ignoradas na lista
              de descartados; o registro fica em ~/.AIB/email/ignoradas.json.
            – DESCARTAR A CONVERSA  [NOVO · 15/09/2026] — só ícone de lixeira,
@@ -1269,8 +1270,9 @@
      [ ] Clique no e-mail EXPANDE o item, um aberto por vez.  [NOVO]
      [ ] Corpo do e-mail com dois botões: "Abrir com <personalidade>" (o nome
          vem do modelo, não em hard-code) e "Abrir no <provedor>".  [NOVO]
-     [ ] À direita de "Abrir no <provedor>", "Ignorar": a linha some na hora e
-         volta com mensagem nova na conversa.  [NOVO · 15/09/2026]
+     [ ] À direita de "Abrir no <provedor>", "Ignorar": pede confirmação, a
+         linha some ao confirmar e volta com mensagem nova na conversa.
+         [NOVO · 15/09/2026]
      [ ] À direita de "Ignorar", o ícone de descartar a conversa —
          só quando ela existe. Descartar não a traz de volta ao recomeçar o
          chat.  [NOVO · 15/09/2026]

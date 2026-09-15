@@ -274,14 +274,7 @@ public partial class ChatWindow
 
             item.PediuDescartarConversa += (_, _) => DescartarConversaDaLista(alvo);
 
-            // Sem confirmação: não apaga nada, e a conversa volta sozinha quando chegar mensagem
-            // nova. Um modal aqui transformaria arrumar a caixa em responder perguntas.
-            item.PediuIgnorar += (_, _) =>
-            {
-                IgnorarEmail?.Invoke(alvo);
-                if (ReferenceEquals(_emailAberto, alvo)) _emailAberto = null;
-                MontarCaixaDeEntrada();
-            };
+            item.PediuIgnorar += (_, _) => IgnorarDaLista(alvo);
 
             ListaDaCaixa.Children.Add(item);
         }
@@ -693,6 +686,39 @@ public partial class ChatWindow
 
         MontarCaixaDeEntrada();
         _painel?.Recarregar();
+    }
+
+    /// <summary>
+    /// "Ignorar" (§3.10), depois de o usuário confirmar.
+    /// <para>
+    /// A confirmação existe porque não há desfazer pela tela: a conversa só volta com mensagem
+    /// nova, e um clique errado num e-mail urgente o tiraria de vista sem aviso. A pergunta diz
+    /// isso — e diz que nada é apagado, para ninguém recusar achando que perderia o e-mail.
+    /// </para>
+    /// </summary>
+    private void IgnorarDaLista(MailSummary alvo)
+    {
+        if (IgnorarEmail == null) return;
+
+        bool confirmado;
+        using (ModalGuard.Enter())
+        {
+            confirmado = ConfirmDialog.Perguntar(
+                this,
+                "Ignorar esta conversa?",
+                "Ela sai da caixa de entrada da AIB e do orbe, e só volta quando chegar mensagem "
+                + "nova nela. Nada é apagado: o e-mail continua no servidor, e a conversa com a "
+                + "IA, se houver, continua no histórico.",
+                ferramenta: "e-mail",
+                alvo: alvo.Name,
+                dica: "não há desfazer pela tela");
+        }
+
+        if (!confirmado) return;
+
+        IgnorarEmail(alvo);
+        if (ReferenceEquals(_emailAberto, alvo)) _emailAberto = null;
+        MontarCaixaDeEntrada();
     }
 
     private void VoltarParaCaixa_Click(object sender, RoutedEventArgs e)
