@@ -557,8 +557,9 @@ namespace AIB.Tests
                                  @"C:\temp\emails fisio\email carlos.html", false, "+2 linhas, −1 linha"),
                     falhou: false, detalhe: null, saidaBruta: null,
                     troca: new TrocaDeTexto(
-                        "<td>Carlos Silva</td>",
-                        "<td>Carlos H. Souza</td>\n<td>carlos@exemplo.com</td>"));
+                        "\t\t\t\t<td><span style=\"font-size: 12px\">Carlos Silva</span></td>",
+                        "\t\t\t\t<td><span style=\"font-size: 12px\">Carlos H. Souza</span></td>\n"
+                        + "\t\t\t\t\t<td>carlos@exemplo.com</td>"));
 
                 var tooltipEdicao = (System.Windows.Controls.ToolTip)metodo.Invoke(painel, new object[] { edicao })!;
                 ((System.Windows.Controls.StackPanel)tooltipEdicao.Content).Children.Count

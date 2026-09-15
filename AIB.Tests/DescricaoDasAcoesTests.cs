@@ -52,6 +52,27 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void AntesEDepois_TiraORecuoComum_SemPerderOAlinhamento()
+        {
+            // Visto na tela: HTML com três tabulações antes do texto. Na caixa de 340px sem
+            // quebra, o recuo empurrava o conteúdo para fora e a linha mostrava só o "−".
+            var troca = new TrocaDeTexto(
+                "\t\t\t<span style=\"font-size: 12px\">",
+                "\t\t\t<span style=\"font-size: 14px\">\n\t\t\t\t<b>Thais</b>");
+
+            var (antes, depois) = troca.LinhasParaExibir();
+
+            antes.Should().Equal("<span style=\"font-size: 12px\">");
+            depois.Should().Equal("<span style=\"font-size: 14px\">", "    <b>Thais</b>");
+        }
+
+        [Fact]
+        public void AntesEDepois_TrechoApagado_NaoTemLinhaDeDepois()
+        {
+            new TrocaDeTexto("  x", "").LinhasParaExibir().Depois.Should().BeEmpty();
+        }
+
+        [Fact]
         public void AntesEDepois_TemTetoPorLado()
         {
             string args = $$"""{"path":"C:\\a.txt","old_string":"{{new string('a', 5000)}}","new_string":"b"}""";

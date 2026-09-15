@@ -755,12 +755,15 @@ public partial class SidePanelWindow : Window
             FontFamily = mono,
             FontSize = 10.5,
             Foreground = (Brush)FindResource(cor),
-            TextWrapping = TextWrapping.NoWrap
+            TextWrapping = TextWrapping.NoWrap,
+            // Linha que ainda não cabe termina em "…" em vez de ser cortada seca na borda:
+            // o corte seco não avisa que há mais.
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
 
-        void Lado(string trecho, string sinal, string cor, string fundo)
+        void Lado(IReadOnlyList<string> todas, string sinal, string cor, string fundo)
         {
-            if (trecho.Length == 0)
+            if (todas.Count == 0)
             {
                 // new_string vazio é apagar o trecho. Sem esta linha a caixa terminaria no
                 // vermelho, e pareceria que o "depois" se perdeu.
@@ -772,8 +775,6 @@ public partial class SidePanelWindow : Window
                 return;
             }
 
-            var todas = trecho.TrimEnd('\n').Split('\n');
-
             foreach (string linha in todas.Take(LinhasPorLadoDaTroca))
             {
                 linhas.Children.Add(new Border
@@ -784,18 +785,19 @@ public partial class SidePanelWindow : Window
                 });
             }
 
-            if (todas.Length > LinhasPorLadoDaTroca)
+            if (todas.Count > LinhasPorLadoDaTroca)
             {
                 linhas.Children.Add(new Border
                 {
                     Padding = new Thickness(8, 1, 8, 1),
-                    Child = Linha($"  … +{todas.Length - LinhasPorLadoDaTroca} linhas", "TextMutedBrush")
+                    Child = Linha($"  … +{todas.Count - LinhasPorLadoDaTroca} linhas", "TextMutedBrush")
                 });
             }
         }
 
-        Lado(troca.Antes, "−", "DangerTextBrush", "DangerFill12Brush");
-        Lado(troca.Depois, "+", "SuccessBrush", "SuccessFill10Brush");
+        var (antes, depois) = troca.LinhasParaExibir();
+        Lado(antes, "−", "DangerTextBrush", "DangerFill12Brush");
+        Lado(depois, "+", "SuccessBrush", "SuccessFill10Brush");
 
         return new Border
         {

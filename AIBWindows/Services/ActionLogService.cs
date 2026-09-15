@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
 using AIB.Services.Memory;
 
 namespace AIB.Services;
@@ -19,7 +20,50 @@ public enum ActionStatus
 /// O trecho que uma edição trocou: o que estava e o que entrou no lugar. Só para a tela —
 /// a seção ANTES E DEPOIS do tooltip. Os dois lados já chegam com teto.
 /// </summary>
-public sealed record TrocaDeTexto(string Antes, string Depois);
+public sealed record TrocaDeTexto(string Antes, string Depois)
+{
+    /// <summary>Largura de uma tabulação na exibição.</summary>
+    public const int EspacosPorTab = 4;
+
+    /// <summary>
+    /// As linhas de cada lado prontas para a tela: tabulação vira espaço e sai o recuo COMUM
+    /// aos dois lados.
+    /// <para>
+    /// Trecho de HTML ou código chega recuado — três, quatro tabulações antes do texto. Numa
+    /// caixa de 340px sem quebra de linha, esse recuo empurrava o conteúdo inteiro para fora da
+    /// área visível e a linha mostrava só o sinal de − ou +. O recuo comum não diz nada sobre a
+    /// troca; o recuo RELATIVO diz, e é preservado: a linha que entrou mais funda continua mais
+    /// funda que a vizinha.
+    /// </para>
+    /// </summary>
+    public (IReadOnlyList<string> Antes, IReadOnlyList<string> Depois) LinhasParaExibir()
+    {
+        var antes = Linhas(Antes);
+        var depois = Linhas(Depois);
+
+        int recuo = antes.Concat(depois)
+            .Where(l => l.Trim().Length > 0)
+            .Select(l => l.Length - l.TrimStart(' ').Length)
+            .DefaultIfEmpty(0)
+            .Min();
+
+        return (antes.Select(l => SemRecuo(l, recuo)).ToList(),
+                depois.Select(l => SemRecuo(l, recuo)).ToList());
+    }
+
+    private static List<string> Linhas(string? trecho) =>
+        string.IsNullOrEmpty(trecho)
+            ? new List<string>()
+            : trecho.Replace("\r", "")
+                    .Replace("\t", new string(' ', EspacosPorTab))
+                    .TrimEnd('\n')
+                    .Split('\n')
+                    .ToList();
+
+    // Linha em branco mais curta que o recuo vira vazia; as outras perdem só o recuo comum.
+    private static string SemRecuo(string linha, int recuo) =>
+        linha.Length >= recuo ? linha[recuo..] : linha.TrimStart(' ');
+}
 
 /// <summary>
 /// Uma linha do histórico de ações — §6.3 da spec de chat.
