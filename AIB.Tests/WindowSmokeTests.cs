@@ -551,6 +551,21 @@ namespace AIB.Tests
                 var tooltipBusca = (System.Windows.Controls.ToolTip)metodo.Invoke(painel, new object[] { busca })!;
                 DesenharSolto(tooltipBusca, "tooltip-bloco-busca", 380, 160);
 
+                var edicao = ActionLogService.Construir(
+                    "edit",
+                    new Artifact(ArtifactKind.FileWritten, "edit",
+                                 @"C:\temp\emails fisio\email carlos.html", false, "+2 linhas, −1 linha"),
+                    falhou: false, detalhe: null, saidaBruta: null,
+                    troca: new TrocaDeTexto(
+                        "<td>Carlos Silva</td>",
+                        "<td>Carlos H. Souza</td>\n<td>carlos@exemplo.com</td>"));
+
+                var tooltipEdicao = (System.Windows.Controls.ToolTip)metodo.Invoke(painel, new object[] { edicao })!;
+                ((System.Windows.Controls.StackPanel)tooltipEdicao.Content).Children.Count
+                    .Should().Be(3, "caminho, resultado e antes e depois");
+
+                DesenharSolto(tooltipEdicao, "tooltip-bloco-edicao", 380, 230);
+
                 painel.Close();
             });
         }

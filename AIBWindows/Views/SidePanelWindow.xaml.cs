@@ -703,6 +703,9 @@ public partial class SidePanelWindow : Window
                   Texto(acao.Result, falhou ? "DangerBrush" : "AccentLilacBrush"));
         }
 
+        if (acao.Troca is { } troca)
+            Secao("ANTES E DEPOIS", AntesEDepois(troca, mono));
+
         if (!string.IsNullOrWhiteSpace(acao.RawOutput))
         {
             Secao("SAÍDA BRUTA", new Border
@@ -729,6 +732,82 @@ public partial class SidePanelWindow : Window
 
         // Padding zero: a variante em bloco não tem o respiro da simples, cada seção traz o seu.
         return new System.Windows.Controls.ToolTip { Padding = new Thickness(0), Content = pilha };
+    }
+
+    /// <summary>Linhas mostradas de cada lado. O resto vira uma linha "… +N linhas".</summary>
+    private const int LinhasPorLadoDaTroca = 6;
+
+    /// <summary>
+    /// A seção ANTES E DEPOIS: as linhas que saíram em vermelho com "−", as que entraram em verde
+    /// com "+", na mesma caixa escura da SAÍDA BRUTA.
+    /// <para>
+    /// O teto é POR LADO, e não da caixa: com um teto só, um "antes" comprido empurraria o
+    /// "depois" para fora da área visível — e o depois é metade do que se veio ver.
+    /// </para>
+    /// </summary>
+    private Border AntesEDepois(TrocaDeTexto troca, System.Windows.Media.FontFamily mono)
+    {
+        var linhas = new StackPanel();
+
+        TextBlock Linha(string texto, string cor) => new()
+        {
+            Text = texto,
+            FontFamily = mono,
+            FontSize = 10.5,
+            Foreground = (Brush)FindResource(cor),
+            TextWrapping = TextWrapping.NoWrap
+        };
+
+        void Lado(string trecho, string sinal, string cor, string fundo)
+        {
+            if (trecho.Length == 0)
+            {
+                // new_string vazio é apagar o trecho. Sem esta linha a caixa terminaria no
+                // vermelho, e pareceria que o "depois" se perdeu.
+                linhas.Children.Add(new Border
+                {
+                    Padding = new Thickness(8, 1, 8, 1),
+                    Child = Linha("(trecho apagado)", "TextMutedBrush")
+                });
+                return;
+            }
+
+            var todas = trecho.TrimEnd('\n').Split('\n');
+
+            foreach (string linha in todas.Take(LinhasPorLadoDaTroca))
+            {
+                linhas.Children.Add(new Border
+                {
+                    Background = (Brush)FindResource(fundo),
+                    Padding = new Thickness(8, 1, 8, 1),
+                    Child = Linha($"{sinal} {linha}", cor)
+                });
+            }
+
+            if (todas.Length > LinhasPorLadoDaTroca)
+            {
+                linhas.Children.Add(new Border
+                {
+                    Padding = new Thickness(8, 1, 8, 1),
+                    Child = Linha($"  … +{todas.Length - LinhasPorLadoDaTroca} linhas", "TextMutedBrush")
+                });
+            }
+        }
+
+        Lado(troca.Antes, "−", "DangerTextBrush", "DangerFill12Brush");
+        Lado(troca.Depois, "+", "SuccessBrush", "SuccessFill10Brush");
+
+        return new Border
+        {
+            Background = (Brush)FindResource("SurfaceCodeBrush"),
+            BorderBrush = (Brush)FindResource("DividerBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(7),
+            Padding = new Thickness(0, 6, 0, 6),
+            MaxHeight = (double)FindResource("TooltipDiffMaxHeight"),
+            ClipToBounds = true,
+            Child = linhas
+        };
     }
 
     // ─────────────────────────────────────────────────────────────────────

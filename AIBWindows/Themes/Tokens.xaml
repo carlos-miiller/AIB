@@ -97,6 +97,7 @@
     <SolidColorBrush x:Key="DangerFill12Brush"  Color="#1FE5484D"/>  <!-- marcador destrutivo do log -->
     <SolidColorBrush x:Key="DangerFill14Brush"  Color="#24E5484D"/>  <!-- pill "Ação destrutiva" -->
     <SolidColorBrush x:Key="DangerFill16Brush"  Color="#29E5484D"/>  <!-- hover do botão fechar -->
+    <SolidColorBrush x:Key="SuccessFill10Brush" Color="#1A4ADE80"/>  <!-- linha que entra no antes e depois -->
     <SolidColorBrush x:Key="DangerEdge32Brush"  Color="#52E5484D"/>  <!-- borda da pill destrutiva -->
 
     <SolidColorBrush x:Key="WarnFill10Brush"    Color="#1AE28743"/>  <!-- faixa de contexto cheio -->
@@ -249,6 +250,7 @@
     <sys:Double x:Key="ActionIconSize">22</sys:Double>
     <sys:Double x:Key="TooltipBlockWidth">340</sys:Double>
     <sys:Double x:Key="TooltipRawMaxHeight">118</sys:Double>
+    <sys:Double x:Key="TooltipDiffMaxHeight">180</sys:Double>
     <sys:Double x:Key="LogDotSize">25</sys:Double>
     <sys:Double x:Key="FileTypeIconSize">26</sys:Double>
 

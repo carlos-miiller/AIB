@@ -178,6 +178,8 @@ namespace AIB.Tests
             acoes[0].Tool.Should().Be("edit");
             acoes[0].FullTarget.Should().Be(@"C:\temp\a.html");
             acoes[0].Result.Should().Be("+1 linha, −1 linha");
+            acoes[0].Troca.Should().Be(new TrocaDeTexto("Ana", "Bia"), "o antes e depois volta junto");
+            acoes[1].Troca.Should().BeNull();
             acoes[0].Timestamp.Should().Be(quando.ToLocalTime(), "a hora é a gravada, não a da reabertura");
 
             acoes[1].Status.Should().Be(ActionStatus.Failed);

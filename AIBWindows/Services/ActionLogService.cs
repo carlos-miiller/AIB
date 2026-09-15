@@ -16,6 +16,12 @@ public enum ActionStatus
 }
 
 /// <summary>
+/// O trecho que uma edição trocou: o que estava e o que entrou no lugar. Só para a tela —
+/// a seção ANTES E DEPOIS do tooltip. Os dois lados já chegam com teto.
+/// </summary>
+public sealed record TrocaDeTexto(string Antes, string Depois);
+
+/// <summary>
 /// Uma linha do histórico de ações — §6.3 da spec de chat.
 /// <para>
 /// Guarda o LITERAL: caminho completo, linha de comando exata, saída bruta. É o mesmo princípio
@@ -42,6 +48,9 @@ public sealed class ActionLogEntry
 
     /// <summary>Resumo curto: "12 arquivos", "+8 linhas". Em falha, a mensagem do erro.</summary>
     public string? Result { get; init; }
+
+    /// <summary>Antes e depois de uma edição; nulo nas outras ferramentas.</summary>
+    public TrocaDeTexto? Troca { get; init; }
 
     public ArtifactKind Kind { get; init; } = ArtifactKind.CommandRun;
 
@@ -157,6 +166,7 @@ public static class ActionLogService
     /// </param>
     /// <param name="resumo">Resultado resumido, quando o artefato não traz um.</param>
     /// <param name="quando">Hora da ação. Vazio é agora; a reconstrução passa a hora gravada.</param>
+    /// <param name="troca">O antes e depois, quando a ação foi uma edição.</param>
     public static ActionLogEntry Construir(
         string ferramenta,
         Artifact? artefato,
@@ -165,7 +175,8 @@ public static class ActionLogService
         string? saidaBruta,
         string? argumento = null,
         string? resumo = null,
-        DateTime? quando = null)
+        DateTime? quando = null,
+        TrocaDeTexto? troca = null)
     {
         string literal = artefato?.Value
                          ?? (string.IsNullOrWhiteSpace(argumento) ? ferramenta : argumento);
@@ -180,6 +191,7 @@ public static class ActionLogService
             Command = tipo == ArtifactKind.CommandRun ? literal : null,
             RawOutput = saidaBruta,
             Result = falhou ? (detalhe ?? artefato?.Detail ?? "falhou") : (artefato?.Detail ?? resumo),
+            Troca = troca,
             Kind = tipo,
             Status = falhou ? ActionStatus.Failed : ActionStatus.Done,
             Timestamp = quando ?? DateTime.Now
@@ -242,7 +254,8 @@ public static class ActionLogService
                     ArtifactExtractor.SaidaBruta(feita.Name, resultado),
                     ArtifactExtractor.ResumirArgumento(feita.Name, feita.Arguments),
                     falhou ? null : ArtifactExtractor.ResumirResultado(feita.Name, resultado),
-                    quando));
+                    quando,
+                    ArtifactExtractor.TrocaDaEdicao(feita.Name, feita.Arguments)));
             }
         }
 

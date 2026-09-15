@@ -65,6 +65,7 @@ public abstract record ChatStreamItem
     /// </param>
     /// <param name="Summary">Resultado resumido para a tela: "12 arquivos", "3 acertos em 2 arquivos".</param>
     /// <param name="RawOutput">Saída como saiu, para a seção SAÍDA BRUTA do tooltip; já com teto.</param>
+    /// <param name="Change">O antes e depois, quando a ferramenta foi <c>edit</c>.</param>
     public sealed record ToolFinished(
         string Id,
         string Tool,
@@ -74,5 +75,6 @@ public abstract record ChatStreamItem
         string? Detail,
         string Argument = "",
         string? Summary = null,
-        string? RawOutput = null) : ChatStreamItem;
+        string? RawOutput = null,
+        TrocaDeTexto? Change = null) : ChatStreamItem;
 }

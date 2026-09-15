@@ -520,7 +520,8 @@ public partial class ChatWindow : Window
             acao.Detail,
             acao.RawOutput,
             acao.Argument,
-            acao.Summary));
+            acao.Summary,
+            troca: acao.Change));
 
         // Só arquivo entra na lista de contexto, e só quando a ação deu certo: um caminho que
         // falhou ou foi recusado não está no contexto de coisa nenhuma.

@@ -39,6 +39,43 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void Edicao_GuardaOAntesEODepois_ParaOTooltip()
+        {
+            var troca = ArtifactExtractor.TrocaDaEdicao("edit", ArgsEdit);
+
+            troca.Should().NotBeNull();
+            troca!.Antes.Should().Be("<b>Ana</b>");
+            troca.Depois.Should().Be("<b>Bia</b>\n<i>nova</i>");
+
+            ArtifactExtractor.TrocaDaEdicao("write", """{"path":"C:\\a.txt","content":"x"}""")
+                .Should().BeNull("o write não guarda o conteúdo anterior — um antes inventado seria pior");
+        }
+
+        [Fact]
+        public void AntesEDepois_TemTetoPorLado()
+        {
+            string args = $$"""{"path":"C:\\a.txt","old_string":"{{new string('a', 5000)}}","new_string":"b"}""";
+
+            var troca = ArtifactExtractor.TrocaDaEdicao("edit", args)!;
+
+            troca.Antes.Length.Should().BeLessThanOrEqualTo(ArtifactExtractor.TetoDaTroca + 1);
+            troca.Depois.Should().Be("b");
+        }
+
+        [Fact]
+        public void EdicaoNoRegistro_LevaOAntesEODepois()
+        {
+            var troca = ArtifactExtractor.TrocaDaEdicao("edit", ArgsEdit);
+
+            ChatWindow.RegistrarAcao(new ChatStreamItem.ToolFinished(
+                "1", "edit", Failed: false, Denied: false, Artifact: null, Detail: null,
+                Argument: ArtifactExtractor.ResumirArgumento("edit", ArgsEdit),
+                Change: troca));
+
+            ActionLogService.Entries[0].Troca.Should().Be(troca);
+        }
+
+        [Fact]
         public void Edicao_ComVariasTrocas_MultiplicaAsLinhas()
         {
             const string args =

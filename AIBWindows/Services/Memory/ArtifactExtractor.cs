@@ -196,6 +196,34 @@ public static class ArtifactExtractor
         }
     }
 
+    /// <summary>Teto de cada lado do antes e depois. Mesmo motivo do teto da saída bruta.</summary>
+    public const int TetoDaTroca = 2000;
+
+    /// <summary>
+    /// O antes e depois de uma edição, para a seção ANTES E DEPOIS do tooltip.
+    /// <para>
+    /// Sai dos ARGUMENTOS, e não do arquivo: é exatamente o trecho que o modelo pediu para trocar,
+    /// que é o que foi autorizado no card. Vale também quando a edição falhou ou foi recusada —
+    /// ver o que se tentou trocar é o que explica a falha. Nulo para qualquer outra ferramenta:
+    /// o <c>write</c> não guarda o conteúdo anterior, e um "antes" inventado seria pior que nenhum.
+    /// </para>
+    /// </summary>
+    public static TrocaDeTexto? TrocaDaEdicao(string ferramenta, string argumentosJson)
+    {
+        if (ferramenta != Ferramentas.Editar) return null;
+
+        string antes = StringDe(argumentosJson, "old_string");
+        if (antes.Length == 0) return null;
+
+        return new TrocaDeTexto(ComTetoDeTroca(antes), ComTetoDeTroca(StringDe(argumentosJson, "new_string")));
+    }
+
+    private static string ComTetoDeTroca(string trecho)
+    {
+        string t = trecho.Replace("\r", "");
+        return t.Length <= TetoDaTroca ? t : t[..TetoDaTroca] + "…";
+    }
+
     /// <summary>Teto da saída guardada para o tooltip. O registro tem 500 entradas e vive em memória.</summary>
     public const int TetoDaSaidaBruta = 4000;
 
