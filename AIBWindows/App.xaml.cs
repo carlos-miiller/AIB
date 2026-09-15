@@ -314,6 +314,10 @@ public partial class App : System.Windows.Application
                                               ?? (System.Collections.Generic.IReadOnlyList<MailSummary>)
                                                  Array.Empty<MailSummary>();
 
+            // "Ignorar" (§3.10): tira a conversa da tela até chegar mensagem nova. Não toca o
+            // servidor — a caixa continua somente leitura.
+            _chatWindow.IgnorarEmail = item => _vigia?.Ignorar(item);
+
             // "Recarregar" (§3.11): relê UMA conversa no servidor e refaz o resumo. Sem vigia
             // não há o que reler, e a janela avisa em vez de fingir que releu.
             _chatWindow.RecarregarEmail = (item, ct) =>

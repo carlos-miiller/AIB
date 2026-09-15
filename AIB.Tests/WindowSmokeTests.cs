@@ -641,6 +641,7 @@ namespace AIB.Tests
                     Aberto = true,
                     NomeDaInteligencia = "Kai",
                     RotuloDoCliente = "Abrir no Gmail",
+                    PodeIgnorar = true,
                     TemConversa = true
                 };
 

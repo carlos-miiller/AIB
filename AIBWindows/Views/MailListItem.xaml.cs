@@ -171,9 +171,35 @@ namespace AIB.Views
             set => SetValue(TemConversaProperty, value);
         }
 
+        /// <summary>
+        /// Há quem guarde o que for ignorado. Na lista da área central, sim; no orbe, não.
+        /// Visibilidade pelo callback, pelo mesmo motivo de <see cref="TemConversa"/>.
+        /// </summary>
+        public static readonly DependencyProperty PodeIgnorarProperty =
+            DependencyProperty.Register(
+                nameof(PodeIgnorar), typeof(bool), typeof(MailListItem),
+                new PropertyMetadata(false, (d, e) =>
+                    ((MailListItem)d).BotaoIgnorar.Visibility =
+                        (bool)e.NewValue ? Visibility.Visible : Visibility.Collapsed));
+
+        public bool PodeIgnorar
+        {
+            get => (bool)GetValue(PodeIgnorarProperty);
+            set => SetValue(PodeIgnorarProperty, value);
+        }
+
         // ─────────────────────────────────────────────────────────────────────
         // O que o item pede
         // ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>"Ignorar": tirar da lista até chegar mensagem nova. Não toca o servidor.</summary>
+        public event EventHandler? PediuIgnorar;
+
+        private void Ignorar_Click(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;   // não deixa o clique subir e fechar o acordeão
+            PediuIgnorar?.Invoke(this, EventArgs.Empty);
+        }
 
         /// <summary>Descartar a conversa havida com a IA sobre este e-mail — o e-mail não é tocado.</summary>
         public event EventHandler? PediuDescartarConversa;

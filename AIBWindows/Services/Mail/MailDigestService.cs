@@ -97,7 +97,8 @@ public sealed class MailDigestService : IDisposable
         VigiasDoEmail? vigias = null,
         string? raizDeDados = null,
         DiarioDeTriagem? diario = null,
-        ArquivoDeConversas? conversas = null)
+        ArquivoDeConversas? conversas = null,
+        ConversasIgnoradas? ignoradas = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _email = email ?? throw new ArgumentNullException(nameof(email));
@@ -109,7 +110,31 @@ public sealed class MailDigestService : IDisposable
         _vigias = vigias ?? new VigiasDoEmail();
         _diario = diario ?? new DiarioDeTriagem(raizDeDados);
         _conversas = conversas ?? new ArquivoDeConversas(raizDeDados);
+        _ignoradas = ignoradas ?? new ConversasIgnoradas(raizDeDados);
         _marco = new MarcoDoVigia(raizDeDados);
+    }
+
+    private readonly ConversasIgnoradas _ignoradas;
+
+    /// <summary>
+    /// O botão "Ignorar" de §3.10: tira a conversa da tela até chegar mensagem nova nela.
+    /// <para>
+    /// Sai de <see cref="Ultimo"/> na hora, e não na próxima passada: quem clica espera ver a
+    /// linha sumir. Não dispara <see cref="Pronto"/> — tirar um item não é novidade para anunciar.
+    /// </para>
+    /// </summary>
+    public void Ignorar(MailSummary item)
+    {
+        if (item == null) return;
+
+        _ignoradas.Ignorar(item);
+
+        // Linha de log por clique: o registro de execução é onde se confere, depois, por que uma
+        // conversa sumiu da tela.
+        Console.WriteLine($"[VIGIA] conversa ignorada por você: {ConversasIgnoradas.ChaveDe(item)} " +
+                          "— volta quando chegar mensagem nova.");
+
+        Ultimo = Ultimo with { Itens = _ignoradas.Filtrar(Ultimo.Itens).Visiveis };
     }
 
     /// <summary>Um digest ficou pronto e tem algo a dizer.</summary>
@@ -818,17 +843,23 @@ public sealed class MailDigestService : IDisposable
                     De: e.De));
             }
 
-            if (itens.Count == 0) return 0;
+            // As ignoradas ficam de fora também no arranque: sem isto, cada reinicialização
+            // devolvia à tela tudo o que o usuário tinha mandado ignorar.
+            var (visiveis, ignoradas) = _ignoradas.Filtrar(itens);
+            if (ignoradas > 0)
+                Console.WriteLine($"[VIGIA] {ignoradas} conversa(s) ignorada(s) por você ficaram fora da tela.");
+
+            if (visiveis.Count == 0) return 0;
 
             Ultimo = new DigestoDeEmail(
-                Ordenar(itens),
+                Ordenar(visiveis),
                 Lidas: 0,
                 Descartadas: Array.Empty<Descartada>(),
                 Rajadas: Array.Empty<Rajada>(),
-                QuandoUtc: itens.Max(i => i.LastMessageAt).ToUniversalTime());
+                QuandoUtc: visiveis.Max(i => i.LastMessageAt).ToUniversalTime());
 
-            Console.WriteLine($"[VIGIA] {itens.Count} conversa(s) de volta do disco.");
-            return itens.Count;
+            Console.WriteLine($"[VIGIA] {visiveis.Count} conversa(s) de volta do disco.");
+            return visiveis.Count;
         }
         catch (Exception ex)
         {
@@ -854,6 +885,22 @@ public sealed class MailDigestService : IDisposable
 
     private DigestoDeEmail Publicar(DigestoDeEmail digesto)
     {
+        // As que o usuário mandou ignorar saem da tela e do orbe, e entram na lista de
+        // descartados com o motivo: a regra 6 não aceita que algo suma sem deixar rastro. Uma
+        // resposta nova numa conversa ignorada NÃO sai — ver ConversasIgnoradas.Filtrar.
+        var (visiveis, ignoradas) = _ignoradas.Filtrar(digesto.Itens);
+        if (ignoradas > 0)
+        {
+            digesto = digesto with
+            {
+                Itens = visiveis,
+                Descartadas = digesto.Descartadas
+                    .Append(new Descartada("(você)", $"{ignoradas} conversa(s) ignorada(s)",
+                        "ignorada por você; volta quando chegar mensagem nova", ignoradas))
+                    .ToList()
+            };
+        }
+
         // MensagensDescartadas, e não Descartadas.Count: a linha da triagem vale por dezenas.
         Console.WriteLine($"[VIGIA] {digesto.Lidas} lida(s), {digesto.Itens.Count} na tela, " +
                           $"{digesto.MensagensDescartadas} descartada(s) em " +

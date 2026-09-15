@@ -490,6 +490,30 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void OIgnorar_ESTA_NoItemDaLista_SoOndeHaQuemGuarde()
+        {
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var item = new MailListItem { DataContext = Email(), Aberto = true };
+                var botao = (Button)item.FindName("BotaoIgnorar");
+
+                botao.Visibility.Should().Be(Visibility.Collapsed,
+                    "no orbe não há quem guarde o que foi ignorado, e o botão não faria nada");
+
+                item.PodeIgnorar = true;
+                botao.Visibility.Should().Be(Visibility.Visible);
+
+                bool pediu = false;
+                item.PediuIgnorar += (_, _) => pediu = true;
+                botao.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
+                pediu.Should().BeTrue();
+            });
+        }
+
+        [Fact]
         public void ODescarteDaConversa_ESTA_NoItemDaLista_SoQuandoHaConversa()
         {
             // O descarte só existia na leitura (§3.11), e chegar lá é "Abrir com <NOME>" — que

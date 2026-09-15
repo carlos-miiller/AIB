@@ -1182,6 +1182,35 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void Ignorar_TiraDaTelaNaHora_EContinuaForaDepoisDoArranque()
+        {
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+
+            JaTriado(pasta, "10", "Contrato", "Maxima", Ontem);
+            JaTriado(pasta, "11", "Reunião", "Media", Ontem);
+            vigia.Reconstituir().Should().Be(2);
+
+            var contrato = vigia.Ultimo.Itens.Single(i => i.Name == "Contrato");
+            vigia.Ignorar(contrato);
+
+            vigia.Ultimo.Itens.Select(i => i.Name).Should().Equal(new[] { "Reunião" },
+                "quem clica espera ver a linha sumir, e não na próxima passada");
+
+            // Arranque novo, mesma pasta: sem o filtro no Reconstituir, cada reinicialização
+            // devolvia à tela tudo o que o usuário tinha mandado ignorar.
+            var reaberto = new MailDigestService(
+                new SettingsService(Path.Combine(pasta, "settings.json")),
+                new EmailFalso(Array.Empty<MensagemDeEmail>()), UltimaFabrica!,
+                new MailVault(pasta), new EstadoDasCaixas(pasta),
+                caminhoDasRegras: Path.Combine(pasta, "regras.md"),
+                vigias: new VigiasDoEmail(pasta),
+                raizDeDados: pasta);
+
+            reaberto.Reconstituir().Should().Be(1);
+            reaberto.Ultimo.Itens.Should().ContainSingle().Which.Name.Should().Be("Reunião");
+        }
+
+        [Fact]
         public void AoVoltarDoDisco_NadaFOI_LidoAgora()
         {
             // Escrever "21 lidas" aqui creditaria a este arranque o trabalho do anterior.

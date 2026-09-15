@@ -44,6 +44,13 @@ public partial class ChatWindow
     /// </summary>
     public Func<IReadOnlyList<MailSummary>>? FonteDeEmails { get; set; }
 
+    /// <summary>
+    /// O "Ignorar" de §3.10. Delegado, como <see cref="FonteDeEmails"/>: quem guarda o que foi
+    /// ignorado é o vigia. Sem ele o botão não aparece — um "Ignorar" que não esconde nada
+    /// ensinaria que o botão não funciona.
+    /// </summary>
+    public Action<MailSummary>? IgnorarEmail { get; set; }
+
     /// <summary>Se existe caixa com senha no cofre — é isto que escolhe entre a lista e o
     /// convite de §3.10.</summary>
     private bool HaCaixaDeEmailPronta() =>
@@ -245,6 +252,7 @@ public partial class ChatWindow
                 RotuloDoCliente = RotuloDoCliente(conversa),
                 TemConversa = comConversa.Contains(
                     ArquivoDeConversas.Chave(conversa.Account, conversa.ThreadId, 0)),
+                PodeIgnorar = IgnorarEmail != null,
                 Margin = new Thickness(0, 0, 0, 8)
             };
 
@@ -265,6 +273,15 @@ public partial class ChatWindow
             item.PediuAbrirComIA += (_, _) => AbrirEmailNoChat(alvo);
 
             item.PediuDescartarConversa += (_, _) => DescartarConversaDaLista(alvo);
+
+            // Sem confirmação: não apaga nada, e a conversa volta sozinha quando chegar mensagem
+            // nova. Um modal aqui transformaria arrumar a caixa em responder perguntas.
+            item.PediuIgnorar += (_, _) =>
+            {
+                IgnorarEmail?.Invoke(alvo);
+                if (ReferenceEquals(_emailAberto, alvo)) _emailAberto = null;
+                MontarCaixaDeEntrada();
+            };
 
             ListaDaCaixa.Children.Add(item);
         }

@@ -296,6 +296,18 @@
                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
                             Click="AbrirNoCliente_Click"/>
 
+                    <!-- IGNORAR: tira a conversa da lista até chegar mensagem nova.
+                         Texto e geometria da secundária — é arrumação, não saída do app
+                         nem destruição. Nasce recolhido: só aparece onde há quem guarde
+                         o que foi ignorado (a lista da área central, não o orbe). -->
+                    <Button x:Name="BotaoIgnorar"
+                            Margin="8,0,0,0"
+                            Visibility="Collapsed"
+                            Style="{StaticResource AcaoSecundariaDoCorpo}"
+                            Content="Ignorar"
+                            ToolTip="Tirar da lista até chegar mensagem nova nesta conversa"
+                            Click="Ignorar_Click"/>
+
                     <!-- DESCARTAR a conversa com a IA sobre este e-mail.
                          Só ícone, e com a geometria da secundária: é a única ação do
                          corpo sem desfazer, e um terceiro rótulo do mesmo peso convida
