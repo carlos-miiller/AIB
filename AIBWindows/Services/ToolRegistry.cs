@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using OpenAI.Chat;
+using AIB.Services.Mail;
 using AIB.Services.Tools;
 
 namespace AIB.Services;
@@ -33,8 +34,30 @@ public class ToolRegistry
         RegisterNativeTools();
     }
 
+    /// <summary>
+    /// A thread de e-mail à qual a conversa aberta está ligada (<c>conta|thr:id</c>), ou vazio.
+    /// Quem liga é o <see cref="ConversationService"/>; o registry só pergunta.
+    /// </summary>
+    public Func<string>? ChaveDaConversaDeEmail { get; set; }
+
+    /// <summary>
+    /// Se há texto original de e-mail no contexto vivo da conversa. É o que faz o card de
+    /// confirmação avisar — e o que suspende o "sempre permitir" enquanto durar.
+    /// </summary>
+    public Func<bool>? ConteudoDeEmailNoContexto { get; set; }
+
+    private bool EmConversaDeEmail => !string.IsNullOrWhiteSpace(ChaveDaConversaDeEmail?.Invoke());
+
+    /// <remarks>
+    /// <c>mail_read</c> só é oferecida na conversa DE um e-mail. Fora dela não há o que ler, e o
+    /// schema custaria tokens em toda requisição para uma ferramenta que só responderia erro.
+    /// </remarks>
     public List<ChatTool> GetActiveTools(int userLevel)
-        => _tools.Values.Where(t => t.RequiredLevel <= userLevel).Select(t => t.ChatToolDefinition).ToList();
+        => _tools.Values
+            .Where(t => t.RequiredLevel <= userLevel)
+            .Where(t => t.Name != Ferramentas.LerEmail || EmConversaDeEmail)
+            .Select(t => t.ChatToolDefinition)
+            .ToList();
 
     public (List<ITool> Natives, List<ITool> Dynamics) GetCategorizedTools()
     {
@@ -104,8 +127,14 @@ public class ToolRegistry
         string comando = ctx.Command ?? "";
         var chave = (tool.Name, comando, (string?)null);
 
+        // Texto de e-mail no contexto: o pedido desta ação pode ter vindo de instruções escritas
+        // por terceiros. O card avisa, e o "sempre permitir" deixa de pular a pergunta — uma
+        // autorização dada antes, com outro contexto, não cobre o que o e-mail pode ter pedido.
+        bool comEmail = ConteudoDeEmailNoContexto?.Invoke() == true;
+        ctx.ConteudoDeEmailNoContexto = comEmail;
+
         // "Sempre permitir" vale só nesta sessão e casa byte a byte no comando exato.
-        if (AlwaysAllowSession.Contains(chave))
+        if (AlwaysAllowSession.Contains(chave) && !comEmail)
         {
             await AuditLogService.AppendAsync(new { evento = "allow_sessao", ferramenta = tool.Name, comando, userLevel });
         }
@@ -134,7 +163,8 @@ public class ToolRegistry
                 ferramenta = tool.Name,
                 comando,
                 userLevel,
-                semprePermitir = sempre
+                semprePermitir = sempre,
+                conteudoDeEmail = comEmail
             });
 
             if (!permitido) return (false, "Ação Rejeitada pelo Usuário.");
@@ -183,7 +213,17 @@ public class ToolRegistry
             // Registrada SEMPRE, e não só quando a triagem está ligada. Com ela fora, o modelo
             // não sabe que a pergunta tem resposta possível e chuta — e chutar sobre a caixa de
             // entrada de alguém é o pior desfecho. Desligada, ela responde exatamente isso.
-            new ConsultarEmailsTool(_settingsService)
+            new ConsultarEmailsTool(_settingsService),
+
+            // Registrada sempre, oferecida só na conversa de um e-mail (GetActiveTools). Tudo o
+            // que ela precisa é lido NA CHAMADA: a conta pode ter sido desconectada, e a senha
+            // trocada, desde que o app abriu.
+            new LerEmailTool(
+                () => ChaveDaConversaDeEmail?.Invoke() ?? "",
+                () => _settingsService?.LoadSettings().MailAccounts ?? new List<MailAccountSettings>(),
+                endereco => new MailVault().Ler(endereco),
+                () => new MailKitMailService(
+                    _settingsService?.LoadSettings().MailTimeoutSeconds ?? new UserAppSettings().MailTimeoutSeconds))
         };
 
         foreach (var tool in nativeTools)

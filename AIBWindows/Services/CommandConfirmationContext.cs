@@ -8,5 +8,11 @@
         public string DenylistReason { get; set; } = "";
         public string ScriptBody { get; set; } = "";
         public string Interpreter { get; set; } = "";
+
+        /// <summary>
+        /// Há texto original de e-mail no contexto da conversa. O card avisa que o pedido pode
+        /// ter vindo de instruções escritas no e-mail, e não do usuário.
+        /// </summary>
+        public bool ConteudoDeEmailNoContexto { get; set; }
     }
 }

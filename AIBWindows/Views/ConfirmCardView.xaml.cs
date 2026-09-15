@@ -67,9 +67,15 @@ public partial class ConfirmCardView : UserControl
             MotivoText.Visibility = Visibility.Visible;
         }
 
+        if (contexto.ConteudoDeEmailNoContexto)
+            AvisoEmailText.Visibility = Visibility.Visible;
+
         // "Sempre permitir" só faz sentido para comando: ele é casado pelo texto exato do
-        // comando na sessão. Para as demais ferramentas seria uma autorização vaga.
-        SempreCheck.Visibility = ferramenta == Ferramentas.Shell ? Visibility.Visible : Visibility.Collapsed;
+        // comando na sessão. Para as demais ferramentas seria uma autorização vaga. Com e-mail
+        // no contexto some também: o portão não o respeita enquanto houver texto de terceiros.
+        SempreCheck.Visibility = ferramenta == Ferramentas.Shell && !contexto.ConteudoDeEmailNoContexto
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
         // O foco nasce em "Recusar". Enter sem ler o card não pode executar nada.
         Loaded += (_, _) => RecusarButton.Focus();

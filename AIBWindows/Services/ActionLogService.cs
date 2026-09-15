@@ -135,7 +135,7 @@ public sealed class ActionLogEntry
     {
         _ when Command != null => "COMANDO",
         Ferramentas.Procurar or Ferramentas.Buscar => "BUSCA",
-        Ferramentas.Email => "CONSULTA",
+        Ferramentas.Email or Ferramentas.LerEmail => "CONSULTA",
         _ => "CAMINHO COMPLETO"
     };
 }
@@ -331,7 +331,8 @@ public static class ActionLogService
     /// </summary>
     private static ArtifactKind TipoPeloNome(string ferramenta) => ferramenta switch
     {
-        Ferramentas.Ler or Ferramentas.Procurar or Ferramentas.Buscar or Ferramentas.Email => ArtifactKind.FileRead,
+        Ferramentas.Ler or Ferramentas.Procurar or Ferramentas.Buscar
+            or Ferramentas.Email or Ferramentas.LerEmail => ArtifactKind.FileRead,
         Ferramentas.Gravar or Ferramentas.Editar => ArtifactKind.FileWritten,
         _ => ArtifactKind.CommandRun
     };

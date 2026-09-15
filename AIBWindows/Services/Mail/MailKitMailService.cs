@@ -407,7 +407,8 @@ public sealed class MailKitMailService : IMailService
     /// garantindo que ler não marque nada como lido.
     /// </para>
     /// </summary>
-    private static async Task<string> CorpoAsync(IMailFolder inbox, IMessageSummary r, CancellationToken ct)
+    private static async Task<string> CorpoAsync(
+        IMailFolder inbox, IMessageSummary r, CancellationToken ct, int teto = MensagemDeEmail.TetoDoCorpo)
     {
         var parte = r.TextBody ?? r.HtmlBody;
         if (parte == null) return "";
@@ -419,7 +420,7 @@ public sealed class MailKitMailService : IMailService
 
             // A limpeza vale para os DOIS: a parte de texto de um e-mail de marketing também
             // vem cheia de URL de rastreamento e de moldura de tabela em ASCII.
-            return MensagemDeEmail.Encurtar(texto.Text);
+            return MensagemDeEmail.Encurtar(texto.Text, teto);
         }
         catch (OperationCanceledException)
         {
@@ -511,7 +512,8 @@ public sealed class MailKitMailService : IMailService
         string senhaDeApp,
         ImapEndpoint endpoint,
         string threadId,
-        CancellationToken ct)
+        CancellationToken ct,
+        int tetoDoCorpo = MensagemDeEmail.TetoDoCorpo)
     {
         // Sem X-GM-THRID não existe "a conversa" para reler: cada mensagem é a própria, e
         // buscar por assunto traria mensagens de outras pessoas com o mesmo título.
@@ -552,7 +554,7 @@ public sealed class MailKitMailService : IMailService
             {
                 ct.ThrowIfCancellationRequested();
 
-                string corpo = await CorpoAsync(inbox, r, ct).ConfigureAwait(false);
+                string corpo = await CorpoAsync(inbox, r, ct, tetoDoCorpo).ConfigureAwait(false);
                 mensagens.Add(Converter(r, endereco, corpo));
             }
 

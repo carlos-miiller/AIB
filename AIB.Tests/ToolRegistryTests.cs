@@ -192,7 +192,7 @@ namespace AIB.Tests
 
             var (natives, dynamics) = registry.GetCategorizedTools();
 
-            natives.Should().HaveCount(7);
+            natives.Should().HaveCount(8, "mail_read é registrada sempre, e só oferecida na conversa de um e-mail");
             dynamics.Should().BeEmpty("no lazy loading as skills não entram no registry");
         }
 

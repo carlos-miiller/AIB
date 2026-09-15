@@ -317,7 +317,11 @@ public sealed class Compactor
                 {
                     // Resultado truncado: o conteúdo inteiro de um arquivo lido não ajuda a
                     // resumir e é justamente o que estoura o contexto do resumidor.
-                    texto.Append("RESULTADO: ").Append(Truncate(Turn.TextOf(t), 300)).Append('\n');
+                    // A redação vem ANTES do corte: truncar primeiro poderia arrancar o marcador
+                    // de fim e deixar parte do corpo de e-mail no texto do resumidor.
+                    texto.Append("RESULTADO: ")
+                         .Append(Truncate(AIB.Services.Mail.ConteudoDeTerceiros.Redigir(Turn.TextOf(t)), 300))
+                         .Append('\n');
                 }
             }
 

@@ -1281,8 +1281,12 @@
      [ ] O painel lateral NÃO tem mais aba de e-mails.  [NOVO]
      [ ] Em §3.11 o cartão de e-mail em contexto ocupa a coluna inteira, sem
          os 74% das bolhas, e NÃO tem autor.  [NOVO]
-     [ ] Em §3.11 o que desce para o modelo é o veredito — remetente, assunto,
-         urgência e resumo — e NUNCA o corpo.  [NOVO]
+     [ ] Em §3.11 o que ABRE a conversa é o veredito — remetente, assunto,
+         urgência e resumo. O texto original só desce quando o modelo o pede,
+         pela ferramenta mail_read (somente leitura, só a thread da conversa),
+         e NUNCA é gravado: raw.jsonl, resumidor e log recebem "[corpo omitido]".
+         Enquanto ele estiver no contexto, o card de confirmação avisa e o
+         "sempre permitir" não pula a pergunta.  [NOVO · 15/09/2026]
      [ ] "Recarregar" desabilita o botão e gira o ícone; o botão não some, para
          a linha não pular de largura.  [NOVO]
      [ ] Aba de arquivos: ícone pelo TIPO; operação só na pill de origem.

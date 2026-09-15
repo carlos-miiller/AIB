@@ -75,6 +75,13 @@
                        FontSize="11.5" Foreground="{StaticResource WarnBrush}"
                        TextWrapping="Wrap" Margin="0,8,0,0"/>
 
+            <!-- Texto de e-mail no contexto: o pedido pode ter vindo de terceiros.
+                 Mesma forma do motivo de bloqueio, que já é o aviso do card. -->
+            <TextBlock x:Name="AvisoEmailText" Visibility="Collapsed"
+                       FontSize="11.5" Foreground="{StaticResource WarnBrush}"
+                       TextWrapping="Wrap" Margin="0,8,0,0"
+                       Text="Há texto de um e-mail nesta conversa. Se você não pediu esta ação, ela pode ter vindo de instruções escritas no e-mail — confira antes de permitir."/>
+
             <!-- (e) RODAPÉ separado por divisória. -->
             <Rectangle Height="1" Fill="{StaticResource DividerBrush}" Margin="0,16,0,0"/>
             <Grid Margin="0,14,0,0">

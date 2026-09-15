@@ -196,6 +196,22 @@ public sealed class ConversationService : IMessageStore
     public IReadOnlyList<TurnRecord> TurnosGravados() => _sessionMemory.ReadTurns();
 
     /// <summary>
+    /// Se o contexto vivo carrega texto original de e-mail, lido por <c>mail_read</c>.
+    /// <para>
+    /// Olha o histórico VIVO, e não o gravado: no disco o corpo já está omitido, e é justamente
+    /// por isso que uma conversa reaberta volta sem ele — e sem o aviso.
+    /// </para>
+    /// </summary>
+    public bool HaConteudoDeEmailNoContexto()
+    {
+        lock (_gate)
+        {
+            return _history.Any(m => m is ToolChatMessage t
+                                     && AIB.Services.Mail.ConteudoDeTerceiros.Contem(Memory.Turn.TextOf(t)));
+        }
+    }
+
+    /// <summary>
     /// O histórico arquivado mudou: entrada nova, conteúdo novo ou nome novo.
     /// <para>
     /// Dispara fora da thread de interface. Existe porque o painel lê o arquivo uma vez ao
@@ -250,6 +266,11 @@ public sealed class ConversationService : IMessageStore
     {
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _toolRegistry = toolRegistry ?? throw new ArgumentNullException(nameof(toolRegistry));
+
+        // A leitura do e-mail pertence à conversa DE um e-mail, e o aviso do card, ao contexto
+        // desta conversa. O registry é de todo o app; quem sabe das duas coisas é esta classe.
+        _toolRegistry.ChaveDaConversaDeEmail = () => ChaveDoEmail;
+        _toolRegistry.ConteudoDeEmailNoContexto = HaConteudoDeEmailNoContexto;
         _agentLoop = agentLoop ?? throw new ArgumentNullException(nameof(agentLoop));
         _tokenCounter = tokenCounter ?? throw new ArgumentNullException(nameof(tokenCounter));
         _providerFactory = providerFactory ?? throw new ArgumentNullException(nameof(providerFactory));

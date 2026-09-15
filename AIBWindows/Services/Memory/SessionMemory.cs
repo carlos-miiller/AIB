@@ -204,7 +204,9 @@ public sealed class SessionMemory
 
     private static MessageRecord ToRecord(ChatMessage message)
     {
-        string texto = Turn.TextOf(message);
+        // O corpo de um e-mail lido na conversa vive no contexto vivo e NUNCA aqui: o raw.jsonl
+        // não é apagado. Ver ConteudoDeTerceiros.
+        string texto = AIB.Services.Mail.ConteudoDeTerceiros.Redigir(Turn.TextOf(message));
 
         return message switch
         {

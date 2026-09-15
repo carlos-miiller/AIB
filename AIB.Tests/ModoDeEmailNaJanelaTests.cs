@@ -490,13 +490,16 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void OEnquadramento_DIZ_QueNaoTemOCorpo()
+        public void OEnquadramento_DIZ_QueNaoTemOCorpo_EOndeEleEsta()
         {
-            // Regra 3: o corpo vive em memória durante uma triagem e morre lá. Sem esta frase o
-            // modelo responde como se tivesse lido a mensagem inteira e inventa cláusula,
-            // anexo e prazo que ninguém escreveu.
-            ChatWindow.EnquadramentoDoEmail(Email())
-                .Should().Contain("Não tenho o corpo da mensagem aqui");
+            // Regra 3: o corpo não abre a conversa. Sem esta frase o modelo responde como se
+            // tivesse lido a mensagem inteira e inventa cláusula, anexo e prazo que ninguém
+            // escreveu. E sem dizer ONDE o texto está, ele responde "não sei" a perguntas que
+            // tinham resposta a uma chamada de distância.
+            string texto = ChatWindow.EnquadramentoDoEmail(Email());
+
+            texto.Should().Contain("O texto original do e-mail não está aqui");
+            texto.Should().Contain(AIB.Services.Ferramentas.LerEmail);
         }
 
         // ─────────────────────────────────────────────────────────────────

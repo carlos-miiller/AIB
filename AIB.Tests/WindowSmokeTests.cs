@@ -596,6 +596,34 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void CardDeConfirmacao_ComEmailNoContexto_AvisaESomeOSemprePermitir()
+        {
+            // O texto de um e-mail lido na conversa pode trazer instruções escritas por
+            // terceiros. O card é a única barreira, e precisa dizer isso.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var card = new ConfirmCardView();
+                card.Preencher(new CommandConfirmationContext
+                {
+                    Tool = "shell",
+                    Command = "Remove-Item C:\\temp\\contrato.pdf",
+                    Level = 5,
+                    ConteudoDeEmailNoContexto = true
+                });
+
+                ((System.Windows.Controls.TextBlock)card.FindName("AvisoEmailText"))
+                    .Visibility.Should().Be(Visibility.Visible);
+                ((System.Windows.Controls.CheckBox)card.FindName("SempreCheck"))
+                    .Visibility.Should().Be(Visibility.Collapsed,
+                        "o portão não respeita o sempre permitir com e-mail no contexto");
+
+                DesenharSolto(card, "card-confirmacao-email", 620, 300);
+            });
+        }
+
+        [Fact]
         public void CardDeConfirmacao_Descartado_DevolveRecusa()
         {
             // O card vive na lista de mensagens: limpar a conversa apaga o elemento da tela, e

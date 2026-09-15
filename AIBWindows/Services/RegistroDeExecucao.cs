@@ -121,7 +121,10 @@ public sealed class RegistroDeExecucao : IDisposable
     /// </summary>
     public static string Redigir(string? linha)
     {
-        string texto = linha ?? "";
+        // O corpo de e-mail lido pela conversa passa pelo console duas vezes — no resultado da
+        // ferramenta e, com o log verboso, na requisição inteira ao provedor. Nenhuma das duas
+        // pode chegar ao arquivo.
+        string texto = Mail.ConteudoDeTerceiros.Redigir(linha);
 
         foreach (string campo in new[] { "\"api_key\"", "\"apiKey\"", "\"password\"", "\"senha\"", "Authorization:" })
         {

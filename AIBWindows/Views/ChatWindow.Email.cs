@@ -25,8 +25,9 @@ namespace AIB.Views;
 /// </para>
 /// <para>
 /// REGRA 3 vale aqui inteira: o CORPO de um e-mail nunca chega a este arquivo. O que circula é
-/// o veredito da triagem — remetente, assunto, urgência e resumo —, e é só isso que desce
-/// para o modelo em §3.11.
+/// o veredito da triagem — remetente, assunto, urgência e resumo —, e é isso que abre a
+/// conversa em §3.11. O texto original só desce para o modelo quando ele o pede, pela
+/// ferramenta <c>mail_read</c>, e nunca é gravado — ver <c>ConteudoDeTerceiros</c>.
 /// </para>
 /// </summary>
 public partial class ChatWindow
@@ -333,10 +334,11 @@ public partial class ChatWindow
     /// o título virado caminho.
     /// </para>
     /// <para>
-    /// O que desce para o modelo é o VEREDITO — remetente, assunto, urgência e resumo — e
-    /// nunca o corpo. O corpo vive em memória durante uma triagem e morre lá; pô-lo aqui o
-    /// gravaria no <c>raw.jsonl</c>, que é disco, e o resumidor de capítulos leria e-mail alheio
-    /// semanas depois. É a regra 3, e ela não tem exceção nesta tela.
+    /// O que abre a conversa é o VEREDITO — remetente, assunto, urgência e resumo — e nunca o
+    /// corpo. Pô-lo aqui o gravaria no <c>raw.jsonl</c>, que é disco, e o resumidor de capítulos
+    /// leria e-mail alheio semanas depois. O corpo só entra sob demanda, por <c>mail_read</c>,
+    /// embrulhado para ser omitido de tudo o que é gravado. É a regra 3, e ela não tem exceção
+    /// nesta tela.
     /// </para>
     /// <para>
     /// Abre uma CONVERSA NOVA. A máquina é a mesma do chat — turno de verdade, histórico,
@@ -473,8 +475,10 @@ public partial class ChatWindow
     /// <summary>
     /// O texto que o modelo recebe ao abrir um e-mail. Só o que a triagem já apurou.
     /// <para>
-    /// Diz em voz alta que o corpo não está aqui: sem isso o modelo responde como se tivesse
-    /// lido a mensagem inteira, e inventa cláusula, anexo e prazo que ninguém escreveu.
+    /// Diz em voz alta que o texto original não está aqui: sem isso o modelo responde como se
+    /// tivesse lido a mensagem inteira, e inventa cláusula, anexo e prazo que ninguém escreveu.
+    /// E diz ONDE ele está — na ferramenta <c>mail_read</c> —, porque um modelo que só sabe o que
+    /// não tem responde "não sei" a perguntas que tinham resposta a uma chamada de distância.
     /// </para>
     /// </summary>
     public static string EnquadramentoDoEmail(MailSummary alvo)
@@ -495,9 +499,9 @@ public partial class ChatWindow
             linhas.Add($"Resumo da triagem: {alvo.Description}");
 
         linhas.Add("");
-        linhas.Add("Não tenho o corpo da mensagem aqui — só este resumo, e ele é o único que vai "
-                   + "ficar gravado. Diga o que dá para fazer a partir daqui e o que você "
-                   + "precisaria que eu abrisse para ter certeza.");
+        linhas.Add("O texto original do e-mail não está aqui — só este resumo da triagem. Se "
+                   + $"precisar do que está escrito de fato, leia com a ferramenta {Ferramentas.LerEmail}; "
+                   + "o texto dela não fica gravado. Diga o que dá para fazer a partir daqui.");
 
         return string.Join("\n", linhas);
     }

@@ -138,12 +138,17 @@ public interface IMailService
     /// cada dublê de ensaio teria de escrever um método que nunca usa, e a interface passaria a
     /// cobrar de todos uma capacidade de um.
     /// </para>
+    /// <param name="tetoDoCorpo">
+    /// Quanto do corpo, já limpo, desce por mensagem. O padrão é o da triagem; a leitura do
+    /// e-mail pela conversa (<c>mail_read</c>) pede mais, porque lê uma conversa e não um lote.
+    /// </param>
     Task<IReadOnlyList<MensagemDeEmail>> LerConversaAsync(
         string endereco,
         string senhaDeApp,
         ImapEndpoint endpoint,
         string threadId,
-        CancellationToken ct)
+        CancellationToken ct,
+        int tetoDoCorpo = MensagemDeEmail.TetoDoCorpo)
         => Task.FromResult<IReadOnlyList<MensagemDeEmail>>(Array.Empty<MensagemDeEmail>());
 }
 

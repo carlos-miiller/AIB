@@ -129,6 +129,7 @@ public static class ArtifactExtractor
             Ferramentas.Procurar => BuscaDe(argumentosJson, comFiltro: false),
             Ferramentas.Buscar => BuscaDe(argumentosJson, comFiltro: true),
             Ferramentas.Email => ConsultaDeEmail(argumentosJson),
+            Ferramentas.LerEmail => "e-mail desta conversa",
             _ => ""
         };
 
@@ -180,6 +181,12 @@ public static class ArtifactExtractor
                     ? $"{Plural(m.Groups[1].Value, "acerto", "acertos")} em "
                       + Plural(m.Groups[2].Value, "arquivo", "arquivos")
                     : null;
+            }
+
+            case Ferramentas.LerEmail:
+            {
+                var m = Regex.Match(resultado, @"^TEXTO ORIGINAL da conversa — (\d+) mensagem");
+                return m.Success ? Plural(m.Groups[1].Value, "mensagem lida", "mensagens lidas") : null;
             }
 
             case Ferramentas.Shell:
