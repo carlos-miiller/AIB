@@ -2085,6 +2085,18 @@ public sealed class ConversationService : IMessageStore
         var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var contextualPrompt = PromptBase(comPersona) + $"\n\nContexto Local:\n- Diretório Home do Usuário (Raiz): {userHome}";
 
+        // A data do dia. Medido em 15/09 (AIB.Avaliacao, qwen3.5:4b, 3 repetições): SEM ela, com o
+        // raciocínio desligado, "que dia é hoje?" saiu "12 de maio de 2024" em 2 de 3 — o modelo
+        // chuta em vez de consultar o relógio. Com raciocínio ele chamava Get-Date, mas a rodada
+        // inteira levava quase o dobro do tempo.
+        //
+        // Aqui, e não colada na fala do usuário: a fala colada custou 60% mais tempo em 14/09 (o
+        // cache do qwen3.5 só volta a checkpoints). Esta linha muda uma vez por dia; o prompt é
+        // montado quando a conversa começa, então uma conversa que atravessa a meia-noite segue
+        // com a data do dia em que começou.
+        contextualPrompt += "\n- Data de hoje: "
+            + DateTime.Now.ToString("dddd, dd/MM/yyyy", new System.Globalization.CultureInfo("pt-BR"));
+
         contextualPrompt += EstadoDoVigia(settings, _diarioDeTriagem, DateTime.Now);
 
         if (comPersona)

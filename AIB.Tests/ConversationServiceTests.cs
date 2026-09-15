@@ -1738,5 +1738,14 @@ namespace AIB.Tests
             simulado.Should().NotContain("\"role\":\"system\"");
             simulado.Should().Contain("\"role\":\"user\"");
         }
+
+        [Fact]
+        public void OPromptDeSistema_DIZ_ADataDeHoje()
+        {
+            // Sem a data, o modelo sem raciocínio inventou "12 de maio de 2024" em 2 de 3 (15/09).
+            var conversation = BuildConversation(BuildSettings(sendSystemPrompt: true), new FakeProvider(), out _);
+
+            TextOf(conversation.Snapshot()[0]).Should().Contain(DateTime.Now.ToString("dd/MM/yyyy"));
+        }
 }
 }
