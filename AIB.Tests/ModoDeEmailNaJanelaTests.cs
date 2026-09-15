@@ -490,6 +490,31 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ODescarteDaConversa_ESTA_NoItemDaLista_SoQuandoHaConversa()
+        {
+            // O descarte só existia na leitura (§3.11), e chegar lá é "Abrir com <NOME>" — que
+            // manda um turno ao modelo. Para jogar fora uma conversa era preciso continuá-la.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var item = new MailListItem { DataContext = Email(), Aberto = true };
+                var botao = (Button)item.FindName("BotaoDescartarConversa");
+
+                botao.Visibility.Should().Be(Visibility.Collapsed, "sem conversa não há o que descartar");
+
+                item.TemConversa = true;
+                botao.Visibility.Should().Be(Visibility.Visible);
+
+                bool pediu = false;
+                item.PediuDescartarConversa += (_, _) => pediu = true;
+                botao.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
+                pediu.Should().BeTrue();
+            });
+        }
+
+        [Fact]
         public void OEnquadramento_DIZ_QueNaoTemOCorpo_EOndeEleEsta()
         {
             // Regra 3: o corpo não abre a conversa. Sem esta frase o modelo responde como se

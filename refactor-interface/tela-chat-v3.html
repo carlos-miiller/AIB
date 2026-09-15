@@ -478,6 +478,12 @@
              webmail/cliente configurado. O rótulo segue o PROVEDOR da conta
              conectada ("Abrir no Gmail", "Abrir no Outlook"…); com provedor
              desconhecido, "Abrir no cliente".
+           – DESCARTAR A CONVERSA  [NOVO · 15/09/2026] — só ícone de lixeira,
+             30x30, com a geometria do SECUNDÁRIO, à direita dele. Aparece SÓ
+             quando já existe conversa com a IA sobre este e-mail. Mesma
+             confirmação e mesma ação do ícone de §3.11: as falas saem do
+             histórico; o e-mail, a triagem e o raw.jsonl ficam. Existe porque
+             o único caminho era a leitura, e chegar lá manda um turno ao modelo.
      WPF: MaxLines/TextTrimming só no resumo COLAPSADO; no corpo o TextBlock é
      Wrap sem teto. Alternar por um bool ExpandidoId no code-behind, não por
      Expander (o Expander traz chevron e template próprios).
@@ -1258,6 +1264,9 @@
      [ ] Clique no e-mail EXPANDE o item, um aberto por vez.  [NOVO]
      [ ] Corpo do e-mail com dois botões: "Abrir com <personalidade>" (o nome
          vem do modelo, não em hard-code) e "Abrir no <provedor>".  [NOVO]
+     [ ] À direita de "Abrir no <provedor>", o ícone de descartar a conversa —
+         só quando ela existe. Descartar não a traz de volta ao recomeçar o
+         chat.  [NOVO · 15/09/2026]
      [ ] "Abrir com <personalidade>" mantém o modo E-mail e mostra §3.11:
          título vira "Caixa de entrada › <assunto>" com ellipsis no assunto,
          e as medidas + engrenagem viram "Abrir no <provedor>" e

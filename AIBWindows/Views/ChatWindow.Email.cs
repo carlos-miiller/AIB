@@ -211,6 +211,14 @@ public partial class ChatWindow
         var conversas = FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>();
         var agora = DateTime.Now;
 
+        // As threads que já têm conversa com a IA, lidas UMA vez: perguntar item por item
+        // releria o arquivo do histórico uma vez por e-mail da caixa.
+        var comConversa = new HashSet<string>(
+            ChatHistoryService.LoadHistory()
+                .Select(h => h.MailThreadKey)
+                .Where(k => !string.IsNullOrEmpty(k)),
+            StringComparer.Ordinal);
+
         int urgentes = conversas.Count(c => c.Urgency == MailUrgency.Maxima);
         int tokens = TokensDaCaixa(conversas);
 
@@ -235,6 +243,8 @@ public partial class ChatWindow
                 Aberto = ReferenceEquals(conversa, _emailAberto),
                 NomeDaInteligencia = NomeDaInteligencia(),
                 RotuloDoCliente = RotuloDoCliente(conversa),
+                TemConversa = comConversa.Contains(
+                    ArquivoDeConversas.Chave(conversa.Account, conversa.ThreadId, 0)),
                 Margin = new Thickness(0, 0, 0, 8)
             };
 
@@ -253,6 +263,8 @@ public partial class ChatWindow
             item.PediuAbrirNoCliente += (_, _) => AbrirEmailNoCliente(alvo);
 
             item.PediuAbrirComIA += (_, _) => AbrirEmailNoChat(alvo);
+
+            item.PediuDescartarConversa += (_, _) => DescartarConversaDaLista(alvo);
 
             ListaDaCaixa.Children.Add(item);
         }
@@ -597,28 +609,13 @@ public partial class ChatWindow
     private void DescartarConversaDoEmail_Click(object sender, RoutedEventArgs e)
     {
         var alvo = _emailEmLeitura;
-        if (alvo == null) return;
+        if (alvo == null || !ConfirmarDescarteDaConversa(alvo)) return;
 
         string chave = ArquivoDeConversas.Chave(alvo.Account, alvo.ThreadId, 0);
-        var anterior = ChatHistoryService.ConversaDoEmail(chave);
 
-        bool confirmado;
-        using (ModalGuard.Enter())
-        {
-            confirmado = ConfirmDialog.Perguntar(
-                this,
-                "Descartar a conversa sobre este e-mail?",
-                "As falas saem do histórico e não é possível recuperá-las pela interface. O "
-                + "e-mail e a triagem dele não são tocados, e o registro da sessão em "
-                + "memory/sessions continua onde está.",
-                ferramenta: "histórico",
-                alvo: alvo.Name,
-                dica: "não há desfazer");
-        }
-
-        if (!confirmado) return;
-
-        if (anterior != null) ChatHistoryService.DeleteSession(anterior.Id);
+        // Encerra a conversa viva ANTES de apagar — ver ConversationService.DescartarConversaDoEmail.
+        // Apagar e só depois chamar NovaConversa fazia a conversa descartada voltar ao histórico.
+        _conversation.DescartarConversaDoEmail(chave);
 
         // Começa limpo, ainda dentro da leitura: o cartão volta e o campo espera. O vínculo é
         // refeito para que o próximo turno já nasça preso a esta thread.
@@ -633,6 +630,51 @@ public partial class ChatWindow
         ChatScrollViewer.ScrollToEnd();
         InputBox.Focus();
 
+        _painel?.Recarregar();
+    }
+
+    /// <summary>
+    /// A pergunta antes de descartar, a MESMA na lista e na leitura. Duas cópias da frase
+    /// divergiriam na primeira correção, e é justamente a frase que diz o que fica e o que sai.
+    /// </summary>
+    private bool ConfirmarDescarteDaConversa(MailSummary alvo)
+    {
+        using (ModalGuard.Enter())
+        {
+            return ConfirmDialog.Perguntar(
+                this,
+                "Descartar a conversa sobre este e-mail?",
+                "As falas saem do histórico e não é possível recuperá-las pela interface. O "
+                + "e-mail e a triagem dele não são tocados, e o registro da sessão em "
+                + "memory/sessions continua onde está.",
+                ferramenta: "histórico",
+                alvo: alvo.Name,
+                dica: "não há desfazer");
+        }
+    }
+
+    /// <summary>
+    /// Descarta a conversa de um e-mail direto da LISTA (§3.10).
+    /// <para>
+    /// Existe porque o único botão para isso ficava na leitura (§3.11), e chegar à leitura é
+    /// "Abrir com &lt;NOME&gt;" — que abre a conversa e manda um turno ao modelo. Para jogar
+    /// fora uma conversa era preciso primeiro continuá-la.
+    /// </para>
+    /// <para>
+    /// Fica na lista: o item mostra o botão só enquanto houver conversa a descartar, e a lista é
+    /// remontada para ele sumir. Se era a conversa aberta no chat, o chat recomeça.
+    /// </para>
+    /// </summary>
+    private void DescartarConversaDaLista(MailSummary alvo)
+    {
+        if (!ConfirmarDescarteDaConversa(alvo)) return;
+
+        string chave = ArquivoDeConversas.Chave(alvo.Account, alvo.ThreadId, 0);
+
+        if (_conversation.DescartarConversaDoEmail(chave))
+            NovaConversa();
+
+        MontarCaixaDeEntrada();
         _painel?.Recarregar();
     }
 

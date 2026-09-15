@@ -369,6 +369,30 @@ namespace AIB.Services
             }
         }
 
+        /// <summary>
+        /// Apaga TODAS as conversas havidas sobre uma thread de e-mail. Devolve quantas saíram.
+        /// <para>
+        /// Todas, e não só a mais recente que <see cref="ConversaDoEmail"/> devolve: as antigas
+        /// existem (de antes do vínculo, ou de reaberturas que não acharam a anterior), e
+        /// "descartar a conversa sobre este e-mail" que deixasse uma delas voltaria a mostrá-la
+        /// na próxima abertura.
+        /// </para>
+        /// </summary>
+        public static int DeleteConversasDoEmail(string? chaveDaThread)
+        {
+            if (string.IsNullOrWhiteSpace(chaveDaThread)) return 0;
+
+            lock (Trava)
+            {
+                var history = LoadHistory();
+                int removidas = history.RemoveAll(h =>
+                    string.Equals(h.MailThreadKey, chaveDaThread, StringComparison.Ordinal));
+
+                if (removidas > 0) SaveHistory(history);
+                return removidas;
+            }
+        }
+
         public static void ClearHistory()
         {
             try

@@ -1085,6 +1085,46 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task DescartarAConversaDeUmEmail_NaoARessuscitaAoRecomecar()
+        {
+            // O defeito: a tela apagava a entrada do histórico e SÓ DEPOIS recomeçava a conversa.
+            // O recomeço arquiva a transcrição viva — e a conversa descartada voltava ao
+            // histórico, com o mesmo id, um instante depois de o usuário confirmar o descarte.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            string chave = $"eu@gmail.com|thr:ensaio-{Guid.NewGuid():N}";
+            conversation.VincularAEmail(chave);
+
+            await foreach (var _ in conversation.StreamResponseAsync($"sobre o e-mail {chave}")) { }
+
+            ChatHistoryService.ConversaDoEmail(chave).Should().NotBeNull("o turno arquiva a conversa");
+
+            conversation.DescartarConversaDoEmail(chave).Should().BeTrue("era a conversa aberta");
+
+            // O que a tela faz em seguida: começar uma conversa nova.
+            conversation.ResetHistory();
+
+            ChatHistoryService.ConversaDoEmail(chave).Should().BeNull("descartada não volta");
+            conversation.ChaveDoEmail.Should().BeEmpty();
+        }
+
+        [Fact]
+        public void DescartarConversaDeOutroEmail_NaoMexeNaConversaAberta()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            string aberta = $"eu@gmail.com|thr:aberta-{Guid.NewGuid():N}";
+            conversation.VincularAEmail(aberta);
+
+            conversation.DescartarConversaDoEmail($"eu@gmail.com|thr:outra-{Guid.NewGuid():N}")
+                .Should().BeFalse();
+
+            conversation.ChaveDoEmail.Should().Be(aberta);
+        }
+
+        [Fact]
         public async Task ReabrirConversa_DevolveOsTurnosGravadosDela()
         {
             // É destes turnos que a aba de ações é remontada ao reabrir. Sem eles, a aba abria

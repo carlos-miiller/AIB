@@ -340,6 +340,33 @@ public sealed class ConversationService : IMessageStore
     public string ChaveDoEmail { get; private set; } = "";
 
     /// <summary>Marca a conversa CORRENTE como sendo sobre uma thread de e-mail.</summary>
+    /// <summary>
+    /// Joga fora a conversa havida sobre um e-mail. Devolve true quando era a conversa aberta.
+    /// <para>
+    /// A ORDEM é o conteúdo deste método. A conversa aberta é arquivada a cada turno e de novo
+    /// no <see cref="ResetHistory()"/>. Apagar primeiro e recomeçar depois — como a tela fazia —
+    /// deixava o recomeço arquivar a transcrição que ainda estava viva, e a conversa descartada
+    /// voltava ao histórico com o mesmo id. Aqui ela é encerrada ANTES, e só então apagada.
+    /// </para>
+    /// <para>
+    /// O que fica: a sessão de memória em <c>memory/sessions</c>, com o <c>raw.jsonl</c>, que por
+    /// regra do projeto nunca é apagado.
+    /// </para>
+    /// </summary>
+    public bool DescartarConversaDoEmail(string? chaveDaThread)
+    {
+        string chave = (chaveDaThread ?? "").Trim();
+        if (chave.Length == 0) return false;
+
+        bool eraAberta = string.Equals(ChaveDoEmail, chave, StringComparison.Ordinal);
+        if (eraAberta) ResetHistory();
+
+        ChatHistoryService.DeleteConversasDoEmail(chave);
+        OnHistoryChanged?.Invoke();
+
+        return eraAberta;
+    }
+
     public void VincularAEmail(string? chaveDaThread) =>
         ChaveDoEmail = (chaveDaThread ?? "").Trim();
 

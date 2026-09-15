@@ -624,6 +624,31 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ItemDeEmail_AbertoComConversa_DesenhaODescarteAoLadoDoCliente()
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var item = new MailListItem
+                {
+                    DataContext = new MailSummary(
+                        "Jurídico — contrato Vertex", "Pedem sua assinatura no aditivo até as 18h.",
+                        MailUrgency.Maxima, Account: "eu@gmail.com", ThreadId: "123",
+                        De: "juridico@vertex.com.br"),
+                    EscalaDeJanela = true,
+                    RealceLilas = true,
+                    Aberto = true,
+                    NomeDaInteligencia = "Kai",
+                    RotuloDoCliente = "Abrir no Gmail",
+                    TemConversa = true
+                };
+
+                DesenharSolto(item, "item-email-descartar", 560, 190);
+            });
+        }
+
+        [Fact]
         public void CardDeConfirmacao_Descartado_DevolveRecusa()
         {
             // O card vive na lista de mensagens: limpar a conversa apaga o elemento da tela, e

@@ -147,9 +147,42 @@ namespace AIB.Views
             set => SetValue(RotuloDoClienteProperty, value);
         }
 
+        /// <summary>
+        /// Já existe conversa com a IA sobre este e-mail — e com ela, o botão de descartá-la.
+        /// <para>
+        /// Sem conversa o botão não aparece: ele não teria o que fazer, e um botão que abre uma
+        /// confirmação para nada ensina a clicar sem ler.
+        /// </para>
+        /// <para>
+        /// Visibilidade posta pelo callback, e não por binding: o item também é montado solto
+        /// (ensaios, pilha do orbe), e um binding por ancestral só se resolve dentro da árvore.
+        /// </para>
+        /// </summary>
+        public static readonly DependencyProperty TemConversaProperty =
+            DependencyProperty.Register(
+                nameof(TemConversa), typeof(bool), typeof(MailListItem),
+                new PropertyMetadata(false, (d, e) =>
+                    ((MailListItem)d).BotaoDescartarConversa.Visibility =
+                        (bool)e.NewValue ? Visibility.Visible : Visibility.Collapsed));
+
+        public bool TemConversa
+        {
+            get => (bool)GetValue(TemConversaProperty);
+            set => SetValue(TemConversaProperty, value);
+        }
+
         // ─────────────────────────────────────────────────────────────────────
         // O que o item pede
         // ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>Descartar a conversa havida com a IA sobre este e-mail — o e-mail não é tocado.</summary>
+        public event EventHandler? PediuDescartarConversa;
+
+        private void DescartarConversa_Click(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;   // não deixa o clique subir e fechar o acordeão
+            PediuDescartarConversa?.Invoke(this, EventArgs.Empty);
+        }
 
         /// <summary>Clique no item: a lista decide quem abre e quem fecha (um por vez).</summary>
         public event EventHandler? PediuAlternar;
