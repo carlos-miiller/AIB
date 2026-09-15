@@ -129,6 +129,7 @@ public partial class ChatWindow : Window
         _cadeiaAtual = null;
         // Limpa o contexto do OpenAI Service (injeta o SOUL.MD atual)
         _conversation.ResetHistory();
+        ActionLogService.Clear();
 
         AddWelcomeBubble();
         AtualizarEstadoVazio();
@@ -1773,6 +1774,10 @@ public partial class ChatWindow : Window
         _cadeiaAtual = null;
         _conversation.ResetHistory();
 
+        // O registro é da CONVERSA (§6.4). Sem limpar, a conversa nova herdava na aba as ações
+        // da anterior, que já foram arquivadas com ela.
+        ActionLogService.Clear();
+
         int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
         UpdateTokenCounterUI(new TokenReport(0, 0, maxTokens));
@@ -2107,6 +2112,10 @@ public partial class ChatWindow : Window
         DescartarConfirmacaoPendente();
 
         _conversation.LoadConversation(falas, sessao.MemorySessionId, sessao.Id);
+
+        // O registro de ações vive só em memória: volta remontado do raw.jsonl da conversa.
+        // Conversa gravada antes da ligação com a memória não tem raw, e a aba fica vazia.
+        ActionLogService.Restaurar(ActionLogService.Reconstruir(_conversation.TurnosGravados()));
 
         MessagesPanel.Children.Clear();
         _cadeiaAtual = null;

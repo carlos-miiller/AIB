@@ -366,6 +366,7 @@ public partial class ChatWindow
 
         _conversation.LoadConversation(falas, sessao.MemorySessionId, sessao.Id);
         _conversation.VincularAEmail(sessao.MailThreadKey);
+        ActionLogService.Restaurar(ActionLogService.Reconstruir(_conversation.TurnosGravados()));
 
         MessagesPanel.Children.Clear();
         _cadeiaAtual = null;

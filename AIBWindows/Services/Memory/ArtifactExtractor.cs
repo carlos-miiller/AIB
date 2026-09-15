@@ -96,6 +96,23 @@ public static class ArtifactExtractor
         resultado != null && resultado.Contains(TextoRecusa, StringComparison.Ordinal);
 
     /// <summary>
+    /// A primeira linha não vazia do resultado, com teto de 160 caracteres — a mensagem de erro
+    /// que o chip de falha e o registro de ações mostram.
+    /// </summary>
+    public static string? PrimeiraLinhaDoErro(string? resultado)
+    {
+        if (string.IsNullOrWhiteSpace(resultado)) return null;
+
+        foreach (var linha in resultado.Split('\n'))
+        {
+            string limpa = linha.Trim();
+            if (limpa.Length > 0) return limpa.Length > 160 ? limpa[..160] + "…" : limpa;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Resumo curto dos argumentos, para o chip em execução (§4.2d da spec de chat).
     /// <para>
     /// Sai dos mesmos campos que viram artefato: caminho para as ferramentas de arquivo, linha

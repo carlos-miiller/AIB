@@ -189,6 +189,13 @@ public sealed class ConversationService : IMessageStore
     public string SessionId => _sessionId;
 
     /// <summary>
+    /// Os turnos gravados no <c>raw.jsonl</c> da sessão corrente — depois de abrir uma conversa,
+    /// os dela. É daqui que o registro de ações é remontado: ele vive só em memória, e sem isto
+    /// reabrir uma conversa mostrava a aba de ações vazia.
+    /// </summary>
+    public IReadOnlyList<TurnRecord> TurnosGravados() => _sessionMemory.ReadTurns();
+
+    /// <summary>
     /// O histórico arquivado mudou: entrada nova, conteúdo novo ou nome novo.
     /// <para>
     /// Dispara fora da thread de interface. Existe porque o painel lê o arquivo uma vez ao
@@ -2326,18 +2333,8 @@ public sealed class ConversationService : IMessageStore
     /// chip tem uma linha. O texto completo continua no histórico e no tooltip.
     /// </para>
     /// </summary>
-    private static string? PrimeiraLinhaDoErro(string? resultado)
-    {
-        if (string.IsNullOrWhiteSpace(resultado)) return null;
-
-        foreach (var linha in resultado.Split('\n'))
-        {
-            string limpa = linha.Trim();
-            if (limpa.Length > 0) return limpa.Length > 160 ? limpa[..160] + "…" : limpa;
-        }
-
-        return null;
-    }
+    private static string? PrimeiraLinhaDoErro(string? resultado) =>
+        Memory.ArtifactExtractor.PrimeiraLinhaDoErro(resultado);
 
     private void RaiseTechnical(Action<string>? callback, string value)
     {

@@ -1,5 +1,9 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Globalization;
 using AIB.Services.Memory;
 
 namespace AIB.Services;
@@ -93,7 +97,9 @@ public sealed class ActionLogEntry
 /// <para>
 /// Em memória, e de propósito. O que precisa sobreviver ao fechamento do app já está no
 /// <c>raw.jsonl</c> da memória, que é a fonte de verdade; duplicar isso num segundo arquivo
-/// criaria duas versões da mesma história para discordarem entre si.
+/// criaria duas versões da mesma história para discordarem entre si. A consequência é que
+/// REABRIR uma conversa tem de remontar a lista a partir do raw — ver <see cref="Reconstruir"/>.
+/// Sem isso, a aba abria vazia para toda conversa que não fosse a da sessão corrente.
 /// </para>
 /// </summary>
 public static class ActionLogService
@@ -106,7 +112,7 @@ public static class ActionLogService
     /// </summary>
     public const int MaxEntradas = 500;
 
-    private static readonly ObservableCollection<ActionLogEntry> Itens = new();
+    private static readonly Colecao Itens = new();
 
     /// <summary>Mais recente no TOPO — §6.3.</summary>
     public static ObservableCollection<ActionLogEntry> Entries => Itens;
@@ -150,6 +156,7 @@ public static class ActionLogService
     /// "edit edit", sem dizer em que arquivo.
     /// </param>
     /// <param name="resumo">Resultado resumido, quando o artefato não traz um.</param>
+    /// <param name="quando">Hora da ação. Vazio é agora; a reconstrução passa a hora gravada.</param>
     public static ActionLogEntry Construir(
         string ferramenta,
         Artifact? artefato,
@@ -157,7 +164,8 @@ public static class ActionLogService
         string? detalhe,
         string? saidaBruta,
         string? argumento = null,
-        string? resumo = null)
+        string? resumo = null,
+        DateTime? quando = null)
     {
         string literal = artefato?.Value
                          ?? (string.IsNullOrWhiteSpace(argumento) ? ferramenta : argumento);
@@ -173,8 +181,90 @@ public static class ActionLogService
             RawOutput = saidaBruta,
             Result = falhou ? (detalhe ?? artefato?.Detail ?? "falhou") : (artefato?.Detail ?? resumo),
             Kind = tipo,
-            Status = falhou ? ActionStatus.Failed : ActionStatus.Done
+            Status = falhou ? ActionStatus.Failed : ActionStatus.Done,
+            Timestamp = quando ?? DateTime.Now
         };
+    }
+
+    /// <summary>
+    /// Remonta as ações de uma conversa a partir dos turnos gravados no <c>raw.jsonl</c>, em
+    /// ordem de execução.
+    /// <para>
+    /// Passa pelas MESMAS funções que a tela usa ao vivo — extrator, resumo de argumento, resumo
+    /// de resultado, saída bruta. Uma conversa reaberta precisa mostrar a mesma linha que mostrou
+    /// quando a ação aconteceu; um segundo caminho de montagem divergiria no primeiro ajuste.
+    /// </para>
+    /// <para>
+    /// A chamada é pareada com o resultado pelo id, como no extrator da memória. Chamada sem
+    /// resultado fica de fora: sem ele não se sabe se algo aconteceu.
+    /// </para>
+    /// <para>
+    /// A hora é a do turno gravado, e não a de cada ferramenta — o raw guarda uma por turno. As
+    /// ações de um turno saem com a mesma hora, na ordem em que os resultados chegaram.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<ActionLogEntry> Reconstruir(IReadOnlyList<TurnRecord>? turnos)
+    {
+        var entradas = new List<ActionLogEntry>();
+        if (turnos == null) return entradas;
+
+        foreach (var turno in turnos)
+        {
+            if (turno?.Messages == null) continue;
+
+            DateTime? quando = DateTime.TryParse(
+                turno.AtUtc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var gravado)
+                ? gravado.ToLocalTime()
+                : null;
+
+            var chamadas = new Dictionary<string, ToolCallRecord>(StringComparer.Ordinal);
+
+            foreach (var mensagem in turno.Messages)
+            {
+                if (mensagem.ToolCalls is { Count: > 0 })
+                {
+                    foreach (var chamada in mensagem.ToolCalls)
+                        if (chamada?.Id != null) chamadas[chamada.Id] = chamada;
+                    continue;
+                }
+
+                if (mensagem.Role != "tool" || mensagem.ToolCallId == null) continue;
+                if (!chamadas.Remove(mensagem.ToolCallId, out var feita)) continue;
+
+                string resultado = mensagem.Text ?? "";
+                bool falhou = ArtifactExtractor.Falhou(resultado);
+
+                entradas.Add(Construir(
+                    feita.Name,
+                    ArtifactExtractor.Construir(feita.Name, feita.Arguments, resultado),
+                    falhou,
+                    falhou ? ArtifactExtractor.PrimeiraLinhaDoErro(resultado) : null,
+                    ArtifactExtractor.SaidaBruta(feita.Name, resultado),
+                    ArtifactExtractor.ResumirArgumento(feita.Name, feita.Arguments),
+                    falhou ? null : ArtifactExtractor.ResumirResultado(feita.Name, resultado),
+                    quando));
+            }
+        }
+
+        return entradas;
+    }
+
+    /// <summary>
+    /// Troca o registro inteiro pelas ações de outra conversa, em ordem de execução.
+    /// <para>
+    /// UMA notificação só. O painel remonta a aba a cada mudança da lista, e restaurar
+    /// quinhentas entradas com <see cref="Add"/> seria quinhentas remontagens seguidas.
+    /// </para>
+    /// </summary>
+    public static void Restaurar(IEnumerable<ActionLogEntry>? entradasEmOrdem)
+    {
+        var lista = new List<ActionLogEntry>(entradasEmOrdem ?? Array.Empty<ActionLogEntry>());
+
+        // Mais recente no topo, e o teto corta as mais ANTIGAS — as mesmas que o Add cortaria.
+        lista.Reverse();
+        if (lista.Count > MaxEntradas) lista.RemoveRange(MaxEntradas, lista.Count - MaxEntradas);
+
+        lock (Trava) Itens.Substituir(lista);
     }
 
     /// <summary>
@@ -203,5 +293,21 @@ public static class ActionLogService
     public static void Clear()
     {
         lock (Trava) Itens.Clear();
+    }
+
+    /// <summary>Lista observável que sabe se substituir inteira com um único aviso.</summary>
+    private sealed class Colecao : ObservableCollection<ActionLogEntry>
+    {
+        public void Substituir(IReadOnlyList<ActionLogEntry> novas)
+        {
+            CheckReentrancy();
+
+            Items.Clear();
+            foreach (var entrada in novas) Items.Add(entrada);
+
+            OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
+            OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
+            OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+        }
     }
 }

@@ -1085,6 +1085,25 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task ReabrirConversa_DevolveOsTurnosGravadosDela()
+        {
+            // É destes turnos que a aba de ações é remontada ao reabrir. Sem eles, a aba abria
+            // vazia para qualquer conversa que não fosse a da sessão corrente.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            for (int i = 0; i < 2; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"turno {i}")) { }
+
+            string memoria = Path.GetFileName(conversation.SessionMemoryDir);
+
+            var falas = new List<ChatTurn> { new(true, "turno 0"), new(false, "certo") };
+            conversation.LoadConversation(falas, memoria, sessionId: "ensaio-registro");
+
+            conversation.TurnosGravados().Should().HaveCount(2);
+        }
+
+        [Fact]
         public async Task SemCapitulo_OTotalEhOProprioContexto()
         {
             // O contador nao pode inventar economia antes de haver o que economizar: sem
