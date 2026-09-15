@@ -767,6 +767,44 @@
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
+         TOOLTIP — §4.6
+         A casca de TODOS os tooltips do app (D8): antes valia a nativa do
+         Windows, fundo claro, canto reto e sem sombra, com as cores do
+         design system aplicadas só no conteúdo. Fundo surfaceTooltip, borda
+         accentBorder, r8, tooltipShadow, 11px textBody, padding 6,10.
+         A variante EM BLOCO zera o Padding: as seções trazem o próprio.
+         HasDropShadow fica True porque é ele que deixa o popup transparente;
+         a sombra desenhada é a do Border, não a do sistema.
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <Style TargetType="ToolTip">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="HasDropShadow" Value="True"/>
+        <Setter Property="Background" Value="{StaticResource SurfaceTooltipBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource AccentBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBodyBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Padding" Value="10,6"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <!-- A margem existe para a sombra caber, como no menu de contexto. -->
+                    <Border Margin="8"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{StaticResource RadiusTooltip}"
+                            Padding="{TemplateBinding Padding}"
+                            Effect="{StaticResource TooltipShadow}">
+                        <ContentPresenter/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ══════════════════════════════════════════════════════════════════
          MENU DE CONTEXTO
          Não consta das specs: nasceu com o botão direito no histórico de
          conversas. Segue a casca do tooltip (§4.6), que é o elemento

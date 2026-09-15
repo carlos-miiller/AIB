@@ -76,12 +76,17 @@ public abstract record AgentEvent
     /// Uma ferramenta terminou. <paramref name="Artifact"/> traz o literal já extraído — o
     /// caminho absoluto, a linha de comando — pelo mesmo extrator que alimenta a memória.
     /// </summary>
+    /// <param name="Arguments">
+    /// Os argumentos crus da chamada. A tela precisa deles para descrever ferramentas que não
+    /// deixam artefato — sem eles, um <c>glob</c> aparecia no registro só como "glob".
+    /// </param>
     public sealed record ToolFinished(
         string Id,
         string Tool,
         bool Failed,
         Memory.Artifact? Artifact,
-        string Result) : AgentEvent;
+        string Result,
+        string Arguments = "") : AgentEvent;
 
     /// <summary>Fim do turno. Emitido exatamente uma vez, por último.</summary>
     public sealed record Completed(TurnOutcome Outcome, int IterationsUsed) : AgentEvent;

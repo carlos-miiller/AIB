@@ -59,11 +59,20 @@ public abstract record ChatStreamItem
     /// <param name="Denied">Se o motivo foi recusa no portão de confirmação.</param>
     /// <param name="Artifact">Literal preservado, quando a ferramenta tem um.</param>
     /// <param name="Detail">Primeira linha do erro, quando falhou.</param>
+    /// <param name="Argument">
+    /// O alvo por extenso — caminho, busca, consulta. É o que descreve a ação quando não há
+    /// artefato: sem ele o registro mostrava "edit edit", o nome no lugar do alvo.
+    /// </param>
+    /// <param name="Summary">Resultado resumido para a tela: "12 arquivos", "3 acertos em 2 arquivos".</param>
+    /// <param name="RawOutput">Saída como saiu, para a seção SAÍDA BRUTA do tooltip; já com teto.</param>
     public sealed record ToolFinished(
         string Id,
         string Tool,
         bool Failed,
         bool Denied,
         Memory.Artifact? Artifact,
-        string? Detail) : ChatStreamItem;
+        string? Detail,
+        string Argument = "",
+        string? Summary = null,
+        string? RawOutput = null) : ChatStreamItem;
 }

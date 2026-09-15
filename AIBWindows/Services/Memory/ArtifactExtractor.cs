@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using AIB.Services.Tools;
 using OpenAI.Chat;
 
@@ -104,11 +106,99 @@ public static class ArtifactExtractor
     public static string ResumirArgumento(string ferramenta, string argumentosJson) =>
         ferramenta switch
         {
-            Ferramentas.Gravar or Ferramentas.Ler => CaminhoDe(argumentosJson),
+            Ferramentas.Gravar or Ferramentas.Ler or Ferramentas.Editar => CaminhoDe(argumentosJson),
             Ferramentas.Shell => StringDe(argumentosJson, "command"),
             Ferramentas.Habilidade => ChamadaDeSkill(argumentosJson),
+            Ferramentas.Procurar => BuscaDe(argumentosJson, comFiltro: false),
+            Ferramentas.Buscar => BuscaDe(argumentosJson, comFiltro: true),
+            Ferramentas.Email => ConsultaDeEmail(argumentosJson),
             _ => ""
         };
+
+    /// <summary>
+    /// O resultado em poucas palavras, para o registro de ações e o tooltip (§6.4 e):
+    /// "12 arquivos", "3 acertos em 2 arquivos", "saída: 4 linhas".
+    /// <para>
+    /// SÓ PARA A TELA. Sai do texto que a ferramenta devolveu ao modelo, e não entra na memória:
+    /// o artefato guarda o literal, e um resumo contado a partir de texto é aproximação.
+    /// Formato desconhecido devolve nulo — a linha fica sem resumo, nunca com um inventado.
+    /// </para>
+    /// </summary>
+    public static string? ResumirResultado(string ferramenta, string? resultado)
+    {
+        if (string.IsNullOrWhiteSpace(resultado) || Falhou(resultado)) return null;
+
+        switch (ferramenta)
+        {
+            case Ferramentas.Ler:
+            {
+                var pasta = Regex.Match(resultado, @"é uma PASTA, com (\d+) subpasta\(s\) e (\d+) arquivo\(s\)");
+                if (pasta.Success)
+                    return $"{Plural(pasta.Groups[2].Value, "arquivo", "arquivos")}, "
+                           + Plural(pasta.Groups[1].Value, "pasta", "pastas");
+
+                if (resultado.Contains("é uma pasta, e está vazia", StringComparison.Ordinal))
+                    return "pasta vazia";
+
+                int lidas = resultado.Split('\n').Count(l => Regex.IsMatch(l, @"^\s*\d+\t"));
+                return lidas == 0 ? null : Plural(lidas.ToString(), "linha lida", "linhas lidas");
+            }
+
+            case Ferramentas.Procurar:
+            {
+                if (resultado.StartsWith("Nenhum arquivo casa", StringComparison.Ordinal))
+                    return "nenhum arquivo";
+
+                var m = Regex.Match(resultado, @"^(\d+) arquivo\(s\)");
+                return m.Success ? Plural(m.Groups[1].Value, "arquivo", "arquivos") : null;
+            }
+
+            case Ferramentas.Buscar:
+            {
+                if (resultado.StartsWith("Nada casa", StringComparison.Ordinal))
+                    return "nenhum acerto";
+
+                var m = Regex.Match(resultado, @"^(\d+) acerto\(s\) em (\d+) arquivo\(s\)");
+                return m.Success
+                    ? $"{Plural(m.Groups[1].Value, "acerto", "acertos")} em "
+                      + Plural(m.Groups[2].Value, "arquivo", "arquivos")
+                    : null;
+            }
+
+            case Ferramentas.Shell:
+            {
+                if (resultado.StartsWith("Comando executado com sucesso (sem saída)", StringComparison.Ordinal))
+                    return "sem saída";
+
+                int linhas = resultado.Split('\n').Count(l => l.Trim().Length > 0);
+                return "saída: " + Plural(linhas.ToString(), "linha", "linhas");
+            }
+
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>Teto da saída guardada para o tooltip. O registro tem 500 entradas e vive em memória.</summary>
+    public const int TetoDaSaidaBruta = 4000;
+
+    /// <summary>
+    /// A saída como saiu, para a seção SAÍDA BRUTA do tooltip (§4.6 ii) — só das ferramentas
+    /// cuja saída é o próprio resultado: comando, busca por nome e busca no conteúdo.
+    /// <para>
+    /// <c>read</c> fica de fora de propósito: a saída dele é o conteúdo do arquivo, e guardar
+    /// isso em cada linha do registro seria uma segunda cópia do arquivo em memória. <c>mail</c>
+    /// também: veredito de e-mail não tem por que ficar num tooltip além do que o chat já mostra.
+    /// </para>
+    /// </summary>
+    public static string? SaidaBruta(string ferramenta, string? resultado)
+    {
+        if (string.IsNullOrWhiteSpace(resultado)) return null;
+        if (ferramenta is not (Ferramentas.Shell or Ferramentas.Procurar or Ferramentas.Buscar)) return null;
+
+        string t = resultado.Replace("\r", "").TrimEnd();
+        return t.Length <= TetoDaSaidaBruta ? t : t[..TetoDaSaidaBruta] + "\n…";
+    }
 
     private static Artifact? Build(string ferramenta, string argumentosJson, string resultado)
     {
@@ -126,6 +216,18 @@ public static class ArtifactExtractor
                 string? detalhe = TamanhoDoConteudo(argumentosJson);
                 return new Artifact(ArtifactKind.FileWritten, ferramenta, caminho, falhou,
                     falhou ? PrimeiraLinha(resultado) : detalhe);
+            }
+
+            case Ferramentas.Editar:
+            {
+                // Editar GRAVA o arquivo. Sem este caso a edição não deixava artefato: o capítulo
+                // da memória esquecia que o arquivo mudou, e a tela mostrava só "edit".
+                string caminho = CaminhoDe(argumentosJson);
+                if (caminho.Length == 0) return null;
+                if (recusado) return new Artifact(ArtifactKind.Denied, ferramenta, caminho, true, "edição recusada");
+
+                return new Artifact(ArtifactKind.FileWritten, ferramenta, caminho, falhou,
+                    falhou ? PrimeiraLinha(resultado) : LinhasTrocadas(argumentosJson, resultado));
             }
 
             case Ferramentas.Ler:
@@ -199,6 +301,63 @@ public static class ArtifactExtractor
         try { return Path.GetFullPath(bruto); }
         catch { return bruto; }
     }
+
+    /// <summary>
+    /// "+3 linhas, −1 linha": o quanto a edição mexeu, contado dos trechos que o modelo mandou e
+    /// multiplicado pelas trocas que a ferramenta confirmou. É o formato do registro (§6.4 e).
+    /// </summary>
+    private static string? LinhasTrocadas(string argumentosJson, string resultado)
+    {
+        string de = StringDe(argumentosJson, "old_string");
+        string para = StringDe(argumentosJson, "new_string");
+        if (de.Length == 0) return null;
+
+        var trocas = Regex.Match(resultado ?? "", @"SUCESSO: (\d+) troca");
+        int vezes = trocas.Success ? int.Parse(trocas.Groups[1].Value) : 1;
+
+        int saem = ContarLinhas(de) * vezes;
+        int entram = ContarLinhas(para) * vezes;
+
+        return $"+{Plural(entram.ToString(), "linha", "linhas")}, −{Plural(saem.ToString(), "linha", "linhas")}";
+    }
+
+    private static int ContarLinhas(string trecho) =>
+        trecho.Length == 0 ? 0 : trecho.Replace("\r", "").TrimEnd('\n').Split('\n').Length;
+
+    /// <summary>"*.cs em C:\projeto" — o padrão e a pasta resolvida, como a ferramenta resolve.</summary>
+    private static string BuscaDe(string argumentosJson, bool comFiltro)
+    {
+        string padrao = StringDe(argumentosJson, "pattern");
+        if (padrao.Length == 0) return "";
+
+        string raiz = PathArgumentRepair.Normalize(StringDe(argumentosJson, "path"));
+        if (string.IsNullOrWhiteSpace(raiz))
+            raiz = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        string filtro = comFiltro ? StringDe(argumentosJson, "glob") : "";
+        return filtro.Length == 0 ? $"{padrao} em {raiz}" : $"{padrao} em {raiz} ({filtro})";
+    }
+
+    /// <summary>"hoje • urgência maxima • de: fulano" — o período e os filtros pedidos.</summary>
+    private static string ConsultaDeEmail(string argumentosJson)
+    {
+        string periodo = StringDe(argumentosJson, "periodo");
+        var partes = new List<string> { periodo.Length == 0 ? "hoje" : periodo };
+
+        string urgencia = StringDe(argumentosJson, "urgencia");
+        if (urgencia.Length > 0 && urgencia != "todas") partes.Add("urgência " + urgencia);
+
+        string remetente = StringDe(argumentosJson, "remetente");
+        if (remetente.Length > 0) partes.Add("de: " + remetente);
+
+        string assunto = StringDe(argumentosJson, "assunto");
+        if (assunto.Length > 0) partes.Add("assunto: " + assunto);
+
+        return string.Join(" • ", partes);
+    }
+
+    private static string Plural(string numero, string singular, string plural) =>
+        numero == "1" ? $"1 {singular}" : $"{numero} {plural}";
 
     private static string? TamanhoDoConteudo(string argumentosJson)
     {

@@ -470,6 +470,92 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void CadeiaDeAcoes_AcaoSemArtefato_TooltipDizOAlvo()
+        {
+            // O tooltip de um glob dizia só "glob": sem artefato, o literal era vazio. O alvo
+            // anunciado no começo da ação é o que sobra para descrevê-la, e precisa chegar ao fim.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var cadeia = new ToolChainView();
+                cadeia.Iniciar("g", "glob", @"*.html em C:\temp\emails fisio");
+                cadeia.Concluir("g", falhou: false, recusada: false, artefato: null, detalhe: null);
+                Drenar(cadeia);
+
+                var trilha = (System.Windows.Controls.Panel)cadeia.FindName("Trilha");
+                var icone = (FrameworkElement)trilha.Children[0];
+                var conteudo = (System.Windows.Controls.StackPanel)icone.ToolTip;
+                var linha = (System.Windows.Controls.TextBlock)conteudo.Children[0];
+
+                linha.Text.Should().Be(@"glob  •  *.html em C:\temp\emails fisio");
+                System.Windows.Controls.ToolTipService.GetShowDuration(icone)
+                    .Should().Be(int.MaxValue, "o padrão do WPF fecha em 5 segundos, no meio da leitura");
+
+                var casca = new System.Windows.Controls.ToolTip { Content = conteudo };
+                DesenharSolto(casca, "tooltip-simples", 420, 60);
+            });
+        }
+
+        [Fact]
+        public void Tooltip_TemACascaDoDesignSystem()
+        {
+            // D8: sem estilo próprio, valia a casca nativa do Windows — fundo claro e canto reto.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var estilo = Application.Current.TryFindResource(typeof(System.Windows.Controls.ToolTip)) as Style;
+                estilo.Should().NotBeNull();
+
+                var tooltip = new System.Windows.Controls.ToolTip { Content = "Painel lateral" };
+                tooltip.Measure(new Size(200, 60));
+
+                ((System.Windows.Media.SolidColorBrush)tooltip.Background).Color
+                    .Should().Be(((System.Windows.Media.SolidColorBrush)Application.Current
+                        .FindResource("SurfaceTooltipBrush")).Color);
+            });
+        }
+
+        [Fact]
+        public void PainelLateral_TooltipEmBloco_SegueOMock()
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var comando = ActionLogService.Construir(
+                    "shell",
+                    new Artifact(ArtifactKind.CommandRun, "shell",
+                                 @"Get-ChildItem -Path C:\Users\Carlo\Documentos\notas -File | Measure-Object -Property Length -Sum", false),
+                    falhou: false, detalhe: null,
+                    saidaBruta: "Count    : 12\nAverage  :\nSum      : 38912\nMaximum  :\nMinimum  :\nProperty : Length",
+                    resumo: "saída: 6 linhas");
+
+                var painel = new SidePanelWindow();
+                var metodo = typeof(SidePanelWindow).GetMethod("TooltipEmBloco",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+
+                var tooltip = (System.Windows.Controls.ToolTip)metodo.Invoke(painel, new object[] { comando })!;
+                var pilha = (System.Windows.Controls.StackPanel)tooltip.Content;
+
+                pilha.Width.Should().Be(340, "largura FIXA (D9), e não teto");
+                pilha.Children.Count.Should().Be(3, "comando, resultado e saída bruta");
+
+                DesenharSolto(tooltip, "tooltip-bloco", 380, 320);
+
+                var busca = ActionLogService.Construir(
+                    "glob", artefato: null, falhou: false, detalhe: null,
+                    saidaBruta: null, argumento: @"*.html em C:\temp\emails fisio", resumo: "2 arquivos");
+
+                var tooltipBusca = (System.Windows.Controls.ToolTip)metodo.Invoke(painel, new object[] { busca })!;
+                DesenharSolto(tooltipBusca, "tooltip-bloco-busca", 380, 160);
+
+                painel.Close();
+            });
+        }
+
+        [Fact]
         public void CardDeConfirmacao_MostraOComandoExatoEDesenha()
         {
             EmSta(() =>

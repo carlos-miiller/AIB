@@ -158,7 +158,7 @@
                                     <ToolTip Background="{StaticResource SurfaceTooltipBrush}"
                                              BorderBrush="{StaticResource AccentBorderBrush}"
                                              BorderThickness="1" HasDropShadow="True">
-                                        <StackPanel Margin="6">
+                                        <StackPanel>
                                             <TextBlock x:Name="TooltipLevelInfo" Text="Nível 1 (0/20 XP)"
                                                        FontFamily="{StaticResource MonoFontFamily}"
                                                        FontSize="11"

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -32,11 +32,18 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
     /// <summary>Ações que já terminaram, na ordem de conclusão. Uma entrada por ícone.</summary>
     private readonly Dictionary<string, string> _emCurso = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// O argumento de cada ação, guardado no anúncio. É o que descreve a ação no tooltip quando
+    /// ela termina sem artefato — antes o tooltip de um <c>glob</c> dizia só "glob".
+    /// </summary>
+    private readonly Dictionary<string, string> _argumentos = new(StringComparer.Ordinal);
+
     private Storyboard? _giro;
 
     public ToolChainView()
     {
         InitializeComponent();
+        TooltipDeAcao.Configurar(ChipEmCurso);
         Unloaded += (_, _) =>
         {
             PararSpinner();
@@ -59,6 +66,7 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
     public void Iniciar(string id, string ferramenta, string argumento)
     {
         _emCurso[id] = ferramenta;
+        if (!string.IsNullOrWhiteSpace(argumento)) _argumentos[id] = argumento;
 
         IconeFalha.Visibility = Visibility.Collapsed;
         Spinner.Visibility = Visibility.Visible;
@@ -76,22 +84,25 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
         {
             NomeFerramenta.Text = $"{_emCurso.Count} ferramentas";
             ArgumentoResumido.Text = "em paralelo";
-            ChipEmCurso.ToolTip = MontarTooltipSimples(
-                string.Join(", ", _emCurso.Values.Select(AIB.Services.Ferramentas.Rotulo)), null);
+            ChipEmCurso.ToolTip = MontarTooltipEmLinhas(
+                _emCurso.Select(p => LinhaDaAcao(p.Value, ArgumentoDe(p.Key))));
         }
         else
         {
             // O ROTULO, nao o nome da funcao. "read" e endereco; "Lendo arquivo" e noticia,
             // e e o que a pessoa olhando a tela quer saber.
+            string literal = ArgumentoDe(id);
             NomeFerramenta.Text = AIB.Services.Ferramentas.Rotulo(ferramenta);
-            ArgumentoResumido.Text = argumento ?? "";
-            ChipEmCurso.ToolTip = MontarTooltipSimples(
-                AIB.Services.Ferramentas.Rotulo(ferramenta), argumento);
+            ArgumentoResumido.Text = literal;
+            ChipEmCurso.ToolTip = MontarTooltipSimples(ferramenta, literal, erro: null);
         }
 
         ChipEmCurso.Visibility = Visibility.Visible;
         IniciarSpinner();
     }
+
+    private string ArgumentoDe(string id) =>
+        _argumentos.TryGetValue(id, out string? argumento) ? argumento : "";
 
     /// <summary>
     /// Marca a ação como "Aguardando": ela existe, mas está parada esperando o usuário decidir
@@ -113,7 +124,7 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
     private static readonly TimeSpan TempoMinimoVisivel = TimeSpan.FromMilliseconds(500);
 
     /// <summary>Conclusões esperando a vez de virar ícone.</summary>
-    private readonly Queue<(string Ferramenta, bool Falhou, bool Recusada, Artifact? Artefato, string? Detalhe)>
+    private readonly Queue<(string Id, string Ferramenta, bool Falhou, bool Recusada, Artifact? Artefato, string? Detalhe)>
         _aguardandoDesenho = new();
 
     private System.Windows.Threading.DispatcherTimer? _ritmo;
@@ -134,13 +145,10 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
 
         // A remoção de _emCurso acontece só quando a conclusão for DESENHADA: até lá a ação
         // ainda é uma das que estão em curso, e a contagem do chip precisa dizer isso.
-        _aguardandoDesenho.Enqueue((ferramenta, falhou, recusada, artefato, detalhe));
-        _idsAguardando.Enqueue(id);
+        _aguardandoDesenho.Enqueue((id, ferramenta, falhou, recusada, artefato, detalhe));
 
         GarantirRitmo();
     }
-
-    private readonly Queue<string> _idsAguardando = new();
 
     private void GarantirRitmo()
     {
@@ -179,22 +187,27 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
         }
 
         var item = _aguardandoDesenho.Dequeue();
-        string id = _idsAguardando.Count > 0 ? _idsAguardando.Dequeue() : "";
-        if (id.Length > 0) _emCurso.Remove(id);
+        string argumento = ArgumentoDe(item.Id);
+        _emCurso.Remove(item.Id);
+        _argumentos.Remove(item.Id);
+
+        // O literal do artefato vence: é o caminho RESOLVIDO. O argumento cobre as ferramentas
+        // que não deixam artefato — busca, consulta, habilidade de terceiros.
+        string literal = item.Artefato?.Value ?? argumento;
 
         if (item.Falhou)
         {
-            MostrarFalha(item.Ferramenta, item.Recusada, item.Artefato, item.Detalhe);
+            MostrarFalha(item.Ferramenta, literal, item.Recusada, item.Artefato, item.Detalhe);
             return;
         }
 
-        AcrescentarIcone(item.Ferramenta, item.Artefato, falhou: false, recusada: false, detalhe: null);
+        AcrescentarIcone(item.Ferramenta, literal, item.Artefato, falhou: false, recusada: false, detalhe: null);
 
         // Ainda há paralelas em curso: o chip continua, com a contagem atualizada.
         if (_emCurso.Count > 0)
         {
             var restante = _emCurso.First();
-            Iniciar(restante.Key, restante.Value, "");
+            Iniciar(restante.Key, restante.Value, ArgumentoDe(restante.Key));
             return;
         }
 
@@ -210,7 +223,7 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
     /// só quando a ação seguinte começa.
     /// </para>
     /// </summary>
-    private void MostrarFalha(string ferramenta, bool recusada, Artifact? artefato, string? detalhe)
+    private void MostrarFalha(string ferramenta, string literal, bool recusada, Artifact? artefato, string? detalhe)
     {
         PararSpinner();
 
@@ -225,14 +238,13 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
         NomeFerramenta.Foreground = (Brush)FindResource("DangerBrush");
         ArgumentoResumido.Text = detalhe ?? artefato?.Detail ?? "";
 
-        ChipEmCurso.ToolTip = MontarTooltipSimples(
-            ferramenta, artefato?.Value ?? detalhe ?? "");
+        ChipEmCurso.ToolTip = MontarTooltipSimples(ferramenta, literal, detalhe ?? artefato?.Detail);
 
         // Guardado para virar ícone vermelho na trilha quando a próxima ação começar.
-        _falhaPendente = (ferramenta, artefato, detalhe, recusada);
+        _falhaPendente = (ferramenta, literal, artefato, detalhe, recusada);
     }
 
-    private (string Ferramenta, Artifact? Artefato, string? Detalhe, bool Recusada)? _falhaPendente;
+    private (string Ferramenta, string Literal, Artifact? Artefato, string? Detalhe, bool Recusada)? _falhaPendente;
 
     /// <summary>
     /// Recolhe a falha que estava visível para dentro da trilha. Chamado quando outra ação
@@ -245,7 +257,7 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
         var f = _falhaPendente.Value;
         _falhaPendente = null;
 
-        AcrescentarIcone(f.Ferramenta, f.Artefato, falhou: true, recusada: f.Recusada, detalhe: f.Detalhe);
+        AcrescentarIcone(f.Ferramenta, f.Literal, f.Artefato, falhou: true, recusada: f.Recusada, detalhe: f.Detalhe);
 
         PararSpinner();
         ChipEmCurso.Visibility = Visibility.Collapsed;
@@ -256,11 +268,9 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
     // ─────────────────────────────────────────────────────────────────────
 
     private void AcrescentarIcone(
-        string ferramenta, Artifact? artefato, bool falhou, bool recusada, string? detalhe)
+        string ferramenta, string literal, Artifact? artefato, bool falhou, bool recusada, string? detalhe)
     {
-        var desenho = artefato != null
-            ? ToolIcons.De(recusada ? ArtifactKind.Denied : artefato.Kind)
-            : ToolIcons.De(ferramenta);
+        var desenho = ToolIcons.De(ferramenta, recusada ? ArtifactKind.Denied : artefato?.Kind);
 
         var icone = new Path
         {
@@ -273,12 +283,16 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
             Width = 22,
             Height = 22,
             Stretch = Stretch.None,
+            // Sem fundo, o Path só recebe o mouse em cima do TRAÇO: o tooltip piscava ao passar
+            // pelo miolo vazio do ícone.
+            Fill = System.Windows.Media.Brushes.Transparent,
             Margin = new Thickness(Trilha.Children.Count == 0 ? 0 : 8, 0, 0, 0),
             // O tooltip é ToolTip nativo de propósito: ele abre num popup, FORA do
             // ScrollViewer da trilha. Um elemento filho nunca escaparia — a rolagem
             // horizontal recorta nos DOIS eixos (A6).
-            ToolTip = MontarTooltipSimples(ferramenta, artefato?.Value ?? detalhe ?? "")
+            ToolTip = MontarTooltipSimples(ferramenta, literal, falhou ? (detalhe ?? artefato?.Detail) : null)
         };
+        TooltipDeAcao.Configurar(icone);
 
         var brilho = falhou ? "#FFFF7A7E" : null;
         if (brilho != null)
@@ -302,24 +316,52 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
             System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
-    /// <summary>
-    /// Tooltip simples de uma linha (§4.6 i): "write • C:\caminho\arquivo.txt".
-    /// </summary>
-    private static object MontarTooltipSimples(string ferramenta, string? literal)
-    {
-        string texto = string.IsNullOrWhiteSpace(literal)
-            ? ferramenta
-            : $"{ferramenta} • {literal}";
+    /// <summary>"edit • C:\caminho\arquivo.txt" — a linha do tooltip simples (§4.6 i).</summary>
+    private static string LinhaDaAcao(string ferramenta, string? literal) =>
+        string.IsNullOrWhiteSpace(literal) ? ferramenta : $"{ferramenta}  •  {literal}";
 
-        return new TextBlock
+    /// <summary>
+    /// Tooltip simples (§4.6 i): uma linha, mono 11px, "write  •  C:\caminho\arquivo.txt".
+    /// <para>
+    /// Em falha ganha uma SEGUNDA linha, em vermelho, com o erro. É a exceção deliberada à
+    /// linha única: o ícone vermelho na trilha é o único lugar onde o erro sobrevive depois que
+    /// o chip de falha recolhe, e sem ela o hover diria onde falhou, mas não por quê.
+    /// </para>
+    /// </summary>
+    private object MontarTooltipSimples(string ferramenta, string? literal, string? erro)
+    {
+        var pilha = new StackPanel();
+        pilha.Children.Add(LinhaMono(LinhaDaAcao(ferramenta, literal), "TextBodyBrush"));
+
+        if (!string.IsNullOrWhiteSpace(erro))
         {
-            Text = texto,
-            FontFamily = new FontFamily("Cascadia Code, Consolas"),
-            FontSize = 11,
-            TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 420
-        };
+            var linhaDeErro = LinhaMono(erro, "DangerBrush");
+            linhaDeErro.Margin = new Thickness(0, 3, 0, 0);
+            pilha.Children.Add(linhaDeErro);
+        }
+
+        return pilha;
     }
+
+    /// <summary>As ações em paralelo, uma por linha, no mesmo formato do tooltip simples.</summary>
+    private object MontarTooltipEmLinhas(IEnumerable<string> linhas)
+    {
+        var pilha = new StackPanel();
+        foreach (string linha in linhas) pilha.Children.Add(LinhaMono(linha, "TextBodyBrush"));
+        return pilha;
+    }
+
+    private TextBlock LinhaMono(string texto, string cor) => new()
+    {
+        Text = texto,
+        FontFamily = (FontFamily)FindResource("MonoFontFamily"),
+        FontSize = 11,
+        Foreground = (Brush)FindResource(cor),
+        // Uma linha, como o mock. Só um caminho muito longo quebra: sem teto, o popup passaria
+        // da borda da tela e cortaria justamente o nome do arquivo, que fica no fim.
+        TextWrapping = TextWrapping.Wrap,
+        MaxWidth = 560
+    };
 
     /// <summary>
     /// A roda vertical do mouse sobre a trilha rola na HORIZONTAL — é o gesto natural sobre uma

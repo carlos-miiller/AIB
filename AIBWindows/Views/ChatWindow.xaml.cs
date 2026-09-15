@@ -517,11 +517,17 @@ public partial class ChatWindow : Window
             artefato,
             acao.Failed,
             acao.Detail,
-            saidaBruta: null));
+            acao.RawOutput,
+            acao.Argument,
+            acao.Summary));
 
         // Só arquivo entra na lista de contexto, e só quando a ação deu certo: um caminho que
         // falhou ou foi recusado não está no contexto de coisa nenhuma.
         if (acao.Failed || artefato == null) return;
+
+        // A edição agora deixa artefato de gravação, mas a pill da lista diria "criado pela IA"
+        // de um arquivo que já existia. Fica fora, como ficava antes de ter artefato.
+        if (acao.Tool == Ferramentas.Editar) return;
 
         switch (artefato.Kind)
         {

@@ -279,7 +279,8 @@ public sealed class AgentLoop
                     // O fracasso vem do resultado, não do artefato: ferramenta sem extrator
                     // próprio devolve artefato nulo mesmo quando deu erro.
                     yield return new AgentEvent.ToolFinished(
-                        tc.Id, tc.Name, Memory.ArtifactExtractor.Falhou(result), artefato, result);
+                        tc.Id, tc.Name, Memory.ArtifactExtractor.Falhou(result), artefato, result,
+                        tc.ArgumentsOrEmpty());
 
                     store.AppendToolResult(tc.Id, result);
                     TrackRecentFile(tc);

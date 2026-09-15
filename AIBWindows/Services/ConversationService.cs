@@ -1431,7 +1431,10 @@ public sealed class ConversationService : IMessageStore
                             terminada.Failed,
                             Memory.ArtifactExtractor.Recusado(terminada.Result),
                             terminada.Artifact,
-                            terminada.Failed ? PrimeiraLinhaDoErro(terminada.Result) : null);
+                            terminada.Failed ? PrimeiraLinhaDoErro(terminada.Result) : null,
+                            Memory.ArtifactExtractor.ResumirArgumento(terminada.Tool, terminada.Arguments),
+                            terminada.Failed ? null : Memory.ArtifactExtractor.ResumirResultado(terminada.Tool, terminada.Result),
+                            Memory.ArtifactExtractor.SaidaBruta(terminada.Tool, terminada.Result));
                         break;
 
                     case AgentEvent.Completed completed

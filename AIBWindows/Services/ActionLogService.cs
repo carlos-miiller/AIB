@@ -69,6 +69,18 @@ public sealed class ActionLogEntry
     /// competirem visualmente com escrita e destruição.
     /// </summary>
     public bool SoLeitura => Status == ActionStatus.Done && Kind == ArtifactKind.FileRead;
+
+    /// <summary>
+    /// Rótulo da primeira seção do tooltip em bloco (§4.6 ii). "CAMINHO COMPLETO" sobre
+    /// "*.cs em C:\projeto" mentiria sobre o que o texto é.
+    /// </summary>
+    public string RotuloDoAlvo => Tool switch
+    {
+        _ when Command != null => "COMANDO",
+        Ferramentas.Procurar or Ferramentas.Buscar => "BUSCA",
+        Ferramentas.Email => "CONSULTA",
+        _ => "CAMINHO COMPLETO"
+    };
 }
 
 /// <summary>
@@ -132,27 +144,50 @@ public static class ActionLogService
     /// ação porque não se sabe o literal dela esconderia justamente o que é incomum.
     /// </para>
     /// </summary>
+    /// <param name="argumento">
+    /// O alvo descrito a partir dos argumentos da chamada — caminho, busca, consulta. Entra
+    /// quando não há artefato: sem ele, o alvo virava o nome da ferramenta e a linha lia
+    /// "edit edit", sem dizer em que arquivo.
+    /// </param>
+    /// <param name="resumo">Resultado resumido, quando o artefato não traz um.</param>
     public static ActionLogEntry Construir(
         string ferramenta,
         Artifact? artefato,
         bool falhou,
         string? detalhe,
-        string? saidaBruta)
+        string? saidaBruta,
+        string? argumento = null,
+        string? resumo = null)
     {
-        string literal = artefato?.Value ?? ferramenta;
+        string literal = artefato?.Value
+                         ?? (string.IsNullOrWhiteSpace(argumento) ? ferramenta : argumento);
+
+        var tipo = artefato?.Kind ?? TipoPeloNome(ferramenta);
 
         return new ActionLogEntry
         {
             Tool = ferramenta,
             Target = Encurtar(literal),
             FullTarget = literal,
-            Command = artefato?.Kind == ArtifactKind.CommandRun ? literal : null,
+            Command = tipo == ArtifactKind.CommandRun ? literal : null,
             RawOutput = saidaBruta,
-            Result = falhou ? (detalhe ?? artefato?.Detail ?? "falhou") : artefato?.Detail,
-            Kind = artefato?.Kind ?? ArtifactKind.CommandRun,
+            Result = falhou ? (detalhe ?? artefato?.Detail ?? "falhou") : (artefato?.Detail ?? resumo),
+            Kind = tipo,
             Status = falhou ? ActionStatus.Failed : ActionStatus.Done
         };
     }
+
+    /// <summary>
+    /// A natureza da ação quando não há artefato. Busca e consulta são leitura pura, e §6.4
+    /// pinta leitura de cinza — antes elas caíam em "comando" e saíam lilás, competindo com
+    /// o que de fato mudou a máquina.
+    /// </summary>
+    private static ArtifactKind TipoPeloNome(string ferramenta) => ferramenta switch
+    {
+        Ferramentas.Ler or Ferramentas.Procurar or Ferramentas.Buscar or Ferramentas.Email => ArtifactKind.FileRead,
+        Ferramentas.Gravar or Ferramentas.Editar => ArtifactKind.FileWritten,
+        _ => ArtifactKind.CommandRun
+    };
 
     /// <summary>
     /// Encurta preservando o FIM, que é a parte informativa de um caminho — §6.2(c) usa o mesmo

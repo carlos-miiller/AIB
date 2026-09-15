@@ -564,7 +564,7 @@ public partial class SidePanelWindow : Window
             Margin = new Thickness(0, 0, 10, 0),
             Child = new Path
             {
-                Data = ToolIcons.De(acao.Kind),
+                Data = ToolIcons.De(acao.Tool, acao.Kind),
                 Stroke = (Brush)FindResource(traco),
                 StrokeThickness = 1.3,
                 StrokeLineJoin = PenLineJoin.Round,
@@ -616,8 +616,10 @@ public partial class SidePanelWindow : Window
             TextTrimming = TextTrimming.None,
             Margin = new Thickness(0, 3, 0, 0),
             // Tooltip em BLOCO: o caminho inteiro, sem abreviação (§4.6 ii).
-            ToolTip = TooltipEmBloco(acao)
+            ToolTip = TooltipEmBloco(acao),
+            Cursor = Cursors.Help
         };
+        TooltipDeAcao.Configurar(alvo);
         corpo.Children.Add(alvo);
 
         if (!string.IsNullOrWhiteSpace(acao.Result))
@@ -643,52 +645,90 @@ public partial class SidePanelWindow : Window
     }
 
     /// <summary>
-    /// Tooltip em bloco de §4.6(ii): seções empilhadas com rótulo em caixa alta.
+    /// Tooltip em bloco de §4.6(ii), no desenho do .action-tooltip.block do mock.
+    /// <para>
+    /// Largura FIXA de 340 (D9): o conteúdo é monoespaçado, e largura variável fazia cada
+    /// entrada abrir um tooltip de tamanho diferente. Cada seção tem padding próprio e a
+    /// divisória fica ENTRE elas, na borda de cima da seguinte. O RESULTADO é o único texto
+    /// colorido (D11) — é o resumo que se procura primeiro. A SAÍDA BRUTA tem caixa e teto de
+    /// altura (D10): sem eles, um comando verboso esticava o tooltip para fora da tela.
+    /// </para>
     /// </summary>
-    private object TooltipEmBloco(ActionLogEntry acao)
+    private System.Windows.Controls.ToolTip TooltipEmBloco(ActionLogEntry acao)
     {
-        var pilha = new StackPanel { MaxWidth = 340 };
+        var pilha = new StackPanel { Width = (double)FindResource("TooltipBlockWidth") };
+        var mono = (System.Windows.Media.FontFamily)FindResource("MonoFontFamily");
 
-        void Secao(string rotulo, string? conteudo, bool mono = true)
+        void Secao(string rotulo, UIElement conteudo)
         {
-            if (string.IsNullOrWhiteSpace(conteudo)) return;
-
-            if (pilha.Children.Count > 0)
-            {
-                pilha.Children.Add(new System.Windows.Shapes.Rectangle
-                {
-                    Height = 1,
-                    Fill = (Brush)FindResource("DividerTooltipBrush"),
-                    Margin = new Thickness(0, 7, 0, 7)
-                });
-            }
-
             var titulo = new TextBlock
             {
                 Text = rotulo,
                 FontSize = 9,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = (Brush)FindResource("TextMutedBrush")
+                Foreground = (Brush)FindResource("TextMutedBrush"),
+                Margin = new Thickness(0, 0, 0, 5)
             };
             LetterSpacing.SetEm(titulo, 0.10);
 
-            pilha.Children.Add(titulo);
-            pilha.Children.Add(new TextBlock
+            var corpo = new StackPanel();
+            corpo.Children.Add(titulo);
+            corpo.Children.Add(conteudo);
+
+            var secao = new Border { Padding = new Thickness(12, 9, 12, 9), Child = corpo };
+            if (pilha.Children.Count > 0)
             {
-                Text = conteudo,
-                FontFamily = mono ? (System.Windows.Media.FontFamily)FindResource("MonoFontFamily") : null,
-                FontSize = 11,
-                Foreground = (Brush)FindResource("TextBodyBrush"),
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 2, 0, 0)
+                secao.BorderBrush = (Brush)FindResource("DividerTooltipBrush");
+                secao.BorderThickness = new Thickness(0, 1, 0, 0);
+            }
+
+            pilha.Children.Add(secao);
+        }
+
+        TextBlock Texto(string conteudo, string cor) => new()
+        {
+            Text = conteudo,
+            FontFamily = mono,
+            FontSize = 11,
+            Foreground = (Brush)FindResource(cor),
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        Secao(acao.RotuloDoAlvo, Texto(acao.FullTarget, "TextBodyBrush"));
+
+        if (!string.IsNullOrWhiteSpace(acao.Result))
+        {
+            bool falhou = acao.Status == ActionStatus.Failed;
+            Secao(falhou ? "ERRO" : "RESULTADO",
+                  Texto(acao.Result, falhou ? "DangerBrush" : "AccentLilacBrush"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(acao.RawOutput))
+        {
+            Secao("SAÍDA BRUTA", new Border
+            {
+                Background = (Brush)FindResource("SurfaceCodeBrush"),
+                BorderBrush = (Brush)FindResource("DividerBrush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(7),
+                Padding = new Thickness(9, 8, 9, 8),
+                MaxHeight = (double)FindResource("TooltipRawMaxHeight"),
+                ClipToBounds = true,
+                // Sem quebra, como o console: a saída alinhada em colunas perde o sentido
+                // quando cada linha dobra num ponto diferente.
+                Child = new TextBlock
+                {
+                    Text = acao.RawOutput,
+                    FontFamily = mono,
+                    FontSize = 10.5,
+                    Foreground = (Brush)FindResource("TextSecondaryBrush"),
+                    TextWrapping = TextWrapping.NoWrap
+                }
             });
         }
 
-        Secao(acao.Command != null ? "COMANDO" : "CAMINHO COMPLETO", acao.FullTarget);
-        Secao("RESULTADO", acao.Result);
-        Secao("SAÍDA BRUTA", acao.RawOutput);
-
-        return pilha;
+        // Padding zero: a variante em bloco não tem o respiro da simples, cada seção traz o seu.
+        return new System.Windows.Controls.ToolTip { Padding = new Thickness(0), Content = pilha };
     }
 
     // ─────────────────────────────────────────────────────────────────────
