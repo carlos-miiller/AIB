@@ -291,7 +291,11 @@ namespace AIB.Tests
             bloco.Should().NotBeEmpty("o ato cobriu os dois capítulos: se ele some, não sobra nada");
             bloco.Should().Contain("### Ato 1");
             bloco.Should().Contain("truncado");
-            Counter.CountText(bloco).Should().BeLessThan(inteiro);
+
+            // Bloco contra bloco: o cabeçalho pesa igual nos dois, e comparar com o ato sozinho
+            // fazia o ensaio depender do tamanho do cabeçalho.
+            int folgado = Counter.CountText(camada.Render(apertada with { Acts = inteiro * 2 }, Counter));
+            Counter.CountText(bloco).Should().BeLessThan(folgado);
         }
 
         [Fact]

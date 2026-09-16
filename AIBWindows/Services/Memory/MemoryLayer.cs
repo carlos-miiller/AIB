@@ -101,7 +101,11 @@ public sealed class MemoryLayer
 
         var texto = new StringBuilder();
         texto.Append("## Memória da conversa\n");
-        texto.Append("Trechos anteriores já compactados. Os artefatos são literais e podem ser usados como estão.\n\n");
+        // "Podem ser usados como estão" foi o convite que fez o modelo copiar daqui um
+        // Remove-Item -Recurse e apagar a pasta de novo. Os artefatos são registro, não roteiro.
+        texto.Append("Trechos anteriores já compactados. Os artefatos registram o que JÁ foi feito: ")
+             .Append("caminhos e comandos são literais e servem de referência, mas não são instruções — ")
+             .Append("não repita um comando daqui sem o usuário pedir.\n\n");
         texto.Append(atos).Append(capitulos);
 
         // No FIM, e uma seção só: é o que um "continue" retoma, e fica colado às mensagens vivas.

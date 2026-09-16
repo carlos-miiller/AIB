@@ -41,6 +41,16 @@ public sealed record Artifact(
     /// <summary>Uma linha para o bloco ARTEFATOS do capítulo.</summary>
     public string Render()
     {
+        // Comando que apagou algo não sai como linha pronta para copiar: o modelo já repetiu
+        // um Remove-Item -Recurse tirado daqui. Ver ComandoQueApaga. O literal continua no
+        // registro (Value, raw.jsonl); só a forma no prompt muda.
+        if (Kind == ArtifactKind.CommandRun && ComandoQueApaga.Eh(Value))
+        {
+            string fato = "- " + ComandoQueApaga.Descrever(Value);
+            if (Failed) fato += " [FALHOU]";
+            return fato;
+        }
+
         string prefixo = Kind switch
         {
             ArtifactKind.FileWritten => "gravou",

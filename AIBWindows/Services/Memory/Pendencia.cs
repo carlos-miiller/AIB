@@ -212,6 +212,13 @@ public static class Pendencias
 
     private static string TextoDaFalha(Artifact a)
     {
+        // Pendência é o que o "continue" retoma. Um comando de apagar que falhou não pode virar
+        // convite para tentar de novo.
+        if (a.Kind == ArtifactKind.CommandRun && ComandoQueApaga.Eh(a.Value))
+            return Cortar(
+                $"um comando para apagar {ComandoQueApaga.Alvo(a.Value) ?? "arquivos"} falhou — "
+                + "não tente de novo sem o usuário pedir", TetoDaLinha);
+
         string acao = a.Kind == ArtifactKind.FileWritten
             ? (a.Tool == AIB.Services.Ferramentas.Editar ? "editar" : "gravar")
             : "executar";

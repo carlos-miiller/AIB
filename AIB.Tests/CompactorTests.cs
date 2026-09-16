@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -97,7 +97,8 @@ namespace AIB.Tests
 
             capitulo.Summary.Should().Be("O usuário pediu e o agente tentou apagar.");
             capitulo.Pendencias!.Select(p => p.Tipo).Should().Equal(Pendencia.Falha, Pendencia.Assunto);
-            capitulo.Pendencias![0].Texto.Should().Contain(@"del C:\temp\notas.txt");
+            capitulo.Pendencias![0].Texto.Should().Contain(@"apagar C:\temp\notas.txt")
+                .And.NotContain("del ", "comando de apagar não vira convite para tentar de novo");
             capitulo.Render().Should().NotContain("PENDENTE", "a seção sai uma só, no fim do bloco de memória");
         }
 
@@ -326,7 +327,7 @@ namespace AIB.Tests
             var capitulo = new Chapter(0, "2026-08-21T00:00:00Z", 0, 1, "resumo qualquer", new[]
             {
                 new Artifact(ArtifactKind.FileWritten, "write", @"C:\temp\a.txt", false, "12 caracteres"),
-                new Artifact(ArtifactKind.CommandRun, "shell", "del x", true, "ERRO: negado")
+                new Artifact(ArtifactKind.CommandRun, "shell", "dir x", true, "ERRO: negado")
             });
 
             string texto = capitulo.Render();
