@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -503,7 +503,7 @@ public sealed class MailDigestService : IDisposable
         try
         {
             vereditos = await new TriadorDeEmail(
-                    _provedores.GetProvider(config), config.MailTriageThinking)
+                    _provedores.GetProvider(config.ParaTriagem()), config.MailTriageThinking)
                 .TriarAsync(mensagens, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -652,7 +652,9 @@ public sealed class MailDigestService : IDisposable
             // não estava em lugar nenhum da mensagem. É exatamente o que a §"O degrau 2 é
             // invertido de propósito" prevê — modelo pequeno é confiante até quando erra, e por
             // isso ele nunca decide o que sobe. O degrau 3 é do 9B.
-            var provider = _provedores.GetProvider(config);
+            // O provedor DA TRIAGEM, que pode não ser o da conversa: é ele que decide para onde vão
+            // os trechos dos e-mails.
+            var provider = _provedores.GetProvider(config.ParaTriagem());
             vereditos = await new TriadorDeEmail(provider, config.MailTriageThinking)
                 .TriarAsync(lote, ct).ConfigureAwait(false);
         }

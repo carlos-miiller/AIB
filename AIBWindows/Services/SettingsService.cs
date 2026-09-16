@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
@@ -12,13 +12,101 @@ namespace AIB.Services;
 
 public sealed class UserAppSettings
 {
-    public string ApiUrl { get; set; } = "http://127.0.0.1:11434/v1";
+    public string ApiUrl { get; set; } = ProvedoresDeIa.UrlDoOllama;
     public string ApiKey { get; set; } = "ollama";
     public string ModelName { get; set; } = "qwen2.5:7b";
     public string ActiveCharacter { get; set; } = "Ayano";
-    public string KeepAlive { get; set; } = "5m";
+    /// <summary>
+    /// keep_alive do Ollama no provedor ATIVO. Nasce "-1" (sempre carregado) porque era o que de fato
+    /// valia: a tela oferecia "5 minutos" e o valor nunca chegava à requisição — o provider mandava
+    /// -1 sempre. Ver <see cref="Sanear"/> para quem tinha o "5m" gravado.
+    /// </summary>
+    public string KeepAlive { get; set; } = "-1";
     public string AiProvider { get; set; } = ""; // Vazio por default força a tela de Onboarding
     public string ShadowModelName { get; set; } = "qwen2.5:7b";
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Provedor: os campos acima (AiProvider, ApiUrl, ModelName, KeepAlive) e os dois abaixo são
+    // o provedor ATIVO da conversa, e continuam sendo o que o resto do programa lê. Perfis guarda
+    // os de cada provedor, para trocar e voltar sem perder nada.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>Janela de contexto do provedor ativo. Ver <see cref="PerfilDeProvedor.JanelaDeContexto"/>.</summary>
+    public int ContextWindow { get; set; } = PerfilDeProvedor.JanelaPadrao;
+
+    /// <summary>Raciocínio do provedor ativo. Ver <see cref="PerfilDeProvedor.Raciocinio"/>.</summary>
+    public string Reasoning { get; set; } = PerfilDeProvedor.RaciocinioDesligado;
+
+    /// <summary>A configuração de cada provedor, pelo nome. A do ativo é espelho dos campos acima.</summary>
+    public Dictionary<string, PerfilDeProvedor> Perfis { get; set; } = new();
+
+    /// <summary>
+    /// Provedor da triagem de e-mail. Separado do da conversa de propósito: dá para conversar pelo
+    /// OpenRouter e manter a leitura dos e-mails no Ollama, sem mandar trechos deles para fora.
+    /// </summary>
+    public string MailTriageProvider { get; set; } = ProvedoresDeIa.Ollama;
+
+    /// <summary>Modelo da triagem, no provedor dela. Vazio usa o modelo do perfil daquele provedor.</summary>
+    public string MailTriageModel { get; set; } = "";
+
+    /// <summary>Se a migração para perfis por provedor já rodou neste arquivo.</summary>
+    public bool PerfisMigrados { get; set; }
+
+    /// <summary>O perfil do provedor ativo, montado dos campos da conversa.</summary>
+    public PerfilDeProvedor PerfilAtivo() => new PerfilDeProvedor
+    {
+        Url = ApiUrl,
+        Modelo = ModelName,
+        KeepAlive = KeepAlive,
+        JanelaDeContexto = ContextWindow,
+        Raciocinio = Reasoning
+    }.Sanear(AiProvider);
+
+    /// <summary>O perfil de um provedor: o ativo, o guardado ou o de fábrica.</summary>
+    public PerfilDeProvedor PerfilDe(string provedor)
+    {
+        // Sem provedor gravado (antes do primeiro arranque, ou num ensaio), os campos da conversa
+        // são os do Ollama, que é o que a fábrica usa nesse caso.
+        string ativo = AiProvider.Length > 0 ? AiProvider : ProvedoresDeIa.Ollama;
+        if (provedor == ativo) return PerfilAtivo();
+        return Perfis.TryGetValue(provedor, out var guardado)
+            ? guardado.Clone().Sanear(provedor)
+            : ProvedoresDeIa.PerfilPadrao(provedor);
+    }
+
+    /// <summary>Torna <paramref name="provedor"/> o ativo, com <paramref name="perfil"/>, guardando o anterior.</summary>
+    public void Ativar(string provedor, PerfilDeProvedor perfil)
+    {
+        if (AiProvider.Length > 0 && AiProvider != provedor) Perfis[AiProvider] = PerfilAtivo();
+        else if (AiProvider.Length == 0 && provedor != ProvedoresDeIa.Ollama) Perfis[ProvedoresDeIa.Ollama] = PerfilAtivo();
+
+        var p = perfil.Clone().Sanear(provedor);
+        AiProvider = provedor;
+        ApiUrl = p.Url;
+        ModelName = p.Modelo;
+        KeepAlive = p.KeepAlive;
+        ContextWindow = p.JanelaDeContexto;
+        Reasoning = p.Raciocinio;
+        ModelThinking = p.Raciocinio != PerfilDeProvedor.RaciocinioDesligado;
+        Perfis[provedor] = p.Clone();
+    }
+
+    /// <summary>
+    /// Uma cópia destas configurações com o provedor e o modelo DA TRIAGEM no lugar dos da conversa
+    /// — é o que a fábrica de provider recebe quando quem pede é o vigia de e-mail.
+    /// </summary>
+    public UserAppSettings ParaTriagem()
+    {
+        var copia = Clone();
+        string provedor = ProvedoresDeIa.Normalizar(MailTriageProvider, null);
+        if (provedor.Length == 0) provedor = ProvedoresDeIa.Ollama;
+
+        var perfil = PerfilDe(provedor);
+        if (!string.IsNullOrWhiteSpace(MailTriageModel)) perfil.Modelo = MailTriageModel.Trim();
+
+        copia.Ativar(provedor, perfil);
+        return copia;
+    }
     public bool SendSystemPrompt { get; set; } = true;
     public bool EnableIntelligentTools { get; set; } = true;
     // Opt-in: a funcionalidade Shadow Assistant fica desligada por default.
@@ -298,6 +386,8 @@ public sealed class UserAppSettings
     /// </summary>
     public UserAppSettings Sanear()
     {
+        SanearProvedores();
+
         MaxTurnIterations = Entre(MaxTurnIterations, 1, 60);
         CompactionTrigger = Entre(CompactionTrigger, 0.50, 0.99);
         MemoryFraction = Entre(MemoryFraction, 0.05, 0.60);
@@ -314,10 +404,69 @@ public sealed class UserAppSettings
     private static double Entre(double valor, double minimo, double maximo) =>
         double.IsNaN(valor) || valor < minimo ? minimo : valor > maximo ? maximo : valor;
 
+    /// <summary>
+    /// Provedor ativo, perfis e triagem dentro do que existe.
+    /// <para>
+    /// A MIGRAÇÃO roda uma vez por arquivo. Três coisas do arquivo antigo não querem dizer o que
+    /// parecem: o provedor pode ser "OpenAI", "Anthropic" ou "LmStudio", que a AIB não fala mais;
+    /// o keep-alive "5m" nunca chegou ao Ollama, que recebia -1 sempre; e a triagem de e-mail
+    /// sempre usou o provedor e o modelo da conversa. A migração preserva o que de fato
+    /// acontecia, e não o que a tela dizia.
+    /// </para>
+    /// </summary>
+    private void SanearProvedores()
+    {
+        string anterior = AiProvider ?? "";
+        AiProvider = ProvedoresDeIa.Normalizar(anterior, ApiUrl);
+
+        // Provedor antigo que virou Ollama com uma URL de nuvem: a URL não serve a ele.
+        if (AiProvider == ProvedoresDeIa.Ollama && anterior != ProvedoresDeIa.Ollama
+            && !(ApiUrl ?? "").Contains("127.0.0.1") && !(ApiUrl ?? "").Contains("localhost"))
+            ApiUrl = ProvedoresDeIa.UrlDoOllama;
+
+        if (!PerfisMigrados)
+        {
+            if (KeepAlive == "5m") KeepAlive = "-1";
+            Reasoning = ModelThinking ? PerfilDeProvedor.RaciocinioDoModelo : PerfilDeProvedor.RaciocinioDesligado;
+            if (ContextWindow <= 0) ContextWindow = PerfilDeProvedor.JanelaPadrao;
+
+            MailTriageProvider = AiProvider.Length > 0 ? AiProvider : ProvedoresDeIa.Ollama;
+            MailTriageModel = ModelName ?? "";
+
+            PerfisMigrados = true;
+        }
+
+        Perfis ??= new();
+
+        // Perfis de provedor que não existe mais saem; os que ficam, saneados.
+        foreach (var nome in Perfis.Keys.ToList())
+        {
+            if (!ProvedoresDeIa.Todos.Contains(nome)) Perfis.Remove(nome);
+            else Perfis[nome] = (Perfis[nome] ?? ProvedoresDeIa.PerfilPadrao(nome)).Sanear(nome);
+        }
+
+        if (AiProvider.Length > 0)
+        {
+            // Os campos da conversa são a verdade do ativo; o perfil guardado os acompanha.
+            var ativo = PerfilAtivo();
+            ApiUrl = ativo.Url;
+            KeepAlive = ativo.KeepAlive;
+            ContextWindow = ativo.JanelaDeContexto;
+            Reasoning = ativo.Raciocinio;
+            ModelThinking = ativo.Raciocinio != PerfilDeProvedor.RaciocinioDesligado;
+            Perfis[AiProvider] = ativo;
+        }
+
+        string triagem = ProvedoresDeIa.Normalizar(MailTriageProvider, null);
+        MailTriageProvider = triagem.Length > 0 ? triagem : ProvedoresDeIa.Ollama;
+        MailTriageModel ??= "";
+    }
+
     public UserAppSettings Clone()
     {
         var copia = (UserAppSettings)MemberwiseClone();
         copia.MailAccounts = MailAccounts.Select(c => c.Clone()).ToList();
+        copia.Perfis = (Perfis ?? new()).ToDictionary(kv => kv.Key, kv => kv.Value.Clone());
         return copia;
     }
 }
@@ -381,6 +530,7 @@ public sealed class SettingsService
 
         var loaded = ReadFromDisk(path);
         PastasPermitidas.Configurar(loaded.WriteRoots);
+        Ai.ChatRequestOptions.JanelaAtual = loaded.ContextWindow;
 
         lock (_gate)
         {
@@ -446,6 +596,10 @@ public sealed class SettingsService
         // e nao em cada tela, e o que impede o caso "mudei nas configuracoes e a ferramenta
         // continuou com a lista velha".
         PastasPermitidas.Configurar(settings.WriteRoots);
+
+        // A janela vale no mesmo instante, pelo mesmo motivo: os orçamentos por nível e o teto
+        // da poda são lidos dela, e continuar contando a antiga até reabrir o app seria mentir.
+        Ai.ChatRequestOptions.JanelaAtual = settings.ContextWindow;
 
         lock (_gate)
         {

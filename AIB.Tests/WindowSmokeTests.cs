@@ -812,5 +812,36 @@ namespace AIB.Tests
                 janela.Close();
             });
         }
-    }
+
+        [Theory]
+        [InlineData("Ollama")]
+        [InlineData("OpenRouter")]
+        public void Conexao_MostraSoOsCamposDoProvedor(string provedor)
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+                string pasta = Path.Combine(Path.GetTempPath(), "aib-conexao-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(pasta);
+
+                var servico = new SettingsService(Path.Combine(pasta, "settings.json"));
+                var s = servico.LoadSettings();
+                s.AiProvider = provedor;
+                s.ApiUrl = provedor == "OpenRouter" ? ProvedoresDeIa.UrlDoOpenRouter : ProvedoresDeIa.UrlDoOllama;
+                s.ModelName = provedor == "OpenRouter" ? "deepseek/deepseek-chat" : "qwen3.5:4b";
+                servico.SaveSettings(s.Sanear());
+
+                var janela = new SettingsWindow(servico, PaginaDeConfiguracoes.Conexao, new AIB.Services.Mail.MailServiceStub(),
+                                                new AIB.Services.Mail.MailVault(pasta), new AIB.Services.Mail.EstadoDasCaixas(pasta));
+                Desenhar(janela, "config-conexao-" + provedor.ToLowerInvariant(), 980, 760);
+
+                bool nuvem = provedor == "OpenRouter";
+                ((FrameworkElement)janela.FindName("PainelOpenRouter")).Visibility
+                    .Should().Be(nuvem ? Visibility.Visible : Visibility.Collapsed);
+                ((FrameworkElement)janela.FindName("PainelOllama")).Visibility
+                    .Should().Be(nuvem ? Visibility.Collapsed : Visibility.Visible, "keep-alive não existe no OpenRouter");
+
+                janela.Close();
+            });
+        }    }
 }

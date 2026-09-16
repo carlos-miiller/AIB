@@ -1,4 +1,4 @@
-<Window x:Class="AIB.Views.FirstRunWindow"
+﻿<Window x:Class="AIB.Views.FirstRunWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:AIB.Views"
@@ -288,10 +288,10 @@
                                 </StackPanel>
                             </RadioButton>
                             
-                            <RadioButton x:Name="OpenAiRadio" GroupName="ProviderGroup" Margin="0,0,0,0" Checked="OpenAiRadio_Checked">
+                            <RadioButton x:Name="OpenRouterRadio" GroupName="ProviderGroup" Margin="0,0,0,0" Checked="OpenRouterRadio_Checked">
                                 <StackPanel Margin="10,-4,0,0">
-                                    <TextBlock Text="OpenAI (Nuvem)" FontSize="16" FontWeight="SemiBold" Foreground="#F5F4F7" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Conecta aos servidores da OpenAI para modelos de ponta. Requer sua chave de API." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
+                                    <TextBlock Text="OpenRouter (Nuvem)" FontSize="16" FontWeight="SemiBold" Foreground="#F5F4F7" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Acesso aos modelos de nuvem por uma API só. Requer sua chave do OpenRouter, e cada requisição é cobrada — o conteúdo da conversa sai desta máquina." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </RadioButton>
                         </StackPanel>
@@ -321,13 +321,16 @@
                             </StackPanel>
 
                             <!-- OpenAI branch -->
-                            <StackPanel x:Name="OpenAiBranch" Visibility="Collapsed">
+                            <StackPanel x:Name="OpenRouterBranch" Visibility="Collapsed">
                                 <Border Background="#06FFFFFF" CornerRadius="8" Padding="20" BorderBrush="#1AFFFFFF" BorderThickness="1">
                                     <StackPanel>
-                                        <TextBlock Text="Sua Chave da API" FontWeight="SemiBold" FontSize="14" Foreground="#F5F4F7" Margin="0,0,0,8"/>
-                                        <TextBox x:Name="KeyTextBox" Height="42" FontSize="14" VerticalContentAlignment="Center" LostFocus="KeyTextBox_LostFocus" KeyDown="KeyTextBox_KeyDown"/>
+                                        <TextBlock Text="Sua Chave do OpenRouter" FontWeight="SemiBold" FontSize="14" Foreground="#F5F4F7" Margin="0,0,0,8"/>
+                                        <PasswordBox x:Name="KeyTextBox" Height="42" FontSize="14" VerticalContentAlignment="Center" LostFocus="KeyTextBox_LostFocus" KeyDown="KeyTextBox_KeyDown" PasswordChanged="KeyTextBox_PasswordChanged"/>
                                         <TextBlock Text="* Sua chave será protegida com criptografia DPAPI no cofre do Windows." Margin="0,8,0,0" Foreground="#8B8794" FontSize="12" TextWrapping="Wrap"/>
-                                        <TextBlock x:Name="ErrorLabel" Text="Formato de chave inválido (deve começar com sk-)" Foreground="#D53F8C" FontWeight="SemiBold" FontSize="13" Visibility="Collapsed" Margin="0,10,0,0"/>
+                                        <TextBlock x:Name="ErrorLabel" Text="Formato de chave inválido (deve começar com sk-or-)" Foreground="#D53F8C" FontWeight="SemiBold" FontSize="13" Visibility="Collapsed" Margin="0,10,0,0"/>
+                                        <TextBlock Text="Modelo" FontWeight="SemiBold" FontSize="14" Foreground="#F5F4F7" Margin="0,18,0,8"/>
+                                        <ComboBox x:Name="OpenRouterModelComboBox" Height="42" FontSize="14" IsEditable="True" VerticalContentAlignment="Center" SelectionChanged="ModelComboBox_SelectionChanged" LostFocus="OpenRouterModel_LostFocus"/>
+                                        <TextBlock x:Name="OpenRouterModelInfo" Text="Carregando o catálogo do OpenRouter… só aparecem modelos que aceitam ferramentas." Margin="0,8,0,0" Foreground="#8B8794" FontSize="12" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -110,7 +110,8 @@ namespace AIB.Tests
                 WpfHost.GarantirRecursos();
                 var janela = new SettingsWindow(ServicoDescartavel());
 
-                PaginaDe(janela, "ModelThinkingSwitch").Should().Be("PaginaAvancado");
+                // O raciocínio do modelo foi para a Conexão: o sentido dele muda por provedor.
+                PaginaDe(janela, "RaciocinioComboBox").Should().Be("PaginaConexao");
                 PaginaDe(janela, "ThinkingInHistorySwitch").Should().Be("PaginaAvancado");
 
                 janela.Close();

@@ -1,18 +1,18 @@
 using System;
-using System.ClientModel;
-using System.ClientModel.Primitives;
+using System.Collections.Generic;
 using System.Net.Http;
-using System.Threading;
 using AIB.Services;
-using OpenAI;
-using OpenAI.Chat;
 
 namespace AIB.Services.Ai;
 
 /// <summary>
-/// Fábrica única de providers. Concentra a seleção de provider e a normalização de
-/// URL/credencial que antes viviam espalhadas dentro de EnsureClient e AskStatelessAsync.
-/// Reaproveita a instância enquanto provider, modelo, URL e CREDENCIAL efetiva não mudarem.
+/// Fábrica única de providers: Ollama ou OpenRouter, pelo <c>AiProvider</c> das configurações que
+/// recebe. Reaproveita a instância enquanto provedor, modelo, URL e CREDENCIAL efetiva não mudarem.
+/// <para>
+/// Guarda UMA instância por combinação, e não só a última: a conversa e a triagem de e-mail podem
+/// usar provedores diferentes e se alternam o tempo todo. Com uma só, cada alternância construía
+/// um provider novo.
+/// </para>
 /// </summary>
 public sealed class ChatProviderFactory : IChatProviderFactory
 {
@@ -20,95 +20,80 @@ public sealed class ChatProviderFactory : IChatProviderFactory
     private readonly IToolCallHealer _healer;
 
     private readonly object _gate = new();
-    private IChatProvider? _cached;
-    private (string Provider, string Model, string ApiUrl, string Credential) _cachedKey;
+    private readonly Dictionary<(string Provider, string Model, string ApiUrl, string Credential), IChatProvider> _cache = new();
 
-    public ChatProviderFactory(HttpClient httpClient, IToolCallHealer healer)
+    private readonly Func<string, string> _chaveDe;
+
+    /// <param name="chaveDe">
+    /// Quem lê a chave de um provedor. Nulo lê do cofre (<see cref="ChaveDe"/>); o ensaio passa a
+    /// sua, para não tocar no cofre real do usuário.
+    /// </param>
+    public ChatProviderFactory(HttpClient httpClient, IToolCallHealer healer, Func<string, string>? chaveDe = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _healer = healer ?? throw new ArgumentNullException(nameof(healer));
+        _chaveDe = chaveDe ?? ChaveDe;
     }
 
     public IChatProvider GetProvider(UserAppSettings settings)
     {
         if (settings == null) throw new ArgumentNullException(nameof(settings));
 
-        // A credencial EFETIVA entra na chave. O sentinela "use-vault" nunca muda quando o
-        // usuário troca a chave (FirstRunWindow grava no cofre e mantém o sentinela), então
-        // uma chave sem a credencial reaproveitaria um cliente morto: era o 401 que só sumia
-        // reiniciando o app.
-        string credential = settings.AiProvider == "Ollama" ? "" : ResolveCredential(settings);
-        var key = (settings.AiProvider ?? "", settings.ModelName ?? "", settings.ApiUrl ?? "", credential);
+        string provedor = ProvedoresDeIa.Normalizar(settings.AiProvider, settings.ApiUrl);
+        if (provedor.Length == 0) provedor = ProvedoresDeIa.Ollama;
 
-        // O aquecimento e um turno podem chegar juntos na inicialização: o lock evita
-        // dois clientes concorrentes para o mesmo modelo.
+        // A credencial EFETIVA entra na chave: trocar a chave no cofre não muda nada nas
+        // configurações, e uma chave de cache sem ela reaproveitaria um cliente com a chave velha
+        // — o 401 que só sumia reiniciando o app.
+        string credencial = _chaveDe(provedor);
+        var chave = (provedor, settings.ModelName ?? "", settings.ApiUrl ?? "", credencial);
+
+        // O aquecimento, um turno e a triagem podem chegar juntos na inicialização.
         lock (_gate)
         {
-            if (_cached != null && _cachedKey == key) return _cached;
+            if (_cache.TryGetValue(chave, out var existente)) return existente;
 
-            _cached = Build(settings, credential);
-            _cachedKey = key;
-            return _cached;
+            var novo = Build(provedor, settings, credencial);
+            _cache[chave] = novo;
+            return novo;
         }
     }
 
     /// <summary>
-    /// Credencial efetiva do caminho OpenAI. D-06: o sentinela "use-vault" indica chave
-    /// guardada no cofre do Windows; um resultado de erro vira "placeholder" para o SDK
-    /// falhar com erro de autenticação e o usuário refazer o onboarding.
+    /// A chave do provedor, lida do cofre DELE — sem a busca global, que devolveria a chave de
+    /// outro serviço. Vazio para quem não usa chave ou quando ela não foi configurada: a requisição
+    /// sai sem autorização e o provider devolve o 401 com a frase que diz onde configurar.
     /// </summary>
-    private static string ResolveCredential(UserAppSettings settings)
+    public static string ChaveDe(string provedor)
     {
-        string apiKey = settings.ApiKey ?? "";
-
-        if (apiKey == "use-vault")
-        {
-            apiKey = CredentialService.RetrieveCredential("openai", "ApiKey");
-            if (apiKey.StartsWith("ERRO", StringComparison.Ordinal)) apiKey = "placeholder";
-        }
-
-        return string.IsNullOrEmpty(apiKey) ? "placeholder" : apiKey;
+        string? sistema = ProvedoresDeIa.SistemaDaChave(provedor);
+        return sistema == null
+            ? ""
+            : CredentialService.LerDoSistema(sistema, ProvedoresDeIa.NomeDaChave) ?? "";
     }
 
-    private IChatProvider Build(UserAppSettings settings, string credential)
+    private IChatProvider Build(string provedor, UserAppSettings settings, string credencial)
     {
-        if (settings.AiProvider == "Ollama")
+        string modelo = settings.ModelName ?? "";
+
+        if (provedor == ProvedoresDeIa.OpenRouter)
         {
-            string ollamaUrl = string.IsNullOrEmpty(settings.ApiUrl)
-                ? "http://127.0.0.1:11434"
-                : settings.ApiUrl;
-
-            // Evita a resolução IPv6 de "localhost", que causa timeouts de 2 minutos.
-            ollamaUrl = ollamaUrl.Replace("localhost", "127.0.0.1");
-
-            string baseUrl = ollamaUrl.Replace("/v1", "").TrimEnd('/');
-            var ollamaClient = new OllamaNativeClient(baseUrl, _httpClient);
-
-            Console.WriteLine($"[AI] Cliente inicializado: {settings.ModelName} @ {baseUrl}");
-            return new OllamaProvider(
-                ollamaClient,
-                baseUrl,
-                settings.ModelName ?? "",
-                _healer,
-                _httpClient,
+            Console.WriteLine($"[AI] Cliente inicializado: {modelo} @ {ProvedoresDeIa.UrlDoOpenRouter}"
+                              + (credencial.Length == 0 ? " (SEM CHAVE configurada)" : ""));
+            return new OpenRouterProvider(
+                _httpClient, ProvedoresDeIa.UrlDoOpenRouter, credencial, modelo, _healer,
                 settings.VerboseConsoleLogging);
         }
 
-        string model = settings.ModelName ?? "";
-        string apiUrl = settings.ApiUrl ?? "";
+        string ollamaUrl = string.IsNullOrEmpty(settings.ApiUrl) ? ProvedoresDeIa.UrlDoOllama : settings.ApiUrl;
 
-        var options = new OpenAIClientOptions
-        {
-            // Timeout infinito: quem controla o prazo é o CancellationToken do turno — o
-            // padrão de 100s abortava o aquecimento e as respostas longas.
-            NetworkTimeout = Timeout.InfiniteTimeSpan,
-            Transport = new HttpClientPipelineTransport(_httpClient)
-        };
-        if (!string.IsNullOrEmpty(apiUrl)) options.Endpoint = new Uri(apiUrl);
+        // Evita a resolução IPv6 de "localhost", que causa timeouts de 2 minutos.
+        ollamaUrl = ollamaUrl.Replace("localhost", "127.0.0.1");
 
-        var client = new ChatClient(model, new ApiKeyCredential(credential), options);
+        string baseUrl = ollamaUrl.Replace("/v1", "").TrimEnd('/');
+        var ollamaClient = new OllamaNativeClient(baseUrl, _httpClient);
 
-        Console.WriteLine($"[AI] Cliente inicializado: {model} @ {apiUrl}");
-        return new OpenAiProvider(client, model, _healer, settings.VerboseConsoleLogging);
+        Console.WriteLine($"[AI] Cliente inicializado: {modelo} @ {baseUrl}");
+        return new OllamaProvider(ollamaClient, baseUrl, modelo, _healer, _httpClient, settings.VerboseConsoleLogging);
     }
 }

@@ -2626,8 +2626,23 @@ public sealed class ConversationService : IMessageStore
         // chega à tela.
         ChatRequestOptions.Default with
         {
-            Think = settings.ModelThinking ? (bool?)null : false
+            Think = settings.ModelThinking ? (bool?)null : false,
+
+            // A janela e o keep-alive do PERFIL do provedor. O keep-alive nunca tinha chegado
+            // aqui: a tela oferecia "5 minutos" e o Ollama recebia -1 em toda requisição.
+            NumCtx = settings.ContextWindow > 0 ? settings.ContextWindow : ChatRequestOptions.JanelaAtual,
+            KeepAliveSeconds = settings.AiProvider == ProvedoresDeIa.Ollama ? SegundosDeKeepAlive(settings.KeepAlive) : null,
+            Raciocinio = settings.AiProvider == ProvedoresDeIa.OpenRouter ? settings.Reasoning : null
         };
+
+    /// <summary>"1m", "5m", "30m" ou "-1" em segundos. Desconhecido trava na memória, como sempre foi.</summary>
+    public static int SegundosDeKeepAlive(string? valor) => valor switch
+    {
+        "1m" => 60,
+        "5m" => 300,
+        "30m" => 1800,
+        _ => OllamaProvider.KeepAliveLockSeconds
+    };
 
     /// <summary>A mensagem que a simulação põe no lugar da primeira fala do usuário.</summary>
     public const string MensagemDaSimulacao = "oi";

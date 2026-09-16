@@ -234,17 +234,17 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void OModeloDoShadow_EUmaLISTA_ComoADoModeloPrincipal()
+        public void OModeloDaTriagem_EUmaLISTA_ComoADoModeloPrincipal()
         {
-            // Era caixa de texto: sabia-se o nome de cor ou nao se escolhia. Vira lista
-            // editavel, igual a do modelo principal — a mesma consulta enche as duas.
+            // O "Modelo do Shadow" era reservado e não fazia nada; a triagem ganhou provedor e
+            // modelo próprios, na página E-mail, com lista editável como a do modelo principal.
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
-                var janela = Nova(PastaTemporaria(), PaginaDeConfiguracoes.Conexao,
-                                  s => s.ShadowModelName = "qwen2.5:7b");
+                var janela = Nova(PastaTemporaria(), PaginaDeConfiguracoes.Email,
+                                  s => { s.PerfisMigrados = true; s.MailTriageModel = "qwen2.5:7b"; });
 
-                var lista = Achar<ComboBox>(janela, "ShadowModelComboBox");
+                var lista = Achar<ComboBox>(janela, "TriagemModeloComboBox");
 
                 lista.IsEditable.Should().BeTrue(
                     "um modelo ainda nao baixado continua sendo escolha legitima");
@@ -266,7 +266,7 @@ namespace AIB.Tests
                 var janela = Nova(PastaTemporaria(), PaginaDeConfiguracoes.Conexao);
 
                 var principal = Achar<ComboBox>(janela, "ModelComboBox");
-                var shadow = Achar<ComboBox>(janela, "ShadowModelComboBox");
+                var shadow = Achar<ComboBox>(janela, "TriagemModeloComboBox");
 
                 if (principal.ItemsSource != null || shadow.ItemsSource != null)
                     ReferenceEquals(principal.ItemsSource, shadow.ItemsSource)

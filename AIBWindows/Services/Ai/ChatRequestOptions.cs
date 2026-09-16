@@ -1,4 +1,6 @@
-﻿namespace AIB.Services.Ai;
+using AIB.Services;
+
+namespace AIB.Services.Ai;
 
 /// <summary>Parâmetros de requisição independentes de provider.</summary>
 /// <param name="Temperature">Temperatura. Default 0.1f — igual ao valor atual em produção.</param>
@@ -32,12 +34,29 @@
 /// Teto de tokens gerados. null = sem teto. É a rede contra um modelo que ignore o limite de
 /// palavras do prompt: sem ela, um único resumo desgovernado consome a janela inteira.
 /// </param>
+/// <param name="Raciocinio">
+/// Só OpenRouter: "off", "low", "medium", "high" ou "model" (não mandar). Nulo segue
+/// <paramref name="Think"/> — <c>false</c> ali desliga aqui também.
+/// </param>
 public sealed record ChatRequestOptions(
     float Temperature = 0.1f,
     int NumCtx = 32768,
     int? KeepAliveSeconds = null,
     bool? Think = null,
-    int? NumPredict = null)
+    int? NumPredict = null,
+    string? Raciocinio = null)
 {
-    public static ChatRequestOptions Default { get; } = new();
+    /// <summary>
+    /// A janela de contexto em vigor, do provedor da conversa. Configurada pelo
+    /// <see cref="SettingsService"/> ao carregar e ao salvar, como as pastas permitidas.
+    /// <para>
+    /// Era a constante 32768 deste record, lida de onde fosse preciso: os orçamentos por nível e
+    /// o teto da poda. Com a janela virando configuração por provedor, uma constante aqui faria
+    /// a tela dizer 65536 e o programa continuar contando 32768.
+    /// </para>
+    /// </summary>
+    public static int JanelaAtual { get; set; } = PerfilDeProvedor.JanelaPadrao;
+
+    /// <summary>As opções de fábrica, com a janela em vigor.</summary>
+    public static ChatRequestOptions Default => new(NumCtx: JanelaAtual);
 }

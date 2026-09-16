@@ -53,20 +53,18 @@ public enum PaginaDeConfiguracoes
 public partial class SettingsWindow : Window
 {
     /// <summary>
-    /// Provedores de §5 campo 2. O <c>ChatProviderFactory</c> só distingue Ollama do resto —
-    /// os demais vão pelo cliente compatível com a API da OpenAI, mudando a Base URL. Por isso
-    /// trocar esta lista é seguro no código.
+    /// O perfil de cada provedor enquanto a tela está aberta. Trocar o provedor no combo guarda
+    /// aqui o que estava na tela e mostra o do outro; só o "Salvar" leva ao disco.
     /// </summary>
-    private static readonly string[] Provedores = { "Ollama", "OpenAI", "Anthropic", "LmStudio" };
+    private readonly Dictionary<string, PerfilDeProvedor> _perfis = new(StringComparer.Ordinal);
 
-    /// <summary>Base URL sugerida ao trocar de provedor (§5 campo 2, "efeito").</summary>
-    private static readonly Dictionary<string, string> UrlPadrao = new(StringComparer.Ordinal)
-    {
-        ["Ollama"] = "http://127.0.0.1:11434/v1",
-        ["OpenAI"] = "https://api.openai.com/v1",
-        ["Anthropic"] = "https://api.anthropic.com/v1",
-        ["LmStudio"] = "http://127.0.0.1:1234/v1"
-    };
+    /// <summary>O provedor cujos campos estão na tela agora.</summary>
+    private string _provedorNaTela = ProvedoresDeIa.Ollama;
+
+    /// <summary>O catálogo do OpenRouter, quando já chegou. Dá a janela e o preço do modelo escolhido.</summary>
+    private IReadOnlyList<AIB.Services.Ai.ModeloDoOpenRouter> _catalogo = Array.Empty<AIB.Services.Ai.ModeloDoOpenRouter>();
+
+    private static readonly System.Net.Http.HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
 
     private readonly SettingsService _settingsService;
     private UserAppSettings _currentSettings;
@@ -167,12 +165,6 @@ public partial class SettingsWindow : Window
             LoadCharacters();
             LoadProviders();
 
-            UrlTextBox.Text = _currentSettings.ApiUrl;
-            ModelComboBox.Text = _currentSettings.ModelName;
-
-            int userLevel = LevelService.GetLevel(_currentSettings.MessageCount);
-            MaxHistoryTextBox.Text = LevelService.GetMaxTokensForLevel(userLevel).ToString();
-
             SendSystemPromptSwitch.IsChecked = _currentSettings.SendSystemPrompt;
             VerboseLoggingSwitch.IsChecked = _currentSettings.VerboseConsoleLogging;
 
@@ -187,12 +179,15 @@ public partial class SettingsWindow : Window
             AtualizarAutorizacoes();
             ExecutionLogSwitch.IsChecked = _currentSettings.ExecutionLogging;
             CompactionLogSwitch.IsChecked = _currentSettings.CompactionLogging;
-        ModelThinkingSwitch.IsChecked = _currentSettings.ModelThinking;
         KeepAssistantSpeechSwitch.IsChecked = _currentSettings.KeepAssistantSpeech;
         ThinkingInHistorySwitch.IsChecked = _currentSettings.ThinkingInHistory;
         MailTriageThinkingSwitch.IsChecked = _currentSettings.MailTriageThinking;
 
-            ShadowModelComboBox.Text = _currentSettings.ShadowModelName;
+            TriagemProvedorComboBox.ItemsSource = ProvedoresDeIa.Todos.ToList();
+            TriagemProvedorComboBox.SelectedItem = _currentSettings.MailTriageProvider;
+            TriagemModeloComboBox.Text = _currentSettings.MailTriageModel;
+            AtualizarAvisoDaTriagem();
+
             ShadowMailPreviewTextBox.Text = _currentSettings.ShadowMailPreviewCount.ToString();
             MailWindowTextBox.Text = _currentSettings.MailWindowDays.ToString();
             MailTimeoutTextBox.Text = _currentSettings.MailTimeoutSeconds.ToString();
@@ -201,7 +196,6 @@ public partial class SettingsWindow : Window
             CompactionTriggerTextBox.Text = ParaPorcento(_currentSettings.CompactionTrigger);
             MemoryFractionTextBox.Text = ParaPorcento(_currentSettings.MemoryFraction);
 
-            SelecionarKeepAlive(_currentSettings.KeepAlive);
             RefreshKeyTextBoxLabel();
             CarregarContas();
         }
@@ -245,17 +239,193 @@ public partial class SettingsWindow : Window
 
     private void LoadProviders()
     {
-        var lista = Provedores.ToList();
+        _perfis.Clear();
+        foreach (var provedor in ProvedoresDeIa.Todos)
+            _perfis[provedor] = _currentSettings.PerfilDe(provedor);
 
-        // Um provedor gravado que saiu da lista (a tela antiga oferecia "Google Gemini")
-        // continua aparecendo. Sumir com ele em silêncio trocaria a configuração do usuário
-        // sem que ele pedisse.
-        string salvo = _currentSettings.AiProvider ?? "";
-        if (salvo.Length > 0 && !lista.Contains(salvo, StringComparer.Ordinal))
-            lista.Add(salvo);
+        // Provedor gravado que a AIB não fala mais já foi convertido ao carregar as configurações
+        // (UserAppSettings.Sanear); aqui só existem os dois.
+        string salvo = ProvedoresDeIa.Todos.Contains(_currentSettings.AiProvider)
+            ? _currentSettings.AiProvider
+            : ProvedoresDeIa.Ollama;
 
-        ProviderComboBox.ItemsSource = lista;
-        ProviderComboBox.SelectedItem = salvo.Length > 0 ? salvo : "Ollama";
+        ProviderComboBox.ItemsSource = ProvedoresDeIa.Todos.ToList();
+        _provedorNaTela = salvo;
+        ProviderComboBox.SelectedItem = salvo;
+        MostrarPerfil(salvo);
+    }
+
+    /// <summary>
+    /// Põe na tela o perfil de <paramref name="provedor"/>: os campos dele, com a ajuda no sentido
+    /// dele. Os campos do outro provedor somem — nada de keep-alive no OpenRouter, nem de chave no
+    /// Ollama.
+    /// </summary>
+    private void MostrarPerfil(string provedor)
+    {
+        bool antes = _carregando;
+        _carregando = true;
+        try
+        {
+            var perfil = _perfis[provedor];
+            bool openRouter = provedor == ProvedoresDeIa.OpenRouter;
+
+            PainelOllama.Visibility = openRouter ? Visibility.Collapsed : Visibility.Visible;
+            PainelOpenRouter.Visibility = openRouter ? Visibility.Visible : Visibility.Collapsed;
+
+            if (openRouter)
+            {
+                OpenRouterUrlTextBox.Text = ProvedoresDeIa.UrlDoOpenRouter;
+                OpenRouterModelComboBox.Text = perfil.Modelo;
+            }
+            else
+            {
+                UrlTextBox.Text = perfil.Url;
+                ModelComboBox.Text = perfil.Modelo;
+                SelecionarKeepAlive(perfil.KeepAlive);
+            }
+
+            JanelaTextBox.Text = perfil.JanelaDeContexto.ToString();
+            JanelaAjuda.Text = openRouter
+                ? "Quanto da conversa a AIB manda por turno — base dos orçamentos por nível. Não passa da janela do modelo, e cada token dela é pago."
+                : "O num_ctx pedido ao Ollama, e a base dos orçamentos por nível. Sem GPU, cada 16 mil tokens custam ~0,65 GB de RAM; mudar recarrega o modelo.";
+
+            RaciocinioComboBox.ItemsSource = ProvedoresDeIa.OpcoesDeRaciocinio(provedor)
+                .Select(o => new { o.Valor, o.Rotulo }).ToList();
+            RaciocinioComboBox.SelectedValue = perfil.Raciocinio;
+            RaciocinioAjuda.Text = openRouter
+                ? "Esforço de raciocínio pedido ao modelo (parâmetro reasoning). Os tokens de raciocínio são cobrados como saída. O resumo e a triagem sempre pedem desligado."
+                : "O modelo pensa antes de responder. Sem GPU custa minutos por turno — medido: 953 tokens de pensamento em 12 minutos para zero texto.";
+
+            AtualizarOrcamento();
+            AtualizarAjudaDoModelo();
+        }
+        finally
+        {
+            _carregando = antes;
+        }
+
+        _ = openRouterOuOllama(provedor);
+
+        async System.Threading.Tasks.Task openRouterOuOllama(string p)
+        {
+            if (p == ProvedoresDeIa.OpenRouter) await CarregarCatalogoAsync();
+            else await RefreshModelsAsync();
+        }
+    }
+
+    /// <summary>Recolhe o que está na tela para o perfil do provedor mostrado.</summary>
+    private void ColherPerfil(string provedor)
+    {
+        var perfil = _perfis[provedor];
+        bool openRouter = provedor == ProvedoresDeIa.OpenRouter;
+
+        if (openRouter)
+        {
+            perfil.Modelo = (OpenRouterModelComboBox.Text ?? "").Trim();
+        }
+        else
+        {
+            perfil.Url = (UrlTextBox.Text ?? "").Trim();
+            perfil.Modelo = (ModelComboBox.Text ?? "").Trim();
+            if (KeepAliveComboBox.SelectedItem is ComboBoxItem ka && ka.Tag != null)
+                perfil.KeepAlive = ka.Tag.ToString() ?? perfil.KeepAlive;
+        }
+
+        perfil.JanelaDeContexto = Numero(JanelaTextBox, perfil.JanelaDeContexto);
+        if (RaciocinioComboBox.SelectedValue is string r) perfil.Raciocinio = r;
+
+        perfil.Sanear(provedor);
+    }
+
+    /// <summary>O orçamento do nível acompanha a janela digitada, antes mesmo de salvar.</summary>
+    private void AtualizarOrcamento()
+    {
+        if (MaxHistoryTextBox == null) return;
+
+        int janela = int.TryParse(JanelaTextBox.Text, out int j)
+            ? Math.Clamp(j, PerfilDeProvedor.JanelaMinima, PerfilDeProvedor.JanelaMaxima)
+            : PerfilDeProvedor.JanelaPadrao;
+
+        int nivel = LevelService.GetLevel(_currentSettings.MessageCount);
+
+        // A MESMA conta do LevelService, sobre a janela da tela e não a em vigor.
+        int piso = janela / 4, teto = janela * 3 / 4;
+        int passo = (teto - piso) / (LevelService.NivelMaximo - 1);
+        MaxHistoryTextBox.Text = (piso + (Math.Clamp(nivel, 1, LevelService.NivelMaximo) - 1) * passo).ToString();
+    }
+
+    private void Janela_Mudou(object sender, TextChangedEventArgs e)
+    {
+        MarcarSujo();
+        AtualizarOrcamento();
+        AtualizarAjudaDoModelo();
+    }
+
+    /// <summary>
+    /// A linha de ajuda do modelo do OpenRouter: janela, preço e se raciocina — e o aviso quando a
+    /// janela pedida passa da do modelo, que o OpenRouter recusaria.
+    /// </summary>
+    private void AtualizarAjudaDoModelo()
+    {
+        if (OpenRouterModeloAjuda == null) return;
+
+        string id = (OpenRouterModelComboBox.Text ?? "").Trim();
+        var modelo = _catalogo.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.OrdinalIgnoreCase));
+
+        const string padrao = "Só aparecem modelos que aceitam ferramentas — sem elas a IA não lê nem grava nada. Dá para digitar o id.";
+
+        if (modelo == null)
+        {
+            OpenRouterModeloAjuda.Text = id.Length > 0 && _catalogo.Count > 0
+                ? "Este id não está no catálogo do OpenRouter. Confira a grafia."
+                : padrao;
+            return;
+        }
+
+        string texto = modelo.Resumo();
+        if (int.TryParse(JanelaTextBox.Text, out int janela) && modelo.Janela > 0 && janela > modelo.Janela)
+            texto += $". A janela de contexto abaixo ({janela:N0}) passa da deste modelo.";
+
+        OpenRouterModeloAjuda.Text = texto;
+    }
+
+    private void OpenRouterModelo_Mudou(object sender, RoutedEventArgs e)
+    {
+        MarcarSujo();
+        AtualizarAjudaDoModelo();
+    }
+
+    /// <summary>O catálogo do OpenRouter nas duas listas que o usam: modelo da conversa e da triagem.</summary>
+    private async System.Threading.Tasks.Task CarregarCatalogoAsync()
+    {
+        if (_catalogo.Count > 0) { EncherModelosDaTriagem(); return; }
+
+        OpenRouterLoadingProgress.Visibility = Visibility.Visible;
+        try
+        {
+            var todos = await AIB.Services.Ai.CatalogoDoOpenRouter.ListarAsync(_http);
+            _catalogo = todos.Where(m => m.UsaFerramentas).ToList();
+
+            bool antes = _carregando;
+            _carregando = true;
+            try
+            {
+                string atual = OpenRouterModelComboBox.Text;
+                OpenRouterModelComboBox.ItemsSource = _catalogo.Select(m => m.Id).ToList();
+                OpenRouterModelComboBox.Text = atual;
+            }
+            finally
+            {
+                _carregando = antes;
+            }
+
+            AtualizarAjudaDoModelo();
+            EncherModelosDaTriagem();
+        }
+        finally
+        {
+            OpenRouterLoadingProgress.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void SelecionarKeepAlive(string? valor)
@@ -274,22 +444,68 @@ public partial class SettingsWindow : Window
 
     private void RefreshKeyTextBoxLabel()
     {
-        // A chave atual nunca é exibida (§5 campo 4). O que aparece é o ESTADO dela; a escrita
-        // pertence ao fluxo "Alterar".
-        string chave = _currentSettings.ApiKey ?? string.Empty;
+        // A chave nunca é exibida (§5 campo 4). O que aparece é o ESTADO dela, lido do cofre DO
+        // OPENROUTER — o sentinela "use-vault" das configurações dizia "configurada" mesmo quando
+        // a chave guardada era de outro serviço.
+        bool configurada = AIB.Services.Ai.ChatProviderFactory.ChaveDe(ProvedoresDeIa.OpenRouter).Length > 0;
 
-        bool configurada = chave == "use-vault" || chave.StartsWith("sk-", StringComparison.Ordinal);
-
-        // Marcadores em vez de frase: a coluna tem 210px divididos com o botão "Alterar", e
-        // qualquer texto descritivo entra cortado. O estado por extenso vai no ToolTip.
+        // Marcadores em vez de frase: a coluna é dividida com o botão "Alterar".
         KeyTextBox.Text = configurada ? "••••••••••••" : "—";
+        KeyTextBox.ToolTip = configurada ? "Configurada — guardada no cofre DPAPI" : "Não configurada";
+        AlterarChaveBotao.Content = configurada ? "Alterar" : "Adicionar";
+    }
 
-        KeyTextBox.ToolTip = chave switch
+    private void NovaChave_Mudou(object sender, RoutedEventArgs e)
+    {
+        GuardarChaveBotao.IsEnabled = NovaChaveBox.Password.Trim().Length >= 20;
+        ChaveErro.Visibility = Visibility.Collapsed;
+    }
+
+    private void CancelarChave_Click(object sender, RoutedEventArgs e)
+    {
+        NovaChaveBox.Clear();
+        NovaChaveLinha.Visibility = Visibility.Collapsed;
+        ChaveErro.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Guarda a chave AGORA, no cofre do OpenRouter, como as senhas de e-mail — não espera o
+    /// "Salvar". A chave não é uma preferência da tela: é uma credencial, e "Cancelar" a tela não
+    /// deveria deixar para trás uma chave digitada e perdida.
+    /// </summary>
+    private async void GuardarChave_Click(object sender, RoutedEventArgs e)
+    {
+        string chave = NovaChaveBox.Password.Trim();
+
+        if (!chave.StartsWith("sk-or-", StringComparison.Ordinal))
         {
-            "use-vault" => "Configurada — guardada no cofre DPAPI",
-            _ when chave.StartsWith("sk-", StringComparison.Ordinal) => "Configurada — formato legado",
-            _ => "Não configurada"
-        };
+            ChaveErro.Text = "Não parece uma chave do OpenRouter: elas começam com sk-or-.";
+            ChaveErro.Visibility = Visibility.Visible;
+            return;
+        }
+
+        string resultado = await CredentialService.StoreCredentialAsync(
+            ProvedoresDeIa.SistemaDaChave(ProvedoresDeIa.OpenRouter)!, ProvedoresDeIa.NomeDaChave, chave);
+
+        if (resultado.StartsWith("ERRO", StringComparison.Ordinal))
+        {
+            ChaveErro.Text = resultado;
+            ChaveErro.Visibility = Visibility.Visible;
+            return;
+        }
+
+        // Só os quatro últimos caracteres: o bastante para reconhecer qual chave foi, nada de uso.
+        _ = AuditLogService.AppendAsync(new
+        {
+            ts = DateTime.UtcNow.ToString("o"),
+            outcome = "chave_guardada",
+            provider = ProvedoresDeIa.OpenRouter,
+            key_last4 = chave[^4..]
+        });
+
+        NovaChaveBox.Clear();
+        NovaChaveLinha.Visibility = Visibility.Collapsed;
+        RefreshKeyTextBoxLabel();
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -889,15 +1105,11 @@ public partial class SettingsWindow : Window
             case PaginaDeConfiguracoes.Conexao:
                 // Keep-alive, teto de contexto e system prompt vieram do Avançado: são
                 // parâmetros da CONEXÃO com o modelo, e moravam longe do modelo que configuram.
-                SelecionarKeepAlive(padrao.KeepAlive);
                 SendSystemPromptSwitch.IsChecked = padrao.SendSystemPrompt;
-                // O PROVEDOR e a CHAVE ficam de fora. O padrão do provedor é vazio, que não é
-                // uma preferência: é o sinal de "ainda não passou pelo primeiro arranque", e
-                // restaurá-lo deixaria o programa sem saber com quem falar. A chave é do
-                // FirstRunWindow e nem editável aqui é.
-                UrlTextBox.Text = padrao.ApiUrl;
-                ModelComboBox.Text = padrao.ModelName;
-                ShadowModelComboBox.Text = padrao.ShadowModelName;
+                // O perfil de fábrica DO PROVEDOR NA TELA. O provedor e a chave ficam: restaurar
+                // não é trocar de provedor nem apagar credencial.
+                _perfis[_provedorNaTela] = ProvedoresDeIa.PerfilPadrao(_provedorNaTela);
+                MostrarPerfil(_provedorNaTela);
                 break;
 
             case PaginaDeConfiguracoes.Email:
@@ -907,6 +1119,8 @@ public partial class SettingsWindow : Window
                 MailTimeoutTextBox.Text = padrao.MailTimeoutSeconds.ToString();
                 MailJournalTextBox.Text = padrao.MailJournalDays.ToString();
                 MailTriageThinkingSwitch.IsChecked = padrao.MailTriageThinking;
+                TriagemProvedorComboBox.SelectedItem = padrao.MailTriageProvider;
+                TriagemModeloComboBox.Text = padrao.MailTriageModel;
                 break;
 
             case PaginaDeConfiguracoes.Shadow:
@@ -934,7 +1148,6 @@ public partial class SettingsWindow : Window
                 break;
 
             case PaginaDeConfiguracoes.Avancado:
-                ModelThinkingSwitch.IsChecked = padrao.ModelThinking;
                 ThinkingInHistorySwitch.IsChecked = padrao.ThinkingInHistory;
                 break;
 
@@ -1359,24 +1572,72 @@ public partial class SettingsWindow : Window
         base.OnKeyDown(e);
     }
 
+    /// <summary>
+    /// Troca de provedor: o que está na tela vai para o perfil do anterior, e o perfil do novo
+    /// vem para a tela. Voltar traz tudo de volta como estava.
+    /// </summary>
     private void ProviderComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        MarcarSujo();
-
         if (_carregando) return;
-        if (ProviderComboBox.SelectedItem is not string provedor) return;
-        if (!UrlPadrao.TryGetValue(provedor, out string? sugerida)) return;
+        if (ProviderComboBox.SelectedItem is not string provedor || provedor == _provedorNaTela) return;
 
-        // Só sugere quando a URL atual é o padrão de OUTRO provedor. Uma URL que o usuário
-        // digitou não pode ser sobrescrita por uma troca de combo.
-        bool ehPadraoDeOutro = UrlPadrao.Values.Any(u =>
-            string.Equals(u, UrlTextBox.Text.Trim(), StringComparison.OrdinalIgnoreCase));
-
-        if (UrlTextBox.Text.Trim().Length == 0 || ehPadraoDeOutro)
-            UrlTextBox.Text = sugerida;
+        ColherPerfil(_provedorNaTela);
+        _provedorNaTela = provedor;
+        MostrarPerfil(provedor);
+        MarcarSujo();
     }
 
     private void UrlTextBox_LostFocus(object sender, RoutedEventArgs e) => _ = RefreshModelsAsync();
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Triagem de e-mail — provedor e modelo próprios
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void TriagemProvedor_Mudou(object sender, SelectionChangedEventArgs e)
+    {
+        MarcarSujo();
+        AtualizarAvisoDaTriagem();
+        EncherModelosDaTriagem();
+    }
+
+    /// <summary>
+    /// Com a triagem no OpenRouter, trechos dos e-mails saem da máquina. A tela diz isso onde a
+    /// escolha é feita, e não num documento.
+    /// </summary>
+    private void AtualizarAvisoDaTriagem()
+    {
+        if (TriagemAviso == null) return;
+
+        bool fora = TriagemProvedorComboBox.SelectedItem as string == ProvedoresDeIa.OpenRouter;
+        TriagemAviso.Text = fora
+            ? "No OpenRouter, remetente, assunto e o começo do corpo de cada e-mail triado são enviados ao OpenRouter e ao modelo escolhido."
+            : "Quem lê os e-mails para classificar. No Ollama, nada sai desta máquina.";
+        TriagemAviso.Foreground = (System.Windows.Media.Brush)FindResource(fora ? "WarnBrush" : "TextMutedBrush");
+    }
+
+    /// <summary>A lista do modelo da triagem vem da mesma fonte do provedor escolhido para ela.</summary>
+    private void EncherModelosDaTriagem()
+    {
+        if (TriagemModeloComboBox == null) return;
+
+        bool antes = _carregando;
+        _carregando = true;
+        try
+        {
+            string atual = TriagemModeloComboBox.Text;
+            TriagemModeloComboBox.ItemsSource = TriagemProvedorComboBox.SelectedItem as string == ProvedoresDeIa.OpenRouter
+                ? _catalogo.Select(m => m.Id).ToList()
+                : (ModelComboBox.ItemsSource as IEnumerable<string>)?.ToList();
+            TriagemModeloComboBox.Text = atual;
+        }
+        finally
+        {
+            _carregando = antes;
+        }
+
+        if (TriagemProvedorComboBox.SelectedItem as string == ProvedoresDeIa.OpenRouter && _catalogo.Count == 0)
+            _ = CarregarCatalogoAsync();
+    }
 
     /// <summary>
     /// Enche as DUAS listas de modelo — a principal e a do Shadow — com uma consulta só.
@@ -1390,14 +1651,17 @@ public partial class SettingsWindow : Window
     private async System.Threading.Tasks.Task RefreshModelsAsync()
     {
         LoadingProgress.Visibility = Visibility.Visible;
-        ShadowLoadingProgress.Visibility = Visibility.Visible;
         try
         {
-            var modelos = await _settingsService.GetOllamaModelsAsync(UrlTextBox.Text);
+            // Endereço do perfil do Ollama, mesmo com o OpenRouter na tela: a triagem pode estar
+            // no Ollama e precisa da lista dele.
+            string url = _provedorNaTela == ProvedoresDeIa.Ollama ? UrlTextBox.Text : _perfis[ProvedoresDeIa.Ollama].Url;
+            var modelos = await _settingsService.GetOllamaModelsAsync(url);
             if (modelos.Any())
             {
+                // O que foi digitado à mão sobrevive à chegada da lista: um modelo que o Ollama
+                // ainda não baixou continua sendo uma escolha legítima.
                 string atual = ModelComboBox.Text;
-                string atualDoShadow = ShadowModelComboBox.Text;
 
                 bool antes = _carregando;
                 _carregando = true;
@@ -1405,17 +1669,13 @@ public partial class SettingsWindow : Window
                 {
                     ModelComboBox.ItemsSource = modelos.ToList();
                     ModelComboBox.Text = atual;
-
-                    // O que o usuário digitou à mão sobrevive à chegada da lista, aqui como
-                    // no campo de cima: um modelo que o Ollama ainda não baixou continua
-                    // sendo uma escolha legítima.
-                    ShadowModelComboBox.ItemsSource = modelos.ToList();
-                    ShadowModelComboBox.Text = atualDoShadow;
                 }
                 finally
                 {
                     _carregando = antes;
                 }
+
+                EncherModelosDaTriagem();
             }
         }
         catch
@@ -1425,19 +1685,13 @@ public partial class SettingsWindow : Window
         finally
         {
             LoadingProgress.Visibility = Visibility.Collapsed;
-            ShadowLoadingProgress.Visibility = Visibility.Collapsed;
         }
     }
 
     private void AlterarChave_Click(object sender, RoutedEventArgs e)
     {
-        // Caminho de Configurações, NÃO o de primeiro uso: cancelar aqui não encerra o app.
-        var win = new FirstRunWindow(_settingsService);
-        if (win.ShowDialog() == true)
-        {
-            _currentSettings = _settingsService.LoadSettings();
-            RefreshKeyTextBoxLabel();
-        }
+        NovaChaveLinha.Visibility = Visibility.Visible;
+        NovaChaveBox.Focus();
     }
 
     private void DebugLink_Click(object sender, RoutedEventArgs e)
@@ -1448,15 +1702,16 @@ public partial class SettingsWindow : Window
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         _currentSettings.ActiveCharacter = CharacterComboBox.SelectedItem?.ToString() ?? "Ayano";
-        _currentSettings.AiProvider = ProviderComboBox.SelectedItem?.ToString() ?? "Ollama";
-        _currentSettings.ApiUrl = UrlTextBox.Text;
-        _currentSettings.ModelName = ModelComboBox.Text;
+        // O perfil na tela, os guardados, e o escolhido vira o ativo. A chave NÃO passa por aqui:
+        // foi guardada no cofre pelo "Guardar" da própria linha.
+        ColherPerfil(_provedorNaTela);
+        foreach (var (nome, perfil) in _perfis) _currentSettings.Perfis[nome] = perfil.Clone();
 
-        // A chave NÃO é escrita a partir daqui: o campo é somente leitura e quem grava é o
-        // FirstRunWindow, pelo botão "Alterar".
+        string escolhido = ProviderComboBox.SelectedItem as string ?? ProvedoresDeIa.Ollama;
+        _currentSettings.Ativar(escolhido, _perfis[escolhido]);
 
-        if (KeepAliveComboBox.SelectedItem is ComboBoxItem ka && ka.Tag != null)
-            _currentSettings.KeepAlive = ka.Tag.ToString() ?? _currentSettings.KeepAlive;
+        _currentSettings.MailTriageProvider = TriagemProvedorComboBox.SelectedItem as string ?? ProvedoresDeIa.Ollama;
+        _currentSettings.MailTriageModel = (TriagemModeloComboBox.Text ?? "").Trim();
 
         // O máximo de tokens vem do nível do usuário: é leitura, não preferência.
 
@@ -1471,12 +1726,10 @@ public partial class SettingsWindow : Window
         _currentSettings.WriteRoots = (WriteRootsTextBox.Text ?? "").Trim();
         _currentSettings.ExecutionLogging = ExecutionLogSwitch.IsChecked ?? false;
         _currentSettings.CompactionLogging = CompactionLogSwitch.IsChecked ?? false;
-        _currentSettings.ModelThinking = ModelThinkingSwitch.IsChecked ?? false;
         _currentSettings.KeepAssistantSpeech = KeepAssistantSpeechSwitch.IsChecked ?? true;
         _currentSettings.ThinkingInHistory = ThinkingInHistorySwitch.IsChecked ?? false;
         _currentSettings.MailTriageThinking = MailTriageThinkingSwitch.IsChecked ?? false;
 
-        _currentSettings.ShadowModelName = ShadowModelComboBox.Text.Trim();
         _currentSettings.ShadowMailPreviewCount =
             Numero(ShadowMailPreviewTextBox, _currentSettings.ShadowMailPreviewCount);
         _currentSettings.MailWindowDays = Numero(MailWindowTextBox, _currentSettings.MailWindowDays);

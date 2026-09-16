@@ -158,9 +158,11 @@ public sealed class RegistroDeExecucao : IDisposable
         _arquivo.WriteLine();
         _arquivo.WriteLine($"provedor ......... {config.AiProvider}");
         _arquivo.WriteLine($"modelo ........... {config.ModelName}");
-        _arquivo.WriteLine($"modelo do Shadow . {config.ShadowModelName}");
         _arquivo.WriteLine($"url .............. {config.ApiUrl}");
+        _arquivo.WriteLine($"janela ........... {config.ContextWindow}");
+        _arquivo.WriteLine($"raciocínio ....... {config.Reasoning}");
         _arquivo.WriteLine($"keep-alive ....... {config.KeepAlive}");
+        _arquivo.WriteLine($"triagem .......... {config.MailTriageProvider} · {(string.IsNullOrEmpty(config.MailTriageModel) ? "(modelo do perfil)" : config.MailTriageModel)}");
         _arquivo.WriteLine($"personagem ....... {config.ActiveCharacter}");
         _arquivo.WriteLine();
         _arquivo.WriteLine($"ferramentas ...... {(config.EnableIntelligentTools ? "ligadas" : "desligadas")}");

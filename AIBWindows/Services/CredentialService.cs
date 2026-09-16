@@ -97,6 +97,36 @@ public static class CredentialService
         }
     }
 
+    /// <summary>
+    /// A credencial de UM sistema, sem a busca global do <see cref="RetrieveCredential"/>. Nulo
+    /// quando não existe.
+    /// <para>
+    /// Existe para as chaves de provedor. A busca global devolve a primeira chave com o mesmo NOME
+    /// em qualquer arquivo do cofre: sem chave do OpenRouter, ela entregaria a chave da OpenAI
+    /// gravada por uma versão antiga — e a requisição a mandaria para outro serviço.
+    /// </para>
+    /// </summary>
+    public static string? LerDoSistema(string system, string key)
+    {
+        try
+        {
+            string filePath = Path.Combine(CredentialsDir, $"{system.ToLower()}.bin");
+            if (!File.Exists(filePath)) return null;
+
+            string json = DecryptFile(filePath);
+            if (string.IsNullOrEmpty(json)) return null;
+
+            var creds = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+            return creds != null && creds.TryGetValue(key, out string? valor) && !string.IsNullOrEmpty(valor)
+                ? valor
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static string DecryptFile(string path)
     {
         try

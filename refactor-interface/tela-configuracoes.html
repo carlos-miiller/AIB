@@ -565,31 +565,47 @@ NaN
 
  PÁGINA 2 — "Conexão LLM"
  ------------------------------------------------------------------------------
- 2. "Provedor de IA"
-    prop:    Provider : enum { Ollama, OpenAI, Anthropic, LmStudio }
-    editor:  ComboBox
-    exemplo: "Ollama"
-    efeito:  ao trocar, sugerir Base URL padrão do provedor e recalcular se
-             API Key é obrigatória (ver campo 4).
- 3. "Base URL"
-    prop:    BaseUrl : string (Uri)
-    editor:  TextBox mono
-    exemplo: "http://127.0.0.1:11434/v1"
-    valida:  Uri absoluta; erro se vazio.
- 4. "API Key"
-    prop:    ApiKey : SecureString (nunca exibir o valor atual)
-    editor:  TextBox mono do tipo password + botão "Alterar"
-    ajuda:   "Não necessário para Ollama."
-    valida:  obrigatório quando Provider ∈ { OpenAI, Anthropic }.
-    guarda:  SecretStore/DPAPI. O TextBox mostra vazio com placeholder
-             "chave salva" quando já existe uma; "Alterar" troca (§3.7).
- 5. "Modelo LLM (Principal)"
-    prop:    MainModel : string
-    editor:  ComboBox mono, populado pelo provedor
-    exemplo: "qwen3.5:9b"  (demais: llama3.2:8b, mistral:7b)
-    vazio:   se o provedor não responder, manter o valor atual e desabilitar o
-             ComboBox — não limpar a seleção do usuário.
+ REVISÃO 16/09 — a Conexão passou a ser POR PROVEDOR. A lista antiga (Ollama,
+ OpenAI, Anthropic, LmStudio com os mesmos campos) fingia que todo provedor era o
+ Ollama com outra URL. O1 cede aqui: os campos abaixo substituem os antigos 2–5
+ e o 9, e cada provedor mostra só os seus.
 
+ 2. "Provedor de IA"
+    prop:    AiProvider : enum { Ollama, OpenRouter }
+    editor:  ComboBox
+    efeito:  ao trocar, o que está na tela vai para o perfil do provedor anterior
+             (UserAppSettings.Perfis) e o perfil do novo vem para a tela. Voltar
+             traz tudo de volta. Nada vai ao disco antes de "Salvar".
+
+ SÓ OLLAMA
+ 3o. "Endereço do Ollama"   TextBox mono. Padrão http://127.0.0.1:11434.
+ 4o. "Modelo"               ComboBox mono editável, do /api/tags.
+ 5o. "Tempo de Memória da IA (Keep-Alive)"
+                            1m | 5m | 30m | Sempre carregado (padrão).
+                            Chega à requisição (antes era só exibido).
+
+ SÓ OPENROUTER
+ 3r. "Endereço"             somente leitura: https://openrouter.ai/api/v1.
+ 4r. "Chave da API"         estado (••• / —) + "Adicionar"/"Alterar", que abre
+                            PasswordBox + "Guardar". Guarda NA HORA no cofre
+                            do OpenRouter (DPAPI), nunca nas configurações, e
+                            nunca é reexibida (O10). Prefixo sk-or-.
+ 5r. "Modelo"               ComboBox mono editável, do catálogo público
+                            (/models), só modelos com "tools". Ajuda mostra
+                            janela, preço por milhão e se raciocina.
+
+ DOS DOIS (sentido e ajuda mudam com o provedor)
+ 6c. "Janela de contexto"   TextBox mono, 8192–262144. Ollama: num_ctx. Nos dois:
+                            base dos orçamentos por nível.
+ 7c. "Raciocínio do modelo" Ollama: Desligado | Ligado. OpenRouter: Desligado |
+                            Baixo | Médio | Alto | Padrão do modelo (reasoning).
+                            (Saiu do Avançado.)
+ 8c. "Orçamento de histórico do seu nível"  somente leitura, da janela acima.
+ 9c. "Enviar System Prompt a cada requisição"
+
+ O "Modelo do Shadow" saiu: a triagem de e-mail ganhou "Provedor da triagem" e
+ "Modelo da triagem" na página E-mail, com aviso quando o provedor é o
+ OpenRouter (trechos dos e-mails saem da máquina).
  PÁGINA 3 — "E-mail"   (MULTI-CONTA — substitui o modal que existia na tela de
                         chat e o par e-mail+senha único da versão anterior)
  ------------------------------------------------------------------------------

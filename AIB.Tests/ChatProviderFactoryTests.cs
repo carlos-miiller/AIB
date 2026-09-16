@@ -9,26 +9,23 @@ namespace AIB.Tests
 {
     public class ChatProviderFactoryTests
     {
-        private static UserAppSettings OpenAiSettings(string apiKey) => new UserAppSettings
+        private static UserAppSettings OpenRouter(string modelo = "deepseek/deepseek-chat") => new UserAppSettings
         {
-            AiProvider = "OpenAI",
-            ModelName = "gpt-4o-mini",
-            ApiUrl = "https://api.exemplo.test/v1",
-            ApiKey = apiKey
+            AiProvider = ProvedoresDeIa.OpenRouter,
+            ModelName = modelo,
+            ApiUrl = ProvedoresDeIa.UrlDoOpenRouter
         };
 
-        private static ChatProviderFactory Build()
-            => new ChatProviderFactory(new HttpClient(), new RegexToolCallHealer());
+        /// <summary>A chave vem daqui, e não do cofre real do usuário.</summary>
+        private static ChatProviderFactory Build(Func<string> chave)
+            => new ChatProviderFactory(new HttpClient(), new RegexToolCallHealer(), _ => chave());
 
         [Fact]
         public void MesmasSettings_ReaproveitamOProvider()
         {
-            var factory = Build();
+            var factory = Build(() => "sk-or-1");
 
-            var first = factory.GetProvider(OpenAiSettings("chave-1"));
-            var second = factory.GetProvider(OpenAiSettings("chave-1"));
-
-            second.Should().BeSameAs(first);
+            factory.GetProvider(OpenRouter()).Should().BeSameAs(factory.GetProvider(OpenRouter()));
         }
 
         [Fact]
@@ -36,10 +33,12 @@ namespace AIB.Tests
         {
             // Defeito antigo: a chave de cache não continha a credencial, então quem trocava
             // a chave da API continuava tomando 401 com o cliente morto até reiniciar o app.
-            var factory = Build();
+            string chave = "sk-or-1";
+            var factory = Build(() => chave);
 
-            var first = factory.GetProvider(OpenAiSettings("chave-1"));
-            var second = factory.GetProvider(OpenAiSettings("chave-2"));
+            var first = factory.GetProvider(OpenRouter());
+            chave = "sk-or-2";
+            var second = factory.GetProvider(OpenRouter());
 
             second.Should().NotBeSameAs(first);
         }
@@ -47,28 +46,43 @@ namespace AIB.Tests
         [Fact]
         public void TrocaDeModelo_ReconstroiOProvider()
         {
-            var factory = Build();
+            var factory = Build(() => "sk-or-1");
 
-            var first = factory.GetProvider(OpenAiSettings("chave-1"));
+            factory.GetProvider(OpenRouter("a/b")).Should().NotBeSameAs(factory.GetProvider(OpenRouter("c/d")));
+        }
 
-            var other = OpenAiSettings("chave-1");
-            other.ModelName = "gpt-4o";
-            var second = factory.GetProvider(other);
+        [Fact]
+        public void OpenRouter_VaiPeloProviderProprio()
+        {
+            Build(() => "sk-or-1").GetProvider(OpenRouter()).Should().BeOfType<OpenRouterProvider>();
+        }
 
-            second.Should().NotBeSameAs(first);
+        [Fact]
+        public void ConversaETriagem_EmProvedoresDiferentes_NaoSeDerrubamNoCache()
+        {
+            // A conversa no OpenRouter e a triagem no Ollama se alternam o tempo todo; com uma
+            // instância só em cache, cada alternância construía um provider novo.
+            var factory = Build(() => "sk-or-1");
+            var ollama = new UserAppSettings { AiProvider = ProvedoresDeIa.Ollama, ModelName = "qwen" };
+
+            var conversa = factory.GetProvider(OpenRouter());
+            factory.GetProvider(ollama);
+
+            factory.GetProvider(OpenRouter()).Should().BeSameAs(conversa);
         }
 
         [Fact]
         public void ProviderOllama_NaoConsultaOCofreEReaproveitaAInstancia()
         {
-            var factory = Build();
+            int leituras = 0;
+            var factory = new ChatProviderFactory(new HttpClient(), new RegexToolCallHealer(),
+                p => { if (ProvedoresDeIa.SistemaDaChave(p) != null) leituras++; return ""; });
 
             var settings = new UserAppSettings
             {
                 AiProvider = "Ollama",
                 ModelName = "modelo-de-teste",
-                ApiUrl = "http://localhost:11434/v1",
-                ApiKey = "use-vault"
+                ApiUrl = "http://localhost:11434/v1"
             };
 
             var first = factory.GetProvider(settings);
@@ -76,6 +90,7 @@ namespace AIB.Tests
 
             first.Name.Should().Be("Ollama");
             second.Should().BeSameAs(first);
+            leituras.Should().Be(0);
         }
     }
 }

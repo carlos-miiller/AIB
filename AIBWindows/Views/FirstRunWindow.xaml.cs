@@ -36,8 +36,13 @@ public partial class FirstRunWindow : Window
     private string? _fallbackModel = null;
     private int _currentStep = 1;
 
-    // Regex per D-05: key must start with sk- followed by at least 20 alphanumeric/dash/underscore chars
-    private static readonly Regex _keyRegex = new(@"^sk-[a-zA-Z0-9_-]{20,}$", RegexOptions.Compiled);
+    // Chave do OpenRouter: sk-or- seguido de pelo menos 20 caracteres. Só formato — quem diz se
+    // ela vale é o OpenRouter, na primeira requisição.
+    private static readonly Regex _keyRegex = new(@"^sk-or-[a-zA-Z0-9_-]{20,}$", RegexOptions.Compiled);
+
+    private static readonly System.Net.Http.HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private System.Collections.Generic.IReadOnlyList<AIB.Services.Ai.ModeloDoOpenRouter> _catalogo =
+        Array.Empty<AIB.Services.Ai.ModeloDoOpenRouter>();
 
     public FirstRunWindow(SettingsService settingsService)
     {
@@ -152,8 +157,9 @@ public partial class FirstRunWindow : Window
         }
         else
         {
-            string key = KeyTextBox.Text.Trim();
-            NextButton.IsEnabled = _keyRegex.IsMatch(key);
+            string key = KeyTextBox.Password.Trim();
+            NextButton.IsEnabled = _keyRegex.IsMatch(key)
+                                   && (OpenRouterModelComboBox.Text ?? "").Trim().Length > 0;
         }
     }
 
@@ -179,19 +185,37 @@ public partial class FirstRunWindow : Window
     {
         if (OllamaBranch == null) return;
         OllamaBranch.Visibility = Visibility.Visible;
-        OpenAiBranch.Visibility = Visibility.Collapsed;
+        OpenRouterBranch.Visibility = Visibility.Collapsed;
         ValidateStep3SaveButton();
     }
 
-    private void OpenAiRadio_Checked(object sender, RoutedEventArgs e)
+    private async void OpenRouterRadio_Checked(object sender, RoutedEventArgs e)
     {
-        if (OpenAiBranch == null) return;
-        OpenAiBranch.Visibility = Visibility.Visible;
+        if (OpenRouterBranch == null) return;
+        OpenRouterBranch.Visibility = Visibility.Visible;
         OllamaBranch.Visibility = Visibility.Collapsed;
-        // Reset error label; disable Salvar until valid key is entered
         if (ErrorLabel != null) ErrorLabel.Visibility = Visibility.Collapsed;
         ValidateStep3SaveButton();
+
+        if (_catalogo.Count > 0) return;
+
+        // Só modelos que aceitam ferramentas: sem elas a IA não lê nem grava nada.
+        _catalogo = (await AIB.Services.Ai.CatalogoDoOpenRouter.ListarAsync(_http)).Where(m => m.UsaFerramentas).ToList();
+        OpenRouterModelComboBox.ItemsSource = _catalogo.Select(m => m.Id).ToList();
+        OpenRouterModelInfo.Text = _catalogo.Count > 0
+            ? "Só aparecem modelos que aceitam ferramentas. Dá para digitar o id."
+            : "Não consegui ler o catálogo do OpenRouter. Digite o id do modelo (ex.: provedor/modelo).";
     }
+
+    private void OpenRouterModel_LostFocus(object sender, RoutedEventArgs e)
+    {
+        string id = (OpenRouterModelComboBox.Text ?? "").Trim();
+        var modelo = _catalogo.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (modelo != null) OpenRouterModelInfo.Text = modelo.Resumo();
+        ValidateStep3SaveButton();
+    }
+
+    private void KeyTextBox_PasswordChanged(object sender, RoutedEventArgs e) => ValidateStep3SaveButton();
 
     // ─── Ollama model ComboBox ────────────────────────────────────────────────
 
@@ -286,11 +310,11 @@ public partial class FirstRunWindow : Window
     /// </summary>
     private bool ValidateOpenAiKey(bool emitAuditOnFail = true)
     {
-        string key = KeyTextBox.Text.Trim();
+        string key = KeyTextBox.Password.Trim();
         if (_keyRegex.IsMatch(key))
         {
             if (ErrorLabel != null) ErrorLabel.Visibility = Visibility.Collapsed;
-            if (NextButton != null) NextButton.IsEnabled = true;
+            ValidateStep3SaveButton();
             return true;
         }
         else
@@ -303,7 +327,7 @@ public partial class FirstRunWindow : Window
                 {
                     ts = DateTime.UtcNow.ToString("o"),
                     outcome = "firstrun_invalid_key",
-                    provider = "OpenAI"
+                    provider = ProvedoresDeIa.OpenRouter
                 });
             }
             return false;
@@ -335,30 +359,31 @@ public partial class FirstRunWindow : Window
         }
         else
         {
-            await SaveOpenAiBranch();
+            await SaveOpenRouterBranch();
         }
     }
 
-    private async System.Threading.Tasks.Task SaveOpenAiBranch()
+    private async System.Threading.Tasks.Task SaveOpenRouterBranch()
     {
-        string key = KeyTextBox.Text.Trim();
+        string key = KeyTextBox.Password.Trim();
+        string modelo = (OpenRouterModelComboBox.Text ?? "").Trim();
 
-        // Re-validate on Save click (UI-SPEC §Save click step 2)
-        if (!_keyRegex.IsMatch(key))
+        if (!_keyRegex.IsMatch(key) || modelo.Length == 0)
         {
-            if (ErrorLabel != null) ErrorLabel.Visibility = Visibility.Visible;
+            if (ErrorLabel != null) ErrorLabel.Visibility = _keyRegex.IsMatch(key) ? Visibility.Collapsed : Visibility.Visible;
             if (NextButton != null) NextButton.IsEnabled = false;
             _ = AuditLogService.AppendAsync(new
             {
                 ts = DateTime.UtcNow.ToString("o"),
                 outcome = "firstrun_invalid_key",
-                provider = "OpenAI"
+                provider = ProvedoresDeIa.OpenRouter
             });
             return;
         }
 
-        // D-06: vault write via CredentialService (DPAPI-encrypted)
-        string result = await CredentialService.StoreCredentialAsync("openai", "ApiKey", key);
+        // A chave vai para o cofre DO OPENROUTER, nunca para as configurações.
+        string result = await CredentialService.StoreCredentialAsync(
+            ProvedoresDeIa.SistemaDaChave(ProvedoresDeIa.OpenRouter)!, ProvedoresDeIa.NomeDaChave, key);
         if (result.StartsWith("ERRO"))
         {
             ErrorLabel.Text = $"Erro ao salvar: {result}";
@@ -366,35 +391,35 @@ public partial class FirstRunWindow : Window
             return;
         }
 
-        // D-06 sentinel + RESEARCH Q1 + Q3: settings mutation
         var settings = _settingsService.LoadSettings();
-        settings.AiProvider = "OpenAI";      // RESEARCH Q1 resolution
-        settings.ApiKey = "use-vault";       // D-06 sentinel — never store the real key in profile.dat
-        settings.ApiUrl = "";                // RESEARCH Q3 — empty → SDK default (https://api.openai.com/v1)
-        _settingsService.SaveSettings(settings);
+        var perfil = settings.PerfilDe(ProvedoresDeIa.OpenRouter);
+        perfil.Modelo = modelo;
+        settings.Ativar(ProvedoresDeIa.OpenRouter, perfil);
+        settings.ApiKey = "use-vault";
 
-        // Audit: key_last4 only — NEVER the full key (T-02-07 mitigation)
-        string key_last4 = key.Length >= 4 ? key[^4..] : "----";
+        // Quem escolheu nuvem no primeiro arranque pode não ter Ollama: a triagem acompanha, e a
+        // página E-mail deixa trocar.
+        settings.MailTriageProvider = ProvedoresDeIa.OpenRouter;
+        settings.MailTriageModel = modelo;
+
+        if (AgentsListBox.SelectedItem is AgentProfile selectedAgent)
+            settings.ActiveCharacter = selectedAgent.DirectoryName;
+
+        _settingsService.SaveSettings(settings.Sanear());
+
+        // Só os quatro últimos caracteres da chave.
         _ = AuditLogService.AppendAsync(new
         {
             ts = DateTime.UtcNow.ToString("o"),
             outcome = "firstrun_saved",
-            provider = "OpenAI",
-            key_last4
+            provider = ProvedoresDeIa.OpenRouter,
+            model = modelo,
+            key_last4 = key[^4..]
         });
-
-        // Save selected agent
-        if (AgentsListBox.SelectedItem is AgentProfile selectedAgent)
-        {
-            var currentSettings = _settingsService.LoadSettings();
-            currentSettings.ActiveCharacter = selectedAgent.DirectoryName;
-            _settingsService.SaveSettings(currentSettings);
-        }
 
         DialogResult = true;
         Close();
     }
-
     private async System.Threading.Tasks.Task SaveOllamaBranch()
     {
         // Determine selected model: from ComboBox or fallback
@@ -410,11 +435,14 @@ public partial class FirstRunWindow : Window
 
         // Settings mutation for Ollama branch
         var settings = _settingsService.LoadSettings();
-        settings.AiProvider = "Ollama";
+        var perfil = settings.PerfilDe(ProvedoresDeIa.Ollama);
+        perfil.Modelo = selectedModel;
+        settings.Ativar(ProvedoresDeIa.Ollama, perfil);
         settings.ApiKey = "ollama";
-        settings.ModelName = selectedModel;
         settings.ShadowModelName = selectedModel;   // D-09 mirror by default
-        _settingsService.SaveSettings(settings);
+        settings.MailTriageProvider = ProvedoresDeIa.Ollama;
+        settings.MailTriageModel = selectedModel;
+        _settingsService.SaveSettings(settings.Sanear());
 
         _ = AuditLogService.AppendAsync(new
         {

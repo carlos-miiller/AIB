@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -425,11 +425,13 @@ public partial class App : System.Windows.Application
 
     private static bool NeedsFirstRun(UserAppSettings s)
     {
-        // D-03 provider-aware skip — Ollama users never see FirstRunWindow.
-        if (s.AiProvider == "Ollama") return false;
-        // Vault read; ERRO-prefix on miss (CredentialService never throws).
-        // RESEARCH §Pitfall 1: global-fallback false-negative window is narrow and accepted for this phase.
-        return CredentialService.RetrieveCredential("openai", "ApiKey").StartsWith("ERRO");
+        // Sem provedor escolhido: nunca passou pelo primeiro arranque.
+        if (string.IsNullOrEmpty(s.AiProvider)) return true;
+
+        // Provedor com chave e sem a chave DELE no cofre. Leitura estrita: a busca global do
+        // cofre acharia a chave de outro serviço e daria o arranque por concluído.
+        string? sistema = ProvedoresDeIa.SistemaDaChave(s.AiProvider);
+        return sistema != null && CredentialService.LerDoSistema(sistema, ProvedoresDeIa.NomeDaChave) == null;
     }
 
     private void ShowFirstRunWindow()
