@@ -46,6 +46,7 @@ public sealed class LerEmailTool : ITool
     /// <summary>
     /// Teto da leitura inteira. Nesta máquina o prefill anda a ~30 tokens por segundo: oito mil
     /// caracteres são uns dois mil tokens, pouco mais de um minuto antes da primeira palavra.
+    /// No OpenRouter vale o de <see cref="LimitesDoProvedor"/>.
     /// </summary>
     public const int TetoDaLeitura = 8000;
 
@@ -129,7 +130,7 @@ public sealed class LerEmailTool : ITool
                 .LerConversaAsync(
                     caixa.Address, senha,
                     new ImapEndpoint(caixa.ImapHost, caixa.ImapPort, caixa.UseSsl),
-                    thread, CancellationToken.None, TetoPorMensagem)
+                    thread, CancellationToken.None, LimitesDoProvedor.Atual.EmailPorMensagem)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -169,7 +170,7 @@ public sealed class LerEmailTool : ITool
 
             // A mais recente entra sempre, mesmo sozinha passando do teto: sem ela a leitura não
             // teria o que ler. O corpo dela já veio aparado em TetoPorMensagem.
-            if (escolhidas.Count > 0 && usados + custo > TetoDaLeitura) break;
+            if (escolhidas.Count > 0 && usados + custo > LimitesDoProvedor.Atual.EmailPorLeitura) break;
 
             escolhidas.Add(m);
             usados += custo;

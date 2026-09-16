@@ -16,8 +16,11 @@ namespace AIB.Tests
     /// Provedores, perfis e o OpenRouter. A configuração fingia que qualquer provedor era o Ollama
     /// com outra URL; cada um agora tem os seus campos e guarda os seus valores.
     /// </summary>
-    public class ProvedoresDeIaTests
+    public class ProvedoresDeIaTests : IDisposable
     {
+        /// <summary>O catálogo é estático: o fingido destes ensaios não pode sobrar para os outros.</summary>
+        public void Dispose() => CatalogoDoOpenRouter.DefinirCache(null);
+
         // ── Migração do arquivo antigo ───────────────────────────────────────
 
         [Fact]
@@ -185,6 +188,30 @@ namespace AIB.Tests
             modelos[1].UsaFerramentas.Should().BeFalse();
         }
 
+        // ── Limites por provedor ─────────────────────────────────────────────
+
+        [Fact]
+        public void Limites_OpenRouterTrazMaisDeUmaVez_OllamaFicaComOsMedidos()
+        {
+            LimitesDoProvedor.Para(ProvedoresDeIa.Ollama).Should().Be(LimitesDoProvedor.Local);
+            LimitesDoProvedor.Para("").Should().Be(LimitesDoProvedor.Local, "vazio é Ollama");
+            LimitesDoProvedor.Local.LinhasDeLeitura.Should().Be(AIB.Services.Tools.ReadFileTool.LinhasPadrao);
+
+            var nuvem = LimitesDoProvedor.Para(ProvedoresDeIa.OpenRouter);
+            nuvem.LinhasDeLeitura.Should().BeGreaterThan(LimitesDoProvedor.Local.LinhasDeLeitura);
+            nuvem.EmailPorLeitura.Should().BeGreaterThan(LimitesDoProvedor.Local.EmailPorLeitura);
+            nuvem.LoteDaTriagem.Should().BeGreaterThan(LimitesDoProvedor.Local.LoteDaTriagem);
+            nuvem.AlvoDepoisDeCompactar.Should().BeLessThan(LimitesDoProvedor.Local.AlvoDepoisDeCompactar,
+                "compactar menos vezes perde o cache menos vezes");
+        }
+
+        [Fact]
+        public void TetoDaRespostaDaTriagem_CresceComOLote()
+        {
+            AIB.Services.Mail.TriadorDeEmail.Opcoes(false, 25).NumPredict.Should().Be(AIB.Services.Mail.TriadorDeEmail.TetoDeResposta);
+            AIB.Services.Mail.TriadorDeEmail.Opcoes(false, 60).NumPredict.Should().Be(AIB.Services.Mail.TriadorDeEmail.TetoDeResposta * 3,
+                "60 vereditos não cabem no teto medido para 25");
+        }
         // ── OpenRouter: roteamento, privacidade, cache, custo, raciocínio, retry ──
 
         private static ModeloDoOpenRouter Catalogado(string id = "a/b", bool raciocina = false, params string[] parametros) =>

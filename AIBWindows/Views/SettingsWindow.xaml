@@ -1,4 +1,4 @@
-﻿<Window x:Class="AIB.Views.SettingsWindow"
+<Window x:Class="AIB.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:AIB.Ui"
@@ -743,6 +743,22 @@
                                                            Margin="0,0,34,0" Visibility="Collapsed"
                                                            IsHitTestVisible="False"/>                                            </Grid>
 
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Só provedores que não guardam dados" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O prompt leva arquivos e e-mails. Desligado, o OpenRouter também usa provedores que guardam ou treinam com ele — às vezes mais baratos ou rápidos."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="SemColetaSwitch" Grid.Column="1" VerticalAlignment="Center"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
                                         </Grid>
                                     </Border>
                                     </StackPanel>

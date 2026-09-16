@@ -153,3 +153,43 @@ public sealed class PerfilDeProvedor
         return this;
     }
 }
+
+/// <summary>
+/// Quanto as ferramentas trazem de uma vez, por provedor.
+/// <para>
+/// Os tetos do Ollama foram medidos pela lentidão local: o prefill anda a ~30 tok/s, e cada mil
+/// tokens a mais eram meio minuto antes da primeira palavra. No OpenRouter o mesmo prompt chega
+/// em segundos e custa frações de centavo — ali o teto pequeno só obriga o modelo a pedir o
+/// resto em mais voltas, e cada volta reenvia o prompt inteiro, o que sai MAIS caro.
+/// </para>
+/// </summary>
+/// <param name="LinhasDeLeitura">Linhas por leitura de arquivo, quando ninguém pede faixa.</param>
+/// <param name="ItensDaPasta">Entradas listadas de uma pasta.</param>
+/// <param name="EmailPorMensagem">Caracteres do corpo de cada mensagem em <c>mail_read</c>.</param>
+/// <param name="EmailPorLeitura">Caracteres da leitura inteira em <c>mail_read</c>.</param>
+/// <param name="LoteDaTriagem">Mensagens numa chamada de triagem.</param>
+/// <param name="AlvoDepoisDeCompactar">
+/// Fração da cota em que a conversa viva fica depois de compactar. Cada compactação reescreve o
+/// começo do prompt e perde o cache do provedor; no OpenRouter isso é dinheiro, então ela libera
+/// mais espaço de uma vez e volta menos vezes.
+/// </param>
+public sealed record LimitesDoProvedor(
+    int LinhasDeLeitura, int ItensDaPasta, int EmailPorMensagem, int EmailPorLeitura, int LoteDaTriagem,
+    double AlvoDepoisDeCompactar)
+{
+    public static readonly LimitesDoProvedor Local = new(
+        Tools.ReadFileTool.LinhasPadrao, Tools.ReadFileTool.TetoDaPasta,
+        Tools.LerEmailTool.TetoPorMensagem, Tools.LerEmailTool.TetoDaLeitura,
+        Mail.MailDigestService.TetoDoLote, 0.5);
+
+    public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3);
+
+    public static LimitesDoProvedor Para(string? provedor) =>
+        provedor == ProvedoresDeIa.OpenRouter ? Nuvem : Local;
+
+    /// <summary>
+    /// Os do provedor da conversa. Configurado pelo <see cref="SettingsService"/> ao carregar e
+    /// ao salvar, como <see cref="Ai.ChatRequestOptions.JanelaAtual"/>.
+    /// </summary>
+    public static LimitesDoProvedor Atual { get; set; } = Local;
+}

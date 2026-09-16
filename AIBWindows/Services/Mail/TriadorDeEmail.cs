@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
@@ -39,10 +39,17 @@ public sealed class TriadorDeEmail
     /// <c>MailTriageThinking</c>: é o único ponto do programa onde ligar o pensamento tem chance
     /// clara de pagar, e o único onde dá para medir se pagou.
     /// </summary>
-    public static ChatRequestOptions Opcoes(bool comRaciocinio = false) =>
-        new(Temperature: 0.0f,
+    /// <param name="mensagens">
+    /// Tamanho do lote. O teto de resposta cresce com ele: foi medido para até 25 mensagens, e o
+    /// lote do OpenRouter chega a 60 — com o teto fixo, o JSON sairia cortado no meio.
+    /// </param>
+    public static ChatRequestOptions Opcoes(bool comRaciocinio = false, int mensagens = 0)
+    {
+        int teto = TetoDeResposta * Math.Max(1, (mensagens + 24) / 25);
+        return new(Temperature: 0.0f,
             Think: comRaciocinio ? (bool?)null : false,
-            NumPredict: comRaciocinio ? TetoDeResposta * 3 : TetoDeResposta);
+            NumPredict: comRaciocinio ? teto * 3 : teto);
+    }
 
     private const string Prompt =
         """
@@ -94,7 +101,7 @@ public sealed class TriadorDeEmail
         };
 
         var resultado = await _provider
-            .CompleteAsync(mensagens, Array.Empty<ChatTool>(), Opcoes(_comRaciocinio), ct)
+            .CompleteAsync(mensagens, Array.Empty<ChatTool>(), Opcoes(_comRaciocinio, lote.Count), ct)
             .ConfigureAwait(false);
 
         return Interpretar(resultado.Text);

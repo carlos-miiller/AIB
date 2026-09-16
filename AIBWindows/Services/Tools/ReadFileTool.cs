@@ -31,13 +31,13 @@ namespace AIB.Services.Tools;
 /// </summary>
 public class ReadFileTool : ITool
 {
-    /// <summary>Linhas por leitura, quando ninguém pede faixa.</summary>
+    /// <summary>Linhas por leitura no Ollama, quando ninguém pede faixa. Ver <see cref="LimitesDoProvedor"/>.</summary>
     public const int LinhasPadrao = 400;
 
     /// <summary>Teto de caracteres por linha. Minificado é uma linha de cem mil.</summary>
     public const int TetoDaLinha = 2000;
 
-    /// <summary>Entradas listadas de uma pasta.</summary>
+    /// <summary>Entradas listadas de uma pasta, no Ollama.</summary>
     public const int TetoDaPasta = 100;
 
     public string Name => Ferramentas.Ler;
@@ -52,7 +52,7 @@ public class ReadFileTool : ITool
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         functionName: Name,
         functionDescription: Description,
-        functionParameters: BinaryData.FromString("""
+        functionParameters: BinaryData.FromString($$"""
         {
             "type": "object",
             "properties": {
@@ -66,7 +66,7 @@ public class ReadFileTool : ITool
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Quantas linhas ler. Padrão 400."
+                    "description": "Quantas linhas ler. Padrão {{LimitesDoProvedor.Atual.LinhasDeLeitura}}."
                 }
             },
             "required": ["path"]
@@ -91,7 +91,7 @@ public class ReadFileTool : ITool
             path = PathArgumentRepair.Normalize(pathElement.GetString());
 
             offset = Math.Max(1, Numero(args, "offset", 1));
-            limit = Math.Max(1, Numero(args, "limit", LinhasPadrao));
+            limit = Math.Max(1, Numero(args, "limit", LimitesDoProvedor.Atual.LinhasDeLeitura));
         }
         catch (JsonException ex)
         {
@@ -180,12 +180,13 @@ public class ReadFileTool : ITool
             sb.AppendLine($"'{pasta}' é uma PASTA, com {subpastas.Count} subpasta(s) e "
                           + $"{arquivos.Count} arquivo(s):");
 
-            foreach (string nome in subpastas.Concat(arquivos).Take(TetoDaPasta))
+            int tetoDaPasta = LimitesDoProvedor.Atual.ItensDaPasta;
+            foreach (string nome in subpastas.Concat(arquivos).Take(tetoDaPasta))
                 sb.AppendLine("  " + nome);
 
             int total = subpastas.Count + arquivos.Count;
-            if (total > TetoDaPasta)
-                sb.AppendLine($"  (+{total - TetoDaPasta} não listado(s))");
+            if (total > tetoDaPasta)
+                sb.AppendLine($"  (+{total - tetoDaPasta} não listado(s))");
 
             return sb.ToString().TrimEnd();
         }

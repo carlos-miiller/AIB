@@ -640,7 +640,7 @@ public sealed class MailDigestService : IDisposable
 
         var lote = sobem
             .OrderByDescending(m => m.RecebidaUtc)
-            .Take(TetoDoLote)
+            .Take(LimitesDoProvedor.Para(config.ParaTriagem().AiProvider).LoteDaTriagem)
             .ToList();
 
         IReadOnlyList<VereditoDeEmail> vereditos = Array.Empty<VereditoDeEmail>();

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -166,6 +166,7 @@ public partial class SettingsWindow : Window
             LoadProviders();
 
             SendSystemPromptSwitch.IsChecked = _currentSettings.SendSystemPrompt;
+            SemColetaSwitch.IsChecked = _currentSettings.OpenRouterSemColetaDeDados;
             VerboseLoggingSwitch.IsChecked = _currentSettings.VerboseConsoleLogging;
 
             ShadowAssistantSwitch.IsChecked = _currentSettings.ShadowAssistantEnabled;
@@ -276,6 +277,7 @@ public partial class SettingsWindow : Window
             {
                 OpenRouterUrlTextBox.Text = ProvedoresDeIa.UrlDoOpenRouter;
                 OpenRouterModelComboBox.Text = perfil.Modelo;
+                _modeloDaJanela = perfil.Modelo;
             }
             else
             {
@@ -389,9 +391,30 @@ public partial class SettingsWindow : Window
         OpenRouterModeloAjuda.Text = texto;
     }
 
+    /// <summary>
+    /// O modelo cuja janela está na tela. Trocar de modelo traz a janela dele; perder o foco da
+    /// caixa com o mesmo modelo não mexe no número que você ajustou à mão.
+    /// </summary>
+    private string _modeloDaJanela = "";
+
     private void OpenRouterModelo_Mudou(object sender, RoutedEventArgs e)
     {
         MarcarSujo();
+
+        string id = (OpenRouterModelComboBox.SelectedItem as string ?? OpenRouterModelComboBox.Text ?? "").Trim();
+
+        // A janela segue o modelo escolhido: o catálogo diz quanto ele aguenta, e 32 mil num
+        // modelo de 160 mil desperdiçava a folga que no OpenRouter não custa minutos de prefill.
+        if (!_carregando && id.Length > 0 && !string.Equals(id, _modeloDaJanela, StringComparison.OrdinalIgnoreCase))
+        {
+            var modelo = _catalogo.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (modelo is { Janela: > 0 })
+            {
+                _modeloDaJanela = id;
+                JanelaTextBox.Text = Math.Clamp(modelo.Janela, PerfilDeProvedor.JanelaMinima, PerfilDeProvedor.JanelaMaxima).ToString();
+            }
+        }
+
         AtualizarAjudaDoModelo();
     }
 
@@ -1106,6 +1129,7 @@ public partial class SettingsWindow : Window
                 // Keep-alive, teto de contexto e system prompt vieram do Avançado: são
                 // parâmetros da CONEXÃO com o modelo, e moravam longe do modelo que configuram.
                 SendSystemPromptSwitch.IsChecked = padrao.SendSystemPrompt;
+                SemColetaSwitch.IsChecked = padrao.OpenRouterSemColetaDeDados;
                 // O perfil de fábrica DO PROVEDOR NA TELA. O provedor e a chave ficam: restaurar
                 // não é trocar de provedor nem apagar credencial.
                 _perfis[_provedorNaTela] = ProvedoresDeIa.PerfilPadrao(_provedorNaTela);
@@ -1716,6 +1740,7 @@ public partial class SettingsWindow : Window
         // O máximo de tokens vem do nível do usuário: é leitura, não preferência.
 
         _currentSettings.SendSystemPrompt = SendSystemPromptSwitch.IsChecked ?? true;
+        _currentSettings.OpenRouterSemColetaDeDados = SemColetaSwitch.IsChecked ?? true;
         _currentSettings.VerboseConsoleLogging = VerboseLoggingSwitch.IsChecked ?? false;
 
         _currentSettings.ShadowAssistantEnabled = ShadowAssistantSwitch.IsChecked ?? false;

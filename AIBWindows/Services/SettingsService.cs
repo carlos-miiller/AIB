@@ -538,6 +538,7 @@ public sealed class SettingsService
         var loaded = ReadFromDisk(path);
         PastasPermitidas.Configurar(loaded.WriteRoots);
         Ai.ChatRequestOptions.JanelaAtual = loaded.ContextWindow;
+        LimitesDoProvedor.Atual = LimitesDoProvedor.Para(loaded.AiProvider);
 
         lock (_gate)
         {
@@ -607,6 +608,7 @@ public sealed class SettingsService
         // A janela vale no mesmo instante, pelo mesmo motivo: os orçamentos por nível e o teto
         // da poda são lidos dela, e continuar contando a antiga até reabrir o app seria mentir.
         Ai.ChatRequestOptions.JanelaAtual = settings.ContextWindow;
+        LimitesDoProvedor.Atual = LimitesDoProvedor.Para(settings.AiProvider);
 
         lock (_gate)
         {

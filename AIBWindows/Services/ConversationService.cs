@@ -980,12 +980,10 @@ public sealed class ConversationService : IMessageStore
         return ficam;
     }
 
-    /// <summary>
-    /// Depois de compactar, a conversa viva deve cair para esta fração da cota. Compactar até
-    /// só encostar no gatilho faria a compactação seguinte disparar quase junto — e cada
-    /// compactação custa um prefill frio, porque reescreve o começo do prompt.
-    /// </summary>
-    private const double TargetAfterCompaction = 0.5;
+    // Depois de compactar, a conversa viva cai para LimitesDoProvedor.AlvoDepoisDeCompactar da
+    // cota. Compactar até só encostar no gatilho faria a compactação seguinte disparar quase
+    // junto — e cada compactação reescreve o começo do prompt: prefill frio no Ollama, cache
+    // perdido (dinheiro) no OpenRouter.
 
     /// <summary>
     /// Teto da chamada de resumo. Independente do turno: o usuário já foi respondido.
@@ -1568,7 +1566,7 @@ public sealed class ConversationService : IMessageStore
         int disponiveis = turnos.Count - manter;
         if (disponiveis <= 0) return new List<Turn>();
 
-        int alvo = (int)(quota.Live * TargetAfterCompaction);
+        int alvo = (int)(quota.Live * LimitesDoProvedor.Atual.AlvoDepoisDeCompactar);
         var escolhidos = new List<Turn>();
         int restante = vivo;
 

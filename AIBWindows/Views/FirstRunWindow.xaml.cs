@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -394,6 +394,11 @@ public partial class FirstRunWindow : Window
         var settings = _settingsService.LoadSettings();
         var perfil = settings.PerfilDe(ProvedoresDeIa.OpenRouter);
         perfil.Modelo = modelo;
+
+        // A janela do modelo, quando o catálogo diz — a mesma regra da tela de configurações.
+        if (AIB.Services.Ai.CatalogoDoOpenRouter.NoCache(modelo) is { Janela: > 0 } doCatalogo)
+            perfil.JanelaDeContexto = Math.Clamp(doCatalogo.Janela, PerfilDeProvedor.JanelaMinima, PerfilDeProvedor.JanelaMaxima);
+
         settings.Ativar(ProvedoresDeIa.OpenRouter, perfil);
         settings.ApiKey = "use-vault";
 
