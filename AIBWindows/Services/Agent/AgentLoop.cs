@@ -117,8 +117,11 @@ public sealed class AgentLoop
             var relogioDaVolta = System.Diagnostics.Stopwatch.StartNew();
 
             // Quanto deste prompt o KV cache do provider deve reaproveitar. Calculado por nós
-            // porque o Ollama não reporta cache; o OpenAI reporta e tem prioridade.
-            int predictedCached = _prefixTracker.RecordAndGetReusableTokens(messages);
+            // porque o Ollama não reporta cache. SÓ no Ollama: a previsão supõe um KV cache nesta
+            // máquina e se calibra pelo custo de prefill dela. No OpenRouter o cache é do outro
+            // lado, e vale só o que ele relata — sem relato, "não sei", e não um chute local.
+            bool local = provider.Name == ProvedoresDeIa.Ollama;
+            int predictedCached = local ? _prefixTracker.RecordAndGetReusableTokens(messages) : 0;
 
             // PROVA DE VIDA no terminal. Um prefill frio de ~3500 tokens passa de três minutos
             // nesta máquina, e nesse intervalo não há chunk, evento nem linha de log: por fora
@@ -130,7 +133,8 @@ public sealed class AgentLoop
                 baselineTokens,
                 predictedCached,
                 request.Options.NumCtx,
-                escrever: _escreverPulso);
+                escrever: _escreverPulso,
+                local: local);
 
             await foreach (var chunk in provider
                 .StreamAsync(messages, tools, request.Options, ct)
@@ -216,7 +220,7 @@ public sealed class AgentLoop
                 // Sem relato (Ollama), cai na nossa previsão de prefixo, conferida contra o
                 // custo real do prefill. Null se propaga como null: "não sei" não vira zero.
                 int? cached = lastCachedTokens
-                    ?? _prefixTracker.ConfirmOrDiscard(predictedCached, lastPromptEvalCount, lastPromptEvalMillis);
+                    ?? (local ? _prefixTracker.ConfirmOrDiscard(predictedCached, lastPromptEvalCount, lastPromptEvalMillis) : null);
 
                 return new AgentEvent.TokenUsage(total, maxTokens, cached);
             }

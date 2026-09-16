@@ -218,6 +218,24 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ForaDoOllama_OPulsoNaoFalaEmPrefill()
+        {
+            // No OpenRouter a espera é rede e fila do outro lado; "prefill" e "reuso previsto"
+            // apontariam para uma causa local que não existe.
+            var papel = new Papel();
+            var pulso = new PulsoDoTurno(1, "deepseek/x", 3485, 0, 16384,
+                TimeSpan.FromHours(1), papel.Escrever, local: false);
+
+            pulso.BaterAgora();
+            pulso.Escreveu(40);
+            pulso.Fim("respondeu", tokensGerados: 10);
+
+            papel.Tudo.Should().NotContain("prefill").And.NotContain("reuso").And.NotContain("ctx");
+            papel.Linhas[0].Should().Contain("3485 tok").And.Contain("deepseek/x");
+            papel.Linhas[^1].Should().Contain("1º token");
+        }
+
+        [Fact]
         public void SemNenhumToken_OResumoDIZ_Isso()
         {
             // Turno que voltou vazio é diferente de turno rápido, e o resumo tem de distinguir.

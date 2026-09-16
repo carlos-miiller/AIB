@@ -52,6 +52,13 @@ public sealed class PulsoDoTurno : IDisposable
     private readonly Timer? _timer;
     private readonly int _iteracao;
 
+    /// <summary>
+    /// Modelo rodando nesta máquina. Prefill, reuso de prefixo e num_ctx só existem aqui: no
+    /// OpenRouter o modelo roda do outro lado, a espera é rede e fila, e falar em prefill
+    /// apontaria para uma causa que não é a dele.
+    /// </summary>
+    private readonly bool _local;
+
     // Escritos pela thread do turno, lidos pela do timer.
     private int _fase = (int)Fase.Prefill;
     private int _caracteresDeTexto;
@@ -79,6 +86,7 @@ public sealed class PulsoDoTurno : IDisposable
     /// uma curta são visualmente idênticas até acabarem.
     /// </param>
     /// <param name="escrever">Saída. Injetável para o ensaio não depender do console.</param>
+    /// <param name="local">Modelo no Ollama. Fora dele o pulso não fala em prefill, reuso nem ctx.</param>
     public PulsoDoTurno(
         int iteracao,
         string modelo,
@@ -86,15 +94,18 @@ public sealed class PulsoDoTurno : IDisposable
         int reusoPrevisto,
         int numCtx,
         TimeSpan? intervalo = null,
-        Action<string>? escrever = null)
+        Action<string>? escrever = null,
+        bool local = true)
     {
         _iteracao = iteracao;
         _escrever = escrever ?? Console.WriteLine;
+        _local = local;
 
         int novos = Math.Max(0, tokensDoPrompt - reusoPrevisto);
 
-        Linha($"> prompt {tokensDoPrompt} tok (reuso previsto {reusoPrevisto}, "
-              + $"novos {novos}) · {modelo} · ctx {numCtx}");
+        Linha(local
+            ? $"> prompt {tokensDoPrompt} tok (reuso previsto {reusoPrevisto}, novos {novos}) · {modelo} · ctx {numCtx}"
+            : $"> prompt {tokensDoPrompt} tok · {modelo}");
 
         var passo = intervalo ?? IntervaloPadrao;
         _timer = new Timer(_ => Bater(), null, passo, passo);
@@ -198,7 +209,7 @@ public sealed class PulsoDoTurno : IDisposable
 
         if (prefill >= 0)
         {
-            resumo += $" · prefill {Segundos(prefill)}";
+            resumo += _local ? $" · prefill {Segundos(prefill)}" : $" · 1º token {Segundos(prefill)}";
 
             long geracao = Math.Max(1, total - prefill);
             if (tokensGerados is > 0)
@@ -234,8 +245,9 @@ public sealed class PulsoDoTurno : IDisposable
 
         string detalhe = fase switch
         {
-            Fase.Prefill =>
-                "aguardando o primeiro token (prefill)",
+            Fase.Prefill => _local
+                ? "aguardando o primeiro token (prefill)"
+                : "aguardando o primeiro token",
 
             Fase.Pensando =>
                 $"pensando · {Volatile.Read(ref _caracteresDeRaciocinio)} car",

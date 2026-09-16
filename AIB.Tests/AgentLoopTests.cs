@@ -85,6 +85,26 @@ namespace AIB.Tests
             tudo.Should().Contain("ferramenta read — executando");
         }
 
+        [Fact]
+        public async Task NoOpenRouter_NaoHaPrefillNemCacheDePrefixoPrevisto()
+        {
+            // Prefill, reuso de prefixo e ctx são do modelo rodando nesta máquina. No OpenRouter
+            // o cache é do outro lado: vale o que ele relata, e sem relato é "não sei".
+            var provider = new ScriptedProvider(null,
+                ToolTurn(("k0", "id0", "read", "{\"path\":\"a.txt\"}")),
+                TextTurn("li o arquivo")) { Name = ProvedoresDeIa.OpenRouter };
+            var store = new RecordingStore();
+
+            var events = await DrainAsync(BuildLoop(provider).RunAsync(Request(store), CancellationToken.None));
+
+            string tudo;
+            lock (_pulso) tudo = string.Join("\n", _pulso);
+
+            tudo.Should().NotContain("prefill").And.NotContain("reuso previsto").And.NotContain("ctx ");
+            tudo.Should().Contain("primeiro token em").And.Contain("1º token");
+            events.OfType<AgentEvent.TokenUsage>().Should().OnlyContain(u => u.Cached == null);
+        }
+
         // ─────────────────────────────────────────────────────────────────────
         // Dublês
         // ─────────────────────────────────────────────────────────────────────
@@ -104,7 +124,7 @@ namespace AIB.Tests
             public List<IReadOnlyList<ChatTool>> ToolsSeen { get; } = new();
             public List<IReadOnlyList<ChatMessage>> MessagesSeen { get; } = new();
 
-            public string Name => "Fake";
+            public string Name { get; init; } = ProvedoresDeIa.Ollama;
             public string Model => "fake";
 
             public async IAsyncEnumerable<StreamChunk> StreamAsync(
