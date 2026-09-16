@@ -597,6 +597,15 @@ NaN
  6r. "Só provedores que não guardam dados"
                             Switch, padrão ligado (data_collection: deny).
                             prop: OpenRouterSemColetaDeDados.
+ 6r2. "Provedor preferido"   ComboBox mono editável, padrão vazio (roteamento
+                            livre). Lista os provedores do modelo em 5r
+                            (GET /models/{id}/endpoints, provider_name); dá
+                            para digitar. Preenchido: provider.order [valor]
+                            + allow_fallbacks true. Ajuda: o cache do prompt
+                            é guardado por provedor, e trocar de provedor
+                            entre voltas paga a conversa inteira de novo.
+                            Restaurar padrões volta para vazio.
+                            prop: OpenRouterProvedorFixo.
 
  DOS DOIS (sentido e ajuda mudam com o provedor)
  6c. "Janela de contexto"   TextBox mono, 8192–262144. Ollama: num_ctx. Nos dois:

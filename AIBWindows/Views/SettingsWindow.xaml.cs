@@ -167,6 +167,7 @@ public partial class SettingsWindow : Window
 
             SendSystemPromptSwitch.IsChecked = _currentSettings.SendSystemPrompt;
             SemColetaSwitch.IsChecked = _currentSettings.OpenRouterSemColetaDeDados;
+            ProvedorFixoComboBox.Text = _currentSettings.OpenRouterProvedorFixo;
             VerboseLoggingSwitch.IsChecked = _currentSettings.VerboseConsoleLogging;
 
             ShadowAssistantSwitch.IsChecked = _currentSettings.ShadowAssistantEnabled;
@@ -416,12 +417,39 @@ public partial class SettingsWindow : Window
         }
 
         AtualizarAjudaDoModelo();
+        _ = CarregarProvedoresDoModeloAsync(id);
+    }
+
+    /// <summary>
+    /// A lista do "Provedor preferido": os provedores que servem o modelo na tela. Só sugere — a
+    /// caixa continua editável, e o que estiver escrito fica mesmo que o modelo não o liste.
+    /// </summary>
+    private async System.Threading.Tasks.Task CarregarProvedoresDoModeloAsync(string? id = null)
+    {
+        id ??= (OpenRouterModelComboBox.Text ?? "").Trim();
+        var provedores = await AIB.Services.Ai.CatalogoDoOpenRouter.ProvedoresDoModeloAsync(_http, id);
+
+        // O modelo pode ter mudado enquanto a lista vinha.
+        if (!string.Equals(id, (OpenRouterModelComboBox.Text ?? "").Trim(), StringComparison.OrdinalIgnoreCase)) return;
+
+        bool antes = _carregando;
+        _carregando = true;
+        try
+        {
+            string atual = ProvedorFixoComboBox.Text;
+            ProvedorFixoComboBox.ItemsSource = provedores;
+            ProvedorFixoComboBox.Text = atual;
+        }
+        finally
+        {
+            _carregando = antes;
+        }
     }
 
     /// <summary>O catálogo do OpenRouter nas duas listas que o usam: modelo da conversa e da triagem.</summary>
     private async System.Threading.Tasks.Task CarregarCatalogoAsync()
     {
-        if (_catalogo.Count > 0) { EncherModelosDaTriagem(); return; }
+        if (_catalogo.Count > 0) { EncherModelosDaTriagem(); await CarregarProvedoresDoModeloAsync(); return; }
 
         OpenRouterLoadingProgress.Visibility = Visibility.Visible;
         try
@@ -444,6 +472,7 @@ public partial class SettingsWindow : Window
 
             AtualizarAjudaDoModelo();
             EncherModelosDaTriagem();
+            await CarregarProvedoresDoModeloAsync();
         }
         finally
         {
@@ -1130,6 +1159,7 @@ public partial class SettingsWindow : Window
                 // parâmetros da CONEXÃO com o modelo, e moravam longe do modelo que configuram.
                 SendSystemPromptSwitch.IsChecked = padrao.SendSystemPrompt;
                 SemColetaSwitch.IsChecked = padrao.OpenRouterSemColetaDeDados;
+                ProvedorFixoComboBox.Text = padrao.OpenRouterProvedorFixo;
                 // O perfil de fábrica DO PROVEDOR NA TELA. O provedor e a chave ficam: restaurar
                 // não é trocar de provedor nem apagar credencial.
                 _perfis[_provedorNaTela] = ProvedoresDeIa.PerfilPadrao(_provedorNaTela);
@@ -1741,6 +1771,7 @@ public partial class SettingsWindow : Window
 
         _currentSettings.SendSystemPrompt = SendSystemPromptSwitch.IsChecked ?? true;
         _currentSettings.OpenRouterSemColetaDeDados = SemColetaSwitch.IsChecked ?? true;
+        _currentSettings.OpenRouterProvedorFixo = (ProvedorFixoComboBox.Text ?? "").Trim();
         _currentSettings.VerboseConsoleLogging = VerboseLoggingSwitch.IsChecked ?? false;
 
         _currentSettings.ShadowAssistantEnabled = ShadowAssistantSwitch.IsChecked ?? false;

@@ -52,6 +52,21 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void TrocaDeProvedorFixo_ReconstroiOProvider()
+        {
+            // O provedor preferido vai no corpo de cada requisição; um provider em cache com o
+            // valor velho continuaria roteando para o lugar antigo até reiniciar o app.
+            var factory = Build(() => "sk-or-1");
+            var livre = factory.GetProvider(OpenRouter());
+
+            var fixo = OpenRouter();
+            fixo.OpenRouterProvedorFixo = "DeepInfra";
+
+            factory.GetProvider(fixo).Should().NotBeSameAs(livre);
+            factory.GetProvider(fixo).Should().BeSameAs(factory.GetProvider(fixo));
+        }
+
+        [Fact]
         public void OpenRouter_VaiPeloProviderProprio()
         {
             Build(() => "sk-or-1").GetProvider(OpenRouter()).Should().BeOfType<OpenRouterProvider>();

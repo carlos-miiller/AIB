@@ -161,6 +161,55 @@ public static class CatalogoDoOpenRouter
         return modelos.OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    /// <summary>Os provedores de cada modelo já consultados, pelo id do modelo.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<string>> _provedores =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Os provedores que servem o modelo (<c>GET /models/{id}/endpoints</c>, público), pelo nome
+    /// que o OpenRouter usa no roteamento e no campo <c>provider</c> do stream. Vazio se a rede
+    /// falhar ou o id não existir — a tela deixa digitar.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> ProvedoresDoModeloAsync(HttpClient http, string id, CancellationToken ct = default)
+    {
+        id = (id ?? "").Trim();
+        if (id.Length == 0 || !id.Contains('/')) return Array.Empty<string>();
+        if (_provedores.TryGetValue(id, out var guardados)) return guardados;
+
+        try
+        {
+            string caminho = string.Join("/", id.Split('/').Select(Uri.EscapeDataString));
+            using var resp = await http.GetAsync($"{ProvedoresDeIa.UrlDoOpenRouter}/models/{caminho}/endpoints", ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return Array.Empty<string>();
+
+            var lista = LerProvedores(await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
+            if (lista.Count > 0) _provedores[id] = lista;
+            return lista;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.WriteLine($"[CONFIG] provedores de {id} indisponíveis: {ex.Message}");
+            return Array.Empty<string>();
+        }
+    }
+
+    /// <summary>Interpreta a resposta de <c>/models/{id}/endpoints</c>. Público para ensaio.</summary>
+    public static IReadOnlyList<string> LerProvedores(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty("endpoints", out var endpoints) || endpoints.ValueKind != JsonValueKind.Array)
+            return Array.Empty<string>();
+
+        return endpoints.EnumerateArray()
+            .Where(e => e.ValueKind == JsonValueKind.Object)
+            .Select(e => Texto(e, "provider_name"))
+            .Where(n => n.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     /// <summary>O catálogo dá preço por TOKEN, em texto ("0.00000027"). A tela fala por milhão.</summary>
     private static decimal? PorMilhao(string porToken) =>
         decimal.TryParse(porToken, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && v >= 0

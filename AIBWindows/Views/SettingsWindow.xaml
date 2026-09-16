@@ -761,6 +761,24 @@
                                                           Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
                                         </Grid>
                                     </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Provedor preferido" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O cache do prompt fica guardado no provedor que atendeu; trocar de provedor entre voltas paga a conversa inteira de novo. Vazio deixa o OpenRouter escolher. Se ele cair, outro atende."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="ProvedorFixoComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      IsEditable="True"
+                                                      Style="{StaticResource ControlComboBoxMono}"
+                                                      SelectionChanged="Campo_Mudou"
+                                                      LostFocus="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
                                     </StackPanel>
 
                                     <!-- ── Dos dois, com o sentido de cada um ── -->

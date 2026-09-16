@@ -20,7 +20,7 @@ public sealed class ChatProviderFactory : IChatProviderFactory
     private readonly IToolCallHealer _healer;
 
     private readonly object _gate = new();
-    private readonly Dictionary<(string Provider, string Model, string ApiUrl, string Credential, bool SemColeta), IChatProvider> _cache = new();
+    private readonly Dictionary<(string Provider, string Model, string ApiUrl, string Credential, bool SemColeta, string ProvedorFixo), IChatProvider> _cache = new();
 
     private readonly Func<string, string> _chaveDe;
 
@@ -46,8 +46,10 @@ public sealed class ChatProviderFactory : IChatProviderFactory
         // configurações, e uma chave de cache sem ela reaproveitaria um cliente com a chave velha
         // — o 401 que só sumia reiniciando o app.
         string credencial = _chaveDe(provedor);
+        bool openRouter = provedor == ProvedoresDeIa.OpenRouter;
         var chave = (provedor, settings.ModelName ?? "", settings.ApiUrl ?? "", credencial,
-                     provedor == ProvedoresDeIa.OpenRouter && settings.OpenRouterSemColetaDeDados);
+                     openRouter && settings.OpenRouterSemColetaDeDados,
+                     openRouter ? (settings.OpenRouterProvedorFixo ?? "").Trim() : "");
 
         // O aquecimento, um turno e a triagem podem chegar juntos na inicialização.
         lock (_gate)
@@ -83,7 +85,8 @@ public sealed class ChatProviderFactory : IChatProviderFactory
                               + (credencial.Length == 0 ? " (SEM CHAVE configurada)" : ""));
             return new OpenRouterProvider(
                 _httpClient, ProvedoresDeIa.UrlDoOpenRouter, credencial, modelo, _healer,
-                settings.VerboseConsoleLogging, settings.OpenRouterSemColetaDeDados);
+                settings.VerboseConsoleLogging, settings.OpenRouterSemColetaDeDados,
+                settings.OpenRouterProvedorFixo);
         }
 
         string ollamaUrl = string.IsNullOrEmpty(settings.ApiUrl) ? ProvedoresDeIa.UrlDoOllama : settings.ApiUrl;

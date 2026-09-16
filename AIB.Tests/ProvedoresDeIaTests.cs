@@ -257,6 +257,36 @@ namespace AIB.Tests
             .ToArray();
 
         [Fact]
+        public void ProvedorFixo_VaiComoOrdemComFallback_EVazioDeixaORoteamentoLivre()
+        {
+            var fixo = new OpenRouterProvider(new System.Net.Http.HttpClient(), ProvedoresDeIa.UrlDoOpenRouter,
+                "k", "a/b", new RegexToolCallHealer(), false, semColetaDeDados: true, provedorFixo: " DeepInfra ");
+            var roteamento = JsonDocument.Parse(fixo.MontarCorpo(new ChatMessage[] { ChatMessage.CreateUserMessage("oi") },
+                System.Array.Empty<ChatTool>(), new ChatRequestOptions(), true)).RootElement.GetProperty("provider");
+
+            roteamento.GetProperty("order").EnumerateArray().Select(e => e.GetString()).Should().Equal("DeepInfra");
+            roteamento.GetProperty("allow_fallbacks").GetBoolean().Should().BeTrue("provedor fora do ar não pode derrubar a conversa");
+            roteamento.GetProperty("data_collection").GetString().Should().Be("deny");
+
+            var livre = Corpo(new ChatRequestOptions()).GetProperty("provider");
+            livre.TryGetProperty("order", out _).Should().BeFalse();
+            livre.TryGetProperty("allow_fallbacks", out _).Should().BeFalse();
+
+            new UserAppSettings().OpenRouterProvedorFixo.Should().BeEmpty("de fábrica o roteamento é livre");
+            new UserAppSettings { OpenRouterProvedorFixo = "  Novita " }.Sanear().OpenRouterProvedorFixo.Should().Be("Novita");
+        }
+
+        [Fact]
+        public void ProvedoresDoModelo_LidosDosEndpoints()
+        {
+            CatalogoDoOpenRouter.LerProvedores(
+                """{"data":{"id":"deepseek/deepseek-v4-flash","endpoints":[{"name":"x","provider_name":"Novita","tag":"novita"},{"provider_name":"DeepInfra","tag":"deepinfra/fp8"},{"provider_name":"DeepInfra","tag":"deepinfra/fp4"}]}}""")
+                .Should().Equal("DeepInfra", "Novita");
+
+            CatalogoDoOpenRouter.LerProvedores("""{"error":{"message":"not found"}}""").Should().BeEmpty();
+        }
+
+        [Fact]
         public void MarcasDeCache_SoEmAnthropicEGemini_NaAlmaMemoriaUltimaFalaEUltimaMensagem()
         {
             var mensagens = new ChatMessage[]

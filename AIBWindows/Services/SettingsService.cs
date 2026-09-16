@@ -59,6 +59,18 @@ public sealed class UserAppSettings
     /// </summary>
     public bool OpenRouterSemColetaDeDados { get; set; } = true;
 
+    /// <summary>
+    /// OpenRouter: o provedor a tentar primeiro (<c>provider.order</c>), pelo nome que o
+    /// OpenRouter dá — "DeepInfra", "Novita". Vazio deixa o roteamento livre.
+    /// <para>
+    /// Existe pelo cache. O cache de prompt é guardado POR PROVEDOR, e o roteamento livre pode
+    /// mandar cada volta de um turno a um provedor diferente: cada troca paga a entrada inteira de
+    /// novo. Fixar mantém as voltas no mesmo lugar. Vai com <c>allow_fallbacks</c>, então se ele
+    /// cair a requisição segue por outro, em vez de falhar.
+    /// </para>
+    /// </summary>
+    public string OpenRouterProvedorFixo { get; set; } = "";
+
     /// <summary>O perfil do provedor ativo, montado dos campos da conversa.</summary>
     public PerfilDeProvedor PerfilAtivo() => new PerfilDeProvedor
     {
@@ -394,6 +406,7 @@ public sealed class UserAppSettings
     public UserAppSettings Sanear()
     {
         SanearProvedores();
+        OpenRouterProvedorFixo = (OpenRouterProvedorFixo ?? "").Trim();
 
         MaxTurnIterations = Entre(MaxTurnIterations, 1, 60);
         CompactionTrigger = Entre(CompactionTrigger, 0.50, 0.99);

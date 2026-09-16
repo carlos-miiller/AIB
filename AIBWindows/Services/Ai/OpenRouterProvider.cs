@@ -42,6 +42,9 @@ public sealed class OpenRouterProvider : IChatProvider
     private readonly bool _verboseLogging;
     private readonly bool _semColetaDeDados;
 
+    /// <summary>O provedor a tentar primeiro. Vazio: roteamento livre. Ver <see cref="UserAppSettings.OpenRouterProvedorFixo"/>.</summary>
+    private readonly string _provedorFixo;
+
     /// <summary>
     /// O raciocínio de cada volta que pediu ferramenta, pelo id da primeira chamada. Volta ao
     /// modelo em TODA requisição em que aquela mensagem ainda estiver no histórico. Modelos de
@@ -89,7 +92,8 @@ public sealed class OpenRouterProvider : IChatProvider
     private const int AlvoDaPoda = 1536;
 
     public OpenRouterProvider(HttpClient http, string baseUrl, string chave, string model,
-                              IToolCallHealer healer, bool verboseLogging, bool semColetaDeDados = true)
+                              IToolCallHealer healer, bool verboseLogging, bool semColetaDeDados = true,
+                              string? provedorFixo = null)
     {
         _http = http;
         _baseUrl = (string.IsNullOrWhiteSpace(baseUrl) ? ProvedoresDeIa.UrlDoOpenRouter : baseUrl).TrimEnd('/');
@@ -98,6 +102,7 @@ public sealed class OpenRouterProvider : IChatProvider
         _healer = healer;
         _verboseLogging = verboseLogging;
         _semColetaDeDados = semColetaDeDados;
+        _provedorFixo = (provedorFixo ?? "").Trim();
     }
 
     public string Name => ProvedoresDeIa.OpenRouter;
@@ -194,6 +199,15 @@ public sealed class OpenRouterProvider : IChatProvider
         var roteamento = new JsonObject();
         if (doCatalogo != null) roteamento["require_parameters"] = true;
         if (_semColetaDeDados) roteamento["data_collection"] = "deny";
+
+        // Provedor fixo: o cache de prompt é guardado por provedor, e o roteamento livre pode
+        // atender cada volta num lugar — cada troca paga a entrada inteira de novo. Com
+        // allow_fallbacks, provedor fora do ar desvia para outro em vez de recusar.
+        if (_provedorFixo.Length > 0)
+        {
+            roteamento["order"] = new JsonArray { _provedorFixo };
+            roteamento["allow_fallbacks"] = true;
+        }
         if (roteamento.Count > 0) corpo["provider"] = roteamento;
 
         return corpo.ToJsonString();
