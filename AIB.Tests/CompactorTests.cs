@@ -261,6 +261,34 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void CapitulosGravadosPelaPosicaoNoVivo_ContamPelaSoma()
+        {
+            // Até 16/09 o capítulo gravava a posição do turno no histórico VIVO, que recomeça do
+            // zero a cada compactação. Pelo maior LastTurn, esta conversa teria coberto só os
+            // turnos 0–1, e a reabertura devolvia crus três turnos já resumidos.
+            var layer = new MemoryLayer();
+            layer.Add(new Chapter(0, "2026-09-15T00:00:00Z", 0, 0, "a", Array.Empty<Artifact>()));
+            layer.Add(new Chapter(1, "2026-09-15T00:00:00Z", 0, 0, "b", Array.Empty<Artifact>()));
+            layer.Add(new Chapter(2, "2026-09-15T00:00:00Z", 0, 0, "c", Array.Empty<Artifact>()));
+            layer.Add(new Chapter(3, "2026-09-15T00:00:00Z", 0, 1, "d", Array.Empty<Artifact>()));
+
+            layer.LastCoveredTurn.Should().Be(4, "cinco turnos resumidos, do 0 ao 4");
+        }
+
+        [Fact]
+        public void CapitulosAntigosEDeHoje_NaMesmaConversa()
+        {
+            // Conversa com capítulos do formato antigo que continuou depois da correção: os novos
+            // já trazem o número do registro, e é ele que vale.
+            var layer = new MemoryLayer();
+            layer.Add(new Chapter(0, "2026-09-15T00:00:00Z", 0, 0, "a", Array.Empty<Artifact>()));
+            layer.Add(new Chapter(1, "2026-09-15T00:00:00Z", 0, 0, "b", Array.Empty<Artifact>()));
+            layer.Add(new Chapter(2, "2026-09-16T00:00:00Z", 5, 7, "c", Array.Empty<Artifact>()));
+
+            layer.LastCoveredTurn.Should().Be(7);
+        }
+
+        [Fact]
         public void RenderDeCapitulo_MostraArtefatosComoLiteraisUsaveis()
         {
             var capitulo = new Chapter(0, "2026-08-21T00:00:00Z", 0, 1, "resumo qualquer", new[]

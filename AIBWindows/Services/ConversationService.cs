@@ -125,6 +125,36 @@ public sealed class ConversationService : IMessageStore
     private int _turnsRecorded;
 
     /// <summary>
+    /// O índice no <c>raw.jsonl</c> de cada turno vivo que já está lá, pela mensagem que o abre.
+    /// <para>
+    /// É o que dá ao capítulo o número VERDADEIRO dos turnos que resumiu. A posição no
+    /// histórico vivo não serve: ele recomeça do zero a cada compactação, e a reabertura lia
+    /// "turnos 0–1" como "o começo da conversa" — os turnos já resumidos voltavam crus.
+    /// </para>
+    /// <para>
+    /// Serve também de "já gravado". Um turno restaurado do disco, ou gravado no fim do turno
+    /// anterior, não é gravado de novo por um <see cref="RecordLastTurn"/> que o encontre como
+    /// último — foi assim que um turno reaberto apareceu duas vezes no <c>raw.jsonl</c>.
+    /// </para>
+    /// <para>
+    /// Tabela fraca: quando a mensagem sai do histórico, a entrada vai junto.
+    /// </para>
+    /// </summary>
+    private ConditionalWeakTable<ChatMessage, StrongBox<int>> _indiceNoRegistro = new();
+
+    /// <summary>
+    /// Qual conversa está no histórico vivo. Muda a cada <see cref="ResetHistory(bool)"/>, sob
+    /// <see cref="_gate"/>.
+    /// <para>
+    /// Existe porque trocar de conversa não esperava o turno em curso. Abrir outra conversa do
+    /// histórico no meio de uma cadeia de ferramentas deixava o turno antigo rodando por cima da
+    /// conversa NOVA: o que ele ainda escrevia caía no histórico recém-aberto, e o fim dele
+    /// gravava no <c>raw.jsonl</c> da conversa reaberta um turno que não era dela.
+    /// </para>
+    /// </summary>
+    private int _conversaViva;
+
+    /// <summary>
     /// Tokens dos turnos crus engolidos por capítulos que NÃO trazem a própria medida — os
     /// gravados antes de <see cref="Chapter.TokensDosTurnos"/> existir.
     /// <para>
@@ -389,6 +419,25 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private void ResetHistory(bool conversaNova)
     {
+        if (conversaNova)
+        {
+            // Trocar de conversa derruba o que ainda roda sobre a anterior. O turno em curso
+            // não espera por isto — ele pode estar num prefill de minutos —, então a troca não
+            // depende de ele parar: a partir do incremento abaixo, nada que ele escreva chega
+            // ao histórico (ver LojaDoTurno), e o fim dele não grava nem arquiva nada.
+            CancelGeneration();
+            InterromperCompactacao();
+
+            lock (_gate) { _conversaViva++; }
+
+            // O turno que estava no ar pertence à conversa que SAI. Fechado e gravado agora,
+            // ele fica no raw.jsonl dela; depois do Clear não haveria mais o que gravar.
+            // Sem turno aberto, as duas chamadas não fazem nada — o último turno já está
+            // gravado e o índice do registro sabe disso.
+            FecharTurnoAberto("a conversa foi trocada no meio do turno");
+            RecordLastTurn();
+        }
+
         bool tinhaConversa;
         lock (_gate)
         {
@@ -420,6 +469,7 @@ public sealed class ConversationService : IMessageStore
             Title = null;
             _sessionId = Guid.NewGuid().ToString();
             _turnoPendente = null;
+            _indiceNoRegistro = new();
             lock (_gate) { _transcricao.Clear(); }
             _memory.Clear();
         }
@@ -574,7 +624,13 @@ public sealed class ConversationService : IMessageStore
                         if (string.IsNullOrWhiteSpace(registro.Text)) continue;
 
                         if (registro.Role == "user")
-                            _history.Add(ChatMessage.CreateUserMessage(registro.Text));
+                        {
+                            var abertura = ChatMessage.CreateUserMessage(registro.Text);
+                            _history.Add(abertura);
+
+                            // Veio do disco: já está gravado, e com este número.
+                            _indiceNoRegistro.AddOrUpdate(abertura, new StrongBox<int>(turno.Index));
+                        }
                         else if (registro.Role == "assistant")
                             _history.Add(ChatMessage.CreateAssistantMessage(registro.Text));
                         else
@@ -672,6 +728,19 @@ public sealed class ConversationService : IMessageStore
 
             var ultimo = turnos[^1];
 
+            // Já gravado — no fim do próprio turno, ou lido do disco na reabertura. Gravar de
+            // novo duplicava o turno no raw.jsonl: foi o que aconteceu quando um turno terminou
+            // depois de a conversa ter sido reaberta por cima dele, e o "último turno" que ele
+            // encontrou era o restaurado.
+            if (JaGravado(ultimo))
+            {
+                if (_turnoPendente != null && !MesmoTurno(_turnoPendente, ultimo) && !JaGravado(_turnoPendente))
+                    Gravar(_turnoPendente);
+
+                _turnoPendente = null;
+                return;
+            }
+
             // Um turno que ficou aberto na chamada ANTERIOR não vai fechar mais: o usuário já
             // mandou outra mensagem por cima. Ele é gravado agora, antes do atual, para a ordem
             // se manter.
@@ -717,11 +786,20 @@ public sealed class ConversationService : IMessageStore
     private static bool MesmoTurno(Turn a, Turn b) =>
         a.Messages.Count > 0 && b.Messages.Count > 0 && ReferenceEquals(a.Messages[0], b.Messages[0]);
 
+    /// <summary>Se a mensagem que abre <paramref name="turno"/> já tem lugar no raw.jsonl.</summary>
+    private bool JaGravado(Turn turno) =>
+        turno.Messages.Count > 0 && _indiceNoRegistro.TryGetValue(turno.Messages[0], out _);
+
     /// <summary>Põe um turno no registro cru e na transcrição do histórico.</summary>
     private void Gravar(Turn turno)
     {
         if (_sessionMemory.AppendTurn(turno with { Index = _turnsRecorded }))
+        {
+            if (turno.Messages.Count > 0)
+                _indiceNoRegistro.AddOrUpdate(turno.Messages[0], new StrongBox<int>(_turnsRecorded));
+
             _turnsRecorded++;
+        }
 
         // A mesma unidade que vai para o disco alimenta a transcrição do histórico. Só as
         // duas falas: o miolo de ferramentas do turno não é conversa.
@@ -741,6 +819,12 @@ public sealed class ConversationService : IMessageStore
 
     /// <summary>Turnos recentes que a compactação nunca toca: são o contexto imediato.</summary>
     private const int KeepRecentTurns = 2;
+
+    /// <summary>
+    /// O piso de <see cref="KeepRecentTurns"/>: o turno que acabou de terminar nunca vira resumo.
+    /// É o contexto de "continue" — sem ele, o modelo retomaria de um parágrafo.
+    /// </summary>
+    private const int MinRecentTurns = 1;
 
     /// <summary>
     /// Depois de compactar, a conversa viva deve cair para esta fração da cota. Compactar até
@@ -895,7 +979,7 @@ public sealed class ConversationService : IMessageStore
                     // esta linha o diario mostraria um silencio inexplicavel.
                     _registroDaCompactacao.Pulou(
                         $"vivo={vivo} > limite={gatilho}, mas nenhum turno elegivel "
-                        + $"(os {KeepRecentTurns} mais recentes ficam sempre fora)");
+                        + "(o mais recente fica sempre fora, e nao ha turno fechado antes dele)");
                     break;
                 }
 
@@ -966,12 +1050,23 @@ public sealed class ConversationService : IMessageStore
         var compactor = new Compactor(
             _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter);
 
+        int conversa;
+        lock (_gate) { conversa = _conversaViva; }
+
         _registroDaCompactacao.Capitulo(
             _memory.NextChapterIndex, candidatos.Count, candidatos[0].Index, candidatos[^1].Index);
 
         var capitulo = await compactor
             .SummarizeAsync(_memory.NextChapterIndex, candidatos, ct)
             .ConfigureAwait(false);
+
+        // O resumo leva minutos. Se a conversa foi trocada nesse meio-tempo, remover "as N
+        // mensagens mais antigas" apagaria o começo da conversa que foi aberta no lugar.
+        lock (_gate)
+        {
+            if (conversa != _conversaViva)
+                throw new OperationCanceledException("a conversa foi trocada durante o resumo");
+        }
 
         // Medido ANTES da remocao, e sobre as mensagens originais: e este o custo que o
         // capitulo acabou de tirar do prompt, e o unico numero que torna a economia
@@ -1077,10 +1172,10 @@ public sealed class ConversationService : IMessageStore
             if (candidatos.Count == 0)
             {
                 _registroDaCompactacao.Pulou(
-                    $"pedido do usuario, mas nenhum turno elegivel (os {KeepRecentTurns} mais "
-                    + "recentes ficam sempre fora)");
-                return $"Nada a compactar: os {KeepRecentTurns} turnos mais recentes ficam sempre fora, "
-                     + "e nao ha turno fechado antes deles.";
+                    "pedido do usuario, mas nenhum turno elegivel (o mais recente fica sempre "
+                    + "fora, e nao ha turno fechado antes dele)");
+                return "Nada a compactar: o turno mais recente fica sempre fora — os dois mais "
+                     + "recentes, quando há outros —, e não há turno fechado antes dele.";
             }
 
             _registroDaCompactacao.GatilhoManual(LiveTokens(), quota.Live, candidatos.Count);
@@ -1276,7 +1371,14 @@ public sealed class ConversationService : IMessageStore
         lock (_gate) { vivos = _history.Skip(FirstRemovableIndex()).ToList(); }
 
         var turnos = TurnSplitter.Split(vivos);
-        int disponiveis = turnos.Count - KeepRecentTurns;
+
+        // Os dois mais recentes, quando dá; só o último, quando não dá. Quem chega aqui já
+        // precisa compactar — passou do gatilho, ou o usuário pediu. Com a regra fixa em dois,
+        // um turno enorme e outro miúdo no fim travavam a compactação de vez: foi uma cadeia
+        // de 18 ferramentas depois de um "leve modificação", e o /compact respondia "nada a
+        // compactar" com a conversa acima do gatilho.
+        int manter = turnos.Count - KeepRecentTurns > 0 ? KeepRecentTurns : MinRecentTurns;
+        int disponiveis = turnos.Count - manter;
         if (disponiveis <= 0) return new List<Turn>();
 
         int alvo = (int)(quota.Live * TargetAfterCompaction);
@@ -1284,12 +1386,20 @@ public sealed class ConversationService : IMessageStore
         int restante = vivo;
 
         int teto = Math.Min(disponiveis, MaxTurnsPerChapter);
+        int anterior = _memory.LastCoveredTurn;
 
         for (int i = 0; i < teto && (forcado || restante > alvo); i++)
         {
             if (!TurnSplitter.IsClosed(turnos[i])) break;
 
-            escolhidos.Add(turnos[i]);
+            // O número do turno no raw.jsonl, e não a posição dele no vivo. Um turno que nunca
+            // foi gravado (o contexto recuperado de outro chat) fica com o seguinte ao anterior.
+            int indice = _indiceNoRegistro.TryGetValue(turnos[i].Messages[0], out var gravado)
+                ? gravado.Value
+                : anterior + 1;
+            anterior = indice;
+
+            escolhidos.Add(turnos[i] with { Index = indice });
             restante -= _tokenCounter.CountMessages(turnos[i].Messages);
         }
 
@@ -1415,6 +1525,11 @@ public sealed class ConversationService : IMessageStore
         }
         var ct = cts.Token;
 
+        // A conversa a que este turno pertence. Se ela for trocada enquanto ele roda, o que
+        // ele ainda produzir não é dela nem da que entrou no lugar — ver LojaDoTurno.
+        int conversa;
+        lock (_gate) { conversa = _conversaViva; }
+
         // Remontado a cada turno por causa dos anexos: o usuário pode ter clicado no "+" entre
         // dois turnos, e esperar o próximo capítulo para o modelo saber do arquivo seria
         // esperar demais. Custa uma montagem de string; quando nada mudou, o texto sai
@@ -1436,7 +1551,7 @@ public sealed class ConversationService : IMessageStore
             NotifyTokenCount(userLevel);
 
             var request = new AgentTurnRequest(
-                this,
+                new LojaDoTurno(this, conversa),
                 _toolRegistry.GetActiveTools(userLevel),
                 userLevel,
                 OpcoesDoTurno(settings),
@@ -1523,39 +1638,49 @@ public sealed class ConversationService : IMessageStore
                 }
             }
 
-            // Cancelar deixa o histórico terminando num resultado de ferramenta, e um turno
-            // sem última fala do assistente não FECHA: não vai para o raw.jsonl e trava a
-            // compactação de tudo o que vier depois, porque SelectTurnsToCompact para no
-            // primeiro turno aberto que encontra. A marca fecha, e é honesta — o turno acabou
-            // mesmo, só que por decisão do usuário.
-            if (cancelado) FecharTurnoAberto("cancelado por você");
+            // Conversa trocada no meio do turno: o fim dele já foi feito pela troca, que fechou
+            // e gravou o turno na conversa a que ele pertencia. Fazer de novo aqui agiria sobre
+            // a conversa que entrou no lugar — gravaria o último turno DELA no raw.jsonl, e a
+            // arquivaria e compactaria por conta de um turno que não era dela.
+            bool trocada;
+            lock (_gate) { trocada = conversa != _conversaViva; }
 
-            // Antes de liberar o portão: o turno seguinte não pode começar a mexer no
-            // histórico enquanto este ainda não foi registrado.
-            RecordLastTurn();
+            if (!trocada)
+            {
+                // Cancelar deixa o histórico terminando num resultado de ferramenta, e um turno
+                // sem última fala do assistente não FECHA: não vai para o raw.jsonl e trava a
+                // compactação de tudo o que vier depois, porque SelectTurnsToCompact para no
+                // primeiro turno aberto que encontra. A marca fecha, e é honesta — o turno
+                // acabou mesmo, só que por decisão do usuário.
+                if (cancelado) FecharTurnoAberto("cancelado por você");
 
-            // A titulação vem ANTES da compactação, e cedo: ela usa um prefixo próprio e
-            // derruba o cache do prefixo da conversa. Depois do primeiro turno o histórico é
-            // pequeno e reconstruí-lo custa quase nada; mais tarde custaria caro.
-            if (!cancelado)
-                await TitularSeNecessarioAsync().ConfigureAwait(false);
+                // Antes de liberar o portão: o turno seguinte não pode começar a mexer no
+                // histórico enquanto este ainda não foi registrado.
+                RecordLastTurn();
 
-            // Arquiva a conversa a cada turno, por cima da própria entrada.
-            //
-            // Antes isto só acontecia no ResetHistory — fechar a janela, começar conversa nova,
-            // trocar de personagem. Uma conversa interrompida de qualquer outra forma (processo
-            // encerrado à força, queda de energia, atualização que reinicia o app) sumia
-            // inteira do histórico, e o usuário não tinha como saber que ela nunca chegou a ser
-            // gravada. Um histórico que só existe se o programa for fechado do jeito certo não
-            // é um histórico.
-            ArquivarConversaViva();
+                // A titulação vem ANTES da compactação, e cedo: ela usa um prefixo próprio e
+                // derruba o cache do prefixo da conversa. Depois do primeiro turno o histórico
+                // é pequeno e reconstruí-lo custa quase nada; mais tarde custaria caro.
+                if (!cancelado)
+                    await TitularSeNecessarioAsync().ConfigureAwait(false);
 
-            // Compactação só depois de um turno que terminou inteiro. Cancelado no meio, o
-            // histórico pode ter um tool_calls pendente, e resumir metade de uma cadeia
-            // produziria um capítulo que afirma o que ainda não aconteceu.
-            // Token próprio: o do turno já foi descartado, e o usuário já tem sua resposta.
-            if (!cancelado)
-                await CompactIfNeededAsync(userLevel, CancellationToken.None).ConfigureAwait(false);
+                // Arquiva a conversa a cada turno, por cima da própria entrada.
+                //
+                // Antes isto só acontecia no ResetHistory — fechar a janela, começar conversa
+                // nova, trocar de personagem. Uma conversa interrompida de qualquer outra forma
+                // (processo encerrado à força, queda de energia, atualização que reinicia o
+                // app) sumia inteira do histórico, e o usuário não tinha como saber que ela
+                // nunca chegou a ser gravada. Um histórico que só existe se o programa for
+                // fechado do jeito certo não é um histórico.
+                ArquivarConversaViva();
+
+                // Compactação só depois de um turno que terminou inteiro. Cancelado no meio, o
+                // histórico pode ter um tool_calls pendente, e resumir metade de uma cadeia
+                // produziria um capítulo que afirma o que ainda não aconteceu.
+                // Token próprio: o do turno já foi descartado, e o usuário já tem sua resposta.
+                if (!cancelado)
+                    await CompactIfNeededAsync(userLevel, CancellationToken.None).ConfigureAwait(false);
+            }
 
             _turnGate.Release();
         }
@@ -1721,6 +1846,67 @@ public sealed class ConversationService : IMessageStore
     public IReadOnlyList<ChatMessage> Snapshot()
     {
         lock (_gate) { return _history.ToArray(); }
+    }
+
+    /// <summary>
+    /// O histórico visto por UM turno: o mesmo da conversa, enquanto a conversa for a dele.
+    /// <para>
+    /// Trocada a conversa, as escritas do turno viram nada. Cancelar não basta: o laço só
+    /// percebe o cancelamento na próxima espera, e até lá ainda anexa o resultado da
+    /// ferramenta que estava rodando — no histórico que acabou de ser aberto. A conferência e a
+    /// escrita correm sob o mesmo lock do incremento em <see cref="ResetHistory(bool)"/>, então
+    /// não existe janela entre "ainda é a minha conversa" e "escrevi".
+    /// </para>
+    /// </summary>
+    private sealed class LojaDoTurno : IMessageStore
+    {
+        private readonly ConversationService _dona;
+        private readonly int _conversa;
+
+        public LojaDoTurno(ConversationService dona, int conversa)
+        {
+            _dona = dona;
+            _conversa = conversa;
+        }
+
+        /// <summary>Roda <paramref name="escrita"/> sob o lock, só se a conversa ainda for esta.</summary>
+        private bool Escrever(Action escrita)
+        {
+            lock (_dona._gate)
+            {
+                if (_dona._conversaViva != _conversa) return false;
+                escrita();
+                return true;
+            }
+        }
+
+        private bool AindaEhAMinha()
+        {
+            lock (_dona._gate) { return _dona._conversaViva == _conversa; }
+        }
+
+        public IReadOnlyList<ChatMessage> Snapshot() => _dona.Snapshot();
+
+        public void AppendAssistantToolCalls(IReadOnlyList<ChatToolCall> calls, string? fala = null) =>
+            Escrever(() => _dona.AppendAssistantToolCalls(calls, fala));
+
+        public void AppendToolResult(string toolCallId, string result) =>
+            Escrever(() => _dona.AppendToolResult(toolCallId, result));
+
+        public void AppendAssistantText(string text) =>
+            Escrever(() => _dona.AppendAssistantText(text));
+
+        public void Trim(int userLevel)
+        {
+            if (AindaEhAMinha()) _dona.Trim(userLevel);
+        }
+
+        public int CountTokens() => _dona.CountTokens();
+
+        public void NotifyTokenCount(int userLevel, int? cachedTokens = null)
+        {
+            if (AindaEhAMinha()) _dona.NotifyTokenCount(userLevel, cachedTokens);
+        }
     }
 
     /// <param name="fala">

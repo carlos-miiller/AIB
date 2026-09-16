@@ -246,8 +246,36 @@ public sealed class MemoryLayer
     /// <summary>Índice do próximo ato a nascer.</summary>
     public int NextActIndex => _acts.Count == 0 ? 0 : _acts[^1].Index + 1;
 
-    /// <summary>Índice do último turno já coberto por algum capítulo. -1 se nenhum.</summary>
-    public int LastCoveredTurn => _chapters.Count == 0 ? -1 : _chapters.Max(c => c.LastTurn);
+    /// <summary>
+    /// Índice, no <c>raw.jsonl</c>, do último turno já coberto por algum capítulo. -1 se nenhum.
+    /// <para>
+    /// Não é só o maior <c>LastTurn</c>. Até 16/09 o capítulo gravava a posição do turno no
+    /// histórico VIVO, e o vivo recomeça do zero a cada compactação: o segundo capítulo de
+    /// uma conversa também dizia "turnos 0–0". Ao reabrir, o maior deles apontava para o
+    /// começo da conversa, e turnos já resumidos voltavam crus ao lado do resumo deles.
+    /// </para>
+    /// <para>
+    /// Gravado assim, um capítulo começa em índice que não passa do já coberto — o absoluto
+    /// sempre começa DEPOIS. É essa a marca: o relativo soma quantos turnos cobriu, o absoluto
+    /// diz onde parou. Uma conversa com capítulos dos dois tipos se resolve na mesma passada.
+    /// </para>
+    /// </summary>
+    public int LastCoveredTurn
+    {
+        get
+        {
+            int coberto = -1;
+
+            foreach (var capitulo in _chapters)
+            {
+                coberto = capitulo.FirstTurn > coberto
+                    ? capitulo.LastTurn
+                    : coberto + (capitulo.LastTurn - capitulo.FirstTurn + 1);
+            }
+
+            return coberto;
+        }
+    }
 
     /// <summary>Índice do último capítulo já absorvido por um ato. -1 se nenhum.</summary>
     public int LastCoveredChapter => _acts.Count == 0 ? -1 : _acts.Max(a => a.LastChapter);

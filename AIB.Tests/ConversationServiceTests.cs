@@ -88,6 +88,51 @@ namespace AIB.Tests
             }
         }
 
+        /// <summary>
+        /// Responde na hora — até <see cref="Segurar"/> ligar. Aí avisa que começou e espera ser
+        /// liberado, IGNORANDO o cancelamento: é o prefill de minutos que não percebe o botão.
+        /// </summary>
+        private sealed class ProviderQueSegura : IChatProvider
+        {
+            public ProviderQueSegura(string resposta) => Resposta = resposta;
+
+            public string Resposta { get; set; }
+
+            public bool Segurar { get; set; }
+            public TaskCompletionSource Comecou { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            public TaskCompletionSource Liberar { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public string Name => "Fake";
+            public string Model => "fake";
+
+            public async IAsyncEnumerable<StreamChunk> StreamAsync(
+                IReadOnlyList<ChatMessage> messages,
+                IReadOnlyList<ChatTool> tools,
+                ChatRequestOptions options,
+                [EnumeratorCancellation] CancellationToken ct)
+            {
+                await Task.Yield();
+
+                if (Segurar)
+                {
+                    Comecou.TrySetResult();
+                    await Liberar.Task;
+                }
+
+                yield return new StreamChunk.TextDelta(Resposta, TextChannel.Final);
+                yield return new StreamChunk.Done(StreamFinishReason.Stop, "stop");
+            }
+
+            public Task<ChatCompletionResult> CompleteAsync(
+                IReadOnlyList<ChatMessage> messages,
+                IReadOnlyList<ChatTool> tools,
+                ChatRequestOptions options,
+                CancellationToken ct) =>
+                Task.FromResult(new ChatCompletionResult("resumo", null, null));
+
+            public Task WarmupAsync(CancellationToken ct) => Task.CompletedTask;
+        }
+
         private sealed class FixedProviderFactory : IChatProviderFactory
         {
             private readonly IChatProvider _provider;
@@ -1141,6 +1186,109 @@ namespace AIB.Tests
             conversation.LoadConversation(falas, memoria, sessionId: "ensaio-registro");
 
             conversation.TurnosGravados().Should().HaveCount(2);
+        }
+
+        [Fact]
+        public async Task SegundoCapitulo_GravaOsTurnosPeloNumeroDoRegistro_EAReaberturaRespeita()
+        {
+            // O defeito: o capítulo gravava a posição do turno no histórico VIVO, que recomeça do
+            // zero a cada compactação — o segundo capítulo também dizia "turnos 0–1". Ao reabrir,
+            // a conversa parecia coberta só até o turno 1, e os turnos 2 e 3, já resumidos,
+            // voltavam crus ao lado do resumo deles.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "resumo";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 4; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"turno {i}")) { }
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            for (int i = 4; i < 6; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"turno {i}")) { }
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            conversation.Chapters.Should().HaveCount(2);
+            conversation.Chapters[1].FirstTurn.Should().Be(2);
+            conversation.Chapters[1].LastTurn.Should().Be(3);
+
+            string memoria = Path.GetFileName(conversation.SessionMemoryDir);
+            var falas = new List<ChatTurn> { new(true, "turno 0"), new(false, "certo") };
+            conversation.LoadConversation(falas, memoria, sessionId: "ensaio-dois-capitulos");
+
+            conversation.SnapshotHistory()
+                .Where(m => m is UserChatMessage)
+                .Select(TextOf)
+                .Should().Equal(new[] { "turno 4", "turno 5" },
+                    "só os turnos que nenhum capítulo resumiu voltam crus");
+        }
+
+        [Fact]
+        public async Task ForcarCapitulo_ComDoisTurnos_ResumeOMaisAntigo()
+        {
+            // Com a regra fixa de "os dois mais recentes ficam fora", um turno miúdo seguido de
+            // uma cadeia de 18 ferramentas travava a compactação: acima do gatilho, e o /compact
+            // respondendo "nada a compactar". O piso agora é o último turno.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "resumo";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("miúdo")) { }
+            await foreach (var _ in conversation.StreamResponseAsync("enorme")) { }
+
+            string resposta = await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            resposta.Should().Contain("fechado");
+            conversation.Chapters.Should().ContainSingle();
+            conversation.Chapters[0].LastTurn.Should().Be(0, "o último turno continua vivo");
+            conversation.SnapshotHistory().Select(TextOf).Should().Contain("enorme");
+        }
+
+        [Fact]
+        public async Task TrocarDeConversaNoMeioDoTurno_OTurnoFicaNaConversaDele()
+        {
+            // O defeito: abrir outra conversa do histórico com um turno em voo não esperava por
+            // ele. O resto do turno escrevia no histórico da conversa ABERTA, e o fim dele gravava
+            // no raw.jsonl dela o último turno que encontrou — o restaurado, que ficou duplicado.
+            // O turno de verdade não ficava em lugar nenhum.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var provider = new ProviderQueSegura("certo");
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 2; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"antiga {i}")) { }
+            string antiga = Path.GetFileName(conversation.SessionMemoryDir);
+
+            conversation.ResetHistory();
+            string emVoo = Path.GetFileName(conversation.SessionMemoryDir);
+
+            provider.Resposta = "resposta atrasada";
+            provider.Segurar = true;
+            var turno = Task.Run(async () =>
+            {
+                try { await foreach (var _ in conversation.StreamResponseAsync("pergunta em voo")) { } }
+                catch (OperationCanceledException) { }
+            });
+
+            await provider.Comecou.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            var falas = new List<ChatTurn> { new(true, "antiga 0"), new(false, "certo") };
+            conversation.LoadConversation(falas, antiga, sessionId: "ensaio-troca-em-voo");
+
+            provider.Liberar.SetResult();
+            await turno.WaitAsync(TimeSpan.FromSeconds(10));
+
+            conversation.SnapshotHistory().Select(TextOf)
+                .Should().NotContain(t => t.Contains("resposta atrasada") || t.Contains("pergunta em voo"),
+                    "o turno em voo não escreve na conversa que foi aberta por cima dele");
+
+            conversation.TurnosGravados().Should().HaveCount(2, "o turno restaurado não é gravado de novo");
+
+            var doTurnoEmVoo = new AIB.Services.Memory.SessionMemory(emVoo, Path.Combine(_dir, "memory")).ReadTurns();
+            doTurnoEmVoo.Should().ContainSingle("o turno fica gravado na conversa a que pertencia");
+            doTurnoEmVoo[0].Messages.Should().Contain(m => m.Text != null && m.Text.Contains("pergunta em voo"));
+            doTurnoEmVoo[0].Messages.Should().Contain(m => m.Text != null && m.Text.Contains("trocada"));
         }
 
         [Fact]
