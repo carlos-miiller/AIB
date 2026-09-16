@@ -291,7 +291,9 @@ public sealed class AgentLoop
                         tc.Id, tc.Name, Memory.ArtifactExtractor.Falhou(result), artefato, result,
                         tc.ArgumentsOrEmpty(), duracaoMs, esperaMs, decisao);
 
-                    store.AppendToolResult(tc.Id, result);
+                    // O modelo lê o erro com o recado no fim; a tela e o registro de ações, não.
+                    store.AppendToolResult(tc.Id,
+                        Memory.ArtifactExtractor.Falhou(result) ? result + RecadoDeFalha : result);
                     TrackRecentFile(tc);
                     if (tc.Name == "materialize_skill") _toolRegistry.Refresh();
                 }
@@ -393,6 +395,23 @@ public sealed class AgentLoop
     /// A chamada bloqueada por repetição, com o erro anterior junto. Pública porque é ela que o
     /// ensaio confere: o texto É o comportamento — quem lê isto é quem decide a próxima jogada.
     /// </summary>
+    /// <summary>
+    /// Acrescentado ao resultado de toda ferramenta que falhou, no que vai para o modelo.
+    /// <para>
+    /// O modelo comentava o erro só no raciocínio, que não vira balão: o <c>edit</c> falhava,
+    /// ele pensava "o trecho não existe, vou ler o arquivo" e chamava <c>read</c> sem dizer
+    /// nada. Na tela, uma cadeia com um ícone vermelho e silêncio. Aqui, e não no prompt de
+    /// sistema, porque só custa quando há erro e chega no momento em que o modelo decide o
+    /// próximo passo.
+    /// </para>
+    /// <para>
+    /// "Uma frase" e "antes de tentar de novo": o risco em modelo pequeno é trocar a nova
+    /// tentativa por um parágrafo de desculpas. Medir com o AIB.Avaliacao ao mexer aqui.
+    /// </para>
+    /// </summary>
+    public const string RecadoDeFalha =
+        "\n\n(Antes de tentar de novo, diga ao usuário em uma frase o que falhou e o que vai fazer.)";
+
     public static string RecadoDeRepeticao(string ferramenta, string erroAnterior) =>
         $"ERRO: esta chamada exata a '{ferramenta}' já foi feita neste turno e falhou com:\n"
         + $"{erroAnterior}\n"

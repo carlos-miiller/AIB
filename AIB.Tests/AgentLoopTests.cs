@@ -613,6 +613,31 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task FerramentaQueFalha_ORecadoVaiSoParaOModelo()
+        {
+            // O modelo comentava o erro só no raciocínio, e a tela ficava muda. O recado pede uma
+            // frase ao usuário — mas é instrução ao modelo: o evento que a tela e o registro de
+            // ações leem continua com o erro puro.
+            var provider = new ScriptedProvider(
+                null,
+                new StreamChunk[]
+                {
+                    new StreamChunk.ToolCallDelta("k0", "id0", "ferramenta_inexistente", "{}"),
+                    new StreamChunk.Done(StreamFinishReason.ToolCalls, "tool_calls")
+                },
+                TextTurn("fim"));
+            var store = new RecordingStore();
+
+            var events = await DrainAsync(BuildLoop(provider).RunAsync(Request(store), CancellationToken.None));
+
+            string paraOModelo = store.Messages.OfType<ToolChatMessage>().Single().Content[0].Text;
+            paraOModelo.Should().StartWith("ERRO").And.EndWith(AgentLoop.RecadoDeFalha);
+
+            events.OfType<AgentEvent.ToolFinished>().Single().Result
+                .Should().NotContain(AgentLoop.RecadoDeFalha.Trim());
+        }
+
+        [Fact]
         public async Task ChamadaSemArgumentos_ViraObjetoVazio_NuncaStringVazia()
         {
             // BinaryData.FromString("") produz tool_calls inválidas que o provider rejeita.
