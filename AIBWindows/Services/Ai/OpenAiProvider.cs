@@ -40,6 +40,28 @@ public sealed class OpenAiProvider : IChatProvider
     // Streaming
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// O uso que a API relatou, no formato do laço. Nulo quando ela não relatou.
+    /// <para>
+    /// Mandava <c>Usage(null, cached, cached)</c>: os tokens de entrada saíam vazios e a
+    /// contagem de CACHE ia no lugar dos tokens de SAÍDA. Enquanto o número só servia ao
+    /// contador de cache, ninguém via; com o <c>raw.jsonl</c> guardando a conta de cada fala,
+    /// todo turno por OpenAI/OpenRouter seria gravado com tokens errados. E exigia o detalhe de
+    /// cache para relatar qualquer coisa — provedor compatível que não manda o detalhe (vários
+    /// pelo OpenRouter) ficava sem uso nenhum.
+    /// </para>
+    /// </summary>
+    public static StreamChunk.Usage? Uso(ChatTokenUsage? usage)
+    {
+        if (usage == null) return null;
+
+        // Sem o detalhe, cache é "não sei" (nulo), e não zero: zero afirmaria que nada foi
+        // reaproveitado, e o laço confia no número relatado antes da própria previsão.
+        int? cache = usage.InputTokenDetails?.CachedTokenCount;
+
+        return new StreamChunk.Usage(usage.InputTokenCount, usage.OutputTokenCount, cache);
+    }
+
     public async IAsyncEnumerable<StreamChunk> StreamAsync(
         IReadOnlyList<ChatMessage> messages,
         IReadOnlyList<ChatTool> tools,
@@ -78,13 +100,7 @@ public sealed class OpenAiProvider : IChatProvider
                     tc.FunctionArgumentsUpdate?.ToString());
             }
 
-            if (update.Usage != null && update.Usage.InputTokenDetails != null)
-            {
-                // A OpenAI reporta cache de prompt explicitamente, então este provider sabe
-                // responder quantos tokens foram reaproveitados.
-                int cached = update.Usage.InputTokenDetails.CachedTokenCount;
-                yield return new StreamChunk.Usage(null, cached, cached);
-            }
+            if (Uso(update.Usage) is StreamChunk.Usage uso) yield return uso;
         }
 
         foreach (var delta in splitter.Flush(anyToolCall)) yield return delta;
