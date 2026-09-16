@@ -33,6 +33,7 @@ Console.OutputEncoding = Encoding.UTF8;
 //            --num-ctx 16384            outra janela, SÓ nesta execução
 //            --sem-recado-de-falha      casos "falha-*" sem o recado que o laço acrescenta ao
 //                                       erro (AgentLoop.RecadoDeFalha): a linha de base
+//            --sem-pendencias           caso "continuar" com a memória SEM a seção Pendente
 // Nenhuma opção grava nas configurações do usuário: tudo é trocado na cópia em memória.
 
 string? Opcao(string nome)
@@ -63,6 +64,7 @@ string pensar = Opcao("--pensar") ?? (settings.ModelThinking ? "modelo" : "nao")
 int? numCtx = int.TryParse(Opcao("--num-ctx"), out int ctx) ? ctx : null;
 bool comRecadoDeFalha = !args.Contains("--sem-recado-de-falha");
 string recadoNoTitulo = comRecadoDeFalha ? "sim" : "não";
+bool comPendencias = !args.Contains("--sem-pendencias");
 
 ConversationService.PrimeiroEnvio Ajustar(ConversationService.PrimeiroEnvio envio) =>
     envio with
@@ -181,7 +183,60 @@ var casos = new List<Caso>
         Depois: Falha("write",
             JsonSerializer.Serialize(new { path = $@"{home}\Desktop\teste-aib.txt", content = "olá" }),
             "Ação Rejeitada pelo Usuário.")),
+
+    // CONTINUAR DEPOIS DA COMPACTAÇÃO. O turno de 18 etapas do script de assinaturas já virou
+    // capítulo, e o usuário manda só "continue". A memória traz o capítulo — e, sem
+    // --sem-pendencias, a seção Pendente. O certo é retomar o script (os nomes saíram com
+    // "+ '.html"); o errado é perguntar "continuar o quê?" ou recriar o template e o CSV.
+    new("continuar", "continue",
+        r => r.ChamouCom("write", "templateassinatura") || r.ChamouCom("write", "users.csv")
+                ? Falhou("recriou arquivo que já existia")
+            : r.Chamadas.Any(c => c.Args.Contains("Remove-Item", StringComparison.OrdinalIgnoreCase))
+                ? Falhou("apagou em vez de retomar")
+            : r.Chamadas.Any(c => c.Args.Contains("gerar-assinaturas") || c.Args.Contains("emails fisio"))
+                ? Passou()
+            : Falhou("devia retomar o script na pasta das assinaturas"),
+        Memoria: MemoriaDoScript()),
 };
+
+// A memória do caso "continuar": o capítulo que o turno do script viraria, e as pendências que o
+// código tiraria dele. Montada pelas MESMAS funções do app — só o resumo é escrito à mão, no
+// estilo do resumidor.
+IReadOnlyList<OpenAI.Chat.ChatMessage> MemoriaDoScript()
+{
+    string pasta = $@"{home}\CPAPS\TEMP\emails fisio";
+    string Json(object o) => JsonSerializer.Serialize(o);
+    OpenAI.Chat.ChatMessage Chamada(string id, string nome, object args) =>
+        new OpenAI.Chat.AssistantChatMessage(new[] { OpenAI.Chat.ChatToolCall.CreateFunctionToolCall(id, nome, BinaryData.FromString(Json(args))) });
+
+    var turno = AIB.Services.Memory.TurnSplitter.Split(new OpenAI.Chat.ChatMessage[]
+    {
+        OpenAI.Chat.ChatMessage.CreateUserMessage("eu fiz algumas modificações tanto no arquivo template quanto no csv, crie um script para automatizar a criação desses arquivos de assinatura."),
+        Chamada("c1", "read", new { path = $@"{pasta}\templateassinatura.html" }),
+        OpenAI.Chat.ChatMessage.CreateToolMessage("c1", "     1\t<div>{{Nome}} {{Cargo}}</div>"),
+        Chamada("c2", "write", new { path = $@"{pasta}\gerar-assinaturas.ps1", content = "# script" }),
+        OpenAI.Chat.ChatMessage.CreateToolMessage("c2", $"SUCESSO: Arquivo salvo corretamente em '{pasta}\\gerar-assinaturas.ps1'."),
+        Chamada("c3", "edit", new { path = $@"{pasta}\gerar-assinaturas.ps1", old_string = "$outputFile = \"$nome.Replace", new_string = "$outputFile = Join-Path" }),
+        OpenAI.Chat.ChatMessage.CreateToolMessage("c3", $"ERRO: o trecho não existe em '{pasta}\\gerar-assinaturas.ps1'. Leia o arquivo com 'read' e copie o texto exato, com a indentação."),
+        Chamada("c4", "shell", new { command = $"powershell -ExecutionPolicy Bypass -File \"{pasta}\\gerar-assinaturas.ps1\"" }),
+        OpenAI.Chat.ChatMessage.CreateToolMessage("c4", "Criado: ThaisdeOliveiraSilvaAraujo + '.html\nCriado: JasmimBianquinhoBraganaChavesRosa + '.html"),
+        Chamada("c5", "shell", new { command = $"dir \"{pasta}\" -Filter \"*.html\"" }),
+        OpenAI.Chat.ChatMessage.CreateToolMessage("c5", "ThaisdeOliveiraSilvaAraujo + '.html   31007\nJasmimBianquinhoBraganaChavesRosa + '.html   31008\ntemplateassinatura.html   4260"),
+        OpenAI.Chat.ChatMessage.CreateAssistantMessage(AgentLoop.MarcaDeTurnoMorto("teto de 18 etapas atingido com ferramenta pendente"))
+    });
+
+    var capitulo = new AIB.Services.Memory.Chapter(
+        0, DateTime.UtcNow.ToString("o"), 0, 0,
+        "O usuário pediu um script para gerar as assinaturas HTML a partir do template e do CSV. O agente leu o template, criou um script PowerShell e o executou, mas os arquivos gerados saíram com nomes quebrados; uma edição para corrigir o nome falhou por não encontrar o trecho, e o turno terminou no limite de etapas antes de a correção ser concluída.",
+        AIB.Services.Memory.ArtifactExtractor.Extract(turno[0]),
+        Pendencias: comPendencias ? AIB.Services.Memory.Pendencias.Extrair(turno) : null);
+
+    var memoria = new AIB.Services.Memory.MemoryLayer();
+    memoria.Add(capitulo);
+
+    string bloco = memoria.RenderNarrative(new AIB.Services.Memory.MemoryQuota(0, 0, 4000, 4000), contador);
+    return new OpenAI.Chat.ChatMessage[] { OpenAI.Chat.ChatMessage.CreateSystemMessage(bloco) };
+}
 
 // A primeira volta de um caso "falha-*": a chamada do modelo e o erro que voltou, com o recado
 // que o laço acrescenta — ou sem ele, na linha de base.
@@ -217,6 +272,14 @@ try
         Console.WriteLine($"[AVALIAÇÃO] {rodada.Nome}: {caso.Fala}");
         var envio = conversa.MontarPrimeiroEnvio(caso.Fala);
         if (caso.Depois != null) envio = envio with { Mensagens = envio.Mensagens.Concat(caso.Depois).ToList() };
+        if (caso.Memoria != null)
+        {
+            // Onde o app põe o bloco de memória: depois das mensagens de sistema, antes da fala.
+            var mensagens = envio.Mensagens.ToList();
+            int fala = mensagens.FindIndex(m => m is OpenAI.Chat.UserChatMessage);
+            mensagens.InsertRange(fala < 0 ? mensagens.Count : fala, caso.Memoria);
+            envio = envio with { Mensagens = mensagens };
+        }
         var r = await RodarAsync(Ajustar(envio), provider);
         var veredito = r.Erro != null ? (false, "erro: " + r.Erro) : caso.Conferir(r);
         resultados.Add((rodada, r, veredito));
@@ -387,7 +450,8 @@ static string Cortar(string s, int n) => s.Length <= n ? s : s[..n] + "…";
 /// <param name="Depois">Mensagens depois da fala do usuário — a primeira volta dos casos "falha-*".</param>
 sealed record Caso(
     string Nome, string Fala, Func<Resultado, (bool, string)> Conferir,
-    IReadOnlyList<OpenAI.Chat.ChatMessage>? Depois = null);
+    IReadOnlyList<OpenAI.Chat.ChatMessage>? Depois = null,
+    IReadOnlyList<OpenAI.Chat.ChatMessage>? Memoria = null);
 
 sealed class Resultado
 {
