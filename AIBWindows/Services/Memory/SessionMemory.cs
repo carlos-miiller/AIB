@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -78,13 +78,14 @@ public sealed class SessionMemory
     /// console — a memória é um acréscimo, e um acréscimo que quebra o principal não vale.
     /// </para>
     /// </summary>
-    public bool AppendTurn(Turn turn, string? id = null)
+    /// <param name="meta">O que se sabe de cada mensagem além do texto. Nulo grava só o texto.</param>
+    public bool AppendTurn(Turn turn, string? id = null, Func<ChatMessage, MetaDaMensagem?>? meta = null)
     {
         if (turn == null || turn.Messages.Count == 0) return false;
 
         try
         {
-            return AppendRecord(ParaRegistro(turn, id));
+            return AppendRecord(ParaRegistro(turn, id, meta));
         }
         catch (Exception ex)
         {
@@ -115,11 +116,11 @@ public sealed class SessionMemory
         }
     }
 
-    private static TurnRecord ParaRegistro(Turn turn, string? id) =>
+    private static TurnRecord ParaRegistro(Turn turn, string? id, Func<ChatMessage, MetaDaMensagem?>? meta) =>
         new(
             turn.Index,
             DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
-            turn.Messages.Select(ToRecord).ToList(),
+            turn.Messages.Select(m => ToRecord(m, meta?.Invoke(m))).ToList(),
             ArtifactExtractor.Extract(turn),
             id);
 
@@ -133,11 +134,11 @@ public sealed class SessionMemory
     /// Regrava o turno em curso. Escreve num temporário e troca: uma queda no meio da escrita
     /// deixa o estado anterior inteiro, e não um JSON cortado. Nunca lança.
     /// </summary>
-    public void GravarTurnoAberto(Turn turn, string id)
+    public void GravarTurnoAberto(Turn turn, string id, Func<ChatMessage, MetaDaMensagem?>? meta = null)
     {
         try
         {
-            string json = JsonSerializer.Serialize(ParaRegistro(turn, id), Json);
+            string json = JsonSerializer.Serialize(ParaRegistro(turn, id, meta), Json);
 
             lock (_gate)
             {
@@ -315,13 +316,13 @@ public sealed class SessionMemory
         return itens;
     }
 
-    private static MessageRecord ToRecord(ChatMessage message)
+    private static MessageRecord ToRecord(ChatMessage message, MetaDaMensagem? meta)
     {
         // O corpo de um e-mail lido na conversa vive no contexto vivo e NUNCA aqui: o raw.jsonl
         // não é apagado. Ver ConteudoDeTerceiros.
         string texto = AIB.Services.Mail.ConteudoDeTerceiros.Redigir(Turn.TextOf(message));
 
-        return message switch
+        var registro = message switch
         {
             UserChatMessage => new MessageRecord("user", texto),
 
@@ -340,5 +341,19 @@ public sealed class SessionMemory
 
             _ => new MessageRecord("unknown", texto)
         };
+
+        return meta == null
+            ? registro
+            : registro with
+            {
+                AtUtc = meta.AtUtc,
+                Modelo = meta.Modelo,
+                TokensEntrada = meta.TokensEntrada,
+                TokensSaida = meta.TokensSaida,
+                DuracaoMs = meta.DuracaoMs,
+                EsperaHumanaMs = meta.EsperaHumanaMs,
+                Decisao = meta.Decisao,
+                Falhou = meta.Falhou
+            };
     }
 }

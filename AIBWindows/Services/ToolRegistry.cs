@@ -70,26 +70,43 @@ public class ToolRegistry
     /// apareceu no log como "ok em 7299,6s" porque ninguém tinha clicado em autorizar por duas
     /// horas.
     /// </param>
+    /// <param name="aoDecidir">
+    /// Recebe COMO a chamada passou pelo portão, numa palavra: <c>automatica</c> (não pede
+    /// confirmação), <c>permitida</c>, <c>permitida_sempre</c>, <c>sempre_na_sessao</c>,
+    /// <c>recusada</c>, <c>barrada_pelo_piso</c>, <c>negada_sem_contexto</c>,
+    /// <c>negada_sem_interface</c>, <c>nivel_insuficiente</c>, <c>recusada_no_pre_voo</c> ou
+    /// <c>ferramenta_desconhecida</c>. Vai para o raw.jsonl com o resultado: sem ela, um comando
+    /// que você autorizou e um que nunca pediu confirmação ficam iguais no registro.
+    /// </param>
     public async Task<string> ExecuteToolAsync(
-        string toolName, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null)
+        string toolName, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null,
+        Action<string>? aoDecidir = null)
     {
         if (_tools.TryGetValue(toolName, out var tool))
         {
             if (tool.RequiredLevel > userLevel)
+            {
+                aoDecidir?.Invoke("nivel_insuficiente");
                 return $"ACESSO NEGADO: A ferramenta '{toolName}' exige Nível {tool.RequiredLevel}, mas o seu nível atual é {userLevel}.";
+            }
 
             // ANTES do portão humano: chamada impossível não vira pergunta. Ver ITool.Validar.
             string? recusa = tool.Validar(argumentsJson);
             if (recusa != null)
             {
                 Console.WriteLine($"[REGISTRY] {toolName} recusada no pré-voo.");
+                aoDecidir?.Invoke("recusada_no_pre_voo");
                 return recusa;
             }
 
             if (tool.RequiresConfirmation)
             {
-                var (autorizado, motivo) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano);
+                var (autorizado, motivo) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano, aoDecidir);
                 if (!autorizado) return motivo!;
+            }
+            else
+            {
+                aoDecidir?.Invoke("automatica");
             }
 
             Console.WriteLine($"[REGISTRY] Executando: {toolName}({(argumentsJson.Length > 100 ? argumentsJson[..100] + "..." : argumentsJson)})");
@@ -105,6 +122,7 @@ public class ToolRegistry
         }
 
         Console.WriteLine($"[REGISTRY] AVISO: Ferramenta desconhecida '{toolName}'.");
+        aoDecidir?.Invoke("ferramenta_desconhecida");
         return $"ERRO: Ferramenta '{toolName}' não encontrada no registry. Ferramentas disponíveis: {string.Join(", ", _tools.Keys)}.";
     }
 
@@ -115,12 +133,14 @@ public class ToolRegistry
     /// A auditoria grava ANTES da execução, em todos os desfechos.
     /// </summary>
     private async Task<(bool Autorizado, string? Motivo)> AuthorizeAsync(
-        ITool tool, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null)
+        ITool tool, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null,
+        Action<string>? aoDecidir = null)
     {
         var ctx = tool.BuildConfirmationContext(argumentsJson, userLevel);
         if (ctx == null)
         {
             await AuditLogService.AppendAsync(new { evento = "deny_sem_contexto", ferramenta = tool.Name, userLevel });
+            aoDecidir?.Invoke("negada_sem_contexto");
             return (false, $"ACESSO NEGADO: '{tool.Name}' exige confirmação, mas não foi possível descrever a operação para autorizar.");
         }
 
@@ -137,12 +157,14 @@ public class ToolRegistry
         if (AlwaysAllowSession.Contains(chave) && !comEmail)
         {
             await AuditLogService.AppendAsync(new { evento = "allow_sessao", ferramenta = tool.Name, comando, userLevel });
+            aoDecidir?.Invoke("sempre_na_sessao");
         }
         else
         {
             if (_confirmationPrompt == null)
             {
                 await AuditLogService.AppendAsync(new { evento = "deny_sem_ui", ferramenta = tool.Name, comando, userLevel });
+                aoDecidir?.Invoke("negada_sem_interface");
                 return (false, $"ACESSO NEGADO: '{tool.Name}' exige confirmação do usuário e não há interface disponível para pedi-la.");
             }
 
@@ -167,6 +189,8 @@ public class ToolRegistry
                 conteudoDeEmail = comEmail
             });
 
+            aoDecidir?.Invoke(!permitido ? "recusada" : sempre ? "permitida_sempre" : "permitida");
+
             if (!permitido) return (false, "Ação Rejeitada pelo Usuário.");
             if (sempre) AlwaysAllowSession.Add(chave);
         }
@@ -180,6 +204,7 @@ public class ToolRegistry
             if (bateu)
             {
                 await AuditLogService.AppendAsync(new { evento = "deny_floor", ferramenta = tool.Name, comando, userLevel, razao });
+                aoDecidir?.Invoke("barrada_pelo_piso");
                 return (false, razao!);
             }
         }

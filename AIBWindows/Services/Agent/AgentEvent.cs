@@ -80,13 +80,35 @@ public abstract record AgentEvent
     /// Os argumentos crus da chamada. A tela precisa deles para descrever ferramentas que não
     /// deixam artefato — sem eles, um <c>glob</c> aparecia no registro só como "glob".
     /// </param>
+    /// <param name="DuracaoMs">Da chamada ao resultado, incluindo a espera pela sua decisão.</param>
+    /// <param name="EsperaHumanaMs">A parte de <paramref name="DuracaoMs"/> parada no cartão de confirmação.</param>
+    /// <param name="Decisao">
+    /// Como a chamada passou (ou não) pelo portão: <c>automatica</c>, <c>permitida</c>,
+    /// <c>recusada</c>, <c>sempre_na_sessao</c>… Ver <see cref="ToolRegistry.ExecuteToolAsync"/>.
+    /// </param>
     public sealed record ToolFinished(
         string Id,
         string Tool,
         bool Failed,
         Memory.Artifact? Artifact,
         string Result,
-        string Arguments = "") : AgentEvent;
+        string Arguments = "",
+        long DuracaoMs = 0,
+        long EsperaHumanaMs = 0,
+        string? Decisao = null) : AgentEvent;
+
+    /// <summary>
+    /// Uma volta ao modelo terminou, e a fala dela vai ao histórico em seguida. Emitido ANTES da
+    /// escrita, para quem registra o turno poder anotar a mensagem com o custo dela.
+    /// </summary>
+    /// <param name="TokensEntrada">O prompt avaliado, como o provider relatou. Nulo se não relatou.</param>
+    /// <param name="TokensSaida">O que o modelo gerou, como o provider relatou. Nulo se não relatou.</param>
+    /// <param name="DuracaoMs">Do envio do prompt ao fim do stream.</param>
+    public sealed record ModelReplied(
+        string Modelo,
+        int? TokensEntrada,
+        int? TokensSaida,
+        long DuracaoMs) : AgentEvent;
 
     /// <summary>Fim do turno. Emitido exatamente uma vez, por último.</summary>
     public sealed record Completed(TurnOutcome Outcome, int IterationsUsed) : AgentEvent;

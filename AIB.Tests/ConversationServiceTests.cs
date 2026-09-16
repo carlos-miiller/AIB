@@ -1324,6 +1324,50 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task ORegistro_GuardaAContaDeCadaPasso()
+        {
+            // Hora de cada mensagem; modelo, tokens e duração de cada fala; duração, decisão e
+            // falha de cada ferramenta. Antes isso só existia espalhado entre o log de execução
+            // e o de auditoria, e não dava para medir um turno a partir do raw.jsonl.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            int chamadas = 0;
+
+            var provider = new ProviderRoteirizado(_ => ++chamadas == 1
+                ? new StreamChunk[]
+                {
+                    new StreamChunk.ToolCallDelta("k0", "id0", "ferramenta_inexistente", "{}"),
+                    new StreamChunk.Usage(PromptEvalCount: 321, EvalCount: 12),
+                    new StreamChunk.Done(StreamFinishReason.ToolCalls, "tool_calls")
+                }
+                : new StreamChunk[]
+                {
+                    new StreamChunk.TextDelta("não existe", TextChannel.Final),
+                    new StreamChunk.Usage(PromptEvalCount: 350, EvalCount: 5),
+                    new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+                });
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("use a ferramenta")) { }
+
+            var mensagens = conversation.TurnosGravados().Should().ContainSingle().Subject.Messages;
+            mensagens.Select(m => m.Role).Should().Equal("user", "assistant", "tool", "assistant");
+            mensagens.Should().OnlyContain(m => m.AtUtc != null, "toda mensagem tem hora");
+
+            mensagens[1].Modelo.Should().Be("fake");
+            mensagens[1].TokensEntrada.Should().Be(321);
+            mensagens[1].TokensSaida.Should().Be(12);
+            mensagens[1].DuracaoMs.Should().NotBeNull();
+
+            mensagens[2].Decisao.Should().Be("ferramenta_desconhecida");
+            mensagens[2].Falhou.Should().BeTrue();
+            mensagens[2].DuracaoMs.Should().NotBeNull();
+            mensagens[2].EsperaHumanaMs.Should().Be(0);
+
+            mensagens[3].TokensEntrada.Should().Be(350);
+            mensagens[3].Decisao.Should().BeNull("fala não passa por portão");
+        }
+
+        [Fact]
         public async Task TurnoEmCurso_DeixaOArquivoDeRecuperacao()
         {
             var settings = BuildSettings(sendSystemPrompt: true);

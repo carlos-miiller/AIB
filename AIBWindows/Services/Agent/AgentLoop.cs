@@ -112,7 +112,9 @@ public sealed class AgentLoop
             int chunkCount = 0;
             int? lastCachedTokens = null;
             int? lastPromptEvalCount = null;
+            int? lastEvalCount = null;
             double? lastPromptEvalMillis = null;
+            var relogioDaVolta = System.Diagnostics.Stopwatch.StartNew();
 
             // Quanto deste prompt o KV cache do provider deve reaproveitar. Calculado por nós
             // porque o Ollama não reporta cache; o OpenAI reporta e tem prioridade.
@@ -183,6 +185,7 @@ public sealed class AgentLoop
                     // no fim do stream, então eles NÃO podem ser o gatilho da atualização da UI.
                     lastCachedTokens = usage.CachedTokens ?? lastCachedTokens;
                     lastPromptEvalCount = usage.PromptEvalCount ?? lastPromptEvalCount;
+                    lastEvalCount = usage.EvalCount ?? lastEvalCount;
                     lastPromptEvalMillis = usage.PromptEvalMillis ?? lastPromptEvalMillis;
                 }
                 else if (chunk is StreamChunk.Done done)
@@ -221,6 +224,12 @@ public sealed class AgentLoop
             // Cancelamento sinalizado durante o último chunk (ou entre o Done e aqui): sem isto o
             // turno seguiria para a gravação no histórico e reportaria Answered.
             ct.ThrowIfCancellationRequested();
+
+            // O custo desta volta, antes de a fala dela ir ao histórico. Quem grava o turno anota
+            // a mensagem com ele — é o que torna o raw.jsonl medível depois.
+            relogioDaVolta.Stop();
+            yield return new AgentEvent.ModelReplied(
+                provider.Model, lastPromptEvalCount, lastEvalCount, relogioDaVolta.ElapsedMilliseconds);
 
             // ── Ferramentas pedidas: executa e volta para o modelo ────────────────
             if (calls.Count > 0)
@@ -267,7 +276,7 @@ public sealed class AgentLoop
                     .ConfigureAwait(false);
 
                 // Resultados na ordem original, mesmo que tenham terminado fora de ordem.
-                foreach (var (tc, result) in results)
+                foreach (var (tc, result, decisao, duracaoMs, esperaMs) in results)
                 {
                     pulso.FerramentaTerminou(tc.Name, Memory.ArtifactExtractor.Falhou(result));
                     yield return new AgentEvent.Technical($"[FERRAMENTA] Resultado ({tc.Name}): {result}\n");
@@ -280,7 +289,7 @@ public sealed class AgentLoop
                     // próprio devolve artefato nulo mesmo quando deu erro.
                     yield return new AgentEvent.ToolFinished(
                         tc.Id, tc.Name, Memory.ArtifactExtractor.Falhou(result), artefato, result,
-                        tc.ArgumentsOrEmpty());
+                        tc.ArgumentsOrEmpty(), duracaoMs, esperaMs, decisao);
 
                     store.AppendToolResult(tc.Id, result);
                     TrackRecentFile(tc);
@@ -390,10 +399,11 @@ public sealed class AgentLoop
         + "Não repita. Mude os argumentos, use outra ferramenta, ou explique ao usuário o que "
         + "está faltando.";
 
-    private async Task<(ToolCallAccumulator Tc, string Result)> ExecuteToolPairedAsync(
+    private async Task<(ToolCallAccumulator Tc, string Result, string? Decisao, long DuracaoMs, long EsperaMs)> ExecuteToolPairedAsync(
         ToolCallAccumulator tc, int userLevel, PulsoDoTurno pulso,
         Dictionary<string, string> jaFalharam)
     {
+        var relogio = System.Diagnostics.Stopwatch.StartNew();
         // REPETIÇÃO. Visto em produção: quatro chamadas idênticas a ler-planilha com o mesmo
         // caminho inexistente, cada uma custando um modal e um turno inteiro. O prompt de
         // sistema manda "tente mais UMA vez" e nada fazia cumprir.
@@ -406,19 +416,23 @@ public sealed class AgentLoop
         if (jaFalharam.TryGetValue(assinatura, out string? antes))
         {
             Console.WriteLine($"[REGISTRY] {tc.Name}: repetição bloqueada.");
-            return (tc, RecadoDeRepeticao(tc.Name, antes));
+            return (tc, RecadoDeRepeticao(tc.Name, antes), "repeticao_bloqueada", relogio.ElapsedMilliseconds, 0);
         }
+
+        string? decisao = null;
+        long esperaMs = 0;
 
         // O pulso recebe a espera humana POR FERRAMENTA, e não um total do turno: elas rodam em
         // paralelo, e um total não teria como dizer qual delas ficou parada no modal.
         string result = await _toolRegistry
             .ExecuteToolAsync(tc.Name, tc.ArgumentsOrEmpty(), userLevel,
-                              ms => pulso.EsperaHumana(tc.Name, ms))
+                              ms => { esperaMs += ms; pulso.EsperaHumana(tc.Name, ms); },
+                              d => decisao = d)
             .ConfigureAwait(false);
 
         if (Memory.ArtifactExtractor.Falhou(result)) jaFalharam[assinatura] = Resumir(result);
 
-        return (tc, result);
+        return (tc, result, decisao, relogio.ElapsedMilliseconds, esperaMs);
     }
 
     /// <summary>

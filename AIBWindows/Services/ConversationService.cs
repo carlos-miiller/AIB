@@ -172,6 +172,24 @@ public sealed class ConversationService : IMessageStore
     private string? _idDoTurno;
 
     /// <summary>
+    /// A conta de cada mensagem viva — hora, modelo, tokens, duração, decisão —, que vai ao
+    /// <c>raw.jsonl</c> com ela. Tabela fraca: sai do histórico, sai daqui.
+    /// </summary>
+    private readonly ConditionalWeakTable<ChatMessage, MetaDaMensagem> _metaDasMensagens = new();
+
+    /// <summary>
+    /// O custo da volta ao modelo que acabou, esperando a fala dela ser anexada. O laço anuncia
+    /// (<see cref="AgentEvent.ModelReplied"/>) antes de escrever. Protegido por <see cref="_gate"/>.
+    /// </summary>
+    private MetaDaMensagem? _metaDaProximaFala;
+
+    /// <summary>
+    /// A conta de cada ferramenta terminada, pelo id da chamada, esperando o resultado ser
+    /// anexado. Protegido por <see cref="_gate"/>.
+    /// </summary>
+    private readonly Dictionary<string, MetaDaMensagem> _metaPorChamada = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// Tokens dos turnos crus engolidos por capítulos que NÃO trazem a própria medida — os
     /// gravados antes de <see cref="Chapter.TokensDosTurnos"/> existir.
     /// <para>
@@ -874,7 +892,7 @@ public sealed class ConversationService : IMessageStore
             id = _idDoTurno;
         }
 
-        if (turno != null && id != null) _sessionMemory.GravarTurnoAberto(turno, id);
+        if (turno != null && id != null) _sessionMemory.GravarTurnoAberto(turno, id, MetaDe);
     }
 
     /// <summary>Põe um turno no registro cru e na transcrição do histórico.</summary>
@@ -888,7 +906,7 @@ public sealed class ConversationService : IMessageStore
                 : null;
         }
 
-        if (_sessionMemory.AppendTurn(turno with { Index = _turnsRecorded }, id))
+        if (_sessionMemory.AppendTurn(turno with { Index = _turnsRecorded }, id, MetaDe))
         {
             if (turno.Messages.Count > 0)
                 _indiceNoRegistro.AddOrUpdate(turno.Messages[0], new StrongBox<int>(_turnsRecorded));
@@ -1643,6 +1661,10 @@ public sealed class ConversationService : IMessageStore
             var abertura = ChatMessage.CreateUserMessage(userMessage);
             lock (_gate)
             {
+                _metaDasMensagens.AddOrUpdate(abertura, new MetaDaMensagem(
+                    AtUtc: DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture)));
+                _metaDaProximaFala = null;
+                _metaPorChamada.Clear();
                 _history.Add(abertura);
                 _diarioDoTurno = new List<ChatMessage> { abertura };
                 _idDoTurno = Guid.NewGuid().ToString("N");
@@ -1696,7 +1718,27 @@ public sealed class ConversationService : IMessageStore
                             Memory.ArtifactExtractor.ResumirArgumento(iniciada.Tool, iniciada.Arguments));
                         break;
 
+                    case AgentEvent.ModelReplied volta:
+                        lock (_gate)
+                        {
+                            _metaDaProximaFala = new MetaDaMensagem(
+                                Modelo: volta.Modelo,
+                                TokensEntrada: volta.TokensEntrada,
+                                TokensSaida: volta.TokensSaida,
+                                DuracaoMs: volta.DuracaoMs);
+                        }
+                        break;
+
                     case AgentEvent.ToolFinished terminada:
+                        lock (_gate)
+                        {
+                            _metaPorChamada[terminada.Id] = new MetaDaMensagem(
+                                DuracaoMs: terminada.DuracaoMs,
+                                EsperaHumanaMs: terminada.EsperaHumanaMs,
+                                Decisao: terminada.Decisao,
+                                Falhou: terminada.Failed);
+                        }
+
                         yield return new ChatStreamItem.ToolFinished(
                             terminada.Id,
                             terminada.Tool,
@@ -2037,15 +2079,37 @@ public sealed class ConversationService : IMessageStore
     public void AppendAssistantText(string text) =>
         Anexar(ChatMessage.CreateAssistantMessage(text));
 
-    /// <summary>No histórico vivo e, havendo turno em curso, no diário dele.</summary>
+    /// <summary>
+    /// No histórico vivo e, havendo turno em curso, no diário dele — anotada com a hora e com a
+    /// conta que o laço anunciou para ela.
+    /// </summary>
     private void Anexar(ChatMessage mensagem)
     {
         lock (_gate)
         {
+            string agora = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture);
+            var meta = new MetaDaMensagem(AtUtc: agora);
+
+            if (mensagem is AssistantChatMessage && _metaDaProximaFala != null)
+            {
+                meta = _metaDaProximaFala with { AtUtc = agora };
+                _metaDaProximaFala = null;
+            }
+            else if (mensagem is ToolChatMessage ferramenta
+                     && _metaPorChamada.Remove(ferramenta.ToolCallId, out var daChamada))
+            {
+                meta = daChamada with { AtUtc = agora };
+            }
+
+            _metaDasMensagens.AddOrUpdate(mensagem, meta);
             _history.Add(mensagem);
             _diarioDoTurno?.Add(mensagem);
         }
     }
+
+    /// <summary>A conta anotada de uma mensagem, para o registro. Nula se não houver.</summary>
+    private MetaDaMensagem? MetaDe(ChatMessage mensagem) =>
+        _metaDasMensagens.TryGetValue(mensagem, out var meta) ? meta : null;
 
     public int CountTokens()
     {

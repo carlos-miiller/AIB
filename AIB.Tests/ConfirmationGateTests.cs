@@ -59,6 +59,32 @@ namespace AIB.Tests
             r.Should().Contain("não há interface disponível");
         }
 
+        [Theory]
+        [InlineData(false, "recusada")]
+        [InlineData(null, "negada_sem_interface")]
+        public async Task ODesfechoDoPortao_ChegaAQuemRegistra(bool? permitir, string esperada)
+        {
+            // Vai para o raw.jsonl com o resultado. Sem a decisão, "você recusou" e "não havia
+            // tela para perguntar" são o mesmo texto de erro no registro.
+            var registry = new ToolRegistry(permitir == null ? null : new PromptFalso(permitir.Value));
+            string? decisao = null;
+
+            await registry.ExecuteToolAsync("shell", ComandoInofensivo("echo oi"), 9, null, d => decisao = d);
+
+            decisao.Should().Be(esperada);
+        }
+
+        [Fact]
+        public async Task FerramentaQueNaoExiste_TambemDizODesfecho()
+        {
+            var registry = new ToolRegistry(confirmationPrompt: null);
+            string? decisao = null;
+
+            await registry.ExecuteToolAsync("nao_existe", "{}", 9, null, d => decisao = d);
+
+            decisao.Should().Be("ferramenta_desconhecida");
+        }
+
         [Fact]
         public async Task UsuarioRecusa_ComandoNaoRoda_EOModeloRecebeTextoTratavel()
         {
