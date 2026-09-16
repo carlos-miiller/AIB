@@ -461,8 +461,9 @@ public partial class ChatWindow : Window
     }
 
     /// <summary>
-    /// Cadeia de ações do turno corrente. Uma por turno: as ferramentas de um mesmo turno
-    /// colapsam todas no mesmo chip de ícones.
+    /// Cadeia de ações da fala corrente. Uma por FALA, e não por turno: cada balão do agente
+    /// leva embaixo as ferramentas que ele anunciou, e as que rodam seguidas sem fala entre
+    /// elas colapsam no mesmo chip.
     /// </summary>
     private ToolChainView? _cadeiaAtual;
 
@@ -1121,6 +1122,14 @@ public partial class ChatWindow : Window
 
                         allText += fullText;
                         fullText = "";
+
+                        // A fala nova fecha a cadeia anterior: as ferramentas que ela anuncia
+                        // abrem uma cadeia própria, LOGO ABAIXO do balão. Sem isto todas as
+                        // ferramentas do turno iam para o chip da primeira fala, lá em cima, e
+                        // "Script criado. Executando agora:" aparecia sem nada embaixo.
+                        // Ferramentas seguidas sem fala entre elas continuam no mesmo chip.
+                        _cadeiaAtual?.RecolherFalhaPendente();
+                        _cadeiaAtual = null;
                     }
                     continue;
                 }
