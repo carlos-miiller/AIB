@@ -246,8 +246,18 @@ namespace AIB.Tests
                 .TryGetProperty("provider", out _).Should().BeFalse();
         }
 
+        private static JsonElement MensagensDoCorpo(string modelo, IReadOnlyList<ChatMessage> mensagens) =>
+            JsonDocument.Parse(new OpenRouterProvider(new System.Net.Http.HttpClient(),
+                ProvedoresDeIa.UrlDoOpenRouter, "k", modelo, new RegexToolCallHealer(), false)
+                .MontarCorpo(mensagens, System.Array.Empty<ChatTool>(), new ChatRequestOptions(), true)).RootElement.GetProperty("messages");
+
+        private static int[] Marcadas(JsonElement msgs) => Enumerable.Range(0, msgs.GetArrayLength())
+            .Where(i => msgs[i].TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.Array
+                        && c.EnumerateArray().Any(p => p.TryGetProperty("cache_control", out _)))
+            .ToArray();
+
         [Fact]
-        public void MarcasDeCache_SoEmAnthropicEGemini_NaAlmaMemoriaEUltimaFala()
+        public void MarcasDeCache_SoEmAnthropicEGemini_NaAlmaMemoriaUltimaFalaEUltimaMensagem()
         {
             var mensagens = new ChatMessage[]
             {
@@ -256,17 +266,42 @@ namespace AIB.Tests
                 ChatMessage.CreateUserMessage("agora")
             };
 
-            JsonElement Msgs(string modelo) => JsonDocument.Parse(new OpenRouterProvider(new System.Net.Http.HttpClient(),
-                ProvedoresDeIa.UrlDoOpenRouter, "k", modelo, new RegexToolCallHealer(), false)
-                .MontarCorpo(mensagens, System.Array.Empty<ChatTool>(), new ChatRequestOptions(), true)).RootElement.GetProperty("messages");
+            Marcadas(MensagensDoCorpo("anthropic/claude-sonnet-4", mensagens)).Should().Equal(0, 1, 4);
 
-            var claude = Msgs("anthropic/claude-sonnet-4");
-            int[] marcadas = Enumerable.Range(0, 5).Where(i => claude[i].GetProperty("content").ValueKind == JsonValueKind.Array
-                && claude[i].GetProperty("content")[0].TryGetProperty("cache_control", out _)).ToArray();
-            marcadas.Should().Equal(0, 1, 4);
+            MensagensDoCorpo("deepseek/deepseek-chat", mensagens).EnumerateArray()
+                .Should().NotContain(m => m.GetRawText().Contains("cache_control"), "DeepSeek cacheia o prefixo sozinho");
+        }
 
-            Msgs("deepseek/deepseek-chat").EnumerateArray().Should().NotContain(m => m.GetRawText().Contains("cache_control"),
-                "DeepSeek cacheia o prefixo sozinho");
+        [Fact]
+        public void MarcaDeCache_DentroDoTurnoComFerramenta_VaiNaUltimaMensagem_EmNoMaximoQuatroPontos()
+        {
+            // Com a marca só na fala do usuário, cada ida de ferramenta relia a preço cheio o que as
+            // voltas anteriores do mesmo turno tinham acrescentado.
+            var chamada = ChatToolCall.CreateFunctionToolCall("c1", "read", System.BinaryData.FromString("{}"));
+            var mensagens = new List<ChatMessage>
+            {
+                ChatMessage.CreateSystemMessage("alma"), ChatMessage.CreateSystemMessage("memória"),
+                ChatMessage.CreateUserMessage("lê a.txt"),
+                ChatMessage.CreateAssistantMessage(new[] { chamada }),
+                ChatMessage.CreateToolMessage("c1", "conteúdo do arquivo")
+            };
+
+            var msgs = MensagensDoCorpo("anthropic/claude-sonnet-4", mensagens);
+            Marcadas(msgs).Should().Equal(0, 1, 2, 4);
+            msgs[4].GetProperty("content")[0].GetProperty("text").GetString().Should().Be("conteúdo do arquivo");
+
+            // A mesma mensagem de ferramenta, agora no meio: continua em partes, só sem a marca.
+            // Mudar de forma entre requisições arriscaria o prefixo.
+            mensagens.Add(ChatMessage.CreateAssistantMessage(new[] { ChatToolCall.CreateFunctionToolCall("c2", "read", System.BinaryData.FromString("{}")) }));
+            var depois = MensagensDoCorpo("google/gemini-2.5-pro", mensagens);
+            Marcadas(depois).Should().Equal(0, 1, 2, 4).And.HaveCountLessThanOrEqualTo(OpenRouterProvider.TetoDeMarcasDeCache,
+                "a última é assistente só com tool_calls: a marca vai na anterior com texto");
+            depois[4].GetProperty("content").ValueKind.Should().Be(JsonValueKind.Array);
+
+            mensagens.Add(ChatMessage.CreateToolMessage("c2", "outro"));
+            var ultima = MensagensDoCorpo("anthropic/claude-sonnet-4", mensagens);
+            Marcadas(ultima).Should().Equal(0, 1, 2, 6);
+            ultima[4].GetRawText().Should().Be(depois[4].GetRawText().Replace(",\"cache_control\":{\"type\":\"ephemeral\"}", ""));
         }
 
         [Fact]
@@ -375,15 +410,78 @@ namespace AIB.Tests
 
             var segunda = JsonDocument.Parse(rede.Corpos[1]).RootElement.GetProperty("messages")[1];
             segunda.GetProperty("reasoning_details")[0].GetProperty("data").GetString().Should().Be("XYZ");
-
-            // Turno seguinte: o raciocínio do turno passado não volta.
-            historico.Add(ChatMessage.CreateAssistantMessage("pronto"));
-            historico.Add(ChatMessage.CreateUserMessage("e agora?"));
-            MensagemSemDetalhes(p, historico).Should().BeTrue();
         }
 
-        private static bool MensagemSemDetalhes(OpenRouterProvider p, List<ChatMessage> historico) =>
-            !p.MontarCorpo(historico, System.Array.Empty<ChatTool>(), new ChatRequestOptions(), true).Contains("reasoning_details");
+        [Fact]
+        public async Task RaciocinioEnviado_ContinuaIdenticoNoTurnoSeguinte_ParaOCacheNaoQuebrar()
+        {
+            // Antes o raciocínio só ia às voltas do turno corrente: no turno seguinte a mesma
+            // mensagem saía sem ele, o prefixo mudava ali e o cache se perdia dali em diante.
+            var rede = new RedeFingida(n => n switch
+            {
+                1 => Sse("""{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.text","text":"vou ler","signature":"s1","index":0}],"tool_calls":[{"index":0,"id":"c1","function":{"name":"read","arguments":"{}"}}]}}]}"""),
+                3 => Sse("""{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.encrypted","data":"QQ","index":0}],"tool_calls":[{"index":0,"id":"c2","function":{"name":"read","arguments":"{}"}}]}}]}"""),
+                _ => Sse("""{"choices":[{"delta":{"content":"pronto"},"finish_reason":"stop"}]}""")
+            });
+            var p = ComRede(rede);
+            var ferramenta = ChatTool.CreateFunctionTool("read", "lê", System.BinaryData.FromString("{\"type\":\"object\"}"));
+            async Task Ida(List<ChatMessage> h) => await Drenar(p.StreamAsync(h, new[] { ferramenta }, new ChatRequestOptions(), CancellationToken.None));
+
+            // Turno 1: pede ferramenta, recebe o resultado, responde.
+            var historico = new List<ChatMessage> { ChatMessage.CreateSystemMessage("alma"), ChatMessage.CreateUserMessage("lê a.txt") };
+            await Ida(historico);
+            historico.Add(ChatMessage.CreateAssistantMessage(new[] { ChatToolCall.CreateFunctionToolCall("c1", "read", System.BinaryData.FromString("{}")) }));
+            historico.Add(ChatMessage.CreateToolMessage("c1", "conteúdo"));
+            await Ida(historico);
+            historico.Add(ChatMessage.CreateAssistantMessage("pronto"));
+
+            // Turno 2, com mais uma ida de ferramenta.
+            historico.Add(ChatMessage.CreateUserMessage("e o b.txt?"));
+            await Ida(historico);
+            historico.Add(ChatMessage.CreateAssistantMessage(new[] { ChatToolCall.CreateFunctionToolCall("c2", "read", System.BinaryData.FromString("{}")) }));
+            historico.Add(ChatMessage.CreateToolMessage("c2", "outro"));
+            await Ida(historico);
+
+            string NoCorpo(int requisicao, int indice) =>
+                JsonDocument.Parse(rede.Corpos[requisicao]).RootElement.GetProperty("messages")[indice].GetRawText();
+
+            string noTurno1 = NoCorpo(1, 2);
+            noTurno1.Should().Contain("reasoning_details").And.Contain("vou ler");
+            NoCorpo(2, 2).Should().Be(noTurno1, "a primeira requisição do turno 2 leva a mensagem igual");
+            NoCorpo(3, 2).Should().Be(noTurno1, "e a segunda também");
+            NoCorpo(3, 6).Should().Contain("QQ");
+
+            // O prefixo inteiro da última requisição do turno 1 aparece, byte a byte, no turno 2.
+            string MensagensCruas(int requisicao) => JsonDocument.Parse(rede.Corpos[requisicao]).RootElement.GetProperty("messages").GetRawText();
+            string prefixo = MensagensCruas(1).TrimEnd(']');
+            MensagensCruas(3).Should().StartWith(prefixo);
+        }
+
+        [Fact]
+        public async Task PodaDoRaciocinio_NaoTiraOQueAindaEstaSendoEnviado()
+        {
+            // Antes o mapa era zerado ao passar de 256, levando junto o raciocínio de mensagens
+            // vivas. Agora sai o que foi enviado há mais tempo.
+            int n = 0;
+            var rede = new RedeFingida(_ =>
+            {
+                n++;
+                return Sse($$$"""{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.text","text":"r{{{n}}}","index":0}],"tool_calls":[{"index":0,"id":"c{{{n}}}","function":{"name":"read","arguments":"{}"}}]}}]}""");
+            });
+            var p = ComRede(rede);
+            var ferramenta = ChatTool.CreateFunctionTool("read", "lê", System.BinaryData.FromString("{\"type\":\"object\"}"));
+
+            var vivo = new List<ChatMessage> { ChatMessage.CreateUserMessage("x") };
+            await Drenar(p.StreamAsync(vivo, new[] { ferramenta }, new ChatRequestOptions(), CancellationToken.None));
+            vivo.Add(ChatMessage.CreateAssistantMessage(new[] { ChatToolCall.CreateFunctionToolCall("c1", "read", System.BinaryData.FromString("{}")) }));
+            vivo.Add(ChatMessage.CreateToolMessage("c1", "ok"));
+
+            for (int i = 0; i < 2100; i++)
+                await Drenar(p.StreamAsync(vivo, new[] { ferramenta }, new ChatRequestOptions(), CancellationToken.None));
+
+            p.RaciociniosGuardados.Should().BeLessThanOrEqualTo(2048);
+            rede.Corpos[^1].Should().Contain("\"r1\"", "a mensagem c1 foi enviada em toda requisição e nunca envelheceu");
+        }
 
         [Fact]
         public async Task Erro429_TentaDeNovo_E401_Nao()

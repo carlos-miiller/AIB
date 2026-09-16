@@ -44,14 +44,49 @@ public sealed class OpenRouterProvider : IChatProvider
 
     /// <summary>
     /// O raciocínio de cada volta que pediu ferramenta, pelo id da primeira chamada. Volta ao
-    /// modelo na ida seguinte do MESMO turno. Modelos de raciocínio com ferramentas (Claude,
-    /// Gemini, o1, DeepSeek) retomam o fio a partir dele; sem ele, cada volta recomeça a pensar
-    /// do zero — ou a API recusa, nos que assinam o raciocínio.
+    /// modelo em TODA requisição em que aquela mensagem ainda estiver no histórico. Modelos de
+    /// raciocínio com ferramentas (Claude, Gemini, o1, DeepSeek) retomam o fio a partir dele; sem
+    /// ele, cada volta recomeça a pensar do zero — ou a API recusa, nos que assinam o raciocínio.
+    /// <para>
+    /// Antes ia só às voltas do turno corrente, e isso quebrava o cache: no turno seguinte a mesma
+    /// mensagem saía SEM o raciocínio, o prefixo mudava ali, e tudo dali para a frente era pago a
+    /// preço cheio de novo — num histórico com ferramentas, quase o prompt inteiro. O preço de
+    /// mandar sempre é carregar tokens de raciocínio antigo; Anthropic e DeepSeek descartam do
+    /// lado deles o raciocínio de turnos passados, e o que sobra de custo é cobrado como cache,
+    /// não como entrada nova. Trocar um prefixo estável por alguns tokens a mais compensa.
+    /// </para>
     /// </summary>
-    private readonly ConcurrentDictionary<string, string> _raciocinioPorChamada = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, RaciocinioGuardado> _raciocinioPorChamada = new(StringComparer.Ordinal);
 
-    /// <summary>Acima disto o mapa é podado. Turnos terminados deixam entradas que ninguém mais lê.</summary>
-    private const int TetoDoMapaDeRaciocinio = 256;
+    /// <summary>O JSON do raciocínio e a última requisição que o levou.</summary>
+    private sealed class RaciocinioGuardado
+    {
+        public RaciocinioGuardado(string json, long vistoEm) { Json = json; VistoEm = vistoEm; }
+        public string Json { get; }
+        public long VistoEm;
+    }
+
+    /// <summary>Contador de requisições montadas. Serve de relógio para a poda.</summary>
+    private long _requisicoes;
+
+    private readonly object _poda = new();
+
+    /// <summary>
+    /// Acima disto o mapa é podado, dos menos recentemente ENVIADOS para os mais, até
+    /// <see cref="AlvoDaPoda"/>.
+    /// <para>
+    /// Antes o mapa era zerado ao passar de 256, e zerar tirava também o raciocínio de mensagens
+    /// ainda vivas — o mesmo prefixo quebrado, só que de surpresa. Aqui uma entrada só sai se
+    /// outras 1.536 foram enviadas depois dela. O histórico vivo cabe na janela e é compactado
+    /// muito antes de ter 1.536 voltas com ferramenta, e cada requisição da conversa renova todas
+    /// as dele — então o que sai é de conversa encerrada ou compactada. Idade por requisição não
+    /// serviria: a triagem de e-mail usa o mesmo provider e faria as da conversa envelhecerem sem
+    /// que elas tivessem saído do histórico.
+    /// </para>
+    /// </summary>
+    private const int TetoDoMapaDeRaciocinio = 2048;
+
+    private const int AlvoDaPoda = 1536;
 
     public OpenRouterProvider(HttpClient http, string baseUrl, string chave, string model,
                               IToolCallHealer healer, bool verboseLogging, bool semColetaDeDados = true)
@@ -179,17 +214,21 @@ public sealed class OpenRouterProvider : IChatProvider
             if (messages[i] is UserChatMessage) ultimoUsuario = i;
         }
 
-        // Só as voltas DESTE turno, depois da última fala do usuário. Raciocínio de turnos
-        // passados não volta: os modelos são treinados sem ele, e ele só pesaria na conta.
-        for (int i = ultimoUsuario + 1; i < messages.Count; i++)
+        // Em TODA mensagem de assistente cujo raciocínio se guardou, e não só nas deste turno: a
+        // mensagem tem de sair idêntica em toda requisição enquanto estiver no histórico, ou o
+        // cache se perde a partir dela. Ver _raciocinioPorChamada.
+        long agora = Interlocked.Increment(ref _requisicoes);
+
+        for (int i = 0; i < messages.Count; i++)
         {
             if (messages[i] is not AssistantChatMessage { ToolCalls.Count: > 0 } assistente) continue;
 
             foreach (var chamada in assistente.ToolCalls)
             {
-                if (chamada?.Id == null || !_raciocinioPorChamada.TryGetValue(chamada.Id, out var detalhes)) continue;
+                if (chamada?.Id == null || !_raciocinioPorChamada.TryGetValue(chamada.Id, out var guardado)) continue;
 
-                mensagens[i]!["reasoning_details"] = JsonNode.Parse(detalhes);
+                Interlocked.Exchange(ref guardado.VistoEm, agora);
+                mensagens[i]!["reasoning_details"] = JsonNode.Parse(guardado.Json);
                 break;
             }
         }
@@ -207,13 +246,38 @@ public sealed class OpenRouterProvider : IChatProvider
         modelo.StartsWith("anthropic/", StringComparison.OrdinalIgnoreCase)
         || modelo.StartsWith("google/gemini", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Quantos pontos de cache a Anthropic aceita numa requisição.</summary>
+    public const int TetoDeMarcasDeCache = 4;
+
     /// <summary>
-    /// Marca até três pontos de cache: a primeira mensagem de sistema (a alma, que quase nunca
-    /// muda), a última de sistema (a memória, que muda a cada compactação) e a última fala do
-    /// usuário (o histórico até ali, que dentro do turno não muda). A Anthropic aceita quatro.
+    /// Marca até quatro pontos de cache: a primeira mensagem de sistema (a alma, que quase nunca
+    /// muda), a última de sistema (a memória, que muda a cada compactação), a última fala do
+    /// usuário e a ÚLTIMA mensagem da requisição.
+    /// <para>
+    /// A última mensagem é o ponto que importa num turno com ferramentas. Com a marca só na fala
+    /// do usuário, cada ida de ferramenta relia a preço cheio tudo o que as voltas anteriores do
+    /// mesmo turno tinham acrescentado — e um turno de sete voltas reenvia esse miolo sete vezes.
+    /// Marcada a última, a volta seguinte acha em cache tudo até ali. A fala do usuário continua
+    /// marcada como rede: a Anthropic só procura acerto até uns 20 blocos antes de cada marca, e
+    /// uma volta com muitas ferramentas em paralelo passaria disso.
+    /// </para>
+    /// <para>
+    /// Mensagem de assistente só com tool_calls não tem texto onde pôr a marca; aí vale a anterior
+    /// que tenha.
+    /// </para>
     /// </summary>
     private static void MarcarCache(IReadOnlyList<ChatMessage> messages, JsonArray mensagens, int ultimoUsuario)
     {
+        // O conteúdo em texto vira lista de partes em TODA mensagem de sistema, usuário e
+        // ferramenta, marcada ou não. Converter só a marcada faria a mesma mensagem sair como
+        // lista numa requisição (quando era a última) e como texto na seguinte — e a mudança de
+        // forma arrisca o prefixo que a marca existe para guardar.
+        for (int i = 0; i < messages.Count; i++)
+        {
+            if (messages[i] is SystemChatMessage or UserChatMessage or ToolChatMessage && mensagens[i] is JsonObject m)
+                EmPartes(m);
+        }
+
         var alvos = new SortedSet<int>();
 
         int primeiroSistema = -1, ultimoSistema = -1;
@@ -228,26 +292,40 @@ public sealed class OpenRouterProvider : IChatProvider
         if (ultimoSistema >= 0) alvos.Add(ultimoSistema);
         if (ultimoUsuario >= 0) alvos.Add(ultimoUsuario);
 
-        foreach (int i in alvos)
+        for (int i = mensagens.Count - 1; i >= 0; i--)
         {
-            if (mensagens[i] is not JsonObject msg) continue;
+            if (mensagens[i] is not JsonObject candidata || EmPartes(candidata) == null) continue;
+            alvos.Add(i);
+            break;
+        }
 
-            JsonArray partes;
-            if (msg["content"] is JsonValue v && v.TryGetValue<string>(out var texto))
-            {
-                if (string.IsNullOrEmpty(texto)) continue;
-                partes = new JsonArray { new JsonObject { ["type"] = "text", ["text"] = texto } };
-                msg["content"] = partes;
-            }
-            else if (msg["content"] is JsonArray existentes && existentes.Count > 0)
-            {
-                partes = existentes;
-            }
-            else continue;
+        foreach (int i in alvos.Take(TetoDeMarcasDeCache))
+        {
+            if (mensagens[i] is not JsonObject msg || EmPartes(msg) is not JsonArray partes) continue;
 
             if (partes[^1] is JsonObject ultima && (string?)ultima["type"] == "text")
                 ultima["cache_control"] = new JsonObject { ["type"] = "ephemeral" };
         }
+    }
+
+    /// <summary>
+    /// O conteúdo da mensagem como lista de partes, convertendo texto simples. Nulo quando não há
+    /// texto onde pôr uma marca — assistente só com tool_calls, conteúdo vazio.
+    /// </summary>
+    private static JsonArray? EmPartes(JsonObject msg)
+    {
+        if (msg["content"] is JsonValue v && v.TryGetValue<string>(out var texto))
+        {
+            if (string.IsNullOrEmpty(texto)) return null;
+            var partes = new JsonArray { new JsonObject { ["type"] = "text", ["text"] = texto } };
+            msg["content"] = partes;
+            return partes;
+        }
+
+        return msg["content"] is JsonArray existentes && existentes.Count > 0
+               && existentes[^1] is JsonObject ultima && (string?)ultima["type"] == "text"
+            ? existentes
+            : null;
     }
 
     private HttpRequestMessage Requisicao(string corpo)
@@ -436,12 +514,35 @@ public sealed class OpenRouterProvider : IChatProvider
 
     private void GuardarRaciocinio(string idDaChamada, IEnumerable<JsonObject> detalhes)
     {
-        if (_raciocinioPorChamada.Count >= TetoDoMapaDeRaciocinio) _raciocinioPorChamada.Clear();
-
         var lista = new JsonArray();
         foreach (var d in detalhes) lista.Add(d.DeepClone());
-        _raciocinioPorChamada[idDaChamada] = lista.ToJsonString();
+        _raciocinioPorChamada[idDaChamada] = new RaciocinioGuardado(lista.ToJsonString(), Interlocked.Read(ref _requisicoes));
+
+        if (_raciocinioPorChamada.Count > TetoDoMapaDeRaciocinio) PodarRaciocinio();
     }
+
+    /// <summary>
+    /// Tira do mapa os raciocínios enviados há mais tempo, até <see cref="AlvoDaPoda"/>. Nunca
+    /// zera: ver <see cref="TetoDoMapaDeRaciocinio"/>.
+    /// </summary>
+    private void PodarRaciocinio()
+    {
+        lock (_poda)
+        {
+            int sobra = _raciocinioPorChamada.Count - AlvoDaPoda;
+            if (sobra <= 0) return;
+
+            foreach (var velho in _raciocinioPorChamada
+                         .OrderBy(e => Interlocked.Read(ref e.Value.VistoEm))
+                         .Take(sobra)
+                         .Select(e => e.Key)
+                         .ToList())
+                _raciocinioPorChamada.TryRemove(velho, out _);
+        }
+    }
+
+    /// <summary>Quantos raciocínios estão guardados. Para ensaio da poda.</summary>
+    public int RaciociniosGuardados => _raciocinioPorChamada.Count;
 
     /// <summary>
     /// Junta os pedaços de <c>reasoning_details</c> pelo <c>index</c>. O texto chega aos poucos,
