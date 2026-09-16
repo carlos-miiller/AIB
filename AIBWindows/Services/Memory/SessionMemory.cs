@@ -78,18 +78,26 @@ public sealed class SessionMemory
     /// console — a memória é um acréscimo, e um acréscimo que quebra o principal não vale.
     /// </para>
     /// </summary>
-    public bool AppendTurn(Turn turn)
+    public bool AppendTurn(Turn turn, string? id = null)
     {
         if (turn == null || turn.Messages.Count == 0) return false;
 
         try
         {
-            var registro = new TurnRecord(
-                turn.Index,
-                DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
-                turn.Messages.Select(ToRecord).ToList(),
-                ArtifactExtractor.Extract(turn));
+            return AppendRecord(ParaRegistro(turn, id));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Falha ao gravar turno {turn.Index}: {ex.Message}");
+            return false;
+        }
+    }
 
+    /// <summary>Grava um turno já em forma de registro. Mesma política: nunca lança.</summary>
+    public bool AppendRecord(TurnRecord registro)
+    {
+        try
+        {
             string linha = JsonSerializer.Serialize(registro, Json);
 
             lock (_gate)
@@ -102,9 +110,114 @@ public sealed class SessionMemory
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[MEMORIA] Falha ao gravar turno {turn.Index}: {ex.Message}");
+            Console.WriteLine($"[MEMORIA] Falha ao gravar turno {registro.Index}: {ex.Message}");
             return false;
         }
+    }
+
+    private static TurnRecord ParaRegistro(Turn turn, string? id) =>
+        new(
+            turn.Index,
+            DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+            turn.Messages.Select(ToRecord).ToList(),
+            ArtifactExtractor.Extract(turn),
+            id);
+
+    /// <summary>
+    /// O turno ainda em curso, regravado inteiro a cada passo. Um arquivo só, e não uma linha
+    /// por passo: o que importa dele é o estado mais recente, e ele some quando o turno fecha.
+    /// </summary>
+    public string TurnoAbertoPath => Path.Combine(SessionDir, "turno-aberto.json");
+
+    /// <summary>
+    /// Regrava o turno em curso. Escreve num temporário e troca: uma queda no meio da escrita
+    /// deixa o estado anterior inteiro, e não um JSON cortado. Nunca lança.
+    /// </summary>
+    public void GravarTurnoAberto(Turn turn, string id)
+    {
+        try
+        {
+            string json = JsonSerializer.Serialize(ParaRegistro(turn, id), Json);
+
+            lock (_gate)
+            {
+                Directory.CreateDirectory(SessionDir);
+                string temporario = TurnoAbertoPath + ".tmp";
+                File.WriteAllText(temporario, json, SemBom);
+                File.Move(temporario, TurnoAbertoPath, overwrite: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Falha ao guardar o turno em curso: {ex.Message}");
+        }
+    }
+
+    /// <summary>O turno que ficou em curso, ou nulo. Arquivo ilegível conta como ausente.</summary>
+    public TurnRecord? LerTurnoAberto()
+    {
+        try
+        {
+            if (!File.Exists(TurnoAbertoPath)) return null;
+            return JsonSerializer.Deserialize<TurnRecord>(File.ReadAllText(TurnoAbertoPath, SemBom), Json);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Turno em curso ilegível, ignorado: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Some com o arquivo do turno em curso. Nunca lança.</summary>
+    public void ApagarTurnoAberto()
+    {
+        try
+        {
+            lock (_gate)
+            {
+                if (File.Exists(TurnoAbertoPath)) File.Delete(TurnoAbertoPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Falha ao apagar o turno em curso: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Leva ao <c>raw.jsonl</c> o turno que ficou em curso quando o AIB caiu, fechado com
+    /// <paramref name="marca"/>, e apaga o arquivo dele. Devolve se gravou.
+    /// <para>
+    /// Não grava de novo o que já está lá: a queda pode ter vindo DEPOIS de o turno chegar ao
+    /// arquivo e antes de o arquivo de recuperação ser apagado. A identidade do turno decide.
+    /// </para>
+    /// </summary>
+    public bool RecuperarTurnoAberto(string marca)
+    {
+        // Ilegível fica onde está: apagar seria perder de vez o único rastro do turno.
+        var aberto = LerTurnoAberto();
+        if (aberto == null) return false;
+
+        var gravados = ReadTurns();
+        bool jaEsta = aberto.Id != null && gravados.Any(t => t.Id == aberto.Id);
+
+        bool gravou = false;
+        if (!jaEsta && aberto.Messages.Count > 0)
+        {
+            var mensagens = aberto.Messages.ToList();
+            var ultima = mensagens[^1];
+            bool fecha = ultima.Role == "assistant" && (ultima.ToolCalls == null || ultima.ToolCalls.Count == 0);
+            if (!fecha) mensagens.Add(new MessageRecord("assistant", marca));
+
+            gravou = AppendRecord(aberto with
+            {
+                Index = gravados.Count == 0 ? 0 : gravados[^1].Index + 1,
+                Messages = mensagens
+            });
+        }
+
+        if (jaEsta || gravou) ApagarTurnoAberto();
+        return gravou;
     }
 
     /// <summary>

@@ -24,8 +24,13 @@ public sealed record MessageRecord(
 /// para comparar o que ele via antes com o que passou a ver.
 /// </para>
 /// </summary>
+/// <param name="Id">
+/// Identidade do turno. Nula nos gravados antes de existir. Serve à recuperação de um turno
+/// interrompido: é por ela que se sabe se ele já tinha chegado ao arquivo.
+/// </param>
 public sealed record TurnRecord(
     int Index,
     string AtUtc,
     IReadOnlyList<MessageRecord> Messages,
-    IReadOnlyList<Artifact> Artifacts);
+    IReadOnlyList<Artifact> Artifacts,
+    string? Id = null);

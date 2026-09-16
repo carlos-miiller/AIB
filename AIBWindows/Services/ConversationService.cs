@@ -155,6 +155,23 @@ public sealed class ConversationService : IMessageStore
     private int _conversaViva;
 
     /// <summary>
+    /// Tudo o que o turno em curso escreveu, na ordem, a começar pela mensagem do usuário.
+    /// Nulo fora de um turno. Protegido por <see cref="_gate"/>.
+    /// <para>
+    /// É daqui que o turno vai para o <c>raw.jsonl</c>, e não do histórico vivo. O vivo é o que
+    /// cabe no modelo, e a poda de emergência o corta no meio de uma cadeia longa; o registro é
+    /// o que aconteceu, e não tem por que perder o que o modelo deixou de enxergar.
+    /// </para>
+    /// </summary>
+    private List<ChatMessage>? _diarioDoTurno;
+
+    /// <summary>
+    /// Identidade do turno em curso, gravada com ele. É o que permite à recuperação de um turno
+    /// interrompido saber se ele já chegou ao <c>raw.jsonl</c> antes de o processo cair.
+    /// </summary>
+    private string? _idDoTurno;
+
+    /// <summary>
     /// Tokens dos turnos crus engolidos por capítulos que NÃO trazem a própria medida — os
     /// gravados antes de <see cref="Chapter.TokensDosTurnos"/> existir.
     /// <para>
@@ -470,6 +487,7 @@ public sealed class ConversationService : IMessageStore
             _sessionId = Guid.NewGuid().ToString();
             _turnoPendente = null;
             _indiceNoRegistro = new();
+            lock (_gate) { _diarioDoTurno = null; _idDoTurno = null; }
             lock (_gate) { _transcricao.Clear(); }
             _memory.Clear();
         }
@@ -578,6 +596,13 @@ public sealed class ConversationService : IMessageStore
         try
         {
             var memoria = new SessionMemory(memorySessionId!, _memoryRootOverride);
+
+            // Antes de ler: um turno que ficou em curso quando o AIB caiu entra no registro
+            // agora, fechado, e volta com a conversa como qualquer outro.
+            if (memoria.RecuperarTurnoAberto(
+                    Agent.AgentLoop.MarcaDeTurnoMorto("o AIB foi fechado no meio do turno")))
+                Console.WriteLine($"[MEMORIA] Turno interrompido de {memorySessionId} recuperado.");
+
             var turnos = memoria.ReadTurns();
             var capitulos = memoria.ReadChapters();
             var atos = memoria.ReadActs();
@@ -687,7 +712,8 @@ public sealed class ConversationService : IMessageStore
         try
         {
             var turnos = TurnSplitter.Split(Snapshot());
-            if (turnos.Count == 0 || TurnSplitter.IsClosed(turnos[^1])) return;
+            var ultimo = TurnoDoDiario() ?? (turnos.Count > 0 ? turnos[^1] : null);
+            if (ultimo == null || TurnSplitter.IsClosed(ultimo)) return;
 
             AppendAssistantText(Agent.AgentLoop.MarcaDeTurnoMorto(motivo));
         }
@@ -701,9 +727,35 @@ public sealed class ConversationService : IMessageStore
     {
         try
         {
+            RegistrarUltimoTurno();
+        }
+        finally
+        {
+            // Gravado, guardado como pendente ou perdido por falha de disco: o diário deste
+            // turno acabou, e o próximo abre o seu. O arquivo de recuperação vai junto — ele só
+            // existe para o turno que ainda não chegou a esta linha.
+            lock (_gate)
+            {
+                _diarioDoTurno = null;
+                _idDoTurno = null;
+            }
+
+            _sessionMemory.ApagarTurnoAberto();
+        }
+    }
+
+    private void RegistrarUltimoTurno()
+    {
+        try
+        {
             var turnos = TurnSplitter.Split(Snapshot());
 
-            if (turnos.Count == 0)
+            // O turno corrente sai do DIÁRIO, e não do histórico vivo. A poda de emergência
+            // corta o vivo no meio de uma cadeia longa, e o que ela cortava antes de o turno
+            // terminar nunca chegava ao disco. O diário ela não toca.
+            var doDiario = TurnoDoDiario();
+
+            if (turnos.Count == 0 && doDiario == null)
             {
                 // O que estava pendente ainda pode ser gravado: ele é um objeto próprio e não
                 // depende do histórico vivo continuar de pé.
@@ -726,7 +778,7 @@ public sealed class ConversationService : IMessageStore
                 return;
             }
 
-            var ultimo = turnos[^1];
+            var ultimo = doDiario ?? turnos[^1];
 
             // Já gravado — no fim do próprio turno, ou lido do disco na reabertura. Gravar de
             // novo duplicava o turno no raw.jsonl: foi o que aconteceu quando um turno terminou
@@ -790,10 +842,53 @@ public sealed class ConversationService : IMessageStore
     private bool JaGravado(Turn turno) =>
         turno.Messages.Count > 0 && _indiceNoRegistro.TryGetValue(turno.Messages[0], out _);
 
+    /// <summary>
+    /// O turno corrente como o diário o viu, do começo: a mensagem do usuário e tudo o que o
+    /// turno escreveu depois, inclusive o que a poda já tirou do vivo. Nulo fora de um turno.
+    /// </summary>
+    private Turn? TurnoDoDiario()
+    {
+        lock (_gate)
+        {
+            return _diarioDoTurno is { Count: > 0 }
+                ? new Turn(0, _diarioDoTurno.ToArray())
+                : null;
+        }
+    }
+
+    /// <summary>
+    /// Regrava <c>turno-aberto.json</c> com o turno como ele está agora. Chamado a cada passo.
+    /// <para>
+    /// É o que sobra se o AIB cair no meio do turno: o <c>raw.jsonl</c> só recebe turnos
+    /// fechados, e um turno de meia hora que morria com o processo não deixava rastro. Na
+    /// reabertura da conversa ele é fechado com uma marca e gravado.
+    /// </para>
+    /// </summary>
+    private void GravarTurnoAberto()
+    {
+        Turn? turno;
+        string? id;
+        lock (_gate)
+        {
+            turno = _diarioDoTurno is { Count: > 0 } ? new Turn(_turnsRecorded, _diarioDoTurno.ToArray()) : null;
+            id = _idDoTurno;
+        }
+
+        if (turno != null && id != null) _sessionMemory.GravarTurnoAberto(turno, id);
+    }
+
     /// <summary>Põe um turno no registro cru e na transcrição do histórico.</summary>
     private void Gravar(Turn turno)
     {
-        if (_sessionMemory.AppendTurn(turno with { Index = _turnsRecorded }))
+        string? id;
+        lock (_gate)
+        {
+            id = _diarioDoTurno is { Count: > 0 } && MesmoTurno(turno, new Turn(0, _diarioDoTurno))
+                ? _idDoTurno
+                : null;
+        }
+
+        if (_sessionMemory.AppendTurn(turno with { Index = _turnsRecorded }, id))
         {
             if (turno.Messages.Count > 0)
                 _indiceNoRegistro.AddOrUpdate(turno.Messages[0], new StrongBox<int>(_turnsRecorded));
@@ -1545,7 +1640,14 @@ public sealed class ConversationService : IMessageStore
             // prompt de sistema existe antes deste turno, que é desta mesma conversa.
             if (needsPrompt) ResetHistory(conversaNova: false);
 
-            lock (_gate) { _history.Add(ChatMessage.CreateUserMessage(userMessage)); }
+            var abertura = ChatMessage.CreateUserMessage(userMessage);
+            lock (_gate)
+            {
+                _history.Add(abertura);
+                _diarioDoTurno = new List<ChatMessage> { abertura };
+                _idDoTurno = Guid.NewGuid().ToString("N");
+            }
+            GravarTurnoAberto();
 
             // Atualiza o contador na UI assim que o usuário envia a mensagem.
             NotifyTokenCount(userLevel);
@@ -1869,15 +1971,19 @@ public sealed class ConversationService : IMessageStore
             _conversa = conversa;
         }
 
-        /// <summary>Roda <paramref name="escrita"/> sob o lock, só se a conversa ainda for esta.</summary>
-        private bool Escrever(Action escrita)
+        /// <summary>
+        /// Roda <paramref name="escrita"/> sob o lock, só se a conversa ainda for esta — e, se
+        /// escreveu, atualiza o arquivo de recuperação do turno, já fora do lock.
+        /// </summary>
+        private void Escrever(Action escrita)
         {
             lock (_dona._gate)
             {
-                if (_dona._conversaViva != _conversa) return false;
+                if (_dona._conversaViva != _conversa) return;
                 escrita();
-                return true;
             }
+
+            _dona.GravarTurnoAberto();
         }
 
         private bool AindaEhAMinha()
@@ -1922,17 +2028,23 @@ public sealed class ConversationService : IMessageStore
         if (!string.IsNullOrWhiteSpace(fala))
             mensagem.Content.Add(ChatMessageContentPart.CreateTextPart(fala));
 
-        lock (_gate) { _history.Add(mensagem); }
+        Anexar(mensagem);
     }
 
-    public void AppendToolResult(string toolCallId, string result)
-    {
-        lock (_gate) { _history.Add(ChatMessage.CreateToolMessage(toolCallId, result)); }
-    }
+    public void AppendToolResult(string toolCallId, string result) =>
+        Anexar(ChatMessage.CreateToolMessage(toolCallId, result));
 
-    public void AppendAssistantText(string text)
+    public void AppendAssistantText(string text) =>
+        Anexar(ChatMessage.CreateAssistantMessage(text));
+
+    /// <summary>No histórico vivo e, havendo turno em curso, no diário dele.</summary>
+    private void Anexar(ChatMessage mensagem)
     {
-        lock (_gate) { _history.Add(ChatMessage.CreateAssistantMessage(text)); }
+        lock (_gate)
+        {
+            _history.Add(mensagem);
+            _diarioDoTurno?.Add(mensagem);
+        }
     }
 
     public int CountTokens()

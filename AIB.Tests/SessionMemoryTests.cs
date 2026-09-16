@@ -106,6 +106,64 @@ namespace AIB.Tests
 
         // ── SessionMemory ────────────────────────────────────────────────────
 
+        // ── Turno em curso ───────────────────────────────────────────────────
+
+        private static Turn TurnoInterrompido() => TurnSplitter.Split(new List<ChatMessage>
+        {
+            ChatMessage.CreateUserMessage("gere as assinaturas"),
+            ToolCall("c1", "shell", """{"command":"gerar.ps1"}"""),
+            ChatMessage.CreateToolMessage("c1", "Criado: 4 arquivos"),
+            ToolCall("c2", "shell", """{"command":"dir"}""")
+        })[0];
+
+        [Fact]
+        public void TurnoInterrompido_EntraNoRegistroFechado_EOArquivoSome()
+        {
+            // O AIB caiu no meio de uma cadeia: o raw.jsonl só recebe turno fechado, e o turno
+            // inteiro sumia. O arquivo de recuperação o leva ao registro na reabertura.
+            var memoria = new SessionMemory("queda", _raiz);
+            memoria.GravarTurnoAberto(TurnoInterrompido(), "id-do-turno");
+
+            memoria.RecuperarTurnoAberto("[turno encerrado sem resposta: caiu]").Should().BeTrue();
+
+            var lidos = memoria.ReadTurns();
+            lidos.Should().ContainSingle();
+            lidos[0].Id.Should().Be("id-do-turno");
+            lidos[0].Messages.Select(m => m.Role).Should().Equal("user", "assistant", "tool", "assistant", "assistant");
+            lidos[0].Messages[^1].Text.Should().Contain("caiu");
+            File.Exists(memoria.TurnoAbertoPath).Should().BeFalse();
+
+            memoria.RecuperarTurnoAberto("marca").Should().BeFalse("não há mais o que recuperar");
+            memoria.ReadTurns().Should().ContainSingle();
+        }
+
+        [Fact]
+        public void TurnoQueJaChegouAoRegistro_NaoEhGravadoDeNovo()
+        {
+            // A queda pode vir entre gravar o turno e apagar o arquivo de recuperação.
+            var memoria = new SessionMemory("queda-tardia", _raiz);
+            var turno = TurnoInterrompido();
+            memoria.AppendTurn(turno, "mesmo-id").Should().BeTrue();
+            memoria.GravarTurnoAberto(turno, "mesmo-id");
+
+            memoria.RecuperarTurnoAberto("marca").Should().BeFalse();
+
+            memoria.ReadTurns().Should().ContainSingle();
+            File.Exists(memoria.TurnoAbertoPath).Should().BeFalse();
+        }
+
+        [Fact]
+        public void TurnoEmCursoIlegivel_FicaOndeEsta()
+        {
+            var memoria = new SessionMemory("ilegivel", _raiz);
+            Directory.CreateDirectory(memoria.SessionDir);
+            File.WriteAllText(memoria.TurnoAbertoPath, "{ cortado no mei");
+
+            memoria.RecuperarTurnoAberto("marca").Should().BeFalse();
+
+            File.Exists(memoria.TurnoAbertoPath).Should().BeTrue("apagar seria perder o único rastro do turno");
+        }
+
         [Fact]
         public void AppendTurn_GravaUmaLinhaPorTurnoEReleOQueEscreveu()
         {

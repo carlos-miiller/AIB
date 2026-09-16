@@ -133,6 +133,37 @@ namespace AIB.Tests
             public Task WarmupAsync(CancellationToken ct) => Task.CompletedTask;
         }
 
+        /// <summary>Cada volta ao modelo devolve o que o roteiro mandar, e pode agir antes.</summary>
+        private sealed class ProviderRoteirizado : IChatProvider
+        {
+            private readonly Func<IReadOnlyList<ChatMessage>, IReadOnlyList<StreamChunk>> _roteiro;
+
+            public ProviderRoteirizado(Func<IReadOnlyList<ChatMessage>, IReadOnlyList<StreamChunk>> roteiro) =>
+                _roteiro = roteiro;
+
+            public string Name => "Fake";
+            public string Model => "fake";
+
+            public async IAsyncEnumerable<StreamChunk> StreamAsync(
+                IReadOnlyList<ChatMessage> messages,
+                IReadOnlyList<ChatTool> tools,
+                ChatRequestOptions options,
+                [EnumeratorCancellation] CancellationToken ct)
+            {
+                await Task.Yield();
+                foreach (var c in _roteiro(messages)) yield return c;
+            }
+
+            public Task<ChatCompletionResult> CompleteAsync(
+                IReadOnlyList<ChatMessage> messages,
+                IReadOnlyList<ChatTool> tools,
+                ChatRequestOptions options,
+                CancellationToken ct) =>
+                Task.FromResult(new ChatCompletionResult("resumo", null, null));
+
+            public Task WarmupAsync(CancellationToken ct) => Task.CompletedTask;
+        }
+
         private sealed class FixedProviderFactory : IChatProviderFactory
         {
             private readonly IChatProvider _provider;
@@ -1243,6 +1274,78 @@ namespace AIB.Tests
             conversation.Chapters.Should().ContainSingle();
             conversation.Chapters[0].LastTurn.Should().Be(0, "o último turno continua vivo");
             conversation.SnapshotHistory().Select(TextOf).Should().Contain("enorme");
+        }
+
+        [Fact]
+        public async Task APodaNoMeioDoTurno_NaoTiraNadaDoRegistro()
+        {
+            // O defeito: o turno ia ao raw.jsonl copiado do histórico vivo no FIM, e a poda de
+            // emergência corta o vivo no meio de uma cadeia longa. O que ela cortava antes do fim
+            // — chamadas e resultados do começo do turno — não chegava ao disco.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            ConversationService? conversation = null;
+            int chamadas = 0;
+
+            var provider = new ProviderRoteirizado(_ =>
+            {
+                chamadas++;
+                if (chamadas == 1)
+                    return new StreamChunk[]
+                    {
+                        new StreamChunk.ToolCallDelta("k0", "id-do-comeco", "ferramenta_inexistente", "{}"),
+                        new StreamChunk.Done(StreamFinishReason.ToolCalls, "tool_calls")
+                    };
+
+                // Segunda volta: o turno já tem a chamada e o resultado. Enche a janela e poda,
+                // como a cadeia longa faz.
+                int quantas = MensagensParaEstourarAJanela(2000);
+                for (int i = 0; i < quantas; i++) conversation!.AppendAssistantText(Filler(2000));
+                conversation!.Trim(1);
+
+                return new StreamChunk[]
+                {
+                    new StreamChunk.TextDelta("terminei", TextChannel.Final),
+                    new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+                };
+            });
+            conversation = BuildConversation(settings, provider, out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("tarefa longa")) { }
+
+            conversation.SnapshotHistory().OfType<ToolChatMessage>()
+                .Should().BeEmpty("a poda precisa ter cortado o começo do turno para o ensaio valer");
+
+            var turno = conversation.TurnosGravados().Should().ContainSingle().Subject;
+            turno.Messages.Should().Contain(m => m.ToolCalls != null && m.ToolCalls.Any(c => c.Id == "id-do-comeco"));
+            turno.Messages.Should().Contain(m => m.Role == "tool" && m.ToolCallId == "id-do-comeco");
+            turno.Messages[^1].Text.Should().Contain("terminei");
+            File.Exists(Path.Combine(conversation.SessionMemoryDir, "turno-aberto.json"))
+                .Should().BeFalse("o turno fechou");
+        }
+
+        [Fact]
+        public async Task TurnoEmCurso_DeixaOArquivoDeRecuperacao()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var provider = new ProviderQueSegura("certo") { Segurar = true };
+            var conversation = BuildConversation(settings, provider, out _);
+
+            var turno = Task.Run(async () =>
+            {
+                await foreach (var _ in conversation.StreamResponseAsync("pergunta demorada")) { }
+            });
+
+            await provider.Comecou.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            string arquivo = Path.Combine(conversation.SessionMemoryDir, "turno-aberto.json");
+            File.Exists(arquivo).Should().BeTrue("se o AIB cair agora, é o que sobra do turno");
+            File.ReadAllText(arquivo).Should().Contain("pergunta demorada");
+
+            provider.Liberar.SetResult();
+            await turno.WaitAsync(TimeSpan.FromSeconds(10));
+
+            File.Exists(arquivo).Should().BeFalse();
+            conversation.TurnosGravados().Should().ContainSingle().Which.Id.Should().NotBeNullOrEmpty();
         }
 
         [Fact]
