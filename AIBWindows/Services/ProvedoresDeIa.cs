@@ -173,16 +173,24 @@ public sealed class PerfilDeProvedor
 /// começo do prompt e perde o cache do provedor; no OpenRouter isso é dinheiro, então ela libera
 /// mais espaço de uma vez e volta menos vezes.
 /// </param>
+/// <param name="CapitulosPorAto">
+/// Capítulos soltos que fecham um ato. No Ollama, quatro, e não dois: promover cedo demais custa
+/// um resumo de resumo por quase nada, e resumo de resumo é onde a informação some. No OpenRouter,
+/// oito: a promoção reescreve o bloco de capítulos, no começo do prompt, e tudo o que vem depois
+/// dele perde o cache do provedor — é a conversa inteira paga a preço cheio na volta seguinte.
+/// Dobrar o número de capítulos por ato corta essas reescritas pela metade; o bloco fica maior
+/// entre uma promoção e outra, mas ele é justamente a parte que o cache cobre.
+/// </param>
 public sealed record LimitesDoProvedor(
     int LinhasDeLeitura, int ItensDaPasta, int EmailPorMensagem, int EmailPorLeitura, int LoteDaTriagem,
-    double AlvoDepoisDeCompactar)
+    double AlvoDepoisDeCompactar, int CapitulosPorAto)
 {
     public static readonly LimitesDoProvedor Local = new(
         Tools.ReadFileTool.LinhasPadrao, Tools.ReadFileTool.TetoDaPasta,
         Tools.LerEmailTool.TetoPorMensagem, Tools.LerEmailTool.TetoDaLeitura,
-        Mail.MailDigestService.TetoDoLote, 0.5);
+        Mail.MailDigestService.TetoDoLote, 0.5, 4);
 
-    public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3);
+    public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3, 8);
 
     public static LimitesDoProvedor Para(string? provedor) =>
         provedor == ProvedoresDeIa.OpenRouter ? Nuvem : Local;

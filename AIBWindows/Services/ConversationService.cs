@@ -1269,7 +1269,7 @@ public sealed class ConversationService : IMessageStore
         //
         // Em laco: uma passada que fecha varios capitulos pode encher mais de um ato, e parar no
         // primeiro deixaria capitulos soltos que ja tinham material para promover.
-        while (await PromoverAsync(compactor, ChaptersPerAct, ct).ConfigureAwait(false) != null) { }
+        while (await PromoverAsync(compactor, CapitulosPorAto(), ct).ConfigureAwait(false) != null) { }
 
         // Mesma carona: o prefixo ja foi invalidado por esta compactacao, entao revisar o nome
         // da conversa agora nao custa cache nenhum.
@@ -1411,7 +1411,7 @@ public sealed class ConversationService : IMessageStore
 
     /// <summary>
     /// Fecha um ato AGORA sobre os capitulos soltos, sem esperar os
-    /// <see cref="ChaptersPerAct"/> de praxe.
+    /// <see cref="CapitulosPorAto"/> de praxe.
     /// <para>
     /// Exige dois capitulos no minimo. Um ato sobre um capitulo so e resumo de resumo sem
     /// ganho nenhum: trocaria o texto por outro mais pobre e ainda esconderia o original, que
@@ -1457,10 +1457,15 @@ public sealed class ConversationService : IMessageStore
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Capítulos soltos que fecham um ato. Quatro, e não dois: promover cedo demais custa um
-    /// resumo de resumo por quase nada, e resumo de resumo é onde a informação some.
+    /// Capítulos soltos que fecham um ato, pelo provedor da conversa: quatro no Ollama, oito no
+    /// OpenRouter. Ver <see cref="LimitesDoProvedor.CapitulosPorAto"/>.
+    /// <para>
+    /// Lido das configurações DESTA conversa, e não de <see cref="LimitesDoProvedor.Atual"/>: o
+    /// estático é de quem salvou por último, e a promoção não pode mudar de regra por causa disso.
+    /// </para>
     /// </summary>
-    private const int ChaptersPerAct = 4;
+    private int CapitulosPorAto() =>
+        LimitesDoProvedor.Para(_settingsService.LoadSettings().AiProvider).CapitulosPorAto;
 
     /// <summary>Atos fechados nesta sessão. Diagnóstico e teste.</summary>
     public IReadOnlyList<Act> Acts => _memory.Acts;

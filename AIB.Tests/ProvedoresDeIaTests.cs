@@ -203,6 +203,8 @@ namespace AIB.Tests
             nuvem.LoteDaTriagem.Should().BeGreaterThan(LimitesDoProvedor.Local.LoteDaTriagem);
             nuvem.AlvoDepoisDeCompactar.Should().BeLessThan(LimitesDoProvedor.Local.AlvoDepoisDeCompactar,
                 "compactar menos vezes perde o cache menos vezes");
+            LimitesDoProvedor.Local.CapitulosPorAto.Should().Be(4, "medido no Ollama; resumo de resumo cedo perde informação");
+            nuvem.CapitulosPorAto.Should().Be(8, "cada promoção reescreve o começo do prompt e perde o cache");
         }
 
         [Fact]
