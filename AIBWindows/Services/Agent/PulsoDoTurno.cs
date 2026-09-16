@@ -187,6 +187,24 @@ public sealed class PulsoDoTurno : IDisposable
         // a próxima espera ser anunciada como espera, e não como "escrevendo" congelado.
     }
 
+    // Relato do provedor sobre a volta. Escritos pela thread do turno antes do Fim.
+    private int? _cacheRelatado;
+    private int? _entradaRelatada;
+    private string? _provedor;
+
+    /// <summary>
+    /// O que o provedor relatou da volta: entrada servida do cache, entrada total e quem atendeu.
+    /// Só aparece fora do Ollama — lá o cache não é relatado, e o reuso previsto já está na
+    /// primeira linha. Serve para ler no terminal, volta a volta, se o prefixo repetido está
+    /// saindo barato: sem isto, sete voltas de 3.231 a 5.408 tokens não diziam quanto foi cache.
+    /// </summary>
+    public void Relato(int? tokensDoCache, int? tokensDeEntrada, string? provedor)
+    {
+        _cacheRelatado = tokensDoCache;
+        _entradaRelatada = tokensDeEntrada;
+        _provedor = string.IsNullOrWhiteSpace(provedor) ? null : provedor;
+    }
+
     /// <summary>Fecha o pulso com o resumo. Idempotente: o Dispose chama de novo sem repetir.</summary>
     public void Fim(string desfecho, int? tokensGerados = null)
     {
@@ -224,6 +242,15 @@ public sealed class PulsoDoTurno : IDisposable
 
         if (_ferramentasExecutadas > 0) resumo += $" · {_ferramentasExecutadas} ferramenta(s)";
         if (espera > 0) resumo += $" · {Duracao(espera)} esperando você";
+
+        if (!_local)
+        {
+            if (_cacheRelatado is int cache)
+                resumo += _entradaRelatada is int entrada
+                    ? $" · cache {cache:N0}/{entrada:N0}"
+                    : $" · cache {cache:N0}";
+            if (_provedor != null) resumo += $" · via {_provedor}";
+        }
 
         Linha(resumo);
     }

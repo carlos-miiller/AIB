@@ -354,7 +354,9 @@ public sealed class SessionMemory
                 EsperaHumanaMs = meta.EsperaHumanaMs,
                 Decisao = meta.Decisao,
                 Falhou = meta.Falhou,
-                CustoUsd = meta.CustoUsd
+                CustoUsd = meta.CustoUsd,
+                TokensDoCache = meta.TokensDoCache,
+                Provedor = meta.Provedor
             };
     }
 }

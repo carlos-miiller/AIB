@@ -369,6 +369,7 @@ public sealed class OpenRouterProvider : IChatProvider
         string? rawFinish = null;
         int updates = 0;
         string? primeiraChamada = null;
+        string? provedor = null;
         var detalhes = new SortedDictionary<int, JsonObject>();
 
         using var leitor = new StreamReader(await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false));
@@ -405,7 +406,10 @@ public sealed class OpenRouterProvider : IChatProvider
                 yield return new StreamChunk.ToolCallDelta("or:" + c.Indice, c.Id, c.Nome, c.Argumentos);
             }
 
-            if (trecho.Uso != null) yield return trecho.Uso;
+            // O provedor vem em todo evento; o uso, em geral só no último. Guarda o que já se viu
+            // para o uso sair com ele mesmo que o evento do uso não o repita.
+            provedor = trecho.Provedor ?? provedor;
+            if (trecho.Uso != null) yield return trecho.Uso with { Provedor = trecho.Uso.Provedor ?? provedor };
         }
 
         foreach (var d in splitter.Flush(anyToolCall)) yield return d;
@@ -479,7 +483,7 @@ public sealed class OpenRouterProvider : IChatProvider
     public sealed record Trecho(
         string? Texto, string? Raciocinio, IReadOnlyList<PedacoDeChamada> Chamadas,
         string? Fim, StreamChunk.Usage? Uso, string? Erro,
-        IReadOnlyList<JsonObject>? DetalhesDoRaciocinio = null);
+        IReadOnlyList<JsonObject>? DetalhesDoRaciocinio = null, string? Provedor = null);
 
     /// <summary>
     /// Lê um evento <c>data:</c> do stream. Público para ensaio: o formato do OpenRouter é o
@@ -493,6 +497,10 @@ public sealed class OpenRouterProvider : IChatProvider
         string? erro = raiz.TryGetProperty("error", out var e)
             ? (e.ValueKind == JsonValueKind.Object && e.TryGetProperty("message", out var msg) ? msg.GetString() : e.ToString())
             : null;
+
+        // Quem atendeu, no nível raiz de cada evento. É o provedor e não o modelo que guarda o
+        // cache: se ele muda entre voltas, a volta seguinte paga o prompt inteiro de novo.
+        string? provedor = Texto(raiz, "provider");
 
         string? texto = null, raciocinio = null, fim = null;
         var chamadas = new List<PedacoDeChamada>();
@@ -551,10 +559,10 @@ public sealed class OpenRouterProvider : IChatProvider
                 ? dc
                 : null;
 
-            uso = new StreamChunk.Usage(Numero(u, "prompt_tokens"), Numero(u, "completion_tokens"), cache, null, custo);
+            uso = new StreamChunk.Usage(Numero(u, "prompt_tokens"), Numero(u, "completion_tokens"), cache, null, custo, provedor);
         }
 
-        return new Trecho(texto, raciocinio, chamadas, fim, uso, erro, detalhes);
+        return new Trecho(texto, raciocinio, chamadas, fim, uso, erro, detalhes, provedor);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

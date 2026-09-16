@@ -225,6 +225,21 @@ public sealed class ConversationService : IMessageStore
     private decimal _custoDaConversa;
 
     /// <summary>
+    /// A entrada servida do cache nas voltas em que o provedor relatou, e a entrada total dessas
+    /// mesmas voltas. Volta sem relato fica fora das DUAS parcelas: contá-la só no total
+    /// derrubaria a taxa por falta de medida, não por falta de cache. Como o custo, vem do
+    /// raw.jsonl ao reabrir e cresce ao vivo. Protegido por <see cref="_gate"/>.
+    /// </summary>
+    private long _entradaDoCache, _entradaComRelatoDeCache;
+
+    /// <summary>
+    /// Quantas voltas cada provedor atendeu. O cache do OpenRouter é guardado por provedor: mais
+    /// de um nome aqui é o sinal de que o roteamento trocou de provedor no meio da conversa e
+    /// jogou o cache fora. Protegido por <see cref="_gate"/>.
+    /// </summary>
+    private readonly Dictionary<string, int> _voltasPorProvedor = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// Tokens da faixa narrativa da memoria — atos e capitulos soltos — como ela esta AGORA no
     /// prompt. E o que substituiu os turnos acima, e por isso sai da conta: sem descontar,
     /// a economia apareceria maior do que e.
@@ -506,7 +521,7 @@ public sealed class ConversationService : IMessageStore
             _turnsRecorded = 0;
             _crusSemMedida = 0;
             _descartadoAoReabrir = 0;
-            lock (_gate) { _custoDaConversa = 0; }
+            lock (_gate) { _custoDaConversa = 0; ZerarCache(); }
             _tokensDeResumo = 0;
             _tituloRevisado = false;
             Title = null;
@@ -651,6 +666,10 @@ public sealed class ConversationService : IMessageStore
                 _custoDaConversa = turnos.SelectMany(t => t.Messages).Sum(m => m.CustoUsd ?? 0m)
                                    + capitulos.Sum(c => c.CustoUsd ?? 0m)
                                    + atos.Sum(a => a.CustoUsd ?? 0m);
+
+                ZerarCache();
+                foreach (var m in turnos.SelectMany(t => t.Messages))
+                    SomarVolta(m.TokensEntrada, m.TokensDoCache, m.Provedor);
             }
 
             // Só os turnos cobertos por capítulos que NÃO sabem quanto custaram. Os demais já
@@ -1798,8 +1817,11 @@ public sealed class ConversationService : IMessageStore
                                 TokensEntrada: volta.TokensEntrada,
                                 TokensSaida: volta.TokensSaida,
                                 DuracaoMs: volta.DuracaoMs,
-                                CustoUsd: volta.CustoUsd);
+                                CustoUsd: volta.CustoUsd,
+                                TokensDoCache: volta.TokensDoCache,
+                                Provedor: volta.Provedor);
                             if (volta.CustoUsd is decimal custo) _custoDaConversa += custo;
+                            SomarVolta(volta.TokensEntrada, volta.TokensDoCache, volta.Provedor);
                         }
                         break;
 
@@ -2370,6 +2392,65 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private int CruEngolido() => _memory.TokensCrus + _crusSemMedida;
 
+    /// <summary>Esquece o cache e os provedores somados. Chamar dentro de <see cref="_gate"/>.</summary>
+    private void ZerarCache()
+    {
+        _entradaDoCache = 0;
+        _entradaComRelatoDeCache = 0;
+        _voltasPorProvedor.Clear();
+    }
+
+    /// <summary>Soma uma volta ao cache e aos provedores da conversa. Chamar dentro de <see cref="_gate"/>.</summary>
+    private void SomarVolta(int? entrada, int? doCache, string? provedor)
+    {
+        if (doCache is int cache && entrada is int total && total > 0)
+        {
+            _entradaDoCache += Math.Clamp(cache, 0, total);
+            _entradaComRelatoDeCache += total;
+        }
+
+        if (!string.IsNullOrWhiteSpace(provedor))
+            _voltasPorProvedor[provedor!] = _voltasPorProvedor.TryGetValue(provedor!, out int n) ? n + 1 : 1;
+    }
+
+    /// <summary>
+    /// As linhas do cache de prompt para o <c>/memoria</c>: quanto da entrada veio do cache e
+    /// quem atendeu. Vazio quando nenhum provedor relatou nada — no Ollama, sempre.
+    /// <para>
+    /// Motivo, medido: um turno no OpenRouter com sete voltas de 3.231 a 5.408 tokens de entrada,
+    /// uns 85% de prefixo repetido em cada uma, e nenhum jeito de saber se esse prefixo saiu a
+    /// preço de cache ou a preço cheio.
+    /// </para>
+    /// </summary>
+    private string LinhasDoCache()
+    {
+        var texto = new StringBuilder();
+
+        lock (_gate)
+        {
+            if (_entradaComRelatoDeCache > 0)
+            {
+                long pct = (long)Math.Round(100.0 * _entradaDoCache / _entradaComRelatoDeCache);
+                texto.Append($"Entrada vinda do cache ........ {pct,8}%")
+                     .Append($"  ({_entradaDoCache:N0} de {_entradaComRelatoDeCache:N0} tokens)").Append('\n');
+            }
+
+            // Um provedor só também aparece: é a confirmação de que o cache teve chance.
+            if (_voltasPorProvedor.Count > 0)
+            {
+                string lista = string.Join(", ", _voltasPorProvedor
+                    .OrderByDescending(p => p.Value).ThenBy(p => p.Key, StringComparer.Ordinal)
+                    .Select(p => $"{p.Key} ×{p.Value}"));
+                texto.Append($"Provedores das voltas ......... {lista}");
+                if (_voltasPorProvedor.Count > 1)
+                    texto.Append("  (o cache é por provedor: cada troca paga a entrada inteira de novo)");
+                texto.Append('\n');
+            }
+        }
+
+        return texto.ToString();
+    }
+
     /// <summary>
     /// A conta da economia, capítulo por capítulo, para o usuário LER.
     /// <para>
@@ -2396,6 +2477,8 @@ public sealed class ConversationService : IMessageStore
                  .Append("ou na hora com /capitulo.");
             if (relatorio.CustoUsd is decimal gastoSemCapitulo)
                 texto.Append('\n').Append($"Gasto na conversa: {TokenReport.Dolares(gastoSemCapitulo)} (OpenRouter).");
+            string cacheSemCapitulo = LinhasDoCache();
+            if (cacheSemCapitulo.Length > 0) texto.Append('\n').Append(cacheSemCapitulo.TrimEnd());
             return texto.ToString();
         }
 
@@ -2487,6 +2570,8 @@ public sealed class ConversationService : IMessageStore
         if (relatorio.CustoUsd is decimal gasto)
             texto.Append($"Gasto na conversa ............. {TokenReport.Dolares(gasto),9}")
                  .Append("  (voltas ao modelo e resumos)").Append('\n');
+
+        texto.Append(LinhasDoCache());
 
         if (relatorio.Descartado > 0)
         {

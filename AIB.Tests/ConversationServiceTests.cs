@@ -1460,6 +1460,63 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task OCacheEOProvedorDeCadaVolta_VaoAoRegistro_ESomamAoReabrir()
+        {
+            // O cache do OpenRouter é por provedor. O registro guarda quanto veio do cache e quem
+            // atendeu; o /memoria soma a taxa e denuncia troca de provedor.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            int volta = 0;
+            var provider = new ProviderRoteirizado(_ => new StreamChunk[]
+            {
+                new StreamChunk.TextDelta("certo", TextChannel.Final),
+                ++volta == 1
+                    ? new StreamChunk.Usage(PromptEvalCount: 1000, EvalCount: 5, CachedTokens: 0, Provedor: "DeepInfra")
+                    : new StreamChunk.Usage(PromptEvalCount: 1000, EvalCount: 5, CachedTokens: 900, Provedor: volta == 2 ? "DeepInfra" : "Novita"),
+                new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+            });
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 3; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"turno {i}")) { }
+
+            var registrada = conversation.TurnosGravados()[1].Messages[1];
+            registrada.TokensDoCache.Should().Be(900);
+            registrada.Provedor.Should().Be("DeepInfra");
+
+            // 1.800 de 3.000: 60%.
+            string esperado = $"60%  ({1800:N0} de {3000:N0} tokens)";
+            conversation.MemoriaEmTexto(1).Should().Contain(esperado).And.Contain("DeepInfra ×2, Novita ×1");
+
+            string memoria = Path.GetFileName(conversation.SessionMemoryDir);
+            conversation.LoadConversation(new List<ChatTurn> { new(true, "turno 0"), new(false, "certo") },
+                memoria, sessionId: "ensaio-cache");
+
+            conversation.MemoriaEmTexto(1).Should().Contain(esperado).And.Contain("DeepInfra ×2, Novita ×1");
+        }
+
+        [Fact]
+        public async Task SemRelatoDeCache_NadaDeCacheNemProvedorAparece()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var provider = new ProviderRoteirizado(_ => new StreamChunk[]
+            {
+                new StreamChunk.TextDelta("certo", TextChannel.Final),
+                new StreamChunk.Usage(PromptEvalCount: 100, EvalCount: 5),
+                new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+            });
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+
+            var fala = conversation.TurnosGravados()[0].Messages[1];
+            fala.TokensDoCache.Should().BeNull("o Ollama não relata cache, e previsão não é medida");
+            fala.Provedor.Should().BeNull();
+            conversation.MemoriaEmTexto(1).Should().NotContain("cache").And.NotContain("Provedores");
+            File.ReadAllText(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
+                .Should().NotContainEquivalentOf("TokensDoCache").And.NotContainEquivalentOf("\"Provedor\"");
+        }
+
+        [Fact]
         public async Task SemCobranca_NaoAparecePrecoNenhum()
         {
             var settings = BuildSettings(sendSystemPrompt: true);

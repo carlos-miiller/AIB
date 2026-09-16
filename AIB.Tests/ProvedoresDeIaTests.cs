@@ -270,6 +270,35 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void Trecho_LeOProvedorQueAtendeu_EOCache()
+        {
+            var t = OpenRouterProvider.LerTrecho(
+                """{"id":"gen-1","provider":"DeepInfra","model":"deepseek/deepseek-v4-flash-0731","choices":[],"usage":{"prompt_tokens":3465,"completion_tokens":40,"prompt_tokens_details":{"cached_tokens":3100}}}""");
+
+            t.Provedor.Should().Be("DeepInfra");
+            t.Uso!.Provedor.Should().Be("DeepInfra");
+            t.Uso.CachedTokens.Should().Be(3100);
+
+            OpenRouterProvider.LerTrecho("""{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":1}}""").Uso!
+                .CachedTokens.Should().BeNull("sem relato é \"não sei\", e não zero");
+        }
+
+        [Fact]
+        public async Task OUsoSaiComOProvedor_MesmoQuandoSoOsPrimeirosEventosODizem()
+        {
+            var rede = new RedeFingida(_ => Sse(
+                """{"provider":"Novita","choices":[{"delta":{"content":"oi"}}]}""",
+                """{"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":1,"prompt_tokens_details":{"cached_tokens":0}}}"""));
+
+            var chunks = await Drenar(ComRede(rede).StreamAsync(new ChatMessage[] { ChatMessage.CreateUserMessage("x") },
+                System.Array.Empty<ChatTool>(), new ChatRequestOptions(), CancellationToken.None));
+
+            var uso = chunks.OfType<StreamChunk.Usage>().Should().ContainSingle().Subject;
+            uso.Provedor.Should().Be("Novita");
+            uso.CachedTokens.Should().Be(0, "zero relatado é medida: o cache não pegou");
+        }
+
+        [Fact]
         public void Trecho_LeCustoEDetalhesDoRaciocinio()
         {
             var t = OpenRouterProvider.LerTrecho(

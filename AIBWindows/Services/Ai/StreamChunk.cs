@@ -83,12 +83,19 @@ public abstract record StreamChunk
     /// O que a chamada custou, em US$, como o provedor cobrou. Só o OpenRouter relata; nulo é
     /// "não cobrado ou não relatado", e o Ollama é sempre nulo.
     /// </param>
+    /// <param name="Provedor">
+    /// Quem de fato atendeu a chamada, quando o roteador diz (OpenRouter: <c>"provider"</c>,
+    /// ex. <c>DeepInfra</c>). O cache de prompt é guardado POR PROVEDOR: duas voltas atendidas
+    /// por provedores diferentes não reaproveitam nada uma da outra, e este é o único sinal
+    /// disso. Nulo no Ollama, onde não há roteamento.
+    /// </param>
     public sealed record Usage(
         int? PromptEvalCount,
         int? EvalCount,
         int? CachedTokens = null,
         double? PromptEvalMillis = null,
-        decimal? CustoUsd = null) : StreamChunk;
+        decimal? CustoUsd = null,
+        string? Provedor = null) : StreamChunk;
 
     /// <summary>
     /// Último chunk de um stream. Emitido exatamente uma vez, sempre.

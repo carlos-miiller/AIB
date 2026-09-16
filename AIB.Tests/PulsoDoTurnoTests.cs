@@ -236,6 +236,35 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ForaDoOllama_OFechamentoMostraCacheEProvedor_ENoOllamaNao()
+        {
+            // Sete voltas de 3.231 a 5.408 tokens e nenhum jeito de saber, no terminal, quanto
+            // saiu do cache. O relato vai na linha que fecha a volta.
+            var papel = new Papel();
+            var pulso = new PulsoDoTurno(1, "deepseek/x", 3465, 0, 16384,
+                TimeSpan.FromHours(1), papel.Escrever, local: false);
+            pulso.Escreveu(40);
+            pulso.Relato(3100, 3465, "DeepInfra");
+            pulso.Fim("respondeu");
+
+            papel.Linhas[^1].Should().Contain($"cache {3100:N0}/{3465:N0}").And.Contain("DeepInfra");
+
+            var local = new Papel();
+            var noOllama = Novo(local);
+            noOllama.Escreveu(40);
+            noOllama.Relato(null, 3485, null);
+            noOllama.Fim("respondeu");
+            local.Linhas[^1].Should().NotContain("cache");
+
+            var semRelato = new Papel();
+            var nuvemMuda = new PulsoDoTurno(1, "deepseek/x", 3465, 0, 16384,
+                TimeSpan.FromHours(1), semRelato.Escrever, local: false);
+            nuvemMuda.Relato(null, 3465, null);
+            nuvemMuda.Fim("respondeu");
+            semRelato.Linhas[^1].Should().NotContain("cache", "sem relato é \"não sei\", e não zero");
+        }
+
+        [Fact]
         public void SemNenhumToken_OResumoDIZ_Isso()
         {
             // Turno que voltou vazio é diferente de turno rápido, e o resumo tem de distinguir.

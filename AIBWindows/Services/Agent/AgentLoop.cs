@@ -115,6 +115,7 @@ public sealed class AgentLoop
             int? lastEvalCount = null;
             double? lastPromptEvalMillis = null;
             decimal? lastCusto = null;
+            string? lastProvedor = null;
             var relogioDaVolta = System.Diagnostics.Stopwatch.StartNew();
 
             // Quanto deste prompt o KV cache do provider deve reaproveitar. Calculado por nós
@@ -193,6 +194,7 @@ public sealed class AgentLoop
                     lastEvalCount = usage.EvalCount ?? lastEvalCount;
                     lastPromptEvalMillis = usage.PromptEvalMillis ?? lastPromptEvalMillis;
                     lastCusto = usage.CustoUsd ?? lastCusto;
+                    lastProvedor = usage.Provedor ?? lastProvedor;
                 }
                 else if (chunk is StreamChunk.Done done)
                 {
@@ -233,9 +235,13 @@ public sealed class AgentLoop
 
             // O custo desta volta, antes de a fala dela ir ao histórico. Quem grava o turno anota
             // a mensagem com ele — é o que torna o raw.jsonl medível depois.
+            // O cache vai só como RELATADO (lastCachedTokens), nunca a previsão de prefixo do
+            // Ollama: o registro é para medir, e um chute gravado viraria medida daqui a um mês.
             relogioDaVolta.Stop();
+            pulso.Relato(lastCachedTokens, lastPromptEvalCount, lastProvedor);
             yield return new AgentEvent.ModelReplied(
-                provider.Model, lastPromptEvalCount, lastEvalCount, relogioDaVolta.ElapsedMilliseconds, lastCusto);
+                provider.Model, lastPromptEvalCount, lastEvalCount, relogioDaVolta.ElapsedMilliseconds, lastCusto,
+                lastCachedTokens, lastProvedor);
 
             // ── Ferramentas pedidas: executa e volta para o modelo ────────────────
             if (calls.Count > 0)

@@ -105,12 +105,19 @@ public abstract record AgentEvent
     /// <param name="TokensSaida">O que o modelo gerou, como o provider relatou. Nulo se não relatou.</param>
     /// <param name="DuracaoMs">Do envio do prompt ao fim do stream.</param>
     /// <param name="CustoUsd">O que esta volta custou, quando o provedor cobra e relata.</param>
+    /// <param name="TokensDoCache">
+    /// Quanto da entrada o provedor afirma ter servido do cache. Só o RELATADO: a previsão de
+    /// prefixo do Ollama é um chute calibrado e não entra aqui. Nulo = não relatou.
+    /// </param>
+    /// <param name="Provedor">Quem atendeu a volta, quando há roteamento (OpenRouter).</param>
     public sealed record ModelReplied(
         string Modelo,
         int? TokensEntrada,
         int? TokensSaida,
         long DuracaoMs,
-        decimal? CustoUsd = null) : AgentEvent;
+        decimal? CustoUsd = null,
+        int? TokensDoCache = null,
+        string? Provedor = null) : AgentEvent;
 
     /// <summary>Fim do turno. Emitido exatamente uma vez, por último.</summary>
     public sealed record Completed(TurnOutcome Outcome, int IterationsUsed) : AgentEvent;
