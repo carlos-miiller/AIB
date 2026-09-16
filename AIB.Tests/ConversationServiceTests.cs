@@ -1255,6 +1255,76 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task ReabrirConversa_TrazAsExecucoes_EOCapituloTemArtefatos()
+        {
+            // O defeito: a reabertura trazia só as falas. A compactação que rodava depois
+            // resumia turnos sem nenhuma execução e fechava capítulos com zero artefatos — numa
+            // conversa que tinha lido e gravado arquivos.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            string sessao = "ensaio-reabrir-inteiro-" + Guid.NewGuid().ToString("N");
+            var memoria = new AIB.Services.Memory.SessionMemory(sessao, Path.Combine(_dir, "memory"));
+            for (int i = 0; i < 3; i++)
+            {
+                string caminho = $@"C:\temp\arquivo{i}.txt";
+                var turno = AIB.Services.Memory.TurnSplitter.Split(new List<ChatMessage>
+                {
+                    ChatMessage.CreateUserMessage($"leia o arquivo {i}"),
+                    ChatMessage.CreateAssistantMessage(new[]
+                    {
+                        ChatToolCall.CreateFunctionToolCall($"c{i}", "read",
+                            BinaryData.FromString("{\"path\":\"" + caminho.Replace(@"\", @"\\") + "\"}"))
+                    }),
+                    ChatMessage.CreateToolMessage($"c{i}", "     1\tconteúdo"),
+                    ChatMessage.CreateAssistantMessage("li")
+                })[0] with { Index = i };
+                memoria.AppendTurn(turno).Should().BeTrue();
+            }
+
+            var falas = new List<ChatTurn> { new(true, "leia o arquivo 0"), new(false, "li") };
+            conversation.LoadConversation(falas, sessao, sessionId: "ensaio-reabrir-inteiro");
+
+            var vivo = conversation.SnapshotHistory();
+            vivo.OfType<ToolChatMessage>().Should().HaveCount(3, "os resultados voltam com a conversa");
+            vivo.OfType<AssistantChatMessage>().Count(a => a.ToolCalls.Count > 0).Should().Be(3);
+
+            await conversation.ForcarCompactacaoAsync(userLevel: 9);
+
+            conversation.Chapters.Should().ContainSingle();
+            conversation.Chapters[0].Artifacts.Should().ContainSingle()
+                .Which.Value.Should().Be(@"C:\temp\arquivo0.txt");
+        }
+
+        [Fact]
+        public async Task Compact_FechaTodosOsCapitulosEDepoisOsAtos()
+        {
+            // Um /compact fechava UM capítulo (no máximo oito turnos) e parava. Numa conversa
+            // longa reaberta, o usuário tinha de repetir o comando sem saber quantas vezes.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "resumo";
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 20; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"pergunta {i}")) { }
+
+            // A compactação automática pode ter fechado capítulos no caminho; o que importa é onde
+            // o comando deixa a conversa.
+            int antes = conversation.Chapters.Count;
+
+            string resposta = await conversation.ForcarCompactacaoAsync(userLevel: 9);
+
+            conversation.Chapters.Count.Should().BeGreaterThan(antes + 1, "mais de um capítulo num comando só");
+            conversation.Chapters[^1].LastTurn.Should().Be(17, "os dois mais recentes ficam vivos");
+            AIB.Services.Memory.TurnSplitter.Split(conversation.SnapshotHistory()).Should().HaveCount(2);
+            conversation.Acts.Should().NotBeEmpty();
+            conversation.Chapters.Count(c => c.Index > conversation.Acts.Max(a => a.LastChapter))
+                .Should().BeLessThan(2, "o que sobrou solto já foi promovido");
+            resposta.Should().NotContain("Nada a compactar", "o fim da fila não é recusa");
+        }
+
+        [Fact]
         public async Task ForcarCapitulo_ComDoisTurnos_ResumeOMaisAntigo()
         {
             // Com a regra fixa de "os dois mais recentes ficam fora", um turno miúdo seguido de

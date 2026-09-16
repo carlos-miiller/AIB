@@ -600,11 +600,11 @@ public sealed class ConversationService : IMessageStore
     /// carrega a conversa do jeito antigo, toda crua.
     /// <para>
     /// Os turnos ja cobertos por capitulo NAO voltam ao contexto: eles viram tokens no total do
-    /// contador, que e o unico lugar onde continuam pesando. Os demais voltam, mas so as falas
-    /// de usuario e do agente. Chamada de ferramenta e resultado ficam de fora de proposito:
-    /// um tool_calls sem o resultado correspondente quebra a requisicao seguinte, e remontar os
-    /// pares a partir do disco e uma chance de erro sem ganho — os literais que importavam
-    /// ficaram nos artefatos dos capitulos.
+    /// contador, que e o unico lugar onde continuam pesando. Os demais voltam INTEIROS, com as
+    /// chamadas de ferramenta e os resultados. Antes voltavam so as falas, e a conversa reaberta
+    /// perdia o que tinha feito: a compactacao seguinte resumia turnos sem execucao e fechava
+    /// capitulos sem artefato. O par chamada/resultado e conferido em TurnoDoRegistro — o que
+    /// nao fecha par fica de fora, porque quebraria a requisicao seguinte.
     /// </para>
     /// </summary>
     private bool RestaurarMemoria(string? memorySessionId)
@@ -662,24 +662,21 @@ public sealed class ConversationService : IMessageStore
                         continue;
                     }
 
-                    foreach (var registro in turno.Messages)
+                    // O turno INTEIRO, com chamadas e resultados — ver TurnoDoRegistro.
+                    var (mensagens, descartados) = TurnoDoRegistro.Remontar(turno);
+
+                    // O que não fechou par fica de fora, mas não em silêncio: é a diferença entre
+                    // o que a conversa pesou ao vivo e o que ela pesa reaberta.
+                    foreach (var texto in descartados)
+                        _descartadoAoReabrir += _tokenCounter.CountText(texto);
+
+                    for (int i = 0; i < mensagens.Count; i++)
                     {
-                        if (string.IsNullOrWhiteSpace(registro.Text)) continue;
+                        _history.Add(mensagens[i]);
 
-                        if (registro.Role == "user")
-                        {
-                            var abertura = ChatMessage.CreateUserMessage(registro.Text);
-                            _history.Add(abertura);
-
-                            // Veio do disco: já está gravado, e com este número.
-                            _indiceNoRegistro.AddOrUpdate(abertura, new StrongBox<int>(turno.Index));
-                        }
-                        else if (registro.Role == "assistant")
-                            _history.Add(ChatMessage.CreateAssistantMessage(registro.Text));
-                        else
-                            // Fica de fora, mas deixa de sair em silêncio: é a diferença entre
-                            // o que a conversa pesou ao vivo e o que ela pesa reaberta.
-                            _descartadoAoReabrir += _tokenCounter.CountText(registro.Text);
+                        // Veio do disco: já está gravado, e com este número.
+                        if (i == 0 && mensagens[i] is UserChatMessage)
+                            _indiceNoRegistro.AddOrUpdate(mensagens[i], new StrongBox<int>(turno.Index));
                     }
                 }
             }
@@ -1084,7 +1081,7 @@ public sealed class ConversationService : IMessageStore
                 int gatilho = MemoryBudget.CompactionThreshold(quota, fracao);
                 if (vivo <= gatilho) break;
 
-                var candidatos = SelectTurnsToCompact(quota, vivo);
+                var candidatos = SelectTurnsToCompact(quota, vivo, comPiso: fechados == 0);
                 if (candidatos.Count == 0)
                 {
                     // "Passou do gatilho e nao compactou" tem causa, e a causa e sempre a mesma:
@@ -1245,18 +1242,43 @@ public sealed class ConversationService : IMessageStore
 
         try
         {
-            CompactacaoAndou?.Invoke(new PassoDaCompactacao("capítulo", _memory.NextChapterIndex, 0));
+            var partes = new List<string>();
 
-            string doCapitulo = await ForcarCapituloAsync(userLevel, token).ConfigureAwait(false);
+            // TODOS os capítulos que couberem, e não um. Um capítulo leva no máximo
+            // MaxTurnsPerChapter turnos: numa conversa reaberta com vinte turnos soltos, o comando
+            // fechava um e parava, e o usuário tinha de repetir sem saber quantas vezes. O teto
+            // é o mesmo da passada automática — cada capítulo é uma chamada ao modelo.
+            for (int feitos = 0; feitos < MaxCapitulosPorPassada && !token.IsCancellationRequested; feitos++)
+            {
+                CompactacaoAndou?.Invoke(new PassoDaCompactacao("capítulo", _memory.NextChapterIndex, feitos));
 
-            // A promoção só é tentada quando há material: <see cref="ForcarAtoAsync"/> recusa
-            // com menos de dois soltos, e anunciar "arco" para depois recusar faria a faixa
-            // piscar um trabalho que não vai acontecer.
-            if (_memory.UncoveredChapters.Count < 2) return doCapitulo;
+                int antes = _memory.Chapters.Count;
+                string doCapitulo = await ForcarCapituloAsync(userLevel, comPiso: feitos == 0, token)
+                    .ConfigureAwait(false);
 
-            string doAto = await ForcarAtoAsync(userLevel, token).ConfigureAwait(false);
+                // A recusa ("nada a compactar") só interessa quando nenhum capítulo fechou; depois
+                // de fechar algum, ela só quer dizer que acabou.
+                if (_memory.Chapters.Count == antes)
+                {
+                    if (feitos == 0) partes.Add(doCapitulo);
+                    break;
+                }
 
-            return doCapitulo + "\n\n" + doAto;
+                partes.Add(doCapitulo);
+            }
+
+            // Depois, os atos. Cada capítulo fechado acima já promove de quatro em quatro; o que
+            // sobra solto é promovido aqui, de dois em dois, que é o mínimo que não vira resumo
+            // de resumo de um capítulo só. A checagem vem antes para a faixa não anunciar "arco"
+            // e recusar em seguida.
+            while (_memory.UncoveredChapters.Count >= 2 && !token.IsCancellationRequested)
+            {
+                int antes = _memory.Acts.Count;
+                partes.Add(await ForcarAtoAsync(userLevel, token).ConfigureAwait(false));
+                if (_memory.Acts.Count == antes) break;
+            }
+
+            return string.Join("\n\n", partes);
         }
         finally
         {
@@ -1272,7 +1294,10 @@ public sealed class ConversationService : IMessageStore
     /// um "nao deu" sem motivo e pior que nao ter o comando.
     /// </para>
     /// </summary>
-    public async Task<string> ForcarCapituloAsync(int userLevel, CancellationToken ct = default)
+    public Task<string> ForcarCapituloAsync(int userLevel, CancellationToken ct = default) =>
+        ForcarCapituloAsync(userLevel, comPiso: true, ct);
+
+    private async Task<string> ForcarCapituloAsync(int userLevel, bool comPiso, CancellationToken ct)
     {
         await _turnGate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -1281,7 +1306,7 @@ public sealed class ConversationService : IMessageStore
             if (quota.IsOff)
                 return "Nao ha cota de memoria neste nivel: o prompt fixo ja ocupa o orcamento inteiro.";
 
-            var candidatos = SelectTurnsToCompact(quota, LiveTokens(), forcado: true);
+            var candidatos = SelectTurnsToCompact(quota, LiveTokens(), forcado: true, comPiso);
             if (candidatos.Count == 0)
             {
                 _registroDaCompactacao.Pulou(
@@ -1478,7 +1503,12 @@ public sealed class ConversationService : IMessageStore
     /// Ignora o alvo de tokens e leva os turnos disponiveis mesmo com a conversa folgada. E o
     /// caminho do comando do usuario: ele pediu um capitulo, nao perguntou se compensava.
     /// </param>
-    private List<Turn> SelectTurnsToCompact(MemoryQuota quota, int vivo, bool forcado = false)
+    /// <param name="comPiso">
+    /// Se, sem turno antes dos dois recentes, vale descer ao piso de um. Falso para quem já
+    /// compactou nesta mesma passada: o piso é para destravar, não para continuar comendo — num
+    /// laço, a volta seguinte sempre acharia "só dois turnos" e levaria o penúltimo.
+    /// </param>
+    private List<Turn> SelectTurnsToCompact(MemoryQuota quota, int vivo, bool forcado = false, bool comPiso = true)
     {
         List<ChatMessage> vivos;
         lock (_gate) { vivos = _history.Skip(FirstRemovableIndex()).ToList(); }
@@ -1490,7 +1520,7 @@ public sealed class ConversationService : IMessageStore
         // um turno enorme e outro miúdo no fim travavam a compactação de vez: foi uma cadeia
         // de 18 ferramentas depois de um "leve modificação", e o /compact respondia "nada a
         // compactar" com a conversa acima do gatilho.
-        int manter = turnos.Count - KeepRecentTurns > 0 ? KeepRecentTurns : MinRecentTurns;
+        int manter = turnos.Count - KeepRecentTurns > 0 || !comPiso ? KeepRecentTurns : MinRecentTurns;
         int disponiveis = turnos.Count - manter;
         if (disponiveis <= 0) return new List<Turn>();
 

@@ -106,6 +106,68 @@ namespace AIB.Tests
 
         // ── SessionMemory ────────────────────────────────────────────────────
 
+        // ── Remontar o turno do registro ─────────────────────────────────────
+
+        private static TurnRecord Registro(params MessageRecord[] mensagens) =>
+            new(0, "2026-09-16T00:00:00Z", mensagens, Array.Empty<Artifact>());
+
+        private static MessageRecord Chamada(string texto, params (string Id, string Nome)[] chamadas) =>
+            new("assistant", texto, chamadas.Select(c => new ToolCallRecord(c.Id, c.Nome, "{}")).ToList());
+
+        private static MessageRecord Resultado(string id, string texto) => new("tool", texto, null, id);
+
+        [Fact]
+        public void Remontar_TrazChamadasEResultados()
+        {
+            // A reabertura trazia só as falas: a conversa voltava sem nada do que tinha executado.
+            var (mensagens, descartados) = TurnoDoRegistro.Remontar(Registro(
+                new MessageRecord("user", "leia os dois"),
+                Chamada("lendo", ("a", "read"), ("b", "read")),
+                Resultado("a", "conteúdo a"),
+                Resultado("b", "conteúdo b"),
+                new MessageRecord("assistant", "pronto")));
+
+            descartados.Should().BeEmpty();
+            mensagens.Select(m => m.GetType().Name).Should().Equal(
+                nameof(UserChatMessage), nameof(AssistantChatMessage),
+                nameof(ToolChatMessage), nameof(ToolChatMessage), nameof(AssistantChatMessage));
+
+            var comChamadas = (AssistantChatMessage)mensagens[1];
+            comChamadas.ToolCalls.Select(c => c.Id).Should().Equal("a", "b");
+            comChamadas.Content.Should().Contain(p => p.Text == "lendo", "a fala de antes da chamada vem junto");
+            ((ToolChatMessage)mensagens[3]).ToolCallId.Should().Be("b");
+        }
+
+        [Fact]
+        public void Remontar_ChamadaSemResultado_FicaDeForaMasAFalaFica()
+        {
+            // Um tool_calls sem o resultado de cada id faz a API recusar a requisição seguinte.
+            var (mensagens, descartados) = TurnoDoRegistro.Remontar(Registro(
+                new MessageRecord("user", "apague"),
+                Chamada("vou apagar", ("x", "shell")),
+                new MessageRecord("assistant", "[turno encerrado sem resposta: cancelado por você]")));
+
+            mensagens.OfType<ToolChatMessage>().Should().BeEmpty();
+            mensagens.OfType<AssistantChatMessage>().Should().OnlyContain(a => a.ToolCalls.Count == 0);
+            mensagens.Should().HaveCount(3, "a fala 'vou apagar' continua sendo conversa");
+            descartados.Should().ContainSingle();
+        }
+
+        [Fact]
+        public void Remontar_ParcialmenteRespondida_ManteSoOPar()
+        {
+            var (mensagens, descartados) = TurnoDoRegistro.Remontar(Registro(
+                new MessageRecord("user", "duas coisas"),
+                Chamada("", ("ok", "read"), ("sem", "read")),
+                Resultado("ok", "li"),
+                Resultado("orfa", "de ninguém"),
+                new MessageRecord("assistant", "fim")));
+
+            ((AssistantChatMessage)mensagens[1]).ToolCalls.Select(c => c.Id).Should().Equal("ok");
+            mensagens.OfType<ToolChatMessage>().Select(t => t.ToolCallId).Should().Equal("ok");
+            descartados.Should().HaveCount(2, "a chamada sem resposta e o resultado sem chamada");
+        }
+
         // ── Turno em curso ───────────────────────────────────────────────────
 
         private static Turn TurnoInterrompido() => TurnSplitter.Split(new List<ChatMessage>
