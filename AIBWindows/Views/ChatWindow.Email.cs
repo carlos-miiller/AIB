@@ -258,6 +258,11 @@ public partial class ChatWindow
 
             item.PreencherMetadados(conversa, agora);
 
+            // Sem provedor conhecido não há para onde ir. Um botão que não abre nada é pior que
+            // botão nenhum: ensina que os botões desta tela não funcionam.
+            if (LinkDoCliente(conversa).Length == 0)
+                item.BotaoAbrirNoCliente.Visibility = Visibility.Collapsed;
+
             var alvo = conversa;
 
             // Um item aberto por vez: abrir o segundo fecha o primeiro. Dois corpos abertos
@@ -328,22 +333,24 @@ public partial class ChatWindow
     /// <summary>
     /// O rótulo do botão secundário segue o PROVEDOR da conta. Desconhecido vira "Abrir no
     /// cliente": prometer Gmail numa caixa que não é Gmail seria mentir sobre para onde o
-    /// clique leva.
+    /// clique leva. A regra mora em <see cref="LinkDoEmail"/>, junto com o endereço.
     /// </summary>
-    private static string RotuloDoCliente(MailSummary conversa)
-    {
-        string conta = (conversa?.Account ?? "").ToLowerInvariant();
+    private static string RotuloDoCliente(MailSummary conversa) =>
+        LinkDoEmail.Rotulo(conversa?.Account, conversa?.ThreadId);
 
-        if (conta.Contains("gmail") || conta.Contains("googlemail")) return "Abrir no Gmail";
-        if (conta.Contains("outlook") || conta.Contains("hotmail") || conta.Contains("live"))
-            return "Abrir no Outlook";
-
-        return "Abrir no cliente";
-    }
+    /// <summary>
+    /// Para onde o botão leva. A URL do item quando veio; montada aqui quando não veio — uma
+    /// linha criada por outro caminho, ou antes de o vigia preencher o campo, não pode voltar a
+    /// ter um botão que não abre nada.
+    /// </summary>
+    private static string LinkDoCliente(MailSummary conversa) =>
+        string.IsNullOrWhiteSpace(conversa?.Url)
+            ? LinkDoEmail.Para(conversa?.Account, conversa?.ThreadId)
+            : conversa!.Url;
 
     /// <summary>Sai do app pelo mesmo caminho das outras telas — ver MailListItem.</summary>
     private static void AbrirEmailNoCliente(MailSummary conversa) =>
-        MailListItem.AbrirNoNavegador(conversa?.Url);
+        MailListItem.AbrirNoNavegador(LinkDoCliente(conversa));
 
     // ──────────────────────────────────────────────────────────────────────────────
     // §3.11  LEITURA DO E-MAIL COM A IA
@@ -442,6 +449,8 @@ public partial class ChatWindow
         AssuntoDaLeitura.Text = alvo.Name;
         AssuntoDaLeitura.ToolTip = alvo.Name;
         BotaoAbrirNoClienteDaLeitura.Content = RotuloDoCliente(alvo);
+        BotaoAbrirNoClienteDaLeitura.Visibility =
+            LinkDoCliente(alvo).Length == 0 ? Visibility.Collapsed : Visibility.Visible;
 
         AplicarEstadoDoModo();
     }

@@ -683,9 +683,10 @@ public sealed class MailDigestService : IDisposable
                     // Account é a CAIXA (m.Conta) e De é o REMETENTE (m.De). Já foram o mesmo
                     // campo: o rótulo "Abrir no Gmail" passou a seguir o provedor de quem mandou,
                     // e §3.11 não tinha como achar a conta para reler a conversa.
-                    ? new MailSummary(m.Assunto, v.Resumo, v.Urgencia, "", m.Conta, De: m.De)
+                    ? new MailSummary(m.Assunto, v.Resumo, v.Urgencia,
+                                      LinkDoEmail.Para(m.Conta, m.ThreadId), m.Conta, De: m.De)
                     : new MailSummary(m.Assunto, $"De {m.NomeDoRemetente}. O resumo não saiu desta vez.",
-                                      MailUrgency.Media, "", m.Conta, De: m.De);
+                                      MailUrgency.Media, LinkDoEmail.Para(m.Conta, m.ThreadId), m.Conta, De: m.De);
 
                 string chave = ArquivoDeConversas.Chave(m.Conta, m.ThreadId, m.Uid);
 
@@ -834,7 +835,9 @@ public sealed class MailDigestService : IDisposable
                     Name: e.Assunto,
                     Description: e.Resumo,
                     Urgency: urgencia,
-                    Url: "",
+                    // Era "": o botão "Abrir no Gmail" das conversas que voltavam do disco não
+                    // abria nada.
+                    Url: LinkDoEmail.Para(g.Conta, g.ThreadId),
                     Account: g.Conta,
                     LastMessageAt: e.UltimaEm == default ? default : e.UltimaEm.ToLocalTime(),
                     MessageCount: Math.Max(1, e.Mensagens),

@@ -1182,6 +1182,20 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void AoVoltarDoDisco_AConversaTRAZ_OEnderecoDoWebmail()
+        {
+            // Nascia com Url "" — e o botão "Abrir no Gmail" não abria nada.
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+
+            JaTriado(pasta, "10", "Contrato", "Maxima", Ontem);
+            vigia.Reconstituir();
+
+            vigia.Ultimo.Itens.Single().Url
+                .Should().Be(LinkDoEmail.Para("eu@empresa.com", "10"))
+                .And.NotBeEmpty();
+        }
+
+        [Fact]
         public void Ignorar_TiraDaTelaNaHora_EContinuaForaDepoisDoArranque()
         {
             var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
