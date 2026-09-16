@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -104,10 +104,11 @@ public sealed class RegistroDaCompactacao
     /// estar com o terminal aberto na hora certa.
     /// </para>
     /// </summary>
-    public void Resumo(long ms, int? prefill, int? saida, int palavras) =>
+    public void Resumo(long ms, int? prefill, int? saida, int palavras, decimal? custoUsd = null) =>
         Escrever("  · resumo",
             $"{PulsoDoTurno.Duracao(ms)}, prefill {Contagem(prefill)}, saída {Contagem(saida)}, "
-            + $"{palavras} palavra(s)");
+            + $"{palavras} palavra(s)"
+            + (custoUsd is decimal c ? $", {TokenReport.Dolares(c)}" : ""));
 
     /// <summary>
     /// O que o capítulo tirou do prompt. É o único número que torna a economia verificável

@@ -138,6 +138,7 @@ public sealed class Compactor
 
         string resumo;
         IReadOnlyList<Pendencia> assunto = Array.Empty<Pendencia>();
+        decimal? custo = null;
         var relogio = System.Diagnostics.Stopwatch.StartNew();
 
         try
@@ -160,8 +161,9 @@ public sealed class Compactor
                 resumo = "[resumo indisponível: o modelo devolveu texto vazio]";
 
             relogio.Stop();
+            custo = resultado.CustoUsd;
             _registro?.Resumo(relogio.ElapsedMilliseconds,
-                resultado.PromptEvalCount, resultado.EvalCount, Palavras(resumo));
+                resultado.PromptEvalCount, resultado.EvalCount, Palavras(resumo), custo);
         }
         catch (OperationCanceledException)
         {
@@ -194,7 +196,8 @@ public sealed class Compactor
             resumo,
             artefatos,
             crus,
-            Pendencias: Pendencias.Extrair(turns).Concat(assunto).ToList());
+            Pendencias: Pendencias.Extrair(turns).Concat(assunto).ToList(),
+            CustoUsd: custo);
 
         // O custo do capítulo é o do bloco que ele vira no prompt, e por isso só pode ser
         // medido depois de montado. Os números NÃO entram no Render: o modelo não ganha nada
@@ -226,6 +229,7 @@ public sealed class Compactor
         // pelas que o resumo do ato apontar, se ele apontar: ele vê o arco inteiro.
         var herdadas = Pendencias.Resolver(chapters.Select(c => (c.Pendencias, c.Artifacts)).ToList());
         IReadOnlyList<Pendencia>? assuntoDoAto = null;
+        decimal? custo = null;
 
         string resumo;
         var relogio = System.Diagnostics.Stopwatch.StartNew();
@@ -250,8 +254,9 @@ public sealed class Compactor
                 resumo = "[resumo indisponível: o modelo devolveu texto vazio]";
 
             relogio.Stop();
+            custo = resultado.CustoUsd;
             _registro?.Resumo(relogio.ElapsedMilliseconds,
-                resultado.PromptEvalCount, resultado.EvalCount, Palavras(resumo));
+                resultado.PromptEvalCount, resultado.EvalCount, Palavras(resumo), custo);
         }
         catch (OperationCanceledException)
         {
@@ -289,7 +294,8 @@ public sealed class Compactor
             deCapitulos,
             Pendencias: assuntoDoAto == null
                 ? herdadas
-                : herdadas.Where(p => p.Tipo != Pendencia.Assunto).Concat(assuntoDoAto).ToList());
+                : herdadas.Where(p => p.Tipo != Pendencia.Assunto).Concat(assuntoDoAto).ToList(),
+            CustoUsd: custo);
 
         return ato with { TokensDoAto = _contador.CountText(ato.Render()) };
     }

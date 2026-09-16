@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace AIB.Services;
 
@@ -74,8 +74,20 @@ public readonly record struct TokenReport(
     int Rede = 0,
     int Capitulos = 0,
     int Atos = 0,
-    bool MedidaCompleta = true)
+    bool MedidaCompleta = true,
+    /// <summary>
+    /// O que a conversa já custou em US$: as voltas ao modelo e os resumos. Só o OpenRouter
+    /// cobra e relata; nulo é "nada cobrado", e a tela não mostra nada.
+    /// </summary>
+    decimal? CustoUsd = null)
 {
+    /// <summary>
+    /// "US$ 0,0123". Quatro casas abaixo de um dólar: um turno custa frações de centavo, e
+    /// arredondar a duas casas mostraria "US$ 0,00" conversa afora.
+    /// </summary>
+    public static string Dolares(decimal valor) =>
+        "US$ " + valor.ToString(valor < 1m ? "0.0000" : "N2", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
+
     /// <summary>
     /// O que a COMPACTAÇÃO poupou: os turnos crus que ela engoliu menos a faixa de memória que
     /// entrou no lugar deles. Nunca negativo.

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -114,6 +114,7 @@ public sealed class AgentLoop
             int? lastPromptEvalCount = null;
             int? lastEvalCount = null;
             double? lastPromptEvalMillis = null;
+            decimal? lastCusto = null;
             var relogioDaVolta = System.Diagnostics.Stopwatch.StartNew();
 
             // Quanto deste prompt o KV cache do provider deve reaproveitar. Calculado por nós
@@ -191,6 +192,7 @@ public sealed class AgentLoop
                     lastPromptEvalCount = usage.PromptEvalCount ?? lastPromptEvalCount;
                     lastEvalCount = usage.EvalCount ?? lastEvalCount;
                     lastPromptEvalMillis = usage.PromptEvalMillis ?? lastPromptEvalMillis;
+                    lastCusto = usage.CustoUsd ?? lastCusto;
                 }
                 else if (chunk is StreamChunk.Done done)
                 {
@@ -233,7 +235,7 @@ public sealed class AgentLoop
             // a mensagem com ele — é o que torna o raw.jsonl medível depois.
             relogioDaVolta.Stop();
             yield return new AgentEvent.ModelReplied(
-                provider.Model, lastPromptEvalCount, lastEvalCount, relogioDaVolta.ElapsedMilliseconds);
+                provider.Model, lastPromptEvalCount, lastEvalCount, relogioDaVolta.ElapsedMilliseconds, lastCusto);
 
             // ── Ferramentas pedidas: executa e volta para o modelo ────────────────
             if (calls.Count > 0)

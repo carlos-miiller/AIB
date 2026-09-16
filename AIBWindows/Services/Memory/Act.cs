@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Text;
 
 namespace AIB.Services.Memory;
@@ -46,7 +46,8 @@ public sealed record Act(
     int TokensDosTurnos = 0,
     int TokensDosCapitulos = 0,
     int TokensDoAto = 0,
-    IReadOnlyList<Pendencia>? Pendencias = null)
+    IReadOnlyList<Pendencia>? Pendencias = null,
+    decimal? CustoUsd = null)
 {
     /// <summary>Quanto o ato tira do prompt em relação ao CRU. Nunca negativo.</summary>
     public int Economia => TokensDosTurnos > TokensDoAto

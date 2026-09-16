@@ -25,6 +25,7 @@ public sealed record ToolCallRecord(string Id, string Name, string Arguments);
 /// <param name="EsperaHumanaMs">Ferramenta: a parte da duração parada no cartão de confirmação.</param>
 /// <param name="Decisao">Ferramenta: como passou pelo portão — ver <c>ToolRegistry.ExecuteToolAsync</c>.</param>
 /// <param name="Falhou">Ferramenta: se o resultado é um erro ou uma recusa.</param>
+/// <param name="CustoUsd">Assistente: o que a volta custou em US$, quando o provedor relata (OpenRouter).</param>
 public sealed record MessageRecord(
     string Role,
     string Text,
@@ -37,7 +38,8 @@ public sealed record MessageRecord(
     long? DuracaoMs = null,
     long? EsperaHumanaMs = null,
     string? Decisao = null,
-    bool? Falhou = null);
+    bool? Falhou = null,
+    decimal? CustoUsd = null);
 
 /// <summary>
 /// O que se sabe de uma mensagem além do texto dela. Mora fora da <c>ChatMessage</c> do SDK,
@@ -51,7 +53,8 @@ public sealed record MetaDaMensagem(
     long? DuracaoMs = null,
     long? EsperaHumanaMs = null,
     string? Decisao = null,
-    bool? Falhou = null);
+    bool? Falhou = null,
+    decimal? CustoUsd = null);
 
 /// <summary>
 /// Um turno completo gravado em <c>raw.jsonl</c>: uma linha por turno.

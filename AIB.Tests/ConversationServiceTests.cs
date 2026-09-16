@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -1430,6 +1430,44 @@ namespace AIB.Tests
             turno.Messages[^1].Text.Should().Contain("terminei");
             File.Exists(Path.Combine(conversation.SessionMemoryDir, "turno-aberto.json"))
                 .Should().BeFalse("o turno fechou");
+        }
+
+        [Fact]
+        public async Task OCustoDeCadaVolta_VaiAoRegistro_ESomaAoReabrir()
+        {
+            // O OpenRouter cobra por volta. O custo mora na mensagem do raw.jsonl, e não num
+            // campo em memória: fechar e reabrir a conversa não pode zerar o que já foi gasto.
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var provider = new ProviderRoteirizado(_ => new StreamChunk[]
+            {
+                new StreamChunk.TextDelta("certo", TextChannel.Final),
+                new StreamChunk.Usage(PromptEvalCount: 100, EvalCount: 5, CustoUsd: 0.0021m),
+                new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+            });
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 2; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"turno {i}")) { }
+
+            conversation.TurnosGravados()[0].Messages[1].CustoUsd.Should().Be(0.0021m);
+            conversation.MemoriaEmTexto(1).Should().Contain(TokenReport.Dolares(0.0042m));
+
+            string memoria = Path.GetFileName(conversation.SessionMemoryDir);
+            conversation.LoadConversation(new List<ChatTurn> { new(true, "turno 0"), new(false, "certo") },
+                memoria, sessionId: "ensaio-custo");
+
+            conversation.MemoriaEmTexto(1).Should().Contain(TokenReport.Dolares(0.0042m));
+        }
+
+        [Fact]
+        public async Task SemCobranca_NaoAparecePrecoNenhum()
+        {
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+
+            conversation.MemoriaEmTexto(1).Should().NotContain("US$", "Ollama não cobra");
         }
 
         [Fact]

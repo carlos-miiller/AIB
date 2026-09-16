@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -1882,6 +1882,11 @@ public partial class ChatWindow : Window
             TokenCounterText.Inlines.Add(new Run(
                 $"{relatorio.Contexto:N0} tokens | {relatorio.Max:N0}"));
 
+            // O dinheiro, quando há. Só o OpenRouter cobra; no Ollama o campo é nulo e o rodapé
+            // continua como sempre foi.
+            if (relatorio.CustoUsd is decimal custo)
+                TokenCounterText.Inlines.Add(new Run($" | {TokenReport.Dolares(custo)}"));
+
             TokenCounterText.Foreground = CorDaOcupacao(relatorio);
 
             // A conta atrás do número. Dois números e uma cor respondem "está economizando?",
@@ -1902,9 +1907,14 @@ public partial class ChatWindow : Window
     /// </summary>
     private static string DicaDoContador(TokenReport r)
     {
+        string gasto = r.CustoUsd is decimal custo
+            ? $"gasto na conversa ...... {TokenReport.Dolares(custo)}\n\n"
+            : "";
+
         if (r.Capitulos == 0 && r.Atos == 0)
             return $"Nada compactado ainda.\n"
                  + $"No prompt: {r.Contexto:N0} de {r.Max:N0} tokens.\n\n"
+                 + gasto
                  + "/memoria mostra a conta; /capitulo compacta agora.";
 
         var texto = new StringBuilder();
@@ -1956,7 +1966,7 @@ public partial class ChatWindow : Window
             texto.Append('\n').Append('\n')
                  .Append("Capítulos antigos sem medida: o poupado é um piso.");
 
-        texto.Append('\n').Append('\n').Append("/memoria mostra capítulo por capítulo.");
+        texto.Append('\n').Append('\n').Append(gasto).Append("/memoria mostra capítulo por capítulo.");
         return texto.ToString();
     }
 

@@ -353,7 +353,8 @@ public sealed class SessionMemory
                 DuracaoMs = meta.DuracaoMs,
                 EsperaHumanaMs = meta.EsperaHumanaMs,
                 Decisao = meta.Decisao,
-                Falhou = meta.Falhou
+                Falhou = meta.Falhou,
+                CustoUsd = meta.CustoUsd
             };
     }
 }

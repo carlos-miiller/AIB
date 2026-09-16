@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using AIB.Services.Ai;
 using OpenAI.Chat;
 
@@ -104,11 +104,13 @@ public abstract record AgentEvent
     /// <param name="TokensEntrada">O prompt avaliado, como o provider relatou. Nulo se não relatou.</param>
     /// <param name="TokensSaida">O que o modelo gerou, como o provider relatou. Nulo se não relatou.</param>
     /// <param name="DuracaoMs">Do envio do prompt ao fim do stream.</param>
+    /// <param name="CustoUsd">O que esta volta custou, quando o provedor cobra e relata.</param>
     public sealed record ModelReplied(
         string Modelo,
         int? TokensEntrada,
         int? TokensSaida,
-        long DuracaoMs) : AgentEvent;
+        long DuracaoMs,
+        decimal? CustoUsd = null) : AgentEvent;
 
     /// <summary>Fim do turno. Emitido exatamente uma vez, por último.</summary>
     public sealed record Completed(TurnOutcome Outcome, int IterationsUsed) : AgentEvent;

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Text;
 
 namespace AIB.Services.Memory;
@@ -28,6 +28,7 @@ namespace AIB.Services.Memory;
 /// bloco de memória as mostra numa seção só, no fim, já sem as que um trecho posterior resolveu.
 /// Nulo nos capítulos gravados antes de existirem.
 /// </param>
+/// <param name="CustoUsd">O que a chamada ao resumidor custou, quando o provedor relata (OpenRouter).</param>
 public sealed record Chapter(
     int Index,
     string AtUtc,
@@ -37,7 +38,8 @@ public sealed record Chapter(
     IReadOnlyList<Artifact> Artifacts,
     int TokensDosTurnos = 0,
     int TokensDoCapitulo = 0,
-    IReadOnlyList<Pendencia>? Pendencias = null)
+    IReadOnlyList<Pendencia>? Pendencias = null,
+    decimal? CustoUsd = null)
 {
     /// <summary>
     /// Quanto este capítulo tirou do prompt. Nunca negativo: um resumo que saiu maior que o

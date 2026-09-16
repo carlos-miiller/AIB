@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -216,6 +216,13 @@ public sealed class ConversationService : IMessageStore
     /// </para>
     /// </summary>
     private int _descartadoAoReabrir;
+
+    /// <summary>
+    /// US$ gastos na conversa: voltas ao modelo e resumos. Vem de disco ao reabrir — raw.jsonl,
+    /// chapters.jsonl e acts.jsonl trazem o custo de cada chamada —, e cresce ao vivo. Protegido
+    /// por <see cref="_gate"/>.
+    /// </summary>
+    private decimal _custoDaConversa;
 
     /// <summary>
     /// Tokens da faixa narrativa da memoria — atos e capitulos soltos — como ela esta AGORA no
@@ -499,6 +506,7 @@ public sealed class ConversationService : IMessageStore
             _turnsRecorded = 0;
             _crusSemMedida = 0;
             _descartadoAoReabrir = 0;
+            lock (_gate) { _custoDaConversa = 0; }
             _tokensDeResumo = 0;
             _tituloRevisado = false;
             Title = null;
@@ -637,6 +645,13 @@ public sealed class ConversationService : IMessageStore
             int ultimoCoberto = _memory.LastCoveredTurn;
             _crusSemMedida = 0;
             _descartadoAoReabrir = 0;
+
+            lock (_gate)
+            {
+                _custoDaConversa = turnos.SelectMany(t => t.Messages).Sum(m => m.CustoUsd ?? 0m)
+                                   + capitulos.Sum(c => c.CustoUsd ?? 0m)
+                                   + atos.Sum(a => a.CustoUsd ?? 0m);
+            }
 
             // Só os turnos cobertos por capítulos que NÃO sabem quanto custaram. Os demais já
             // trazem o número no registro, e recontá-los aqui somaria o mesmo turno duas vezes.
@@ -1230,6 +1245,7 @@ public sealed class ConversationService : IMessageStore
 
         _memory.Add(capitulo);
         _sessionMemory.AppendChapter(capitulo);
+        if (capitulo.CustoUsd is decimal custoDoCapitulo) lock (_gate) { _custoDaConversa += custoDoCapitulo; }
 
         // Promocao antes de reescrever o bloco: se um ato nascer agora, ele ja entra no mesmo
         // prompt, e o prefixo e invalidado UMA vez em vez de duas.
@@ -1467,6 +1483,7 @@ public sealed class ConversationService : IMessageStore
 
             _memory.Add(ato);
             _sessionMemory.AppendAct(ato);
+            if (ato.CustoUsd is decimal custoDoAto) lock (_gate) { _custoDaConversa += custoDoAto; }
 
             // Fatos saem de TODOS os capítulos da sessão, e não só dos deste ato: o que se
             // conta é quantos capítulos distintos um literal atravessou, e esse número não
@@ -1782,7 +1799,9 @@ public sealed class ConversationService : IMessageStore
                                 Modelo: volta.Modelo,
                                 TokensEntrada: volta.TokensEntrada,
                                 TokensSaida: volta.TokensSaida,
-                                DuracaoMs: volta.DuracaoMs);
+                                DuracaoMs: volta.DuracaoMs,
+                                CustoUsd: volta.CustoUsd);
+                            if (volta.CustoUsd is decimal custo) _custoDaConversa += custo;
                         }
                         break;
 
@@ -2377,6 +2396,8 @@ public sealed class ConversationService : IMessageStore
                  .Append('\n');
             texto.Append("A compactação dispara sozinha quando a conversa viva passa do gatilho, ")
                  .Append("ou na hora com /capitulo.");
+            if (relatorio.CustoUsd is decimal gastoSemCapitulo)
+                texto.Append('\n').Append($"Gasto na conversa: {TokenReport.Dolares(gastoSemCapitulo)} (OpenRouter).");
             return texto.ToString();
         }
 
@@ -2465,6 +2486,10 @@ public sealed class ConversationService : IMessageStore
              .Append("  (= poupado + descartado)").Append('\n');
         texto.Append($"Teto deste nível .............. {relatorio.Max,9:N0}").Append('\n');
 
+        if (relatorio.CustoUsd is decimal gasto)
+            texto.Append($"Gasto na conversa ............. {TokenReport.Dolares(gasto),9}")
+                 .Append("  (voltas ao modelo e resumos)").Append('\n');
+
         if (relatorio.Descartado > 0)
         {
             texto.Append('\n');
@@ -2513,7 +2538,14 @@ public sealed class ConversationService : IMessageStore
             TetoDaPoda,
             _memory.Chapters.Count,
             _memory.Acts.Count,
-            _memory.MedidaCompleta || _crusSemMedida == 0);
+            _memory.MedidaCompleta || _crusSemMedida == 0,
+            CustoAteAqui());
+    }
+
+    /// <summary>O custo da conversa para a tela. Nulo quando nada foi cobrado.</summary>
+    private decimal? CustoAteAqui()
+    {
+        lock (_gate) { return _custoDaConversa > 0 ? _custoDaConversa : null; }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
