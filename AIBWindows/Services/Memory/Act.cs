@@ -30,6 +30,10 @@ namespace AIB.Services.Memory;
 /// resumo dos turnos e a da promoção a ato.
 /// </param>
 /// <param name="TokensDoAto">O que este ato custa no prompt — <see cref="Render"/> medido.</param>
+/// <param name="Pendencias">
+/// As dos capítulos cobertos que continuavam valendo, mais as de assunto que o resumo do ato
+/// apontou. Como no capítulo, ficam fora do <see cref="Render"/>.
+/// </param>
 public sealed record Act(
     int Index,
     string AtUtc,
@@ -41,7 +45,8 @@ public sealed record Act(
     IReadOnlyList<Artifact> Artifacts,
     int TokensDosTurnos = 0,
     int TokensDosCapitulos = 0,
-    int TokensDoAto = 0)
+    int TokensDoAto = 0,
+    IReadOnlyList<Pendencia>? Pendencias = null)
 {
     /// <summary>Quanto o ato tira do prompt em relação ao CRU. Nunca negativo.</summary>
     public int Economia => TokensDosTurnos > TokensDoAto

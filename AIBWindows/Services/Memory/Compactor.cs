@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -56,12 +56,17 @@ public sealed class Compactor
         Escreva um parágrafo único, em Português (Brasil), na terceira pessoa e no passado,
         cobrindo: o que o usuário pediu, o que o agente fez e como terminou.
 
+        Depois do parágrafo, numa linha própria, escreva PENDENTE: seguido do que o usuário
+        pediu no trecho e NÃO ficou feito, itens separados por ponto e vírgula. Se tudo o que
+        foi pedido ficou feito, escreva PENDENTE: nenhuma.
+
         Regras:
         - Registre o que FALHOU com o mesmo cuidado do que deu certo.
-        - Não invente nada que não esteja no trecho.
+        - Não invente nada que não esteja no trecho. Na linha PENDENTE, só o que foi pedido de
+          forma explícita e ficou sem fazer; sugestões suas não são pendência.
         - Não copie caminhos de arquivo nem linhas de comando: eles são preservados à parte.
-        - Sem listas, sem títulos, sem preâmbulo. Só o parágrafo.
-        - No máximo 120 palavras.
+        - Sem listas, sem títulos, sem preâmbulo. Só o parágrafo e a linha PENDENTE.
+        - No máximo 120 palavras no parágrafo.
         """;
 
     private const string ActPrompt =
@@ -73,12 +78,17 @@ public sealed class Compactor
         conte o arco inteiro: o que foi perseguido ao longo do trecho, o que foi conseguido e o
         que ficou em aberto.
 
+        Depois do parágrafo, numa linha própria, escreva PENDENTE: seguido do que ainda está
+        por fazer ao FIM do arco, itens separados por ponto e vírgula — o que um trecho deixou
+        pendente e um trecho posterior resolveu não entra. Se nada ficou por fazer, escreva
+        PENDENTE: nenhuma.
+
         Regras:
         - O que ficou pendente ou falhou importa tanto quanto o que foi concluído.
         - Não invente nada que não esteja nos trechos.
         - Não copie caminhos de arquivo nem linhas de comando: eles são preservados à parte.
-        - Sem listas, sem títulos, sem preâmbulo. Só o parágrafo.
-        - No máximo 150 palavras.
+        - Sem listas, sem títulos, sem preâmbulo. Só o parágrafo e a linha PENDENTE.
+        - No máximo 150 palavras no parágrafo.
         """;
 
     private readonly IChatProvider _provider;
@@ -127,6 +137,7 @@ public sealed class Compactor
         string agora = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
 
         string resumo;
+        IReadOnlyList<Pendencia> assunto = Array.Empty<Pendencia>();
         var relogio = System.Diagnostics.Stopwatch.StartNew();
 
         try
@@ -143,7 +154,7 @@ public sealed class Compactor
 
             // O resumidor pode ser um modelo de raciocínio: o bloco <think> vem no texto e não
             // é resumo nenhum.
-            resumo = ThinkBlockStripper.Strip(resultado.Text);
+            (resumo, assunto) = Pendencias.LerDoResumo(ThinkBlockStripper.Strip(resultado.Text));
 
             if (string.IsNullOrWhiteSpace(resumo))
                 resumo = "[resumo indisponível: o modelo devolveu texto vazio]";
@@ -182,7 +193,8 @@ public sealed class Compactor
             turns[^1].Index,
             resumo,
             artefatos,
-            crus);
+            crus,
+            Pendencias: Pendencias.Extrair(turns).Concat(assunto).ToList());
 
         // O custo do capítulo é o do bloco que ele vira no prompt, e por isso só pode ser
         // medido depois de montado. Os números NÃO entram no Render: o modelo não ganha nada
@@ -210,6 +222,11 @@ public sealed class Compactor
         var artefatos = ArtifactDigest.Condense(chapters.SelectMany(c => c.Artifacts));
         string agora = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
 
+        // As pendências que continuam valendo ao fim dos capítulos. As de assunto são trocadas
+        // pelas que o resumo do ato apontar, se ele apontar: ele vê o arco inteiro.
+        var herdadas = Pendencias.Resolver(chapters.Select(c => (c.Pendencias, c.Artifacts)).ToList());
+        IReadOnlyList<Pendencia>? assuntoDoAto = null;
+
         string resumo;
         var relogio = System.Diagnostics.Stopwatch.StartNew();
 
@@ -225,7 +242,9 @@ public sealed class Compactor
                 .CompleteAsync(mensagens, Array.Empty<ChatTool>(), Options, ct)
                 .ConfigureAwait(false);
 
-            resumo = ThinkBlockStripper.Strip(resultado.Text);
+            string cru = ThinkBlockStripper.Strip(resultado.Text);
+            (resumo, var doAto) = Pendencias.LerDoResumo(cru);
+            if (cru.Contains(Pendencias.MarcaDoResumo, StringComparison.OrdinalIgnoreCase)) assuntoDoAto = doAto;
 
             if (string.IsNullOrWhiteSpace(resumo))
                 resumo = "[resumo indisponível: o modelo devolveu texto vazio]";
@@ -267,7 +286,10 @@ public sealed class Compactor
             resumo,
             artefatos,
             crus,
-            deCapitulos);
+            deCapitulos,
+            Pendencias: assuntoDoAto == null
+                ? herdadas
+                : herdadas.Where(p => p.Tipo != Pendencia.Assunto).Concat(assuntoDoAto).ToList());
 
         return ato with { TokensDoAto = _contador.CountText(ato.Render()) };
     }
@@ -281,6 +303,12 @@ public sealed class Compactor
         {
             texto.Append("TRECHO ").Append(capitulo.Index + 1).Append(": ");
             texto.Append(capitulo.Summary.Trim()).Append('\n');
+
+            var pendentes = capitulo.Pendencias ?? Array.Empty<Pendencia>();
+            if (pendentes.Count > 0)
+                texto.Append("PENDENTE NO TRECHO: ")
+                     .Append(string.Join("; ", pendentes.Select(p => p.Texto)))
+                     .Append('\n');
         }
 
         return texto.ToString();

@@ -23,6 +23,11 @@ namespace AIB.Services.Memory;
 /// <param name="TokensDoCapitulo">
 /// O que este capítulo custa no prompt — <see cref="Render"/> medido. É a metade direita.
 /// </param>
+/// <param name="Pendencias">
+/// Pontas soltas do trecho — ver <see cref="Pendencia"/>. NÃO entram no <see cref="Render"/>: o
+/// bloco de memória as mostra numa seção só, no fim, já sem as que um trecho posterior resolveu.
+/// Nulo nos capítulos gravados antes de existirem.
+/// </param>
 public sealed record Chapter(
     int Index,
     string AtUtc,
@@ -31,7 +36,8 @@ public sealed record Chapter(
     string Summary,
     IReadOnlyList<Artifact> Artifacts,
     int TokensDosTurnos = 0,
-    int TokensDoCapitulo = 0)
+    int TokensDoCapitulo = 0,
+    IReadOnlyList<Pendencia>? Pendencias = null)
 {
     /// <summary>
     /// Quanto este capítulo tirou do prompt. Nunca negativo: um resumo que saiu maior que o

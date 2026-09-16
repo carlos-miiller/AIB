@@ -931,10 +931,39 @@ public sealed class ConversationService : IMessageStore
     private const int KeepRecentTurns = 2;
 
     /// <summary>
-    /// O piso de <see cref="KeepRecentTurns"/>: o turno que acabou de terminar nunca vira resumo.
-    /// É o contexto de "continue" — sem ele, o modelo retomaria de um parágrafo.
+    /// A fatia da cota viva que os turnos recentes podem ocupar e continuar crus.
     /// </summary>
-    private const int MinRecentTurns = 1;
+    private const double FracaoDosRecentes = 0.15;
+
+    /// <summary>
+    /// Quantos turnos do fim ficam fora do capítulo: até <see cref="KeepRecentTurns"/>, e só os
+    /// que, somados, cabem em <see cref="FracaoDosRecentes"/> da cota.
+    /// <para>
+    /// Era "os dois últimos, sempre", e o tamanho não importava. Um turno de 18 ferramentas
+    /// pesava 19 mil tokens e não saía do contexto de jeito nenhum — o /compact respondia "nada
+    /// a compactar" com a conversa acima do gatilho. Os recentes ficam crus porque são o que um
+    /// "continue" retoma; um turno grande desses vira capítulo, e o que ele deixou por fazer
+    /// segue na seção Pendente do bloco de memória.
+    /// </para>
+    /// <para>
+    /// Dois turnos curtos continuam inteiros: resumir o que acabou de acontecer custa uma
+    /// chamada ao modelo e perde fidelidade, para economizar quase nada.
+    /// </para>
+    /// </summary>
+    private int RecentesQueFicam(IReadOnlyList<Turn> turnos, MemoryQuota quota)
+    {
+        int fatia = (int)(quota.Live * FracaoDosRecentes);
+        int ficam = 0, gasto = 0;
+
+        for (int i = turnos.Count - 1; i >= 0 && ficam < KeepRecentTurns; i--)
+        {
+            gasto += _tokenCounter.CountMessages(turnos[i].Messages);
+            if (gasto > fatia) break;
+            ficam++;
+        }
+
+        return ficam;
+    }
 
     /// <summary>
     /// Depois de compactar, a conversa viva deve cair para esta fração da cota. Compactar até
@@ -1081,7 +1110,7 @@ public sealed class ConversationService : IMessageStore
                 int gatilho = MemoryBudget.CompactionThreshold(quota, fracao);
                 if (vivo <= gatilho) break;
 
-                var candidatos = SelectTurnsToCompact(quota, vivo, comPiso: fechados == 0);
+                var candidatos = SelectTurnsToCompact(quota, vivo);
                 if (candidatos.Count == 0)
                 {
                     // "Passou do gatilho e nao compactou" tem causa, e a causa e sempre a mesma:
@@ -1089,7 +1118,7 @@ public sealed class ConversationService : IMessageStore
                     // esta linha o diario mostraria um silencio inexplicavel.
                     _registroDaCompactacao.Pulou(
                         $"vivo={vivo} > limite={gatilho}, mas nenhum turno elegivel "
-                        + "(o mais recente fica sempre fora, e nao ha turno fechado antes dele)");
+                        + "(os recentes curtos ficam fora, e nao ha turno fechado antes deles)");
                     break;
                 }
 
@@ -1187,6 +1216,18 @@ public sealed class ConversationService : IMessageStore
         // turnos das duas pontas: fora do contexto e sem substituto.
         RemoveOldestMessages(candidatos.Sum(t => t.Messages.Count));
 
+        // "O último turno parou sem terminar" só vale se nada veio depois dele. Sobrou turno vivo
+        // depois do capítulo: você já respondeu à interrupção — continuou, desistiu, mudou de
+        // assunto —, e a pendência afirmaria como aberto o que o turno seguinte pode ter fechado.
+        bool sobrouTurnoDepois;
+        lock (_gate) { sobrouTurnoDepois = TurnSplitter.Split(_history.Skip(FirstRemovableIndex()).ToList()).Count > 0; }
+
+        if (sobrouTurnoDepois && capitulo.Pendencias is { Count: > 0 } pendencias)
+            capitulo = capitulo with
+            {
+                Pendencias = pendencias.Where(p => p.Tipo != Pendencia.Interrompido).ToList()
+            };
+
         _memory.Add(capitulo);
         _sessionMemory.AppendChapter(capitulo);
 
@@ -1253,8 +1294,7 @@ public sealed class ConversationService : IMessageStore
                 CompactacaoAndou?.Invoke(new PassoDaCompactacao("capítulo", _memory.NextChapterIndex, feitos));
 
                 int antes = _memory.Chapters.Count;
-                string doCapitulo = await ForcarCapituloAsync(userLevel, comPiso: feitos == 0, token)
-                    .ConfigureAwait(false);
+                string doCapitulo = await ForcarCapituloAsync(userLevel, token).ConfigureAwait(false);
 
                 // A recusa ("nada a compactar") só interessa quando nenhum capítulo fechou; depois
                 // de fechar algum, ela só quer dizer que acabou.
@@ -1294,10 +1334,7 @@ public sealed class ConversationService : IMessageStore
     /// um "nao deu" sem motivo e pior que nao ter o comando.
     /// </para>
     /// </summary>
-    public Task<string> ForcarCapituloAsync(int userLevel, CancellationToken ct = default) =>
-        ForcarCapituloAsync(userLevel, comPiso: true, ct);
-
-    private async Task<string> ForcarCapituloAsync(int userLevel, bool comPiso, CancellationToken ct)
+    public async Task<string> ForcarCapituloAsync(int userLevel, CancellationToken ct = default)
     {
         await _turnGate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -1306,14 +1343,14 @@ public sealed class ConversationService : IMessageStore
             if (quota.IsOff)
                 return "Nao ha cota de memoria neste nivel: o prompt fixo ja ocupa o orcamento inteiro.";
 
-            var candidatos = SelectTurnsToCompact(quota, LiveTokens(), forcado: true, comPiso);
+            var candidatos = SelectTurnsToCompact(quota, LiveTokens(), forcado: true);
             if (candidatos.Count == 0)
             {
                 _registroDaCompactacao.Pulou(
-                    "pedido do usuario, mas nenhum turno elegivel (o mais recente fica sempre "
-                    + "fora, e nao ha turno fechado antes dele)");
-                return "Nada a compactar: o turno mais recente fica sempre fora — os dois mais "
-                     + "recentes, quando há outros —, e não há turno fechado antes dele.";
+                    "pedido do usuario, mas nenhum turno elegivel (os recentes curtos ficam fora, "
+                    + "e nao ha turno fechado antes deles)");
+                return "Nada a compactar: os turnos mais recentes, quando curtos, ficam inteiros, "
+                     + "e não há turno fechado antes deles.";
             }
 
             _registroDaCompactacao.GatilhoManual(LiveTokens(), quota.Live, candidatos.Count);
@@ -1496,31 +1533,21 @@ public sealed class ConversationService : IMessageStore
 
     /// <summary>
     /// Turnos mais antigos a compactar: os suficientes para a conversa viva cair à metade da
-    /// cota. Nunca os <see cref="KeepRecentTurns"/> últimos, e nunca um turno aberto — um
-    /// tool_calls sem resultado quebra a requisição seguinte.
+    /// cota. Nunca os recentes que cabem na fatia deles (<see cref="RecentesQueFicam"/>), e nunca
+    /// um turno aberto — um tool_calls sem resultado quebra a requisição seguinte.
     /// </summary>
     /// <param name="forcado">
     /// Ignora o alvo de tokens e leva os turnos disponiveis mesmo com a conversa folgada. E o
     /// caminho do comando do usuario: ele pediu um capitulo, nao perguntou se compensava.
     /// </param>
-    /// <param name="comPiso">
-    /// Se, sem turno antes dos dois recentes, vale descer ao piso de um. Falso para quem já
-    /// compactou nesta mesma passada: o piso é para destravar, não para continuar comendo — num
-    /// laço, a volta seguinte sempre acharia "só dois turnos" e levaria o penúltimo.
-    /// </param>
-    private List<Turn> SelectTurnsToCompact(MemoryQuota quota, int vivo, bool forcado = false, bool comPiso = true)
+    private List<Turn> SelectTurnsToCompact(MemoryQuota quota, int vivo, bool forcado = false)
     {
         List<ChatMessage> vivos;
         lock (_gate) { vivos = _history.Skip(FirstRemovableIndex()).ToList(); }
 
         var turnos = TurnSplitter.Split(vivos);
 
-        // Os dois mais recentes, quando dá; só o último, quando não dá. Quem chega aqui já
-        // precisa compactar — passou do gatilho, ou o usuário pediu. Com a regra fixa em dois,
-        // um turno enorme e outro miúdo no fim travavam a compactação de vez: foi uma cadeia
-        // de 18 ferramentas depois de um "leve modificação", e o /compact respondia "nada a
-        // compactar" com a conversa acima do gatilho.
-        int manter = turnos.Count - KeepRecentTurns > 0 || !comPiso ? KeepRecentTurns : MinRecentTurns;
+        int manter = RecentesQueFicam(turnos, quota);
         int disponiveis = turnos.Count - manter;
         if (disponiveis <= 0) return new List<Turn>();
 
@@ -2385,6 +2412,14 @@ public sealed class ConversationService : IMessageStore
             texto.Append('\n');
         }
 
+        // O que o bloco de memória leva na seção Pendente — a mesma conta, não outra.
+        var pendentes = _memory.PendenciasVivas;
+        if (pendentes.Count > 0)
+        {
+            texto.Append('\n');
+            texto.Append(Pendencias.Render(pendentes).Replace("### Pendente", "PENDENTE"));
+        }
+
         texto.Append('\n');
         texto.Append($"Conversa crua já resumida ..... {relatorio.Cru,9:N0}").Append('\n');
         texto.Append($"Memória no prompt hoje ........ {relatorio.Memoria,9:N0}").Append('\n');
@@ -2417,6 +2452,15 @@ public sealed class ConversationService : IMessageStore
         texto.Append('\n');
         texto.Append($"Custo cru da conversa ......... {relatorio.Total,9:N0}").Append('\n');
         texto.Append($"Vai ao modelo agora ........... {relatorio.Contexto,9:N0}").Append('\n');
+
+        // A parte do "vai ao modelo" que ainda é conversa crua. Sem ela, 21 mil tokens depois de
+        // compactar tudo pareciam sumidos — eram um turno recente grande.
+        List<ChatMessage> vivos;
+        lock (_gate) { vivos = _history.Skip(FirstRemovableIndex()).ToList(); }
+        var turnosVivos = TurnSplitter.Split(vivos);
+        texto.Append($"  turnos ainda crus ........... {_tokenCounter.CountMessages(vivos),9:N0}")
+             .Append($"  ({turnosVivos.Count} turno(s))").Append('\n');
+
         texto.Append($"Fora do contexto .............. {relatorio.ForaDoContexto,9:N0}")
              .Append("  (= poupado + descartado)").Append('\n');
         texto.Append($"Teto deste nível .............. {relatorio.Max,9:N0}").Append('\n');
@@ -2424,8 +2468,8 @@ public sealed class ConversationService : IMessageStore
         if (relatorio.Descartado > 0)
         {
             texto.Append('\n');
-            texto.Append("O DESCARTADO são chamadas e resultados de ferramenta. Ao reabrir uma ")
-                 .Append("conversa só as FALAS voltam ao contexto: um tool_calls sem o resultado ")
+            texto.Append("O DESCARTADO são chamadas e resultados de ferramenta que, ao reabrir a ")
+                 .Append("conversa, não fechavam par: um tool_calls sem o resultado ")
                  .Append("correspondente quebra a requisição seguinte. Ele entra no custo cru, ")
                  .Append("porque existiu — mas não entra na economia, porque quem o descartou foi ")
                  .Append("a reabertura, e não a compactação.");

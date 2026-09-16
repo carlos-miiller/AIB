@@ -104,7 +104,31 @@ public sealed class MemoryLayer
         texto.Append("Trechos anteriores já compactados. Os artefatos são literais e podem ser usados como estão.\n\n");
         texto.Append(atos).Append(capitulos);
 
+        // No FIM, e uma seção só: é o que um "continue" retoma, e fica colado às mensagens vivas.
+        // O começo do bloco não se mexe por causa dela — o cache de prefixo agradece.
+        string pendente = Pendencias.Render(PendenciasVivas);
+        if (pendente.Length > 0) texto.Append(pendente);
+
         return texto.ToString();
+    }
+
+    /// <summary>
+    /// As pendências que ainda valem, sobre o que vai ao prompt: os atos e depois os capítulos
+    /// soltos, em ordem. Uma falha que um trecho posterior resolveu sai; interrupção e assunto
+    /// só contam do trecho mais recente.
+    /// </summary>
+    public IReadOnlyList<Pendencia> PendenciasVivas
+    {
+        get
+        {
+            var trechos = new List<(IReadOnlyList<Pendencia>? Pendencias, IReadOnlyList<Artifact> Artefatos)>();
+
+            foreach (var ato in _acts) trechos.Add((ato.Pendencias, ato.Artifacts));
+            foreach (var capitulo in _chapters.Where(c => c.Index > LastCoveredChapter))
+                trechos.Add((capitulo.Pendencias, capitulo.Artifacts));
+
+            return Pendencias.Resolver(trechos);
+        }
     }
 
     /// <summary>

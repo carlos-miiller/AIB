@@ -1325,25 +1325,64 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public async Task ForcarCapitulo_ComDoisTurnos_ResumeOMaisAntigo()
+        public async Task TurnoRecenteGrande_VaiParaOCapitulo_ECurtoFica()
         {
             // Com a regra fixa de "os dois mais recentes ficam fora", um turno miúdo seguido de
-            // uma cadeia de 18 ferramentas travava a compactação: acima do gatilho, e o /compact
-            // respondendo "nada a compactar". O piso agora é o último turno.
+            // uma cadeia de 18 ferramentas travava a compactação: 19 mil tokens que não saíam do
+            // contexto. Os recentes ficam só enquanto cabem na fatia deles.
             var settings = BuildSettings(sendSystemPrompt: false);
             var provider = ProviderQueResponde("certo");
             provider.CompleteReply = "resumo";
             var conversation = BuildConversation(settings, provider, out _);
 
             await foreach (var _ in conversation.StreamResponseAsync("miúdo")) { }
-            await foreach (var _ in conversation.StreamResponseAsync("enorme")) { }
+            await foreach (var _ in conversation.StreamResponseAsync("enorme " + Filler(40_000))) { }
 
-            string resposta = await conversation.ForcarCapituloAsync(userLevel: 1);
+            string resposta = await conversation.ForcarCapituloAsync(userLevel: 9);
 
             resposta.Should().Contain("fechado");
+            conversation.Chapters.Should().ContainSingle().Which.LastTurn.Should().Be(1);
+            AIB.Services.Memory.TurnSplitter.Split(conversation.SnapshotHistory()).Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task ForcarCapitulo_DoisTurnosCurtos_FicamInteiros()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, ProviderQueResponde("certo"), out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("um")) { }
+            await foreach (var _ in conversation.StreamResponseAsync("dois")) { }
+
+            string resposta = await conversation.ForcarCapituloAsync(userLevel: 9);
+
+            conversation.Chapters.Should().BeEmpty("resumir o que acabou de acontecer custa e economiza quase nada");
+            resposta.Should().Contain("recentes");
+        }
+
+        [Fact]
+        public async Task TurnoInterrompidoCompactado_DeixaAPendenciaNoPrompt()
+        {
+            // O "continue" depois de o turno de 18 etapas virar capítulo: sem a pendência, o
+            // modelo só teria um parágrafo dizendo que o turno aconteceu.
+            var provider = new FakeProvider(new StreamChunk[]
+            {
+                new StreamChunk.ToolCallDelta("k0", "id0", "ferramenta_inexistente", "{\"x\":\"" + new string('a', 3000) + "\"}"),
+                new StreamChunk.Done(StreamFinishReason.ToolCalls, "tool_calls")
+            });
+            provider.CompleteReply = "O agente tentou e não terminou.\nPENDENTE: nenhuma";
+            var settings = BuildSettings(sendSystemPrompt: true);
+            var conversation = BuildConversation(settings, provider, out _);
+
+            await foreach (var _ in conversation.StreamResponseAsync("gere as assinaturas")) { }
+
+            await conversation.ForcarCompactacaoAsync(userLevel: 9);
+
             conversation.Chapters.Should().ContainSingle();
-            conversation.Chapters[0].LastTurn.Should().Be(0, "o último turno continua vivo");
-            conversation.SnapshotHistory().Select(TextOf).Should().Contain("enorme");
+            var blocoDeMemoria = conversation.SnapshotHistory().OfType<SystemChatMessage>().Select(TextOf).Last();
+            blocoDeMemoria.Should().Contain("### Pendente")
+                .And.Contain("parou sem terminar")
+                .And.Contain("gere as assinaturas");
         }
 
         [Fact]

@@ -89,6 +89,38 @@ namespace AIB.Tests
             });
 
         [Fact]
+        public async Task Capitulo_SeparaAPendenciaDoParagrafo_EJuntaAsDoCodigo()
+        {
+            var provider = new DubleProvider("O usuário pediu e o agente tentou apagar.\nPENDENTE: apagar as notas");
+
+            var capitulo = await new Compactor(provider).SummarizeAsync(0, TurnosDeExemplo(), default);
+
+            capitulo.Summary.Should().Be("O usuário pediu e o agente tentou apagar.");
+            capitulo.Pendencias!.Select(p => p.Tipo).Should().Equal(Pendencia.Falha, Pendencia.Assunto);
+            capitulo.Pendencias![0].Texto.Should().Contain(@"del C:\temp\notas.txt");
+            capitulo.Render().Should().NotContain("PENDENTE", "a seção sai uma só, no fim do bloco de memória");
+        }
+
+        [Fact]
+        public async Task Ato_HerdaAsFalhasAbertas_ETrocaOAssuntoPeloDoArco()
+        {
+            var falha = new Pendencia(Pendencia.Falha, "executar x falhou", "x", ArtifactKind.CommandRun);
+            var capitulos = new[]
+            {
+                new Chapter(0, "t", 0, 1, "a", Array.Empty<Artifact>(),
+                    Pendencias: new[] { falha, new Pendencia(Pendencia.Assunto, "velho") }),
+                new Chapter(1, "t", 2, 3, "b", Array.Empty<Artifact>(),
+                    Pendencias: new[] { new Pendencia(Pendencia.Assunto, "do capítulo") })
+            };
+
+            var ato = await new Compactor(new DubleProvider("O arco.\nPENDENTE: do arco"))
+                .PromoteAsync(0, capitulos, default);
+
+            ato.Summary.Should().Be("O arco.");
+            ato.Pendencias!.Select(p => p.Texto).Should().Equal("executar x falhou", "do arco");
+        }
+
+        [Fact]
         public async Task Capitulo_JuntaResumoNarrativoEArtefatosLiterais()
         {
             var provider = new DubleProvider();
