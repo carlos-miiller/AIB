@@ -52,6 +52,13 @@ public sealed class UserAppSettings
     /// <summary>Se a migração para perfis por provedor já rodou neste arquivo.</summary>
     public bool PerfisMigrados { get; set; }
 
+    /// <summary>
+    /// OpenRouter: só rotear para provedores que não guardam nem treinam com o prompt
+    /// (<c>data_collection: deny</c>). NASCE LIGADO: o prompt leva arquivos e e-mails. Desligar
+    /// amplia os provedores disponíveis — às vezes mais baratos ou mais rápidos.
+    /// </summary>
+    public bool OpenRouterSemColetaDeDados { get; set; } = true;
+
     /// <summary>O perfil do provedor ativo, montado dos campos da conversa.</summary>
     public PerfilDeProvedor PerfilAtivo() => new PerfilDeProvedor
     {

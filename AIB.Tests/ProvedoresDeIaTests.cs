@@ -1,6 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using AIB.Services;
 using AIB.Services.Ai;
 using FluentAssertions;
@@ -181,5 +184,195 @@ namespace AIB.Tests
             a.EntradaPorMilhao.Should().Be(0.27m);
             modelos[1].UsaFerramentas.Should().BeFalse();
         }
-    }
+
+        // ── OpenRouter: roteamento, privacidade, cache, custo, raciocínio, retry ──
+
+        private static ModeloDoOpenRouter Catalogado(string id = "a/b", bool raciocina = false, params string[] parametros) =>
+            new(id, id, 100000, true, raciocina, 1m, 2m, new HashSet<string>(parametros));
+
+        [Fact]
+        public void ComCatalogo_ExigeParametros_ENaoMandaOQueOModeloNaoAceita()
+        {
+            var modelo = Catalogado("a/b", raciocina: false, "tools", "max_tokens");
+            var corpo = JsonDocument.Parse(Provedor().MontarCorpo(
+                new ChatMessage[] { ChatMessage.CreateUserMessage("oi") }, System.Array.Empty<ChatTool>(),
+                new ChatRequestOptions(Think: false, NumPredict: 50), stream: true, modelo)).RootElement;
+
+            corpo.GetProperty("provider").GetProperty("require_parameters").GetBoolean().Should().BeTrue();
+            corpo.TryGetProperty("reasoning", out _).Should().BeFalse("modelo sem raciocínio + require_parameters recusaria a requisição");
+            corpo.TryGetProperty("temperature", out _).Should().BeFalse();
+            corpo.GetProperty("max_tokens").GetInt32().Should().Be(50);
+        }
+
+        [Fact]
+        public void SemCatalogo_NaoExigeParametros_MasPrivacidadeVale()
+        {
+            var corpo = Corpo(new ChatRequestOptions());
+            corpo.GetProperty("provider").TryGetProperty("require_parameters", out _).Should().BeFalse();
+            corpo.GetProperty("provider").GetProperty("data_collection").GetString().Should().Be("deny");
+            corpo.GetProperty("usage").GetProperty("include").GetBoolean().Should().BeTrue();
+
+            var semPrivacidade = new OpenRouterProvider(new System.Net.Http.HttpClient(), ProvedoresDeIa.UrlDoOpenRouter,
+                "k", "a/b", new RegexToolCallHealer(), false, semColetaDeDados: false);
+            JsonDocument.Parse(semPrivacidade.MontarCorpo(new ChatMessage[] { ChatMessage.CreateUserMessage("oi") },
+                System.Array.Empty<ChatTool>(), new ChatRequestOptions(), true)).RootElement
+                .TryGetProperty("provider", out _).Should().BeFalse();
+        }
+
+        [Fact]
+        public void MarcasDeCache_SoEmAnthropicEGemini_NaAlmaMemoriaEUltimaFala()
+        {
+            var mensagens = new ChatMessage[]
+            {
+                ChatMessage.CreateSystemMessage("alma"), ChatMessage.CreateSystemMessage("memória"),
+                ChatMessage.CreateUserMessage("antes"), ChatMessage.CreateAssistantMessage("ok"),
+                ChatMessage.CreateUserMessage("agora")
+            };
+
+            JsonElement Msgs(string modelo) => JsonDocument.Parse(new OpenRouterProvider(new System.Net.Http.HttpClient(),
+                ProvedoresDeIa.UrlDoOpenRouter, "k", modelo, new RegexToolCallHealer(), false)
+                .MontarCorpo(mensagens, System.Array.Empty<ChatTool>(), new ChatRequestOptions(), true)).RootElement.GetProperty("messages");
+
+            var claude = Msgs("anthropic/claude-sonnet-4");
+            int[] marcadas = Enumerable.Range(0, 5).Where(i => claude[i].GetProperty("content").ValueKind == JsonValueKind.Array
+                && claude[i].GetProperty("content")[0].TryGetProperty("cache_control", out _)).ToArray();
+            marcadas.Should().Equal(0, 1, 4);
+
+            Msgs("deepseek/deepseek-chat").EnumerateArray().Should().NotContain(m => m.GetRawText().Contains("cache_control"),
+                "DeepSeek cacheia o prefixo sozinho");
+        }
+
+        [Fact]
+        public void Trecho_LeCustoEDetalhesDoRaciocinio()
+        {
+            var t = OpenRouterProvider.LerTrecho(
+                """{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.text","text":"pen","index":0}]}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"cost":0.00042}}""");
+
+            t.Uso!.CustoUsd.Should().Be(0.00042m);
+            t.DetalhesDoRaciocinio.Should().ContainSingle();
+        }
+
+        [Fact]
+        public void DetalhesDoRaciocinio_JuntamTextoPorIndice_EGuardamAssinatura()
+        {
+            var acumulado = new SortedDictionary<int, System.Text.Json.Nodes.JsonObject>();
+            OpenRouterProvider.JuntarDetalhes(acumulado, new[] { (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse("""{"type":"reasoning.text","text":"pen","index":0}""")! });
+            OpenRouterProvider.JuntarDetalhes(acumulado, new[] { (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse("""{"text":"sando","signature":"sig","index":0}""")! });
+
+            acumulado.Should().ContainSingle();
+            ((string)acumulado[0]["text"]!).Should().Be("pensando");
+            ((string)acumulado[0]["signature"]!).Should().Be("sig");
+            ((string)acumulado[0]["type"]!).Should().Be("reasoning.text");
+        }
+
+        // ── Com rede fingida ────────────────────────────────────────────────
+
+        private sealed class RedeFingida : System.Net.Http.HttpMessageHandler
+        {
+            private readonly Func<int, System.Net.Http.HttpResponseMessage> _resposta;
+            public List<string> Corpos { get; } = new();
+            public RedeFingida(Func<int, System.Net.Http.HttpResponseMessage> resposta) => _resposta = resposta;
+
+            protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage req, CancellationToken ct)
+            {
+                if (req.Method == System.Net.Http.HttpMethod.Get) return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+                Corpos.Add(await req.Content!.ReadAsStringAsync(ct));
+                return _resposta(Corpos.Count);
+            }
+        }
+
+        private static System.Net.Http.HttpResponseMessage Sse(params string[] eventos) => new(System.Net.HttpStatusCode.OK)
+        {
+            Content = new System.Net.Http.StringContent(string.Concat(eventos.Select(e => "data: " + e + "\n\n")) + "data: [DONE]\n\n")
+        };
+
+        private static OpenRouterProvider ComRede(RedeFingida rede, string modelo = "a/b")
+        {
+            CatalogoDoOpenRouter.DefinirCache(new[] { Catalogado(modelo, true, "tools", "reasoning", "temperature", "max_tokens") });
+            return new OpenRouterProvider(new System.Net.Http.HttpClient(rede), ProvedoresDeIa.UrlDoOpenRouter, "k", modelo,
+                new RegexToolCallHealer(), false)
+            { EsperasEntreTentativas = new[] { TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1) } };
+        }
+
+        private static async Task<List<StreamChunk>> Drenar(IAsyncEnumerable<StreamChunk> s)
+        {
+            var l = new List<StreamChunk>();
+            await foreach (var c in s) l.Add(c);
+            return l;
+        }
+
+        [Fact]
+        public async Task RaciocinioDaVoltaComFerramenta_VoltaNaIdaSeguinte_DoMesmoTurno()
+        {
+            var rede = new RedeFingida(n => n == 1
+                ? Sse("""{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.encrypted","data":"XYZ","index":0}],"tool_calls":[{"index":0,"id":"c1","function":{"name":"read","arguments":"{}"}}]}}]}""")
+                : Sse("""{"choices":[{"delta":{"content":"pronto"},"finish_reason":"stop"}]}"""));
+            var p = ComRede(rede);
+            var ferramenta = ChatTool.CreateFunctionTool("read", "lê", System.BinaryData.FromString("{\"type\":\"object\"}"));
+
+            var historico = new List<ChatMessage> { ChatMessage.CreateUserMessage("lê a.txt") };
+            await Drenar(p.StreamAsync(historico, new[] { ferramenta }, new ChatRequestOptions(), CancellationToken.None));
+
+            historico.Add(ChatMessage.CreateAssistantMessage(new[] { ChatToolCall.CreateFunctionToolCall("c1", "read", System.BinaryData.FromString("{}")) }));
+            historico.Add(ChatMessage.CreateToolMessage("c1", "conteúdo"));
+            await Drenar(p.StreamAsync(historico, new[] { ferramenta }, new ChatRequestOptions(), CancellationToken.None));
+
+            var segunda = JsonDocument.Parse(rede.Corpos[1]).RootElement.GetProperty("messages")[1];
+            segunda.GetProperty("reasoning_details")[0].GetProperty("data").GetString().Should().Be("XYZ");
+
+            // Turno seguinte: o raciocínio do turno passado não volta.
+            historico.Add(ChatMessage.CreateAssistantMessage("pronto"));
+            historico.Add(ChatMessage.CreateUserMessage("e agora?"));
+            MensagemSemDetalhes(p, historico).Should().BeTrue();
+        }
+
+        private static bool MensagemSemDetalhes(OpenRouterProvider p, List<ChatMessage> historico) =>
+            !p.MontarCorpo(historico, System.Array.Empty<ChatTool>(), new ChatRequestOptions(), true).Contains("reasoning_details");
+
+        [Fact]
+        public async Task Erro429_TentaDeNovo_E401_Nao()
+        {
+            var rede = new RedeFingida(n => n == 1
+                ? new System.Net.Http.HttpResponseMessage((System.Net.HttpStatusCode)429)
+                : Sse("""{"choices":[{"delta":{"content":"oi"}}],"usage":{"prompt_tokens":5,"completion_tokens":1,"cost":0.001}}"""));
+
+            var resultado = await ComRede(rede).CompleteAsync(new ChatMessage[] { ChatMessage.CreateUserMessage("x") },
+                System.Array.Empty<ChatTool>(), new ChatRequestOptions(), CancellationToken.None);
+
+            rede.Corpos.Should().HaveCount(2);
+            resultado.Text.Should().Be("oi");
+            resultado.CustoUsd.Should().Be(0.001m, "a chamada única também traz o custo");
+
+            var recusa = new RedeFingida(_ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized));
+            Func<Task> chamar = () => ComRede(recusa).CompleteAsync(new ChatMessage[] { ChatMessage.CreateUserMessage("x") },
+                System.Array.Empty<ChatTool>(), new ChatRequestOptions(), CancellationToken.None);
+
+            (await chamar.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*chave*");
+            recusa.Corpos.Should().HaveCount(1, "chave errada não melhora esperando");
+        }
+
+        private sealed class StreamMudo : System.IO.Stream
+        {
+            public override bool CanRead => true; public override bool CanSeek => false; public override bool CanWrite => false;
+            public override long Length => 0; public override long Position { get => 0; set { } }
+            public override void Flush() { }
+            public override int Read(byte[] b, int o, int c) => throw new NotSupportedException();
+            public override async ValueTask<int> ReadAsync(Memory<byte> b, CancellationToken ct) { await Task.Delay(Timeout.Infinite, ct); return 0; }
+            public override long Seek(long o, System.IO.SeekOrigin s) => 0; public override void SetLength(long v) { }
+            public override void Write(byte[] b, int o, int c) { }
+        }
+
+        [Fact]
+        public async Task StreamEmSilencio_EstouraOPrazo_ComFraseLegivel()
+        {
+            var rede = new RedeFingida(_ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            { Content = new System.Net.Http.StreamContent(new StreamMudo()) });
+            var p = ComRede(rede);
+            p.PrazoDeSilencio = TimeSpan.FromMilliseconds(200);
+
+            Func<Task> ler = () => Drenar(p.StreamAsync(new ChatMessage[] { ChatMessage.CreateUserMessage("x") },
+                System.Array.Empty<ChatTool>(), new ChatRequestOptions(), CancellationToken.None));
+
+            (await ler.Should().ThrowAsync<TimeoutException>()).WithMessage("*sem mandar nada*");
+        }    }
 }

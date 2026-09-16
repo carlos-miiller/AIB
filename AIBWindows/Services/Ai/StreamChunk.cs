@@ -79,11 +79,16 @@ public abstract record StreamChunk
     /// Tempo gasto avaliando o prompt. É o único sinal honesto de cache no Ollama: para o mesmo
     /// prompt de 3485 tokens, 204.062ms no frio contra 343ms no quente — 595× de separação.
     /// </param>
+    /// <param name="CustoUsd">
+    /// O que a chamada custou, em US$, como o provedor cobrou. Só o OpenRouter relata; nulo é
+    /// "não cobrado ou não relatado", e o Ollama é sempre nulo.
+    /// </param>
     public sealed record Usage(
         int? PromptEvalCount,
         int? EvalCount,
         int? CachedTokens = null,
-        double? PromptEvalMillis = null) : StreamChunk;
+        double? PromptEvalMillis = null,
+        decimal? CustoUsd = null) : StreamChunk;
 
     /// <summary>
     /// Último chunk de um stream. Emitido exatamente uma vez, sempre.

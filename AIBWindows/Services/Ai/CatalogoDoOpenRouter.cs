@@ -16,10 +16,18 @@ namespace AIB.Services.Ai;
 /// <param name="Raciocina">Se aceita o parâmetro <c>reasoning</c>.</param>
 /// <param name="EntradaPorMilhao">US$ por milhão de tokens de entrada. Nulo se o catálogo não disse.</param>
 /// <param name="SaidaPorMilhao">US$ por milhão de tokens de saída.</param>
+/// <param name="Parametros">
+/// O <c>supported_parameters</c> do catálogo. É por ele que o provider decide o que mandar: com
+/// <c>require_parameters</c> ligado, um campo que o modelo não aceita derruba a requisição inteira.
+/// </param>
 public sealed record ModeloDoOpenRouter(
     string Id, string Nome, int Janela, bool UsaFerramentas, bool Raciocina,
-    decimal? EntradaPorMilhao, decimal? SaidaPorMilhao)
+    decimal? EntradaPorMilhao, decimal? SaidaPorMilhao,
+    IReadOnlySet<string>? Parametros = null)
 {
+    /// <summary>Se o modelo aceita o parâmetro. Sem a lista, ninguém sabe — e a resposta é sim.</summary>
+    public bool Aceita(string parametro) => Parametros == null || Parametros.Contains(parametro);
+
     /// <summary>"janela 163.840 · US$ 0,27/M entrada · US$ 1,10/M saída · raciocínio".</summary>
     public string Resumo()
     {
@@ -49,6 +57,37 @@ public static class CatalogoDoOpenRouter
     private static readonly SemaphoreSlim _trava = new(1, 1);
 
     /// <summary>
+    /// Quando a última leitura falhou. O provider consulta o catálogo antes de cada requisição;
+    /// sem esta pausa, uma rede sem acesso ao /models custaria uma tentativa por turno.
+    /// </summary>
+    private static DateTime _falhouEm = DateTime.MinValue;
+
+    private static readonly TimeSpan PausaDepoisDeFalhar = TimeSpan.FromMinutes(10);
+
+    /// <summary>O modelo do catálogo já baixado, sem ir à rede. Nulo se não há catálogo ou id.</summary>
+    public static ModeloDoOpenRouter? NoCache(string id) =>
+        _cache?.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// O modelo, baixando o catálogo se preciso. Nulo se a rede falhar ou o id não existir —
+    /// quem chama segue sem saber o que o modelo aceita, como antes.
+    /// </summary>
+    public static async Task<ModeloDoOpenRouter?> BuscarAsync(HttpClient http, string id, CancellationToken ct)
+    {
+        if (_cache == null && DateTime.UtcNow - _falhouEm > PausaDepoisDeFalhar)
+            await ListarAsync(http, ct).ConfigureAwait(false);
+
+        return NoCache(id);
+    }
+
+    /// <summary>Ensaio: põe um catálogo no lugar, sem rede. Nulo limpa.</summary>
+    public static void DefinirCache(IReadOnlyList<ModeloDoOpenRouter>? modelos)
+    {
+        _cache = modelos;
+        _falhouEm = DateTime.MinValue;
+    }
+
+    /// <summary>
     /// Os modelos, ordenados por id. Vazio se a rede falhar — a tela deixa digitar o id à mão.
     /// </summary>
     public static async Task<IReadOnlyList<ModeloDoOpenRouter>> ListarAsync(HttpClient http, CancellationToken ct = default)
@@ -61,14 +100,19 @@ public static class CatalogoDoOpenRouter
             if (_cache != null) return _cache;
 
             using var resp = await http.GetAsync(ProvedoresDeIa.UrlDoOpenRouter + "/models", ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode) return Array.Empty<ModeloDoOpenRouter>();
+            if (!resp.IsSuccessStatusCode)
+            {
+                _falhouEm = DateTime.UtcNow;
+                return Array.Empty<ModeloDoOpenRouter>();
+            }
 
             var lista = Ler(await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
-            if (lista.Count > 0) _cache = lista;
+            if (lista.Count > 0) _cache = lista; else _falhouEm = DateTime.UtcNow;
             return lista;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            _falhouEm = DateTime.UtcNow;
             Console.WriteLine($"[CONFIG] catálogo do OpenRouter indisponível: {ex.Message}");
             return Array.Empty<ModeloDoOpenRouter>();
         }
@@ -111,7 +155,7 @@ public static class CatalogoDoOpenRouter
                 id, Texto(m, "name"), janela,
                 parametros.Contains("tools"),
                 parametros.Contains("reasoning") || parametros.Contains("include_reasoning"),
-                entrada, saida));
+                entrada, saida, parametros));
         }
 
         return modelos.OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase).ToList();
