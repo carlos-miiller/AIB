@@ -407,13 +407,15 @@ public sealed class OpenRouterProvider : IChatProvider
                 }
 
                 var pedida = resp.Headers.RetryAfter?.Delta;
+                string motivo = "";
+                try { motivo = Motivo(await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false)); } catch { }
                 resp.Dispose();
 
                 var espera = pedida is TimeSpan p && p > TimeSpan.Zero
                     ? (p > TetoDoRetryAfter ? TetoDoRetryAfter : p)
                     : EsperasEntreTentativas[tentativa];
 
-                Console.WriteLine($"[OpenRouter] {codigo}; nova tentativa em {espera.TotalSeconds:0.#}s");
+                Console.WriteLine($"[OpenRouter] {codigo}: {motivo}; nova tentativa em {espera.TotalSeconds:0.#}s");
                 await Task.Delay(espera, ct).ConfigureAwait(false);
                 continue;
             }
@@ -744,9 +746,40 @@ public sealed class OpenRouterProvider : IChatProvider
                     ? "ferramentas, raciocínio ou não guardar os dados. Desligar \"Só provedores que não guardam dados\" em Configurações › Conexão LLM amplia a escolha."
                     : "ferramentas ou raciocínio. Escolha outro modelo em Configurações › Conexão LLM."),
             404 => $"OpenRouter não encontrou o modelo '{Model}' (404). Escolha outro em Configurações › Conexão LLM. {detalhe}",
-            429 => "OpenRouter: limite de requisições atingido (429), mesmo depois de esperar. Tente de novo em instantes.",
+            429 => $"OpenRouter recusou por limite (429), mesmo depois de esperar: {Motivo(corpo)}",
             _ => $"OpenRouter respondeu {(int)resp.StatusCode}: {detalhe}"
         };
+    }
+
+    /// <summary>
+    /// A explicação que o OpenRouter manda junto do erro: <c>error.message</c> e, quando o provedor
+    /// de baixo recusou, <c>error.metadata.raw</c>. Um 429 pode ser a cota por minuto, a diária dos
+    /// modelos gratuitos ou o provedor de baixo lotado — e cada um pede uma atitude diferente.
+    /// Antes esta frase era trocada por uma genérica, e não dava para saber qual.
+    /// </summary>
+    public static string Motivo(string? corpo)
+    {
+        if (string.IsNullOrWhiteSpace(corpo)) return "sem detalhe";
+
+        try
+        {
+            using var doc = JsonDocument.Parse(corpo);
+            if (doc.RootElement.TryGetProperty("error", out var erro) && erro.ValueKind == JsonValueKind.Object)
+            {
+                string msg = Texto(erro, "message") ?? "";
+                if (erro.TryGetProperty("metadata", out var meta) && meta.ValueKind == JsonValueKind.Object)
+                {
+                    string? raw = meta.TryGetProperty("raw", out var r) ? (r.ValueKind == JsonValueKind.String ? r.GetString() : r.GetRawText()) : null;
+                    string? prov = Texto(meta, "provider_name");
+                    if (!string.IsNullOrEmpty(prov)) msg += $" [provedor: {prov}]";
+                    if (!string.IsNullOrEmpty(raw)) msg += " — " + raw;
+                }
+                if (msg.Length > 0) return msg.Length > 400 ? msg[..400] + "…" : msg;
+            }
+        }
+        catch (JsonException) { }
+
+        return corpo.Length > 300 ? corpo[..300] + "…" : corpo;
     }
 
     private static string? Texto(JsonElement el, string nome) =>

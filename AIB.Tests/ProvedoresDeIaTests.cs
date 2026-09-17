@@ -279,6 +279,20 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void Erro429_DizQualLimite_EQualProvedorRecusou()
+        {
+            // Resposta real de 17/09 para google/gemma-4-31b-it:free. A frase genérica de antes
+            // escondia que a cota era do provedor de baixo, e não da conta.
+            OpenRouterProvider.Motivo(
+                """{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"google/gemma-4-31b-it:free is temporarily rate-limited upstream.","provider_name":"Google AI Studio"}}}""")
+                .Should().Be("Provider returned error [provedor: Google AI Studio] — google/gemma-4-31b-it:free is temporarily rate-limited upstream.");
+
+            OpenRouterProvider.Motivo("""{"error":{"message":"Rate limit exceeded: free-models-per-day"}}""")
+                .Should().Be("Rate limit exceeded: free-models-per-day");
+            OpenRouterProvider.Motivo("").Should().Be("sem detalhe");
+        }
+
+        [Fact]
         public void ProvedoresDoModelo_LidosDosEndpoints()
         {
             var provedores = CatalogoDoOpenRouter.LerProvedores(
