@@ -37,6 +37,7 @@ Console.OutputEncoding = Encoding.UTF8;
 //            --conversa <pasta>         casos "mem-*" sobre a memória GRAVADA dessa sessão
 //                                       (ex.: %USERPROFILE%\.AIB\memory\sessions\20260915-103155-507),
 //                                       lida de uma cópia temporária
+//            --mostrar-memoria          com --conversa: imprime o bloco e sai, sem chamar o modelo
 // Nenhuma opção grava nas configurações do usuário: tudo é trocado na cópia em memória.
 
 string? Opcao(string nome)
@@ -290,8 +291,22 @@ IReadOnlyList<OpenAI.Chat.ChatMessage> MemoriaGravada(string pasta)
     memoria.AddRange(sessao.ReadChapters());
     foreach (var ato in sessao.ReadActs()) memoria.Add(ato);
 
-    string bloco = memoria.RenderNarrative(new AIB.Services.Memory.MemoryQuota(0, 0, 8000, 8000), contador);
+    // Cota (fatos, atos, capítulos, viva). Os atos PRECISAM de cota: capítulo absorvido por ato
+    // não é renderizado, e com os atos em zero o bloco saía vazio — a primeira rodada da linha de
+    // base mediu o modelo sem memória nenhuma.
+    string bloco = memoria.RenderNarrative(new AIB.Services.Memory.MemoryQuota(0, 8000, 8000, 8000), contador);
     Console.WriteLine($"[AVALIAÇÃO] memória gravada de {id}: {memoria.Chapters.Count} capítulo(s), {memoria.Acts.Count} ato(s), {contador.CountText(bloco)} tokens");
+
+    // Bloco vazio mede outra coisa e ainda cobra. Para ANTES de qualquer chamada ao modelo.
+    if (bloco.Trim().Length == 0)
+        throw new InvalidOperationException($"a memória gravada de {id} renderizou vazia; nada foi enviado ao modelo");
+
+    if (args.Contains("--mostrar-memoria"))
+    {
+        Console.WriteLine(bloco);
+        Environment.Exit(0);
+    }
+
     return new OpenAI.Chat.ChatMessage[] { OpenAI.Chat.ChatMessage.CreateSystemMessage(bloco) };
 }
 
