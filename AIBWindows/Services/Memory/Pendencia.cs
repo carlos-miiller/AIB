@@ -81,7 +81,12 @@ public static class Pendencias
 
                 if (artefato.Failed)
                 {
-                    if (!falhas.ContainsKey(chave)) ordem.Add(chave);
+                    // A ordem guarda cada chave UMA vez. Sem o segundo teste, o comando que
+                    // falha, dá certo e falha de novo entrava duas vezes na lista — e saía
+                    // duas vezes no Pendente, como duas pontas soltas onde só há uma.
+                    if (!falhas.ContainsKey(chave) && !ordem.Contains(chave, StringComparer.OrdinalIgnoreCase))
+                        ordem.Add(chave);
+
                     falhas[chave] = new Pendencia(
                         Pendencia.Falha, TextoDaFalha(artefato), artefato.Value, artefato.Kind);
                 }
@@ -141,6 +146,24 @@ public static class Pendencias
                 if (!resolvida) vivas.Add(p);
             }
         }
+
+        // A mesma pendência, dita duas vezes por duas bocas, é uma só.
+        //
+        // O resumidor do ato LÊ o Pendente dos capítulos, e às vezes devolve as mesmas falhas na
+        // linha PENDENTE: dele. Aí a pendência entra duas vezes: uma como falha, com alvo, e
+        // outra como assunto, sem alvo — e a chave, que é o alvo, não casa as duas. Numa sessão
+        // real o Pendente saiu com sete linhas, das quais duas eram cópia.
+        var deFalha = vivas
+            .Where(p => p.Tipo == Pendencia.Falha && p.Kind == ArtifactKind.CommandRun && p.Alvo != null)
+            .Select(p => ComandoDeShell.Assinatura(p.Alvo))
+            .Where(a => a.Length >= 12)
+            .ToList();
+
+        if (deFalha.Count > 0)
+            vivas = vivas
+                .Where(p => p.Tipo != Pendencia.Assunto
+                            || !deFalha.Any(a => p.Texto.Contains(a, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
 
         // A mesma falha pode vir de dois trechos; a lista não repete.
         return vivas

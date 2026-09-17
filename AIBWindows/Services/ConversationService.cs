@@ -1337,11 +1337,17 @@ public sealed class ConversationService : IMessageStore
                 partes.Add(doCapitulo);
             }
 
-            // Depois, os atos. Cada capítulo fechado acima já promove de quatro em quatro; o que
-            // sobra solto é promovido aqui, de dois em dois, que é o mínimo que não vira resumo
-            // de resumo de um capítulo só. A checagem vem antes para a faixa não anunciar "arco"
-            // e recusar em seguida.
-            while (_memory.UncoveredChapters.Count >= 2 && !token.IsCancellationRequested)
+            // Depois, os atos — e só quando houver capítulos soltos suficientes para UM ato de
+            // verdade, o mesmo número da passada automática.
+            //
+            // Isto já foi "de dois em dois", e o resultado apareceu numa sessão real: quatro
+            // capítulos recém-fechados viraram dois atos, com o teto configurado em oito. Os dois
+            // atos custaram duas chamadas ao modelo e economizaram 119 e 570 tokens — pagar para
+            // trocar quatro resumos por dois resumos de resumos. Quem quiser o ato antes da hora
+            // tem o comando próprio, que continua aceitando dois.
+            int porAto = Math.Max(2, CapitulosPorAto());
+
+            while (_memory.UncoveredChapters.Count >= porAto && !token.IsCancellationRequested)
             {
                 int antes = _memory.Acts.Count;
                 partes.Add(await ForcarAtoAsync(userLevel, token).ConfigureAwait(false));

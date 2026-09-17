@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace AIB.Services.Memory;
@@ -45,6 +47,15 @@ public static class ComandoDeShell
         + @"|php\s+-l|python\s+--version|node\s+--version)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>
+    /// Passos que não são o trabalho: entrar na pasta, esperar, limpar a tela. Numa corrente
+    /// <c>A; B; C</c> eles são preparo, e o trabalho é o primeiro passo que sobra.
+    /// </summary>
+    private static readonly Regex Preparo = new(
+        @"^\s*(cd|set-location|sl|chdir|pushd|popd|start-sleep|sleep|timeout|cls|clear|echo"
+        + @"|write-host|set|export|chcp)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>Embrulhos que não dizem nada sobre o que o comando faz: o que importa vem depois.</summary>
     private static readonly Regex Embrulho = new(
         @"^\s*(?:cd\s+[^;&|]+[;&]+\s*"
@@ -81,7 +92,69 @@ public static class ComandoDeShell
             t = t[m.Length..].Trim();
         }
 
+        t = PrimeiroPasso(t);
+
         return t.Trim().Trim('"', '\'', ';').Trim();
+    }
+
+    /// <summary>
+    /// Numa corrente <c>A; B; C</c>, o primeiro passo que não é preparo.
+    /// <para>
+    /// A falha é relatada para a corrente inteira, então a corrente que falhou nunca casava com
+    /// a tentativa seguinte, mais curta. Visto numa sessão real:
+    /// <c>cd X; docker compose up …; Start-Sleep -Seconds 20; docker compose logs …</c> estourou
+    /// o prazo, o <c>docker compose up</c> sozinho funcionou logo depois, e a pendência
+    /// sobreviveu à conversa inteira.
+    /// </para>
+    /// <para>
+    /// Só corta o que está FORA de aspas: um <c>sh -c "a; b"</c> é um comando só, e cortar dentro
+    /// das aspas inventaria um comando que ninguém rodou.
+    /// </para>
+    /// </summary>
+    private static string PrimeiroPasso(string comando)
+    {
+        foreach (string passo in Passos(comando))
+            if (passo.Length > 0 && !Preparo.IsMatch(passo))
+                return passo;
+
+        return comando;
+    }
+
+    private static IEnumerable<string> Passos(string comando)
+    {
+        var atual = new StringBuilder();
+        char aspa = '\0';
+
+        for (int i = 0; i < comando.Length; i++)
+        {
+            char c = comando[i];
+
+            if (aspa != '\0')
+            {
+                if (c == aspa) aspa = '\0';
+                atual.Append(c);
+                continue;
+            }
+
+            if (c is '"' or '\'')
+            {
+                aspa = c;
+                atual.Append(c);
+                continue;
+            }
+
+            if (c == ';' || (c == '&' && i + 1 < comando.Length && comando[i + 1] == '&'))
+            {
+                if (c == '&') i++;
+                yield return atual.ToString().Trim();
+                atual.Clear();
+                continue;
+            }
+
+            atual.Append(c);
+        }
+
+        yield return atual.ToString().Trim();
     }
 
     /// <summary>

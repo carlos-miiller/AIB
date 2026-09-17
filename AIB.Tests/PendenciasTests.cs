@@ -219,6 +219,66 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void CorrenteQueFalhou_CasaComOPassoQueDeuCertoDepois()
+        {
+            // A falha é relatada para a corrente inteira. O caso real: `cd X; docker compose up …;
+            // Start-Sleep …; docker compose logs …` estourou o prazo, o `docker compose up`
+            // sozinho funcionou logo depois, e a pendência sobreviveu à conversa inteira.
+            Pendencias.Extrair(Turnos(
+                ChatMessage.CreateUserMessage("suba o glpi"),
+                Chamada("c1", "shell", Shell(@"cd C:\Users\Carlo\GLPI; docker compose up -d --force-recreate glpi; Start-Sleep -Seconds 20; docker compose logs --tail=25 glpi")),
+                ChatMessage.CreateToolMessage("c1", "ERRO: O comando demorou mais de 30 segundos e foi interrompido."),
+                Chamada("c2", "shell", Shell("docker compose up -d --force-recreate glpi")),
+                ChatMessage.CreateToolMessage("c2", "Container glpi Started"),
+                ChatMessage.CreateAssistantMessage("subiu"))).Should().BeEmpty();
+        }
+
+        [Fact]
+        public void FalhaQueVoltouADAR_ERRADO_EntraUMAVezSo()
+        {
+            // Falhou, deu certo, falhou de novo: uma ponta solta, não duas. A chave entrava na
+            // ordem uma segunda vez e a linha saía repetida no bloco.
+            var pendencias = Pendencias.Extrair(Turnos(
+                ChatMessage.CreateUserMessage("rode o teste"),
+                Chamada("c1", "shell", Shell("docker exec glpi php teste.php")),
+                ChatMessage.CreateToolMessage("c1", "ERRO (código de saída 1): falhou"),
+                Chamada("c2", "shell", Shell("docker exec glpi php teste.php")),
+                ChatMessage.CreateToolMessage("c2", "tudo certo"),
+                Chamada("c3", "shell", Shell("docker exec glpi php teste.php")),
+                ChatMessage.CreateToolMessage("c3", "ERRO (código de saída 1): falhou de novo"),
+                ChatMessage.CreateAssistantMessage("voltou a falhar")));
+
+            pendencias.Should().ContainSingle().Which.Texto.Should().Contain("falhou de novo");
+        }
+
+        [Fact]
+        public void OAssuntoQueREPETE_UmaFalha_NaoEntraDeNovo()
+        {
+            // O resumidor do ato lê o Pendente dos capítulos e às vezes devolve as mesmas falhas
+            // na linha PENDENTE: dele. A mesma ponta solta por duas bocas continua sendo uma.
+            const string comando = "docker exec glpi php /var/www/glpi/plugins/x/test.php";
+
+            var falha = new Pendencia(Pendencia.Falha,
+                $"executar {comando} 2>&1 | Select-Object -Last 20 falhou e não deu certo depois: ERRO",
+                comando + " 2>&1 | Select-Object -Last 20", ArtifactKind.CommandRun);
+
+            var assunto = new Pendencia(Pendencia.Assunto,
+                $"executar {comando} falhou e não deu certo depois");
+
+            var outro = new Pendencia(Pendencia.Assunto, "limpar os dados de teste no banco");
+
+            var vivas = Pendencias.Resolver(new[]
+            {
+                ((IReadOnlyList<Pendencia>?)new[] { falha, assunto, outro },
+                 (IReadOnlyList<Artifact>)Array.Empty<Artifact>())
+            });
+
+            vivas.Should().HaveCount(2);
+            vivas.Should().Contain(p => p.Tipo == Pendencia.Falha);
+            vivas.Should().Contain(p => p.Texto == "limpar os dados de teste no banco");
+        }
+
+        [Fact]
         public void AAssinatura_IgnoraCanoRedirecionamentoECdNaFrente()
         {
             const string alvo = "docker compose up -d --force-recreate glpi";
@@ -227,6 +287,27 @@ namespace AIB.Tests
                 .Should().Be(alvo);
             ComandoDeShell.Assinatura("docker compose up -d --force-recreate glpi 2>&1 | Select-Object -Last 10")
                 .Should().Be(alvo);
+            ComandoDeShell.Assinatura(@"cd C:\x; docker compose up -d --force-recreate glpi; Start-Sleep -Seconds 20; docker compose logs glpi")
+                .Should().Be(alvo, "numa corrente, o trabalho é o primeiro passo que não é preparo");
+        }
+
+        [Fact]
+        public void AAssinatura_NaoCorta_NoPontoEVirgula_DE_DENTRO_DeUmArgumento()
+        {
+            // Ponto e vírgula dentro de aspas é texto, não corrente: cortar ali inventaria um
+            // comando que ninguém rodou.
+            // A aspa do fim cai junto com a pontuação de borda; o que importa é o "; " ter ficado.
+            ComandoDeShell.Assinatura(@"Set-Content C:\a.txt -Value ""linha 1; linha 2""")
+                .Should().StartWith(@"set-content c:\a.txt -value ""linha 1; linha 2");
+        }
+
+        [Fact]
+        public void AAssinatura_DentroDoShC_PegaOPrimeiroPasso()
+        {
+            // Depois de tirar o embrulho, `sh -c "a; b"` é uma corrente como outra qualquer — e
+            // vale a mesma regra: o trabalho é o primeiro passo.
+            ComandoDeShell.Assinatura(@"docker exec glpi sh -c ""php bin/console plugin:install x; php bin/console plugin:activate x""")
+                .Should().Be("php bin/console plugin:install x");
         }
 
         // ── No bloco de memória ──────────────────────────────────────────────

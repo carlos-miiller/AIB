@@ -1352,6 +1352,13 @@ namespace AIB.Tests
             var settings = BuildSettings(sendSystemPrompt: false);
             var provider = ProviderQueResponde("certo");
             provider.CompleteReply = "resumo";
+
+            // O ato sai quando há capítulos soltos suficientes para um ato de verdade. Aqui o
+            // número é 2 para o ensaio exercitar a promoção sem depender do padrão do provedor.
+            var s = settings.LoadSettings();
+            s.CapitulosPorAto = 2;
+            settings.SaveSettings(s.Sanear());
+
             var conversation = BuildConversation(settings, provider, out _);
 
             for (int i = 0; i < 20; i++)
@@ -1370,6 +1377,32 @@ namespace AIB.Tests
             conversation.Chapters.Count(c => c.Index > conversation.Acts.Max(a => a.LastChapter))
                 .Should().BeLessThan(2, "o que sobrou solto já foi promovido");
             resposta.Should().NotContain("Nada a compactar", "o fim da fila não é recusa");
+        }
+
+        [Fact]
+        public async Task Compact_NAO_PromoveAtoAntesDoNumeroConfigurado()
+        {
+            // Isto já foi "de dois em dois": numa sessão real, quatro capítulos recém-fechados
+            // viraram dois atos com o teto configurado em oito. Os atos custaram duas chamadas ao
+            // modelo e economizaram 119 e 570 tokens — pagar para trocar quatro resumos por dois
+            // resumos de resumos, que é o que a compactação existe para evitar.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "resumo";
+
+            var s = settings.LoadSettings();
+            s.CapitulosPorAto = 16;
+            settings.SaveSettings(s.Sanear());
+
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 20; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"pergunta {i}")) { }
+
+            await conversation.ForcarCompactacaoAsync(userLevel: 9);
+
+            conversation.Chapters.Count.Should().BeGreaterThan(1);
+            conversation.Acts.Should().BeEmpty("faltam capítulos soltos para um ato de verdade");
         }
 
         [Fact]
