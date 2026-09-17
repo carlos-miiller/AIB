@@ -203,8 +203,11 @@ namespace AIB.Tests
             nuvem.LoteDaTriagem.Should().BeGreaterThan(LimitesDoProvedor.Local.LoteDaTriagem);
             nuvem.AlvoDepoisDeCompactar.Should().BeLessThan(LimitesDoProvedor.Local.AlvoDepoisDeCompactar,
                 "compactar menos vezes perde o cache menos vezes");
-            LimitesDoProvedor.Local.CapitulosPorAto.Should().Be(4, "medido no Ollama; resumo de resumo cedo perde informação");
-            nuvem.CapitulosPorAto.Should().Be(8, "cada promoção reescreve o começo do prompt e perde o cache");
+            // Teto, e não gatilho: quem decide a hora de promover é a cota de capítulos. Eram 4 e
+            // 8, e a conta mostrou que promoviam cedo — quatro capítulos de uma sessão inteira
+            // somaram 3.462 tokens numa faixa de ~24.400.
+            LimitesDoProvedor.Local.CapitulosPorAto.Should().Be(8);
+            nuvem.CapitulosPorAto.Should().Be(16, "cada promoção reescreve o começo do prompt e perde o cache");
         }
 
         [Fact]

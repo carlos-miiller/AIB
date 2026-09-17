@@ -1552,17 +1552,18 @@
                                                 <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                                <TextBlock Text="Capítulos por ato" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Teto de capítulos por ato" Style="{StaticResource FieldLabelText}"/>
                                                 <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
-                                                           Text="Quantos capítulos se juntam num ato. Juntar reescreve a memória no começo do prompt: no OpenRouter, fazer isso menos vezes é menos cache perdido."/>
+                                                           Text="No máximo quantos capítulos se juntam num ato. A hora de juntar quem decide é a cota: enquanto os capítulos couberem na faixa deles, ficam inteiros. Juntar reescreve a memória no começo do prompt — no OpenRouter, fazer isso menos vezes é menos cache perdido."/>
                                             </StackPanel>
                                             <ComboBox x:Name="CapitulosPorAtoComboBox" Grid.Column="1" VerticalAlignment="Center"
                                                       Style="{StaticResource ControlComboBox}"
                                                       SelectionChanged="Campo_Mudou">
-                                                <ComboBoxItem Content="Automático (4 no Ollama, 8 no OpenRouter)" Tag="0"/>
+                                                <ComboBoxItem Content="Automático (8 no Ollama, 16 no OpenRouter)" Tag="0"/>
                                                 <ComboBoxItem Content="4" Tag="4"/>
                                                 <ComboBoxItem Content="8" Tag="8"/>
                                                 <ComboBoxItem Content="12" Tag="12"/>
+                                                <ComboBoxItem Content="16" Tag="16"/>
                                             </ComboBox>
                                         </Grid>
                                     </Border>

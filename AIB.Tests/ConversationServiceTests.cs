@@ -1406,6 +1406,31 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task Compact_PromoveQuandoOsCapitulosNaoCabemMaisNaCota()
+        {
+            // Quem manda é a COTA, não a contagem: com a faixa de capítulos apertada, o ato sai
+            // mesmo com o teto lá em cima. É o caso do modelo local, onde a faixa tem algumas
+            // centenas de tokens e um capítulo já a enche.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "resumo";
+
+            var s = settings.LoadSettings();
+            s.CapitulosPorAto = 16;
+            s.MemoryFraction = 0.05;
+            settings.SaveSettings(s.Sanear());
+
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 20; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"pergunta {i}")) { }
+
+            await conversation.ForcarCompactacaoAsync(userLevel: 1);
+
+            conversation.Acts.Should().NotBeEmpty("os capítulos soltos passaram da cota deles");
+        }
+
+        [Fact]
         public async Task TurnoRecenteGrande_VaiParaOCapitulo_ECurtoFica()
         {
             // Com a regra fixa de "os dois mais recentes ficam fora", um turno miúdo seguido de
@@ -1952,11 +1977,16 @@ namespace AIB.Tests
 
             int turnos = await ConversarAteFecharAto(conversation);
 
+            // Quantos capítulos o ato leva depende da COTA, não de um número fixo: ele sai quando
+            // os capítulos soltos deixam de caber na faixa deles. O que o ensaio trava é o
+            // contrato — o ato nasce, começa no primeiro capítulo solto e não apaga nenhum.
             turnos.Should().BePositive("o ato tem de nascer antes do teto de turnos");
             conversation.Acts.Should().ContainSingle();
             conversation.Acts[0].FirstChapter.Should().Be(0);
-            conversation.Acts[0].LastChapter.Should().Be(3);
-            conversation.Chapters.Should().HaveCountGreaterThanOrEqualTo(4, "o ato não apaga capítulo");
+            conversation.Acts[0].LastChapter.Should().BeGreaterThanOrEqualTo(1,
+                "um ato sobre um capítulo só seria resumo de resumo");
+            conversation.Chapters.Should().HaveCountGreaterThanOrEqualTo(
+                conversation.Acts[0].LastChapter + 1, "o ato não apaga capítulo");
         }
 
         [Fact]
@@ -1984,7 +2014,9 @@ namespace AIB.Tests
             await ConversarAteFecharAto(conversation);
 
             File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"))
-                .Length.Should().BeGreaterThanOrEqualTo(4);
+                .Length.Should().BeGreaterThanOrEqualTo(
+                    conversation.Acts[0].LastChapter + 1,
+                    "todo capítulo coberto pelo ato continua gravado");
         }
 
         [Fact]

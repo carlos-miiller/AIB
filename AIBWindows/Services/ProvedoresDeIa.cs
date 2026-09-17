@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -174,12 +174,21 @@ public sealed class PerfilDeProvedor
 /// mais espaço de uma vez e volta menos vezes.
 /// </param>
 /// <param name="CapitulosPorAto">
-/// Capítulos soltos que fecham um ato. No Ollama, quatro, e não dois: promover cedo demais custa
-/// um resumo de resumo por quase nada, e resumo de resumo é onde a informação some. No OpenRouter,
-/// oito: a promoção reescreve o bloco de capítulos, no começo do prompt, e tudo o que vem depois
-/// dele perde o cache do provedor — é a conversa inteira paga a preço cheio na volta seguinte.
-/// Dobrar o número de capítulos por ato corta essas reescritas pela metade; o bloco fica maior
-/// entre uma promoção e outra, mas ele é justamente a parte que o cache cobre.
+/// TETO de capítulos soltos num ato. Quem decide a hora de promover é a cota — ver
+/// <c>ConversationService.CapitulosParaAto</c> —; este número só impede um ato sobre material
+/// demais, que seria resumo de resumo sobre o dobro do material, onde a informação some.
+/// <para>
+/// Oito no Ollama e dezesseis no OpenRouter. Eram quatro e oito, e a conta mostrou que erravam
+/// nos dois sentidos: no nível 9 do OpenRouter a faixa de capítulos tem ~24.400 tokens e quatro
+/// capítulos de uma sessão inteira somaram 3.462 — promover ali é jogar fora detalhe com 21 mil
+/// tokens de espaço sobrando. No Ollama, com a faixa em ~536 tokens, um capítulo já estoura e a
+/// cota promove antes de o teto importar.
+/// </para>
+/// <para>
+/// No OpenRouter há ainda o cache: a promoção reescreve o bloco de capítulos, no começo do
+/// prompt, e tudo o que vem depois dele é pago a preço cheio na volta seguinte. Promover menos
+/// vezes é também gastar menos.
+/// </para>
 /// </param>
 public sealed record LimitesDoProvedor(
     int LinhasDeLeitura, int ItensDaPasta, int EmailPorMensagem, int EmailPorLeitura, int LoteDaTriagem,
@@ -188,9 +197,9 @@ public sealed record LimitesDoProvedor(
     public static readonly LimitesDoProvedor Local = new(
         Tools.ReadFileTool.LinhasPadrao, Tools.ReadFileTool.TetoDaPasta,
         Tools.LerEmailTool.TetoPorMensagem, Tools.LerEmailTool.TetoDaLeitura,
-        Mail.MailDigestService.TetoDoLote, 0.5, 4);
+        Mail.MailDigestService.TetoDoLote, 0.5, 8);
 
-    public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3, 8);
+    public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3, 16);
 
     public static LimitesDoProvedor Para(string? provedor) =>
         provedor == ProvedoresDeIa.OpenRouter ? Nuvem : Local;

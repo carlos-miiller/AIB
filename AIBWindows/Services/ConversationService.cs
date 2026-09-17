@@ -1266,7 +1266,7 @@ public sealed class ConversationService : IMessageStore
         //
         // Em laco: uma passada que fecha varios capitulos pode encher mais de um ato, e parar no
         // primeiro deixaria capitulos soltos que ja tinham material para promover.
-        while (await PromoverAsync(compactor, CapitulosPorAto(), ct).ConfigureAwait(false) != null) { }
+        while (await PromoverAsync(compactor, CapitulosParaAto(quota), ct).ConfigureAwait(false) != null) { }
 
         // Mesma carona: o prefixo ja foi invalidado por esta compactacao, entao revisar o nome
         // da conversa agora nao custa cache nenhum.
@@ -1337,20 +1337,21 @@ public sealed class ConversationService : IMessageStore
                 partes.Add(doCapitulo);
             }
 
-            // Depois, os atos — e só quando houver capítulos soltos suficientes para UM ato de
-            // verdade, o mesmo número da passada automática.
+            // Depois, os atos — pela mesma regra da passada automática: promove quando os
+            // capítulos soltos não couberem mais na cota deles, ou quando chegarem ao teto.
             //
             // Isto já foi "de dois em dois", e o resultado apareceu numa sessão real: quatro
-            // capítulos recém-fechados viraram dois atos, com o teto configurado em oito. Os dois
-            // atos custaram duas chamadas ao modelo e economizaram 119 e 570 tokens — pagar para
-            // trocar quatro resumos por dois resumos de resumos. Quem quiser o ato antes da hora
-            // tem o comando próprio, que continua aceitando dois.
-            int porAto = Math.Max(2, CapitulosPorAto());
-
-            while (_memory.UncoveredChapters.Count >= porAto && !token.IsCancellationRequested)
+            // capítulos recém-fechados viraram dois atos, com o teto em oito. Os dois atos
+            // custaram duas chamadas ao modelo e economizaram 119 e 570 tokens — pagar para trocar
+            // quatro resumos por dois resumos de resumos, com 21 mil tokens de cota sobrando.
+            // Quem quiser o ato antes da hora tem o comando próprio, que aceita dois.
+            while (!token.IsCancellationRequested)
             {
+                int porAto = CapitulosParaAto(CurrentQuota(userLevel));
+                if (_memory.UncoveredChapters.Count < porAto) break;
+
                 int antes = _memory.Acts.Count;
-                partes.Add(await ForcarAtoAsync(userLevel, token).ConfigureAwait(false));
+                partes.Add(await ForcarAtoAsync(userLevel, token, porAto).ConfigureAwait(false));
                 if (_memory.Acts.Count == antes) break;
             }
 
@@ -1421,24 +1422,33 @@ public sealed class ConversationService : IMessageStore
     /// deixa de ser renderizado assim que um ato o cobre.
     /// </para>
     /// </summary>
-    public async Task<string> ForcarAtoAsync(int userLevel, CancellationToken ct = default)
+    /// <param name="minimoParaOAto">
+    /// Quantos capitulos soltos o ato exige. Nulo e o pedido direto do usuario, que aceita dois.
+    /// A passada do /compact passa o numero da regra de cota — ver <see cref="CapitulosParaAto"/>.
+    /// </param>
+    public async Task<string> ForcarAtoAsync(
+        int userLevel, CancellationToken ct = default, int? minimoParaOAto = null)
     {
         await _turnGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            int minimo = Math.Max(2, minimoParaOAto ?? 2);
             int soltos = _memory.UncoveredChapters.Count;
-            if (soltos < 2)
+            if (soltos < minimo)
                 return soltos == 0
                     ? "Nao ha capitulo solto para promover. Feche um capitulo antes."
-                    : "So ha um capitulo solto. Um ato sobre ele seria resumo de resumo, sem "
-                    + "ganho e com perda: o capitulo original deixaria de ser mostrado.";
+                    : soltos == 1
+                    ? "So ha um capitulo solto. Um ato sobre ele seria resumo de resumo, sem "
+                    + "ganho e com perda: o capitulo original deixaria de ser mostrado."
+                    : $"Os {soltos} capitulos soltos ainda cabem na cota deles. Um ato agora "
+                    + "trocaria resumos por um resumo de resumos sem precisar.";
 
             var settings = _settingsService.LoadSettings();
             var compactor = new Compactor(
                 _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
             comModelo: settings.MemoriaComModelo);
 
-            var ato = await PromoverAsync(compactor, minimo: 2, ct).ConfigureAwait(false);
+            var ato = await PromoverAsync(compactor, minimo, ct).ConfigureAwait(false);
             if (ato == null) return "A promocao falhou. Os capitulos seguem soltos.";
 
             RefreshMemoryMessage(CurrentQuota(userLevel));
@@ -1474,6 +1484,40 @@ public sealed class ConversationService : IMessageStore
         return settings.CapitulosPorAto > 0
             ? settings.CapitulosPorAto
             : LimitesDoProvedor.Para(settings.AiProvider).CapitulosPorAto;
+    }
+
+    /// <summary>
+    /// A partir de quanto os capítulos soltos passam a ocupar espaço demais para continuarem
+    /// soltos. Abaixo disso não há o que promover: sobra cota.
+    /// </summary>
+    private const double LimiteDaCotaDeCapitulos = 0.85;
+
+    /// <summary>
+    /// Quantos capítulos soltos fecham um ato AGORA. Quem manda é a COTA, não a contagem.
+    /// <para>
+    /// O ato existe para o bloco caber no orçamento. Contar capítulos não mede isso, e o mesmo
+    /// número erra nas duas pontas: no nível 9 do OpenRouter a faixa de capítulos tem ~24.400
+    /// tokens, e quatro capítulos de uma sessão inteira somaram 3.462 — promover aos oito jogaria
+    /// fora detalhe que tinha espaço de sobra. No Ollama, nível 1 com uma alma de 3.900, a faixa
+    /// tem ~536: um capítulo já estoura, e promover aos quatro é tarde.
+    /// </para>
+    /// <para>
+    /// A contagem vira TETO de segurança: mesmo com cota sobrando, um ato sobre material demais
+    /// seria resumo de resumo sobre o dobro do material, que é onde a informação some.
+    /// </para>
+    /// </summary>
+    private int CapitulosParaAto(MemoryQuota quota)
+    {
+        int teto = Math.Max(2, CapitulosPorAto());
+
+        var soltos = _memory.UncoveredChapters;
+        if (soltos.Count >= teto) return teto;
+
+        // Sem cota medida não há regra de cota: fica o teto, como antes.
+        if (quota.Chapters <= 0 || soltos.Count < 2) return teto;
+
+        int ocupado = soltos.Sum(c => c.TokensDoCapitulo);
+        return ocupado >= quota.Chapters * LimiteDaCotaDeCapitulos ? soltos.Count : teto;
     }
 
     /// <summary>Atos fechados nesta sessão. Diagnóstico e teste.</summary>
