@@ -433,18 +433,58 @@ public partial class SettingsWindow : Window
         // O modelo pode ter mudado enquanto a lista vinha.
         if (!string.Equals(id, (OpenRouterModelComboBox.Text ?? "").Trim(), StringComparison.OrdinalIgnoreCase)) return;
 
+        _provedoresDoModelo = provedores;
+
         bool antes = _carregando;
         _carregando = true;
         try
         {
             string atual = ProvedorFixoComboBox.Text;
-            ProvedorFixoComboBox.ItemsSource = provedores;
+            ProvedorFixoComboBox.ItemsSource = provedores.Count == 0
+                ? null
+                : new[] { AIB.Services.Ai.ProvedorDoModelo.Automatico }.Concat(provedores).ToList();
             ProvedorFixoComboBox.Text = atual;
         }
         finally
         {
             _carregando = antes;
         }
+
+        AtualizarAjudaDoProvedor();
+    }
+
+    /// <summary>Os provedores do modelo na tela, como vieram da última consulta.</summary>
+    private IReadOnlyList<AIB.Services.Ai.ProvedorDoModelo> _provedoresDoModelo = Array.Empty<AIB.Services.Ai.ProvedorDoModelo>();
+
+    private void ProvedorFixo_Mudou(object sender, RoutedEventArgs e)
+    {
+        MarcarSujo();
+        AtualizarAjudaDoProvedor();
+    }
+
+    /// <summary>
+    /// O resumo do provedor escolhido embaixo da caixa: preço, cache, quantização, disponibilidade.
+    /// E o aviso quando o nome digitado não serve este modelo — com o fallback ligado a conversa
+    /// não quebra, mas a preferência não vale nada e o cache continua trocando de casa.
+    /// </summary>
+    private void AtualizarAjudaDoProvedor()
+    {
+        if (ProvedorFixoAjuda == null) return;
+
+        string nome = (ProvedorFixoComboBox.SelectedItem as AIB.Services.Ai.ProvedorDoModelo)?.Nome
+                      ?? (ProvedorFixoComboBox.Text ?? "").Trim();
+
+        var escolhido = _provedoresDoModelo.FirstOrDefault(p => string.Equals(p.Nome, nome, StringComparison.OrdinalIgnoreCase));
+
+        ProvedorFixoAjuda.Text = nome.Length == 0
+            ? ""
+            : escolhido != null
+                ? escolhido.Resumo
+                : _provedoresDoModelo.Count > 0
+                    ? $"\"{nome}\" não serve este modelo. O OpenRouter vai escolher outro, e a preferência não vale."
+                    : "";
+
+        ProvedorFixoAjuda.Visibility = ProvedorFixoAjuda.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>O catálogo do OpenRouter nas duas listas que o usam: modelo da conversa e da triagem.</summary>

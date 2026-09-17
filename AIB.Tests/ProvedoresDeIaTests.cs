@@ -281,9 +281,23 @@ namespace AIB.Tests
         [Fact]
         public void ProvedoresDoModelo_LidosDosEndpoints()
         {
-            CatalogoDoOpenRouter.LerProvedores(
-                """{"data":{"id":"deepseek/deepseek-v4-flash","endpoints":[{"name":"x","provider_name":"Novita","tag":"novita"},{"provider_name":"DeepInfra","tag":"deepinfra/fp8"},{"provider_name":"DeepInfra","tag":"deepinfra/fp4"}]}}""")
-                .Should().Equal("DeepInfra", "Novita");
+            var provedores = CatalogoDoOpenRouter.LerProvedores(
+                """
+                {"data":{"id":"deepseek/deepseek-v4-flash","endpoints":[
+                  {"provider_name":"Novita","quantization":"fp8","pricing":{"prompt":"0.0000004","completion":"0.0000012","input_cache_read":"0.000000026"},"supported_parameters":["tools"],"status":0,"uptime_last_30m":100},
+                  {"provider_name":"DeepInfra","quantization":"fp4","pricing":{"prompt":"0.00000006","completion":"0.00000018","input_cache_read":"0.000000015"},"supported_parameters":["tools"],"status":0,"uptime_last_30m":90},
+                  {"provider_name":"DeepInfra","quantization":"fp8","pricing":{"prompt":"0.00000006","completion":"0.00000018","input_cache_read":"0.000000015"},"supported_parameters":["tools"],"status":0,"uptime_last_30m":99.8,"throughput_last_30m":45},
+                  {"provider_name":"Barato","quantization":"unknown","pricing":{"prompt":"0.00000001","completion":"0.00000002"},"supported_parameters":["temperature"],"status":0}
+                ]}}
+                """);
+
+            // Quem aceita ferramentas primeiro, e entre eles o mais barato lido do cache. Um nome
+            // por provedor, na variante mais disponível.
+            provedores.Select(p => p.Nome).Should().Equal("DeepInfra", "Novita", "Barato");
+            provedores[0].Quantizacao.Should().Be("fp8");
+            provedores[0].Resumo.Should().Contain("cache 0,015").And.Contain("fp8").And.Contain("99,8% no ar").And.Contain("45 tok/s");
+            provedores[2].Resumo.Should().Contain("sem cache").And.Contain("SEM ferramentas");
+            provedores[0].ToString().Should().Be("DeepInfra", "é o nome que vai para provider.order");
 
             CatalogoDoOpenRouter.LerProvedores("""{"error":{"message":"not found"}}""").Should().BeEmpty();
         }

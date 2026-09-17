@@ -772,11 +772,28 @@
                                                 <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
                                                            Text="O cache do prompt fica guardado no provedor que atendeu; trocar de provedor entre voltas paga a conversa inteira de novo. Vazio deixa o OpenRouter escolher. Se ele cair, outro atende."/>
                                             </StackPanel>
-                                            <ComboBox x:Name="ProvedorFixoComboBox" Grid.Column="1" VerticalAlignment="Center"
-                                                      IsEditable="True"
-                                                      Style="{StaticResource ControlComboBoxMono}"
-                                                      SelectionChanged="Campo_Mudou"
-                                                      LostFocus="Campo_Mudou"/>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <!-- Lista dos provedores DO MODELO na tela, com preço, cache, quantização,
+                                                     disponibilidade e velocidade. A caixa mostra só o nome (TextPath),
+                                                     que é o que vai em provider.order; continua editável. -->
+                                                <ComboBox x:Name="ProvedorFixoComboBox"
+                                                          IsEditable="True" TextSearch.TextPath="Nome"
+                                                          Style="{StaticResource ControlComboBoxMono}"
+                                                          SelectionChanged="ProvedorFixo_Mudou"
+                                                          LostFocus="ProvedorFixo_Mudou">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Margin="0,2">
+                                                                <TextBlock Text="{Binding Rotulo}" FontWeight="SemiBold"/>
+                                                                <TextBlock Text="{Binding Resumo}" FontSize="{StaticResource FontSizeHelp}"
+                                                                           Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" MaxWidth="360"/>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                                <TextBlock x:Name="ProvedorFixoAjuda" Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Margin="0,6,0,0" Visibility="Collapsed"/>
+                                            </StackPanel>
                                         </Grid>
                                     </Border>
                                     </StackPanel>
