@@ -238,6 +238,49 @@ public sealed class UserAppSettings
     /// <summary>Quanto do contexto disponível é reservado para memória.</summary>
     public double MemoryFraction { get; set; } = PadraoDaFatiaDeMemoria;
 
+    public const bool PadraoDaMemoriaComModelo = true;
+
+    /// <summary>
+    /// Se o modelo escreve Objetivo e Aprendido ao compactar. Desligado, a compactação é só
+    /// código: Estado, pedidos literais e pendências detectáveis, sem nenhuma chamada ao modelo.
+    /// <para>
+    /// Existe pelo modelo local. Em CPU, cada capítulo custava minutos de prefill e geração, e a
+    /// conversa ficava parada esperando. O que se perde é o que o modelo acrescenta — a frase do
+    /// objetivo e as lições —; o que o código monta, e que a pesquisa mostrou ser a parte que o
+    /// modelo mais erra, fica igual.
+    /// </para>
+    /// </summary>
+    public bool MemoriaComModelo { get; set; } = PadraoDaMemoriaComModelo;
+
+    public const int PadraoDeTurnosPorCapitulo = 8;
+
+    /// <summary>
+    /// Teto de turnos resumidos numa chamada. Menos turnos, prompt do resumidor menor: num modelo
+    /// local, é a diferença entre um capítulo em segundos e um em minutos. Mais turnos, menos
+    /// compactações — e cada uma reescreve o começo do prompt.
+    /// </summary>
+    public int TurnosPorCapitulo { get; set; } = PadraoDeTurnosPorCapitulo;
+
+    /// <summary>
+    /// Capítulos soltos que viram um ato. Zero é automático: 4 no Ollama, 8 no OpenRouter (ver
+    /// <see cref="LimitesDoProvedor.CapitulosPorAto"/>).
+    /// </summary>
+    public int CapitulosPorAto { get; set; }
+
+    /// <summary>
+    /// Esconder, no que vai ao modelo, o conteúdo dos resultados de ferramenta de turnos mais
+    /// antigos que este número. Zero desliga.
+    /// <para>
+    /// Medido pela JetBrains no SWE-bench ("The Complexity Trap", 2025): trocar observações
+    /// antigas por um marcador empatou com o resumo por LLM em custo e acerto, e o resumo ainda
+    /// alongou as trajetórias em ~15%. No AIB é o que mais alivia o modelo local — um arquivo lido
+    /// dez turnos atrás é prefill pago de novo a cada volta. O registro e a tela não mudam: só a
+    /// cópia que vai ao modelo. NASCE DESLIGADO porque a marca muda o meio do prompt quando anda,
+    /// e no OpenRouter isso é cache perdido.
+    /// </para>
+    /// </summary>
+    public int EsconderResultadosDepoisDe { get; set; }
+
     public const int PadraoDeEmailsNoShadow = 3;
 
     /// <summary>
@@ -411,6 +454,9 @@ public sealed class UserAppSettings
         MaxTurnIterations = Entre(MaxTurnIterations, 1, 60);
         CompactionTrigger = Entre(CompactionTrigger, 0.50, 0.99);
         MemoryFraction = Entre(MemoryFraction, 0.05, 0.60);
+        TurnosPorCapitulo = Entre(TurnosPorCapitulo <= 0 ? PadraoDeTurnosPorCapitulo : TurnosPorCapitulo, 2, 20);
+        CapitulosPorAto = CapitulosPorAto <= 0 ? 0 : Entre(CapitulosPorAto, 2, 16);
+        EsconderResultadosDepoisDe = EsconderResultadosDepoisDe <= 0 ? 0 : Entre(EsconderResultadosDepoisDe, 2, 50);
         ShadowMailPreviewCount = Entre(ShadowMailPreviewCount, 1, 10);
         MailWindowDays = Entre(MailWindowDays, 1, 30);
         MailTimeoutSeconds = Entre(MailTimeoutSeconds, 5, 120);

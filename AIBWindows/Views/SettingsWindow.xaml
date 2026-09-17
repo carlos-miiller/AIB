@@ -1444,7 +1444,7 @@
                                     BorderThickness="1" CornerRadius="0" Padding="16,12">
                                 <StackPanel>
                                     <TextBlock Text="Memória" Style="{StaticResource PageTitle}"/>
-                                    <TextBlock Text="O que a conversa lembra, e por quanto tempo."
+                                    <TextBlock Text="Como a conversa longa é guardada, e quanto disso o modelo escreve."
                                                Style="{StaticResource PageSubtitle}"/>
                                 </StackPanel>
                             </Border>
@@ -1453,6 +1453,26 @@
                                           HorizontalScrollBarVisibility="Disabled">
                                 <StackPanel Margin="40,0,24,20">
 
+                                    <!-- Quem escreve a memória: código e modelo, ou só código. O modo só código existe pelo modelo local, onde cada capítulo custava minutos. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Quem escreve a memória" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O código registra o estado dos arquivos e os seus pedidos palavra por palavra. O modelo acrescenta o objetivo e as lições. Com modelo local lento, só o código fecha o capítulo na hora, sem chamar o modelo."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="MemoriaQuemEscreveComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="Campo_Mudou">
+                                                <ComboBoxItem Content="Código e modelo (Recomendado)" Tag="modelo"/>
+                                                <ComboBoxItem Content="Só o código" Tag="codigo"/>
+                                            </ComboBox>
+                                        </Grid>
+                                    </Border>
                                     <!-- Compactar a partir de (% da conversa) -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">
@@ -1462,14 +1482,53 @@
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                                 <TextBlock Text="Compactar a partir de (% da conversa)" Style="{StaticResource FieldLabelText}"/>
-                                                <TextBlock Text="Precisa disparar ANTES do estouro, senão a poda de emergência come o que o capítulo iria resumir." Style="{StaticResource FieldHelpText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Precisa disparar ANTES do estouro, senão a poda de emergência come o que o capítulo iria resumir."/>
                                             </StackPanel>
-                                            <TextBox x:Name="CompactionTriggerTextBox" Grid.Column="1"
+                                            <TextBox x:Name="CompactionTriggerTextBox" Grid.Column="1" VerticalAlignment="Center"
                                                      Style="{StaticResource ControlTextBoxMono}"
                                                      TextChanged="Campo_Mudou"/>
                                         </Grid>
                                     </Border>
-
+                                    <!-- Turnos por capítulo -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Turnos por capítulo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quantos turnos cada compactação resume de uma vez (2 a 20). Menos turnos, resumo mais rápido num modelo local; mais turnos, menos compactações."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="TurnosPorCapituloTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    <!-- Capítulos por ato. Automático segue o provedor (LimitesDoProvedor). -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Capítulos por ato" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quantos capítulos se juntam num ato. Juntar reescreve a memória no começo do prompt: no OpenRouter, fazer isso menos vezes é menos cache perdido."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="CapitulosPorAtoComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="Campo_Mudou">
+                                                <ComboBoxItem Content="Automático (4 no Ollama, 8 no OpenRouter)" Tag="0"/>
+                                                <ComboBoxItem Content="4" Tag="4"/>
+                                                <ComboBoxItem Content="8" Tag="8"/>
+                                                <ComboBoxItem Content="12" Tag="12"/>
+                                            </ComboBox>
+                                        </Grid>
+                                    </Border>
                                     <!-- Fatia do contexto para memória (%) -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">
@@ -1479,16 +1538,36 @@
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                                 <TextBlock Text="Fatia do contexto para memória (%)" Style="{StaticResource FieldLabelText}"/>
-                                                <TextBlock Text="Quanto do que sobra é reservado para fatos, atos e capítulos." Style="{StaticResource FieldHelpText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quanto do que sobra é reservado para fatos, atos e capítulos."/>
                                             </StackPanel>
-                                            <TextBox x:Name="MemoryFractionTextBox" Grid.Column="1"
+                                            <TextBox x:Name="MemoryFractionTextBox" Grid.Column="1" VerticalAlignment="Center"
                                                      Style="{StaticResource ControlTextBoxMono}"
                                                      TextChanged="Campo_Mudou"/>
                                         </Grid>
                                     </Border>
-
-
-
+                                    <!-- Esconder resultados antigos de ferramentas (ResultadosAntigos). Só a cópia que vai ao modelo muda. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Esconder resultados antigos de ferramentas" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O conteúdo de arquivos lidos e saídas de comando de turnos antigos sai do que vai ao modelo, e fica uma linha dizendo o que era. Alivia muito o modelo local. No OpenRouter, deixe em Nunca: mudar o meio do prompt perde o cache."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="EsconderResultadosComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="Campo_Mudou">
+                                                <ComboBoxItem Content="Nunca" Tag="0"/>
+                                                <ComboBoxItem Content="Depois de 4 turnos" Tag="4"/>
+                                                <ComboBoxItem Content="Depois de 8 turnos" Tag="8"/>
+                                                <ComboBoxItem Content="Depois de 16 turnos" Tag="16"/>
+                                            </ComboBox>
+                                        </Grid>
+                                    </Border>
                                     <!-- Guardar a fala junto da ferramenta -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">

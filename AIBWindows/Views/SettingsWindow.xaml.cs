@@ -197,6 +197,7 @@ public partial class SettingsWindow : Window
             MaxIterationsTextBox.Text = _currentSettings.MaxTurnIterations.ToString();
             CompactionTriggerTextBox.Text = ParaPorcento(_currentSettings.CompactionTrigger);
             MemoryFractionTextBox.Text = ParaPorcento(_currentSettings.MemoryFraction);
+            MostrarMemoria(_currentSettings);
 
             RefreshKeyTextBoxLabel();
             CarregarContas();
@@ -479,6 +480,35 @@ public partial class SettingsWindow : Window
             OpenRouterLoadingProgress.Visibility = Visibility.Collapsed;
         }
     }
+
+    /// <summary>Os campos da aba Memória que não são porcentagem.</summary>
+    private void MostrarMemoria(UserAppSettings s)
+    {
+        SelecionarPorTag(MemoriaQuemEscreveComboBox, s.MemoriaComModelo ? "modelo" : "codigo");
+        TurnosPorCapituloTextBox.Text = s.TurnosPorCapitulo.ToString();
+        SelecionarPorTag(CapitulosPorAtoComboBox, s.CapitulosPorAto.ToString());
+        SelecionarPorTag(EsconderResultadosComboBox, s.EsconderResultadosDepoisDe.ToString());
+    }
+
+    /// <summary>
+    /// Seleciona o item com a Tag; valor que não está na lista (editado à mão no arquivo) cai no
+    /// primeiro, que é sempre o padrão.
+    /// </summary>
+    private static void SelecionarPorTag(System.Windows.Controls.ComboBox combo, string valor)
+    {
+        foreach (ComboBoxItem item in combo.Items)
+        {
+            if (item.Tag?.ToString() == valor)
+            {
+                combo.SelectedItem = item;
+                return;
+            }
+        }
+
+        combo.SelectedIndex = 0;
+    }
+
+    private static string? TagDe(System.Windows.Controls.ComboBox combo) => (combo.SelectedItem as ComboBoxItem)?.Tag?.ToString();
 
     private void SelecionarKeepAlive(string? valor)
     {
@@ -1199,6 +1229,7 @@ public partial class SettingsWindow : Window
                 KeepAssistantSpeechSwitch.IsChecked = padrao.KeepAssistantSpeech;
                 CompactionTriggerTextBox.Text = ParaPorcento(padrao.CompactionTrigger);
                 MemoryFractionTextBox.Text = ParaPorcento(padrao.MemoryFraction);
+                MostrarMemoria(padrao);
                 break;
 
             case PaginaDeConfiguracoes.Avancado:
@@ -1794,6 +1825,11 @@ public partial class SettingsWindow : Window
         _currentSettings.MaxTurnIterations = Numero(MaxIterationsTextBox, _currentSettings.MaxTurnIterations);
         _currentSettings.CompactionTrigger = DePorcento(CompactionTriggerTextBox, _currentSettings.CompactionTrigger);
         _currentSettings.MemoryFraction = DePorcento(MemoryFractionTextBox, _currentSettings.MemoryFraction);
+        _currentSettings.MemoriaComModelo = TagDe(MemoriaQuemEscreveComboBox) != "codigo";
+        _currentSettings.TurnosPorCapitulo = int.TryParse(TurnosPorCapituloTextBox.Text, out int turnosPorCapitulo)
+            ? turnosPorCapitulo : _currentSettings.TurnosPorCapitulo;
+        _currentSettings.CapitulosPorAto = int.TryParse(TagDe(CapitulosPorAtoComboBox), out int porAto) ? porAto : 0;
+        _currentSettings.EsconderResultadosDepoisDe = int.TryParse(TagDe(EsconderResultadosComboBox), out int esconder) ? esconder : 0;
 
         // Saneia ANTES de gravar. O usuário pode digitar 900% e o que for absurdo vira o mais
         // próximo válido — ele perde o exagero, não as configurações inteiras.

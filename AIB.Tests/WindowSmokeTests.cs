@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -840,6 +840,38 @@ namespace AIB.Tests
                     .Should().Be(nuvem ? Visibility.Visible : Visibility.Collapsed);
                 ((FrameworkElement)janela.FindName("PainelOllama")).Visibility
                     .Should().Be(nuvem ? Visibility.Collapsed : Visibility.Visible, "keep-alive não existe no OpenRouter");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void Memoria_MostraAsOpcoesDoModeloLocal()
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+                string pasta = Path.Combine(Path.GetTempPath(), "aib-memoria-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(pasta);
+
+                var servico = new SettingsService(Path.Combine(pasta, "settings.json"));
+                var s = servico.LoadSettings();
+                s.MemoriaComModelo = false;
+                s.TurnosPorCapitulo = 5;
+                s.CapitulosPorAto = 8;
+                s.EsconderResultadosDepoisDe = 8;
+                servico.SaveSettings(s.Sanear());
+
+                var janela = new SettingsWindow(servico, PaginaDeConfiguracoes.Memoria, new AIB.Services.Mail.MailServiceStub(),
+                                                new AIB.Services.Mail.MailVault(pasta), new AIB.Services.Mail.EstadoDasCaixas(pasta));
+                Desenhar(janela, "config-memoria", 980, 900);
+
+                string Tag(string nome) => (((System.Windows.Controls.ComboBox)janela.FindName(nome)).SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "";
+
+                Tag("MemoriaQuemEscreveComboBox").Should().Be("codigo");
+                Tag("CapitulosPorAtoComboBox").Should().Be("8");
+                Tag("EsconderResultadosComboBox").Should().Be("8");
+                ((System.Windows.Controls.TextBox)janela.FindName("TurnosPorCapituloTextBox")).Text.Should().Be("5");
 
                 janela.Close();
             });

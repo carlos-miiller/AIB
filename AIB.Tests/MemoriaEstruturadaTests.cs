@@ -199,6 +199,55 @@ namespace AIB.Tests
             contador.CountText(bloco).Should().BeLessThanOrEqualTo(120);
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // Esconder resultados antigos
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static List<ChatMessage> Historico(int turnos)
+        {
+            var h = new List<ChatMessage> { ChatMessage.CreateSystemMessage("alma") };
+            for (int i = 0; i < turnos; i++)
+            {
+                h.Add(ChatMessage.CreateUserMessage($"pergunta {i}"));
+                h.AddRange(Chamada("read", new { path = $@"C:\a{i}.txt" }, new string('x', 1000)));
+                h.Add(ChatMessage.CreateAssistantMessage("li"));
+            }
+            return h;
+        }
+
+        [Fact]
+        public void Esconder_TrocaSoOsResultadosAntigos_EmDegraus()
+        {
+            var h = Historico(10);
+
+            var copia = ResultadosAntigos.Esconder(h, manterTurnos: 4);
+
+            // 10 turnos, 4 ficam: 6 podem sair, mas a fronteira anda de 4 em 4 — saem 4.
+            var ferramentas = copia.OfType<ToolChatMessage>().Select(m => m.Content[0].Text).ToList();
+            ferramentas.Take(4).Should().OnlyContain(t => t.StartsWith("[resultado antigo de read omitido"));
+            ferramentas.Skip(4).Should().OnlyContain(t => t.Length == 1000);
+            copia.Count.Should().Be(h.Count, "pedido, chamada e fala ficam");
+            h.OfType<ToolChatMessage>().Select(m => m.Content[0].Text).Should().OnlyContain(t => t.Length == 1000, "o histórico não muda");
+        }
+
+        [Fact]
+        public void Esconder_DesligadoOuPoucosTurnos_DevolveOMesmoHistorico()
+        {
+            var h = Historico(5);
+            ResultadosAntigos.Esconder(h, 0).Should().BeSameAs(h);
+            ResultadosAntigos.Esconder(h, 4).Should().BeSameAs(h, "sobra 1 turno, menos que um degrau");
+        }
+
+        [Fact]
+        public void ConfiguracoesDeMemoria_SaoSaneadas()
+        {
+            var s = new UserAppSettings { TurnosPorCapitulo = 99, CapitulosPorAto = 1, EsconderResultadosDepoisDe = -3 }.Sanear();
+
+            s.TurnosPorCapitulo.Should().Be(20);
+            s.CapitulosPorAto.Should().Be(2);
+            s.EsconderResultadosDepoisDe.Should().Be(0);
+            new UserAppSettings().MemoriaComModelo.Should().BeTrue();
+        }
         private sealed class ProviderQueConta : IChatProvider
         {
             public int Chamadas { get; private set; }

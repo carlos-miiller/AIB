@@ -619,6 +619,22 @@ NaN
  O "Modelo do Shadow" saiu: a triagem de e-mail ganhou "Provedor da triagem" e
  "Modelo da triagem" na página E-mail, com aviso quando o provedor é o
  OpenRouter (trechos dos e-mails saem da máquina).
+ PÁGINA 6 — "Memória"   (REVISÃO 17/09: capítulo e ato por seções; ver
+                        Services/Memory/BlocoEstruturado.cs)
+ m1. "Quem escreve a memória"   ComboBox: Código e modelo (padrão) | Só o código.
+                                prop: MemoriaComModelo. Só o código não chama o
+                                modelo ao compactar (modelo local lento).
+ m2. "Compactar a partir de (% da conversa)"  TextBox mono, 50–99. CompactionTrigger.
+ m3. "Turnos por capítulo"      TextBox mono, 2–20, padrão 8. TurnosPorCapitulo.
+ m4. "Capítulos por ato"        ComboBox: Automático (4 Ollama / 8 OpenRouter) |
+                                4 | 8 | 12. CapitulosPorAto (0 = automático).
+ m5. "Fatia do contexto para memória (%)"  TextBox mono, 5–60. MemoryFraction.
+ m6. "Esconder resultados antigos de ferramentas"  ComboBox: Nunca | depois de
+                                4 | 8 | 16 turnos. EsconderResultadosDepoisDe.
+                                Só a cópia enviada ao modelo muda.
+ m7. "Guardar a fala junto da ferramenta"  Switch. KeepAssistantSpeech.
+ m8. "Onde a conversa fica gravada"  texto + "Abrir a pasta".
+
  PÁGINA 3 — "E-mail"   (MULTI-CONTA — substitui o modal que existia na tela de
                         chat e o par e-mail+senha único da versão anterior)
  ------------------------------------------------------------------------------

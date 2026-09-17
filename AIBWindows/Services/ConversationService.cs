@@ -1053,16 +1053,11 @@ public sealed class ConversationService : IMessageStore
         try { _desistencia?.Cancel(); } catch (ObjectDisposedException) { }
     }
 
-    /// <summary>
-    /// Teto de turnos por capítulo.
-    /// <para>
-    /// Sem ele, uma compactação que falha volta na tentativa seguinte com MAIS turnos — foi o
-    /// que se viu contra o Ollama real: 5, 6, 7, 8, 9, 10, 11 turnos, cada tentativa mais cara
-    /// que a anterior e todas estourando o tempo. Um teto fixo faz o custo do resumo parar de
-    /// crescer, e o que sobrar vira o capítulo seguinte.
-    /// </para>
-    /// </summary>
-    private const int MaxTurnsPerChapter = 8;
+    // Teto de turnos por capítulo: UserAppSettings.TurnosPorCapitulo (padrão 8, aba Memória).
+    // Sem ele, uma compactação que falha volta na tentativa seguinte com MAIS turnos — foi o
+    // que se viu contra o Ollama real: 5, 6, 7, 8, 9, 10, 11 turnos, cada tentativa mais cara
+    // que a anterior e todas estourando o tempo. Um teto faz o custo do resumo parar de crescer,
+    // e o que sobrar vira o capítulo seguinte.
 
     /// <summary>
     /// Turnos de descanso depois de uma compactação que falhou.
@@ -1219,7 +1214,8 @@ public sealed class ConversationService : IMessageStore
     {
         var settings = _settingsService.LoadSettings();
         var compactor = new Compactor(
-            _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter);
+            _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
+            comModelo: settings.MemoriaComModelo);
 
         int conversa;
         lock (_gate) { conversa = _conversaViva; }
@@ -1319,7 +1315,7 @@ public sealed class ConversationService : IMessageStore
             var partes = new List<string>();
 
             // TODOS os capítulos que couberem, e não um. Um capítulo leva no máximo
-            // MaxTurnsPerChapter turnos: numa conversa reaberta com vinte turnos soltos, o comando
+            // TurnosPorCapitulo turnos: numa conversa reaberta com vinte turnos soltos, o comando
             // fechava um e parava, e o usuário tinha de repetir sem saber quantas vezes. O teto
             // é o mesmo da passada automática — cada capítulo é uma chamada ao modelo.
             for (int feitos = 0; feitos < MaxCapitulosPorPassada && !token.IsCancellationRequested; feitos++)
@@ -1432,7 +1428,8 @@ public sealed class ConversationService : IMessageStore
 
             var settings = _settingsService.LoadSettings();
             var compactor = new Compactor(
-                _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter);
+                _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
+            comModelo: settings.MemoriaComModelo);
 
             var ato = await PromoverAsync(compactor, minimo: 2, ct).ConfigureAwait(false);
             if (ato == null) return "A promocao falhou. Os capitulos seguem soltos.";
@@ -1464,8 +1461,13 @@ public sealed class ConversationService : IMessageStore
     /// estático é de quem salvou por último, e a promoção não pode mudar de regra por causa disso.
     /// </para>
     /// </summary>
-    private int CapitulosPorAto() =>
-        LimitesDoProvedor.Para(_settingsService.LoadSettings().AiProvider).CapitulosPorAto;
+    private int CapitulosPorAto()
+    {
+        var settings = _settingsService.LoadSettings();
+        return settings.CapitulosPorAto > 0
+            ? settings.CapitulosPorAto
+            : LimitesDoProvedor.Para(settings.AiProvider).CapitulosPorAto;
+    }
 
     /// <summary>Atos fechados nesta sessão. Diagnóstico e teste.</summary>
     public IReadOnlyList<Act> Acts => _memory.Acts;
@@ -1594,7 +1596,7 @@ public sealed class ConversationService : IMessageStore
         var escolhidos = new List<Turn>();
         int restante = vivo;
 
-        int teto = Math.Min(disponiveis, MaxTurnsPerChapter);
+        int teto = Math.Min(disponiveis, _settingsService.LoadSettings().TurnosPorCapitulo);
         int anterior = _memory.LastCoveredTurn;
 
         for (int i = 0; i < teto && (forcado || restante > alvo); i++)
@@ -2134,7 +2136,13 @@ public sealed class ConversationService : IMessageStore
             lock (_dona._gate) { return _dona._conversaViva == _conversa; }
         }
 
-        public IReadOnlyList<ChatMessage> Snapshot() => _dona.Snapshot();
+        /// <summary>
+        /// O que vai ao modelo. Com "Esconder resultados antigos" ligado, os resultados de
+        /// ferramenta de turnos antigos saem da cópia — ver <see cref="Memory.ResultadosAntigos"/>.
+        /// O histórico da conversa não muda.
+        /// </summary>
+        public IReadOnlyList<ChatMessage> Snapshot() =>
+            Memory.ResultadosAntigos.Esconder(_dona.Snapshot(), _dona._settingsService.LoadSettings().EsconderResultadosDepoisDe);
 
         public void AppendAssistantToolCalls(IReadOnlyList<ChatToolCall> calls, string? fala = null) =>
             Escrever(() => _dona.AppendAssistantToolCalls(calls, fala));
