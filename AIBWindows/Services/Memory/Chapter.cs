@@ -28,6 +28,14 @@ namespace AIB.Services.Memory;
 /// bloco de memória as mostra numa seção só, no fim, já sem as que um trecho posterior resolveu.
 /// Nulo nos capítulos gravados antes de existirem.
 /// </param>
+/// <param name="Versao">
+/// 1: parágrafo do resumidor + lista de artefatos. 2: seções (<see cref="BlocoEstruturado"/>) —
+/// Objetivo e Aprendido do resumidor; Combinado e Estado montados por código.
+/// </param>
+/// <param name="Objetivo">Versão 2: o que o usuário perseguia no trecho, em uma frase.</param>
+/// <param name="Aprendido">Versão 2: causa e contorno de falhas e decisões, só com evidência no trecho.</param>
+/// <param name="Combinado">Versão 2: pedidos do usuário com valor, copiados literalmente.</param>
+/// <param name="Estado">Versão 2: como os arquivos e comandos terminaram o trecho.</param>
 /// <param name="CustoUsd">O que a chamada ao resumidor custou, quando o provedor relata (OpenRouter).</param>
 public sealed record Chapter(
     int Index,
@@ -39,7 +47,12 @@ public sealed record Chapter(
     int TokensDosTurnos = 0,
     int TokensDoCapitulo = 0,
     IReadOnlyList<Pendencia>? Pendencias = null,
-    decimal? CustoUsd = null)
+    decimal? CustoUsd = null,
+    int Versao = 1,
+    string? Objetivo = null,
+    IReadOnlyList<string>? Aprendido = null,
+    IReadOnlyList<FalaCombinada>? Combinado = null,
+    EstadoDoTrecho? Estado = null)
 {
     /// <summary>
     /// Quanto este capítulo tirou do prompt. Nunca negativo: um resumo que saiu maior que o
@@ -65,6 +78,9 @@ public sealed record Chapter(
     /// <summary>Bloco pronto para o prompt.</summary>
     public string Render()
     {
+        if (Versao >= BlocoEstruturado.Versao)
+            return BlocoEstruturado.Render(TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido);
+
         var texto = new StringBuilder();
         texto.Append("### Capítulo ").Append(Index + 1);
 
@@ -89,5 +105,14 @@ public sealed record Chapter(
     /// artefatos ficam inteiros. Devolve vazio quando nem eles cabem sozinhos.
     /// </summary>
     public string Render(int maxTokens, TokenCounter counter) =>
-        MemoryRender.Fit(Render(), Summary, maxTokens, counter);
+        Versao >= BlocoEstruturado.Versao
+            ? BlocoEstruturado.Fit(maxTokens, counter, TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido)
+            : MemoryRender.Fit(Render(), Summary, maxTokens, counter);
+
+    /// <summary>Turnos pela numeração do registro, a mesma que o Estado e o Combinado citam.</summary>
+    private string TituloV2 => FirstTurn == LastTurn
+        ? $"### Capítulo {Index + 1} (turno {FirstTurn + 1})"
+        : $"### Capítulo {Index + 1} (turnos {FirstTurn + 1}–{LastTurn + 1})";
+
+    private string FimDe => $"do capítulo {Index + 1}";
 }

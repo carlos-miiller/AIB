@@ -91,11 +91,10 @@ namespace AIB.Tests
         [Fact]
         public async Task Capitulo_SeparaAPendenciaDoParagrafo_EJuntaAsDoCodigo()
         {
-            var provider = new DubleProvider("O usuário pediu e o agente tentou apagar.\nPENDENTE: apagar as notas");
+            var provider = new DubleProvider("OBJETIVO: criar e apagar as notas\nAPRENDIDO: nenhum\nPENDENTE: apagar as notas");
 
             var capitulo = await new Compactor(provider).SummarizeAsync(0, TurnosDeExemplo(), default);
 
-            capitulo.Summary.Should().Be("O usuário pediu e o agente tentou apagar.");
             capitulo.Pendencias!.Select(p => p.Tipo).Should().Equal(Pendencia.Falha, Pendencia.Assunto);
             capitulo.Pendencias![0].Texto.Should().Contain(@"apagar C:\temp\notas.txt")
                 .And.NotContain("del ", "comando de apagar não vira convite para tentar de novo");
@@ -122,12 +121,14 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public async Task Capitulo_JuntaResumoNarrativoEArtefatosLiterais()
+        public async Task Capitulo_JuntaSecoesDoModeloEEstadoDoCodigo()
         {
-            var provider = new DubleProvider();
+            var provider = new DubleProvider("OBJETIVO: criar notas\nAPRENDIDO:\n- o del falhou por acesso negado\nPENDENTE: nenhuma");
             var capitulo = await new Compactor(provider).SummarizeAsync(0, TurnosDeExemplo(), default);
 
-            capitulo.Summary.Should().Be("O usuário pediu, o agente fez, deu certo.");
+            capitulo.Versao.Should().Be(BlocoEstruturado.Versao);
+            capitulo.Objetivo.Should().Be("criar notas");
+            capitulo.Render().Should().Contain("Estado ao fim do capítulo 1").And.Contain("notas.txt");
             capitulo.Artifacts.Should().HaveCount(2);
             capitulo.Artifacts[0].Value.Should().Be(@"C:\temp\notas.txt");
             capitulo.Artifacts[1].Failed.Should().BeTrue("o que falhou vale tanto quanto o que deu certo");
@@ -164,28 +165,31 @@ namespace AIB.Tests
 
             var capitulo = await new Compactor(provider).SummarizeAsync(0, TurnosDeExemplo(), default);
 
-            // Perder a narrativa é aceitável; devolver null deixaria um buraco silencioso no
-            // lugar de turnos que o chamador vai remover do contexto.
-            capitulo.Summary.Should().Contain("indisponível");
+            // Perder o que o modelo escreveria é aceitável; devolver null deixaria um buraco
+            // silencioso no lugar de turnos que o chamador vai remover do contexto. O que é do
+            // código — estado e pedido do usuário — não depende do modelo.
+            capitulo.Objetivo.Should().StartWith("pedido do turno 1:");
+            capitulo.Estado!.Itens.Should().NotBeEmpty();
             capitulo.Artifacts.Should().HaveCount(2, "os literais não dependem do modelo");
         }
 
         [Fact]
-        public async Task RespostaVazia_ViraNotaEmVezDeResumoEmBranco()
+        public async Task RespostaVazia_CaiNoObjetivoDaFalaDoUsuario()
         {
             var capitulo = await new Compactor(new DubleProvider("   ")).SummarizeAsync(0, TurnosDeExemplo(), default);
 
-            capitulo.Summary.Should().Contain("indisponível");
+            capitulo.Objetivo.Should().StartWith("pedido do turno 1:", "sem resposta, o objetivo é o pedido literal");
+            capitulo.Aprendido.Should().BeEmpty();
         }
 
         [Fact]
         public async Task BlocoDeRaciocinio_NaoEntraNoResumo()
         {
-            var provider = new DubleProvider("<think>vou resumir assim</think>O agente criou o arquivo.");
+            var provider = new DubleProvider("<think>OBJETIVO: pensado</think>OBJETIVO: criar o arquivo de notas\nAPRENDIDO: nenhum");
 
             var capitulo = await new Compactor(provider).SummarizeAsync(0, TurnosDeExemplo(), default);
 
-            capitulo.Summary.Should().Be("O agente criou o arquivo.");
+            capitulo.Objetivo.Should().Be("criar o arquivo de notas");
         }
 
         [Fact]

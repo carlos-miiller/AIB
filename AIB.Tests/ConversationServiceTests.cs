@@ -819,14 +819,14 @@ namespace AIB.Tests
         {
             var settings = BuildSettings(sendSystemPrompt: false);
             var provider = ProviderQueResponde("certo");
-            provider.CompleteReply = "O usuário fez várias perguntas e o agente respondeu.";
+            provider.CompleteReply = "OBJETIVO: responder às perguntas do usuário\nAPRENDIDO: nenhum\nPENDENTE: nenhuma";
             var conversation = BuildConversation(settings, provider, out _);
 
             int turnos = await ConversarAteCompactar(conversation);
 
             turnos.Should().BePositive("o gatilho tem de disparar antes do teto de turnos");
             conversation.Chapters.Should().ContainSingle();
-            conversation.Chapters[0].Summary.Should().Be("O usuário fez várias perguntas e o agente respondeu.");
+            conversation.Chapters[0].Objetivo.Should().Be("responder às perguntas do usuário");
 
             // O que saiu do contexto vivo continua em disco.
             var turnosVivos = conversation.SnapshotHistory().Count(m => m is UserChatMessage);
@@ -2072,7 +2072,7 @@ namespace AIB.Tests
             await ConversarAteCompactar(conversation);
 
             conversation.Chapters.Should().ContainSingle();
-            conversation.Chapters[0].Summary.Should().Contain("indisponível");
+            conversation.Chapters[0].Objetivo.Should().StartWith("pedido do turno", "sem modelo, o objetivo é a fala literal");
         }
 
         [Fact]

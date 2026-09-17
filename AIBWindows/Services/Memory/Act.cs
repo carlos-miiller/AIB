@@ -34,6 +34,14 @@ namespace AIB.Services.Memory;
 /// As dos capítulos cobertos que continuavam valendo, mais as de assunto que o resumo do ato
 /// apontou. Como no capítulo, ficam fora do <see cref="Render"/>.
 /// </param>
+/// <param name="Versao">
+/// 1: parágrafo do resumidor + lista de artefatos. 2: seções (<see cref="BlocoEstruturado"/>) —
+/// Objetivo e Aprendido do resumidor; Combinado e Estado montados por código.
+/// </param>
+/// <param name="Objetivo">Versão 2: o que o usuário perseguia no trecho, em uma frase.</param>
+/// <param name="Aprendido">Versão 2: causa e contorno de falhas e decisões, só com evidência no trecho.</param>
+/// <param name="Combinado">Versão 2: pedidos do usuário com valor, copiados literalmente.</param>
+/// <param name="Estado">Versão 2: como os arquivos e comandos terminaram o trecho.</param>
 public sealed record Act(
     int Index,
     string AtUtc,
@@ -47,7 +55,12 @@ public sealed record Act(
     int TokensDosCapitulos = 0,
     int TokensDoAto = 0,
     IReadOnlyList<Pendencia>? Pendencias = null,
-    decimal? CustoUsd = null)
+    decimal? CustoUsd = null,
+    int Versao = 1,
+    string? Objetivo = null,
+    IReadOnlyList<string>? Aprendido = null,
+    IReadOnlyList<FalaCombinada>? Combinado = null,
+    EstadoDoTrecho? Estado = null)
 {
     /// <summary>Quanto o ato tira do prompt em relação ao CRU. Nunca negativo.</summary>
     public int Economia => TokensDosTurnos > TokensDoAto
@@ -72,6 +85,9 @@ public sealed record Act(
     /// <summary>Bloco pronto para o prompt.</summary>
     public string Render()
     {
+        if (Versao >= BlocoEstruturado.Versao)
+            return BlocoEstruturado.Render(TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido);
+
         var texto = new StringBuilder();
 
         // Capítulos numerados a partir de 1 aqui, como no Chapter.Render: o usuário lê "Ato 1,
@@ -101,5 +117,13 @@ public sealed record Act(
     /// artefatos ficam inteiros. Devolve vazio quando nem eles cabem sozinhos.
     /// </summary>
     public string Render(int maxTokens, TokenCounter counter) =>
-        MemoryRender.Fit(Render(), Summary, maxTokens, counter);
+        Versao >= BlocoEstruturado.Versao
+            ? BlocoEstruturado.Fit(maxTokens, counter, TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido)
+            : MemoryRender.Fit(Render(), Summary, maxTokens, counter);
+
+    private string TituloV2 => FirstChapter == LastChapter
+        ? $"### Ato {Index + 1} (capítulo {FirstChapter + 1}, turnos {FirstTurn + 1}–{LastTurn + 1})"
+        : $"### Ato {Index + 1} (capítulos {FirstChapter + 1}–{LastChapter + 1}, turnos {FirstTurn + 1}–{LastTurn + 1})";
+
+    private string FimDe => $"do ato {Index + 1}";
 }
