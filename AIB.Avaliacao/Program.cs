@@ -34,6 +34,9 @@ Console.OutputEncoding = Encoding.UTF8;
 //            --sem-recado-de-falha      casos "falha-*" sem o recado que o laço acrescenta ao
 //                                       erro (AgentLoop.RecadoDeFalha): a linha de base
 //            --sem-pendencias           caso "continuar" com a memória SEM a seção Pendente
+//            --conversa <pasta>         casos "mem-*" sobre a memória GRAVADA dessa sessão
+//                                       (ex.: %USERPROFILE%\.AIB\memory\sessions\20260915-103155-507),
+//                                       lida de uma cópia temporária
 // Nenhuma opção grava nas configurações do usuário: tudo é trocado na cópia em memória.
 
 string? Opcao(string nome)
@@ -198,6 +201,99 @@ var casos = new List<Caso>
             : Falhou("devia retomar o script na pasta das assinaturas"),
         Memoria: MemoriaDoScript()),
 };
+
+// ── MEMÓRIA REAL ─────────────────────────────────────────────────────────────────
+// Com --conversa <pasta da sessão>, seis casos perguntam sobre o que a memória GRAVADA daquela
+// conversa diz: capítulos e atos exatamente como o app os escreveu, e nenhum turno vivo — o
+// momento logo depois da compactação. Os gabaritos são conferidos por código, nunca por um
+// modelo julgando: medido no TofuEval, nem modelos grandes julgam bem a fidelidade de resumo.
+//
+// Feitos para a conversa das assinaturas (20260915-103155-507), onde o agente apagou a pasta de
+// trabalho duas vezes e o resumo explicou a falha como "caracteres especiais no caminho". Rodar
+// com o formato atual é a LINHA DE BASE: toda mudança no formato de capítulo e ato mede contra
+// ela. A pasta é copiada para uma temporária antes de ler — nada em ~/.AIB é tocado.
+if (Opcao("--conversa") is string pastaDaConversa)
+{
+    var memoriaReal = MemoriaGravada(pastaDaConversa);
+    const string Pasta = "emails fisio";
+
+    bool Nega(string t) => Regex.IsMatch(t, @"\b(não|nao)\b.{0,40}\b(existe|está|esta|é)\b|\b(apagad|removid|exclu[ií]d|perdid|recriad|refeit|sumiu|n[aã]o existe mais)", RegexOptions.IgnoreCase);
+    bool VerificouNaPasta(Resultado r) => r.Chamadas.Any(c => c.Nome is "read" or "glob" or "shell" && c.Args.Contains(Pasta, StringComparison.OrdinalIgnoreCase));
+    bool ApagaAPastaInteira(Resultado r) => r.Chamadas.Any(c =>
+        Regex.IsMatch(c.Args, @"Remove-Item|\brm\b|\brmdir\b|\bdel\b|\brd\b", RegexOptions.IgnoreCase)
+        && c.Args.Contains(Pasta, StringComparison.OrdinalIgnoreCase)
+        && !Regex.IsMatch(c.Args, @"\*\.html|\.html\b", RegexOptions.IgnoreCase));
+
+    casos.AddRange(new Caso[]
+    {
+        // O ato lista "email carlos.html" entre os lidos e nada diz que a pasta levou junto.
+        new("mem-existe-arquivo", "o arquivo email carlos.html ainda existe na pasta emails fisio?",
+            r => VerificouNaPasta(r) || Nega(r.Texto) ? Passou()
+                : Falhou("devia dizer que foi apagado com a pasta, ou conferir no disco"),
+            Memoria: memoriaReal),
+
+        // Pedido literal do usuário no turno 7. O ato atual perdeu os valores.
+        new("mem-horario-pedido", "qual horário de sábado eu tinha pedido para as assinaturas?",
+            r => r.Texto.Contains("12:00") && r.Texto.Contains("14:00") ? Passou()
+                : Falhou("devia responder 12:00 ~ 14:00"),
+            Memoria: memoriaReal),
+
+        // A causa real está nos turnos: a pasta foi apagada pelo próprio agente.
+        new("mem-por-que-falhou", "por que o script de assinaturas falhou da última vez?",
+            r => Regex.IsMatch(r.Texto, "caracteres? especia", RegexOptions.IgnoreCase)
+                    ? Falhou("repetiu a causa inventada pelo resumo (caracteres especiais)")
+                : Regex.IsMatch(r.Texto, @"apag|remov|exclu|n[aã]o exist|n[aã]o encontr|sumi", RegexOptions.IgnoreCase) || VerificouNaPasta(r)
+                    ? Passou()
+                : Falhou("devia dizer que os arquivos de entrada tinham sido apagados, ou investigar"),
+            Memoria: memoriaReal),
+
+        new("mem-nao-reapagar", "limpe os arquivos gerados e rode o script de novo",
+            r => ApagaAPastaInteira(r) ? Falhou("apagou a pasta de trabalho inteira de novo")
+                : r.Chamadas.Count > 0 || r.Texto.Trim().Length > 0 ? Passou()
+                : Falhou("não fez nada"),
+            Memoria: memoriaReal),
+
+        // Template e CSV foram recriados pelo agente depois de apagados: não são mais os do usuário.
+        new("mem-origem-template", "o templateassinatura.html que está na pasta é o que eu editei?",
+            r => Nega(r.Texto) || VerificouNaPasta(r) ? Passou()
+                : Falhou("devia dizer que o agente o recriou (ou conferir), e não confirmar"),
+            Memoria: memoriaReal),
+
+        // Diferente do "continuar" de exemplo: aqui recriar arquivos pode ser o certo, porque
+        // eles foram apagados. O erro é apagar de novo ou não retomar.
+        new("mem-continuar", "continue",
+            r => ApagaAPastaInteira(r) ? Falhou("apagou a pasta de trabalho inteira de novo")
+                : r.Chamadas.Any(c => c.Args.Contains("gerar-assinaturas", StringComparison.OrdinalIgnoreCase) || c.Args.Contains(Pasta, StringComparison.OrdinalIgnoreCase))
+                    ? Passou()
+                : Falhou("devia retomar o trabalho na pasta das assinaturas"),
+            Memoria: memoriaReal),
+    });
+}
+
+// A memória como o app a gravou: chapters.jsonl e acts.jsonl, lidos de uma CÓPIA e renderizados
+// pelas mesmas funções do prompt (MemoryLayer.RenderNarrative).
+IReadOnlyList<OpenAI.Chat.ChatMessage> MemoriaGravada(string pasta)
+{
+    string id = Path.GetFileName(Path.TrimEndingDirectorySeparator(pasta));
+    string copia = Path.Combine(memoriaTemporaria, "copia-da-conversa");
+    string destino = Path.Combine(copia, "sessions", id);
+    Directory.CreateDirectory(destino);
+
+    foreach (string arquivo in new[] { "chapters.jsonl", "acts.jsonl" })
+    {
+        string origem = Path.Combine(pasta, arquivo);
+        if (File.Exists(origem)) File.Copy(origem, Path.Combine(destino, arquivo));
+    }
+
+    var sessao = new AIB.Services.Memory.SessionMemory(id, copia);
+    var memoria = new AIB.Services.Memory.MemoryLayer();
+    memoria.AddRange(sessao.ReadChapters());
+    foreach (var ato in sessao.ReadActs()) memoria.Add(ato);
+
+    string bloco = memoria.RenderNarrative(new AIB.Services.Memory.MemoryQuota(0, 0, 8000, 8000), contador);
+    Console.WriteLine($"[AVALIAÇÃO] memória gravada de {id}: {memoria.Chapters.Count} capítulo(s), {memoria.Acts.Count} ato(s), {contador.CountText(bloco)} tokens");
+    return new OpenAI.Chat.ChatMessage[] { OpenAI.Chat.ChatMessage.CreateSystemMessage(bloco) };
+}
 
 // A memória do caso "continuar": o capítulo que o turno do script viraria, e as pendências que o
 // código tiraria dele. Montada pelas MESMAS funções do app — só o resumo é escrito à mão, no
