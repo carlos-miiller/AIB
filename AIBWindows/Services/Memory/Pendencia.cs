@@ -70,6 +70,15 @@ public static class Pendencias
                 string? chave = ChaveDe(artefato);
                 if (chave == null) continue;
 
+                // Comando que só lê nunca vira pendência, pela mesma razão que leitura de arquivo
+                // não vira: procurar e não achar é rotina. Eram eles que enchiam a lista — um
+                // `docker exec … grep` que não casou nada ficava anos como ponta solta.
+                if (artefato.Kind == ArtifactKind.CommandRun && ComandoDeShell.SoLeitura(artefato.Value))
+                {
+                    if (!artefato.Failed) falhas.Remove(chave);
+                    continue;
+                }
+
                 if (artefato.Failed)
                 {
                     if (!falhas.ContainsKey(chave)) ordem.Add(chave);
@@ -196,17 +205,24 @@ public static class Pendencias
         return (fim > prefixo.Length ? fala[prefixo.Length..fim] : fala[prefixo.Length..]).Trim();
     }
 
+    /// <summary>
+    /// A chave que casa a falha com o sucesso que veio depois. Comando casa pela ASSINATURA, e
+    /// não pelo texto: a segunda tentativa quase nunca é byte a byte a primeira — muda um
+    /// <c>| Select-Object -Last 10</c>, some um <c>cd</c> na frente — e pelo texto exato a
+    /// pendência ficava viva mesmo depois de o comando funcionar. Uma sessão fechou com oito
+    /// pendências assim, todas resolvidas. Ver <see cref="ComandoDeShell.Assinatura"/>.
+    /// </summary>
     private static string? ChaveDe(Artifact a) => a.Kind switch
     {
         ArtifactKind.FileWritten => "arquivo|" + a.Value,
-        ArtifactKind.CommandRun => "comando|" + a.Value,
+        ArtifactKind.CommandRun => "comando|" + ComandoDeShell.Assinatura(a.Value),
         _ => null
     };
 
     private static string? ChaveDe(Pendencia p) => p.Kind switch
     {
         ArtifactKind.FileWritten => "arquivo|" + p.Alvo,
-        ArtifactKind.CommandRun => "comando|" + p.Alvo,
+        ArtifactKind.CommandRun => "comando|" + ComandoDeShell.Assinatura(p.Alvo),
         _ => null
     };
 

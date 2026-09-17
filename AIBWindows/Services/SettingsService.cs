@@ -267,6 +267,24 @@ public sealed class UserAppSettings
     /// </summary>
     public int TurnosPorCapitulo { get; set; } = PadraoDeTurnosPorCapitulo;
 
+    public const int PadraoDeTokensPorCapitulo = 20_000;
+
+    /// <summary>
+    /// Teto de TOKENS resumidos numa chamada. O capítulo fecha no primeiro dos dois tetos que
+    /// bater, este ou <see cref="TurnosPorCapitulo"/>.
+    /// <para>
+    /// Existe porque contar turnos não mede trabalho. Numa sessão real, 8 turnos carregavam
+    /// 95.164 tokens — cada um com dezenas de saídas de <c>docker exec</c> — e viraram UM capítulo
+    /// de 171 tokens de resumo. Um turno de conversa e um turno com quarenta ferramentas contam
+    /// igual, e o segundo é o que precisa ser cortado em pedaços.
+    /// </para>
+    /// <para>
+    /// Turno sozinho maior que o teto passa assim mesmo: cortar dentro de um turno quebraria o
+    /// par tool_call/resultado, e um capítulo grande é melhor que uma requisição inválida.
+    /// </para>
+    /// </summary>
+    public int TokensPorCapitulo { get; set; } = PadraoDeTokensPorCapitulo;
+
     /// <summary>
     /// Capítulos soltos que viram um ato. Zero é automático: 4 no Ollama, 8 no OpenRouter (ver
     /// <see cref="LimitesDoProvedor.CapitulosPorAto"/>).
@@ -461,6 +479,8 @@ public sealed class UserAppSettings
         CompactionTrigger = Entre(CompactionTrigger, 0.50, 0.99);
         MemoryFraction = Entre(MemoryFraction, 0.05, 0.60);
         TurnosPorCapitulo = Entre(TurnosPorCapitulo <= 0 ? PadraoDeTurnosPorCapitulo : TurnosPorCapitulo, 2, 20);
+        TokensPorCapitulo = Entre(
+            TokensPorCapitulo <= 0 ? PadraoDeTokensPorCapitulo : TokensPorCapitulo, 4_000, 60_000);
         CapitulosPorAto = CapitulosPorAto <= 0 ? 0 : Entre(CapitulosPorAto, 2, 16);
         EsconderResultadosDepoisDe = EsconderResultadosDepoisDe <= 0 ? 0 : Entre(EsconderResultadosDepoisDe, 2, 50);
         ShadowMailPreviewCount = Entre(ShadowMailPreviewCount, 1, 10);

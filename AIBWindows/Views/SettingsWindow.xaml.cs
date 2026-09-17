@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -526,6 +526,7 @@ public partial class SettingsWindow : Window
     {
         SelecionarPorTag(MemoriaQuemEscreveComboBox, s.MemoriaComModelo ? "modelo" : "codigo");
         TurnosPorCapituloTextBox.Text = s.TurnosPorCapitulo.ToString();
+        TokensPorCapituloTextBox.Text = s.TokensPorCapitulo.ToString();
         SelecionarPorTag(CapitulosPorAtoComboBox, s.CapitulosPorAto.ToString());
         SelecionarPorTag(EsconderResultadosComboBox, s.EsconderResultadosDepoisDe.ToString());
     }
@@ -1868,6 +1869,8 @@ public partial class SettingsWindow : Window
         _currentSettings.MemoriaComModelo = TagDe(MemoriaQuemEscreveComboBox) != "codigo";
         _currentSettings.TurnosPorCapitulo = int.TryParse(TurnosPorCapituloTextBox.Text, out int turnosPorCapitulo)
             ? turnosPorCapitulo : _currentSettings.TurnosPorCapitulo;
+        _currentSettings.TokensPorCapitulo = int.TryParse(TokensPorCapituloTextBox.Text, out int tokensPorCapitulo)
+            ? tokensPorCapitulo : _currentSettings.TokensPorCapitulo;
         _currentSettings.CapitulosPorAto = int.TryParse(TagDe(CapitulosPorAtoComboBox), out int porAto) ? porAto : 0;
         _currentSettings.EsconderResultadosDepoisDe = int.TryParse(TagDe(EsconderResultadosComboBox), out int esconder) ? esconder : 0;
 

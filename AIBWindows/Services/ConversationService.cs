@@ -1597,12 +1597,23 @@ public sealed class ConversationService : IMessageStore
         var escolhidos = new List<Turn>();
         int restante = vivo;
 
-        int teto = Math.Min(disponiveis, _settingsService.LoadSettings().TurnosPorCapitulo);
+        var settings = _settingsService.LoadSettings();
+        int teto = Math.Min(disponiveis, settings.TurnosPorCapitulo);
+        int tetoDeTokens = settings.TokensPorCapitulo;
+        int somados = 0;
         int anterior = _memory.LastCoveredTurn;
 
         for (int i = 0; i < teto && (forcado || restante > alvo); i++)
         {
             if (!TurnSplitter.IsClosed(turnos[i])) break;
+
+            // Segundo teto, em tokens: contar turnos não mede trabalho. Oito turnos cheios de
+            // saída de ferramenta já chegaram a 95 mil tokens e viraram UM capítulo de 171
+            // tokens de resumo. O primeiro turno entra sempre, mesmo sozinho maior que o teto —
+            // cortar DENTRO de um turno quebraria o par tool_call/resultado.
+            int doTurno = _tokenCounter.CountMessages(turnos[i].Messages);
+            if (escolhidos.Count > 0 && somados + doTurno > tetoDeTokens) break;
+            somados += doTurno;
 
             // O número do turno no raw.jsonl, e não a posição dele no vivo. Um turno que nunca
             // foi gravado (o contexto recuperado de outro chat) fica com o seguinte ao anterior.
@@ -1612,7 +1623,7 @@ public sealed class ConversationService : IMessageStore
             anterior = indice;
 
             escolhidos.Add(turnos[i] with { Index = indice });
-            restante -= _tokenCounter.CountMessages(turnos[i].Messages);
+            restante -= doTurno;
         }
 
         return escolhidos;

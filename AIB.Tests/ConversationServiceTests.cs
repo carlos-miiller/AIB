@@ -364,6 +364,54 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task OCapitulo_FECHA_NoTetoDeTOKENS_AntesDoTetoDeTurnos()
+        {
+            // Contar turnos não mede trabalho. Numa sessão real, 8 turnos carregavam 95.164
+            // tokens — cada um com dezenas de saídas de docker exec — e viraram UM capítulo, com
+            // 171 tokens de resumo para a sessão inteira. O teto de tokens é a segunda tesoura.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var s = settings.LoadSettings();
+            s.TurnosPorCapitulo = 8;
+            s.TokensPorCapitulo = 6_000;
+            settings.SaveSettings(s.Sanear());
+
+            var provider = new FakeProvider { CompleteReply = "Resumo do trecho." };
+            var conversation = BuildConversation(settings, provider, out _);
+
+            // Seis turnos fechados de uns 5 mil tokens cada: cabem no teto de 8 turnos, e não
+            // cabem no de 6 mil tokens.
+            for (int i = 0; i < 6; i++)
+                conversation.AppendRecoveredContext($"pedido {i}", Filler(20000));
+
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            var capitulo = conversation.Chapters.Should().ContainSingle().Subject;
+            (capitulo.LastTurn - capitulo.FirstTurn + 1).Should().BeLessThan(6,
+                "o capítulo fecha no primeiro teto que bater, e aqui o de tokens bate antes");
+        }
+
+        [Fact]
+        public async Task UmTurnoSOZINHO_MaiorQueOTeto_AindaVira_Capitulo()
+        {
+            // Cortar DENTRO de um turno quebraria o par tool_call/resultado. Um capítulo grande
+            // é melhor que uma requisição inválida — ou que uma compactação que nunca anda.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var s = settings.LoadSettings();
+            s.TokensPorCapitulo = 4_000;
+            settings.SaveSettings(s.Sanear());
+
+            var provider = new FakeProvider { CompleteReply = "Resumo do trecho." };
+            var conversation = BuildConversation(settings, provider, out _);
+
+            for (int i = 0; i < 4; i++)
+                conversation.AppendRecoveredContext($"pedido {i}", Filler(80000));
+
+            await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            conversation.Chapters.Should().ContainSingle();
+        }
+
+        [Fact]
         public void OTetoDoNIVEL_NaoPoda_Mais()
         {
             // O teto do nível é ORÇAMENTO DE COMPACTAÇÃO: diz quando vale a pena resumir, não o

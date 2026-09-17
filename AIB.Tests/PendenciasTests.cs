@@ -150,6 +150,85 @@ namespace AIB.Tests
             assunto.Should().BeEmpty();
         }
 
+        // ── Comando: assinatura e leitura ────────────────────────────────────
+
+        private static string Shell(string comando) =>
+            "{\"command\":" + System.Text.Json.JsonSerializer.Serialize(comando) + "}";
+
+        [Fact]
+        public void ComandoQueDeuCertoDepois_ComOutroFIM_NaoEhPendencia()
+        {
+            // O caso real: `docker compose up` estourou o prazo, a segunda tentativa acrescentou
+            // um "| Select-Object -Last 10" e funcionou — e a pendência ficava viva para sempre
+            // porque a comparação era pelo texto exato.
+            Pendencias.Extrair(Turnos(
+                ChatMessage.CreateUserMessage("suba o glpi"),
+                Chamada("c1", "shell", Shell(@"cd C:\Users\Carlo\GLPI; docker compose up -d --force-recreate glpi")),
+                ChatMessage.CreateToolMessage("c1", "ERRO: O comando demorou mais de 30 segundos e foi interrompido."),
+                Chamada("c2", "shell", Shell(@"docker compose up -d --force-recreate glpi 2>&1 | Select-Object -Last 10")),
+                ChatMessage.CreateToolMessage("c2", "Container glpi Started"),
+                ChatMessage.CreateAssistantMessage("subiu"))).Should().BeEmpty();
+        }
+
+        [Fact]
+        public void ComandoDIFERENTE_QueDeuCerto_NaoApagaAPendenciaAlheia()
+        {
+            // Chave larga demais seria pior que a estreita: apagaria ponta solta de verdade.
+            var pendencias = Pendencias.Extrair(Turnos(
+                ChatMessage.CreateUserMessage("suba o glpi"),
+                Chamada("c1", "shell", Shell("docker compose up -d glpi")),
+                ChatMessage.CreateToolMessage("c1", "ERRO (código de saída 1): Volume Created"),
+                Chamada("c2", "shell", Shell("docker compose restart db")),
+                ChatMessage.CreateToolMessage("c2", "Container db Restarted"),
+                ChatMessage.CreateAssistantMessage("reiniciei o banco")));
+
+            pendencias.Should().ContainSingle().Which.Texto.Should().Contain("docker compose up -d glpi");
+        }
+
+        [Fact]
+        public void ComandoQueSoLE_QuandoFalha_NaoEhPendencia()
+        {
+            // Procurar e não achar é rotina, e listá-lo convida o modelo a tentar de novo. Eram
+            // estes que enchiam a lista: oito `docker exec … grep/cat` que não casaram nada.
+            Pendencias.Extrair(Turnos(
+                ChatMessage.CreateUserMessage("veja a versão"),
+                Chamada("c1", "shell", Shell(@"docker exec glpi sh -c ""cat /var/www/glpi/version""")),
+                ChatMessage.CreateToolMessage("c1", "ERRO (código de saída 1): No such file"),
+                ChatMessage.CreateAssistantMessage("não achei"))).Should().BeEmpty();
+        }
+
+        [Theory]
+        [InlineData(@"docker exec glpi sed -n '400,435p' /var/www/glpi/src/Plugin.php")]
+        [InlineData(@"docker exec glpi sh -c ""grep -n doHook /var/www/glpi/src/Plugin.php""")]
+        [InlineData(@"cd C:\Users\Carlo\GLPI; git status")]
+        [InlineData(@"Get-Content .\docker-compose.yml | Select-Object -First 5")]
+        [InlineData(@"docker compose logs --tail=25 glpi")]
+        public void ComandosQueSoOLHAM_SaoReconhecidos(string comando)
+        {
+            ComandoDeShell.SoLeitura(comando).Should().BeTrue();
+        }
+
+        [Theory]
+        [InlineData(@"docker exec glpi php /var/www/glpi/plugins/x/test.php")]
+        [InlineData(@"New-Item -ItemType Directory -Path C:\temp\x")]
+        [InlineData(@"docker compose up -d glpi")]
+        [InlineData(@"git push origin main")]
+        public void ComandosQueMUDAM_NaoPassamPorLeitura(string comando)
+        {
+            ComandoDeShell.SoLeitura(comando).Should().BeFalse();
+        }
+
+        [Fact]
+        public void AAssinatura_IgnoraCanoRedirecionamentoECdNaFrente()
+        {
+            const string alvo = "docker compose up -d --force-recreate glpi";
+
+            ComandoDeShell.Assinatura(@"cd C:\Users\Carlo\GLPI; docker compose up -d --force-recreate glpi")
+                .Should().Be(alvo);
+            ComandoDeShell.Assinatura("docker compose up -d --force-recreate glpi 2>&1 | Select-Object -Last 10")
+                .Should().Be(alvo);
+        }
+
         // ── No bloco de memória ──────────────────────────────────────────────
 
         [Fact]

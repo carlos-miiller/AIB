@@ -1523,6 +1523,27 @@
                                                      TextChanged="Campo_Mudou"/>
                                         </Grid>
                                     </Border>
+
+                                    <!-- Tokens por capítulo.
+                                         O outro teto do mesmo corte: contar turno não mede
+                                         trabalho, e um turno com quarenta ferramentas vale por
+                                         uma conversa inteira. Fecha no primeiro que bater. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Tokens por capítulo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Teto de tokens que cada capítulo resume (4.000 a 60.000). O capítulo fecha no primeiro teto que bater, este ou o de turnos. Sem ele, oito turnos cheios de saída de ferramenta viram um resumo só."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="TokensPorCapituloTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
                                     <!-- Capítulos por ato. Automático segue o provedor (LimitesDoProvedor). -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">

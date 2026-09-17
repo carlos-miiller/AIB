@@ -63,14 +63,6 @@ public sealed record EstadoDoTrecho(
     // Montagem
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Verbos de shell que só olham. O comando que começa por um deles vai para Consultados, e não
-    /// para o Estado: um <c>dir</c> repetido cinco vezes era a metade da lista de artefatos.
-    /// </summary>
-    private static readonly Regex SoLeitura = new(
-        @"^\s*(dir|ls|gci|get-childitem|get-content|gc|cat|type|select-string|sls|test-path|get-item|gi|get-itemproperty|get-location|pwd|resolve-path|get-date|get-process|ps|get-service|where|where\.exe|echo|write-output|write-host|get-command|gcm|hostname|whoami|ipconfig|systeminfo|tree|findstr|measure-object|get-filehash|get-acl)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
     private static readonly Regex TemCuringa = new(@"[*?]|\$", RegexOptions.Compiled);
 
     /// <summary>
@@ -191,7 +183,12 @@ public sealed record EstadoDoTrecho(
                             break;
                         }
 
-                        if (SoLeitura.IsMatch(comando))
+                        // O comando que só olha vai para Consultados, e não para o Estado: um
+                        // `dir` repetido cinco vezes era metade da lista de artefatos, e um
+                        // `docker exec … sed -n` tomou o Estado inteiro de um capítulo de 95 mil
+                        // tokens. Quem sabe distinguir é o ComandoDeShell, que desembrulha antes
+                        // de olhar o verbo.
+                        if (ComandoDeShell.SoLeitura(comando))
                         {
                             consultas++;
                             if (falhou)

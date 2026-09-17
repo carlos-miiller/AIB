@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -858,6 +858,7 @@ namespace AIB.Tests
                 var s = servico.LoadSettings();
                 s.MemoriaComModelo = false;
                 s.TurnosPorCapitulo = 5;
+                s.TokensPorCapitulo = 15000;
                 s.CapitulosPorAto = 8;
                 s.EsconderResultadosDepoisDe = 8;
                 servico.SaveSettings(s.Sanear());
@@ -872,6 +873,7 @@ namespace AIB.Tests
                 Tag("CapitulosPorAtoComboBox").Should().Be("8");
                 Tag("EsconderResultadosComboBox").Should().Be("8");
                 ((System.Windows.Controls.TextBox)janela.FindName("TurnosPorCapituloTextBox")).Text.Should().Be("5");
+                ((System.Windows.Controls.TextBox)janela.FindName("TokensPorCapituloTextBox")).Text.Should().Be("15000");
 
                 janela.Close();
             });
