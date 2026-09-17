@@ -201,7 +201,7 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void MaterialDoResumo_TruncaResultadoDeFerramentaEOmiteOsLiterais()
+        public void MaterialDoResumo_TruncaResultadoDeFerramenta_EMostraOArgumento()
         {
             var turnos = TurnSplitter.Split(new List<ChatMessage>
             {
@@ -216,8 +216,28 @@ namespace AIB.Tests
             // O conteúdo inteiro de um arquivo lido não ajuda a resumir e é justamente o que
             // estouraria o contexto do resumidor.
             material.Length.Should().BeLessThan(1000);
-            material.Should().Contain("AGENTE CHAMOU: read");
+            material.Should().Contain("AGENTE CHAMOU: read — C:\\grande.txt");
+            material.Should().Contain("RESULTADO (read):");
             material.Should().Contain("truncado");
+        }
+
+        [Fact]
+        public void MaterialDoResumo_FalhaVemComOComandoEAMensagemDeErro()
+        {
+            // Caso real: só com "AGENTE CHAMOU: shell" e o erro, o resumidor explicou a pasta
+            // que o próprio agente apagou como "caracteres especiais no caminho".
+            var turnos = TurnSplitter.Split(new List<ChatMessage>
+            {
+                ChatMessage.CreateUserMessage("rode o script"),
+                ToolCall("c1", "shell", """{"command":"powershell -File \"C:\\x\\gerar.ps1\""}"""),
+                ChatMessage.CreateToolMessage("c1", "ERRO (código de saída 1): O argumento 'C:\\x\\gerar.ps1' para o parâmetro -File não existe."),
+                ChatMessage.CreateAssistantMessage("falhou")
+            });
+
+            string material = Compactor.RenderForSummary(turnos);
+
+            material.Should().Contain("AGENTE CHAMOU: shell — powershell -File \"C:\\x\\gerar.ps1\"");
+            material.Should().Contain("RESULTADO (FALHOU, shell): ERRO (código de saída 1): O argumento");
         }
 
         [Fact]
