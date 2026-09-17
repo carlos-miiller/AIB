@@ -194,17 +194,23 @@ public sealed class UserAppSettings
     public bool ConfirmDangerousCommands { get; set; } = true;
 
     /// <summary>
-    /// Pastas onde <c>write</c> e <c>edit</c> podem gravar — uma por linha, caminho absoluto.
+    /// Pastas onde <c>write</c> e <c>edit</c> executam sem pedir confirmação — uma por linha,
+    /// caminho absoluto.
     /// <para>
-    /// Vazio é o comportamento de sempre: o disco inteiro. Confinar é uma escolha do usuário, e
-    /// ligá-la sozinha quebraria quem usa a AIB para mexer em projeto fora da pasta pessoal.
+    /// Vazio é o padrão: tudo passa pelo card. Fora destas pastas nada é recusado por causa da
+    /// lista — o card aparece, como sempre apareceu.
     /// </para>
     /// <para>
-    /// NÃO alcança o <c>shell</c>: um <c>Set-Content</c> escreve onde quiser, e a defesa dele
-    /// continua sendo o portão de confirmação mais a denylist. Ver <see cref="PastasPermitidas"/>.
+    /// Campo NOVO, e não a renomeação do antigo <c>WriteRoots</c>: aquele confinava a gravação, e
+    /// converter uma lista feita para BARRAR numa lista que DISPENSA seria afrouxar a segurança
+    /// de quem já usava o recurso, em silêncio. Quem quiser dispensar digita de novo.
+    /// </para>
+    /// <para>
+    /// NÃO alcança o <c>shell</c>: um comando não declara alvo. O que o shell ganha é o aviso do
+    /// card. Ver <see cref="PastasSemConfirmacao"/> e <see cref="Tools.EscritaNoComando"/>.
     /// </para>
     /// </summary>
-    public string WriteRoots { get; set; } = "";
+    public string PastasSemConfirmacao { get; set; } = "";
 
     // ─────────────────────────────────────────────────────────────────────
     // Valores que eram constantes no código
@@ -595,7 +601,7 @@ public sealed class SettingsService
         }
 
         var loaded = ReadFromDisk(path);
-        PastasPermitidas.Configurar(loaded.WriteRoots);
+        AIB.Services.PastasSemConfirmacao.Configurar(loaded.PastasSemConfirmacao);
         Ai.ChatRequestOptions.JanelaAtual = loaded.ContextWindow;
         LimitesDoProvedor.Atual = LimitesDoProvedor.Para(loaded.AiProvider);
 
@@ -659,10 +665,10 @@ public sealed class SettingsService
         byte[] encryptedBytes = ProtectedData.Protect(plainBytes, null, DataProtectionScope.CurrentUser);
         File.WriteAllBytes(path, encryptedBytes);
 
-        // O confinamento passa a valer no mesmo instante em que o usuario salva. Sincronizar aqui,
+        // A dispensa passa a valer no mesmo instante em que o usuario salva. Sincronizar aqui,
         // e nao em cada tela, e o que impede o caso "mudei nas configuracoes e a ferramenta
         // continuou com a lista velha".
-        PastasPermitidas.Configurar(settings.WriteRoots);
+        AIB.Services.PastasSemConfirmacao.Configurar(settings.PastasSemConfirmacao);
 
         // A janela vale no mesmo instante, pelo mesmo motivo: os orçamentos por nível e o teto
         // da poda são lidos dela, e continuar contando a antiga até reabrir o app seria mentir.

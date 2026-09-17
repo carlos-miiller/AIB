@@ -37,7 +37,11 @@ public class RunCommandTool : ITool
                 Level = userLevel,
                 Cwd = Environment.CurrentDirectory,
                 DenylistHit = bateu,
-                DenylistReason = razao ?? ""
+                DenylistReason = razao ?? "",
+
+                // O shell nunca é dispensado pela lista de pastas, e nunca é limitado por ela.
+                // O que ele pode é contar o que viu. Ver EscritaNoComando.
+                Aviso = EscritaNoComando.Aviso(comando) ?? ""
             };
         }
         catch (JsonException)

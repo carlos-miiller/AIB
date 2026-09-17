@@ -1400,17 +1400,16 @@
                                         </Grid>
                                     </Border>
 
-                                    <!-- Pastas onde a gravação é permitida.
-                                         O modal mostra o caminho, mas MOSTRAR não é IMPEDIR: quem
-                                         clica "permitir" às pressas autoriza uma gravação em
-                                         Startup\ do mesmo jeito. Vazio = disco inteiro, como
-                                         sempre foi. -->
+                                    <!-- Pastas sem confirmação.
+                                         Esta lista DISPENSA a pergunta, não barra nada: fora
+                                         dela o card aparece igual a sempre. Vazia, tudo
+                                         pergunta. -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <StackPanel Margin="0,13">
-                                            <TextBlock Text="Pastas onde a gravação é permitida"
+                                            <TextBlock Text="Pastas sem confirmação"
                                                        Style="{StaticResource FieldLabelText}"/>
                                             <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
-                                                       Text="Uma pasta por linha, caminho absoluto. Vazio libera o disco inteiro, que é como sempre funcionou. Vale para gravar e editar arquivos — NÃO alcança comandos do shell, que continuam defendidos só pelo modal de confirmação."/>
+                                                       Text="Uma pasta por linha, caminho absoluto. Gravar e editar dentro delas executa direto, sem o card. Fora delas o card aparece como sempre — nada é recusado por causa desta lista. Vazio pergunta tudo. NÃO vale para o shell: lá o card sempre aparece, e avisa quando o comando cita caminho fora destas pastas."/>
                                             <TextBox x:Name="WriteRootsTextBox" Margin="0,8,0,0"
                                                      Style="{StaticResource ControlTextBoxLista}"
                                                      TextChanged="PastasDeEscrita_Mudou"/>

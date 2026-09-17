@@ -70,6 +70,12 @@ public partial class ConfirmCardView : UserControl
         if (contexto.ConteudoDeEmailNoContexto)
             AvisoEmailText.Visibility = Visibility.Visible;
 
+        if (!string.IsNullOrWhiteSpace(contexto.Aviso))
+        {
+            AvisoPastaText.Text = contexto.Aviso;
+            AvisoPastaText.Visibility = Visibility.Visible;
+        }
+
         // "Sempre permitir" só faz sentido para comando: ele é casado pelo texto exato do
         // comando na sessão. Para as demais ferramentas seria uma autorização vaga. Com e-mail
         // no contexto some também: o portão não o respeita enquanto houver texto de terceiros.

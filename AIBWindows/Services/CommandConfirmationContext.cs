@@ -14,5 +14,11 @@
         /// ter vindo de instruções escritas no e-mail, e não do usuário.
         /// </summary>
         public bool ConteudoDeEmailNoContexto { get; set; }
+
+        /// <summary>
+        /// Aviso extra do card, quando há o que avisar. Hoje vem do shell: o comando cita
+        /// caminho fora das pastas que o usuário marcou como de confiança.
+        /// </summary>
+        public string Aviso { get; set; } = "";
     }
 }

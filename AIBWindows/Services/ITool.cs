@@ -56,6 +56,17 @@ public interface ITool
     string? Validar(string argumentsJson) => null;
 
     /// <summary>
+    /// Se ESTA chamada pode correr sem o portão humano, porque o alvo dela está numa pasta que o
+    /// usuário marcou como de confiança. Ver <see cref="PastasSemConfirmacao"/>.
+    /// <para>
+    /// Default falso: dispensar é sempre uma escolha escrita da ferramenta, e quem não sabe
+    /// responder pergunta. Quem decide de verdade é o registry, que ainda checa o contexto da
+    /// conversa e a floor list antes de aceitar a dispensa.
+    /// </para>
+    /// </summary>
+    bool DispensaConfirmacao(string argumentsJson) => false;
+
+    /// <summary>
     /// Monta o que o modal mostra ao usuário. Fica na ferramenta porque só ela sabe interpretar
     /// o próprio JSON de argumentos — o registry não pode adivinhar qual campo é "o comando".
     /// Devolver null recusa a execução: se a ferramenta pede confirmação e não consegue

@@ -46,6 +46,13 @@ public sealed class EditFileTool : ITool
 
     public bool RequiresConfirmation => true;
 
+    /// <summary>
+    /// Editar dentro de uma pasta dispensada não para no card. Fora dela, o card aparece como
+    /// sempre. Ver <see cref="PastasSemConfirmacao"/>.
+    /// </summary>
+    public bool DispensaConfirmacao(string argumentsJson)
+        => PastasSemConfirmacao.Dispensa(Ler(argumentsJson)?.Caminho);
+
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         functionName: Name,
         functionDescription: Description,
@@ -85,11 +92,6 @@ public sealed class EditFileTool : ITool
         {
             var a = Ler(argumentsJson);
             if (a == null) return null;
-
-            // O confinamento de pasta vem ANTES de qualquer coisa: se o caminho é proibido,
-            // nem o conteúdo do arquivo deve ser lido para montar a prévia.
-            string? fora = PastasPermitidas.Barrar(a.Caminho);
-            if (fora != null) return fora;
 
             if (!File.Exists(a.Caminho))
                 return PreVooDeCaminho.Conferir($"\"{a.Caminho}\"")

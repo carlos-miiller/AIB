@@ -176,7 +176,7 @@ public partial class SettingsWindow : Window
 
             IntelligentToolsSwitch.IsChecked = _currentSettings.EnableIntelligentTools;
             ConfirmDangerousSwitch.IsChecked = _currentSettings.ConfirmDangerousCommands;
-            WriteRootsTextBox.Text = _currentSettings.WriteRoots;
+            WriteRootsTextBox.Text = _currentSettings.PastasSemConfirmacao;
             AtualizarPastasPermitidas();
             AtualizarAutorizacoes();
             ExecutionLogSwitch.IsChecked = _currentSettings.ExecutionLogging;
@@ -1258,10 +1258,10 @@ public partial class SettingsWindow : Window
                 IntelligentToolsSwitch.IsChecked = padrao.EnableIntelligentTools;
                 ConfirmDangerousSwitch.IsChecked = padrao.ConfirmDangerousCommands;
                 MaxIterationsTextBox.Text = padrao.MaxTurnIterations.ToString();
-                // As pastas permitidas voltam ao padrão, que é VAZIO — disco inteiro liberado.
-                // Restaurar afrouxa a segurança aqui, então o texto abaixo do campo diz na hora
-                // o que passou a valer, em vez de deixar a mudança silenciosa.
-                WriteRootsTextBox.Text = padrao.WriteRoots;
+                // A lista de dispensa volta ao padrão, que é VAZIA — tudo volta a perguntar.
+                // Restaurar APERTA a segurança aqui, mas o texto abaixo do campo diz na hora o
+                // que passou a valer de qualquer forma: mudança calada é o que não pode existir.
+                WriteRootsTextBox.Text = padrao.PastasSemConfirmacao;
                 AtualizarPastasPermitidas();
                 break;
 
@@ -1321,37 +1321,37 @@ public partial class SettingsWindow : Window
 
 
     // ─────────────────────────────────────────────────────────────────────
-    // Ferramentas — confinamento de pasta e autorizações da sessão
+    // Ferramentas — pastas sem confirmação e autorizações da sessão
     // ─────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Diz, em português, o que a lista de pastas passou a significar.
     /// <para>
     /// O campo é texto livre: uma linha com erro de digitação some da lista sem avisar, e o
-    /// usuário sairia da tela achando que confinou a gravação quando não confinou. Mostrar as
-    /// pastas que de fato valeram é a única forma de ele perceber.
+    /// usuário sairia da tela achando que dispensou a confirmação de uma pasta quando não
+    /// dispensou. Mostrar as pastas que de fato valeram é a única forma de ele perceber.
     /// </para>
     /// </summary>
     private void AtualizarPastasPermitidas()
     {
-        var raizes = PastasPermitidas.Analisar(WriteRootsTextBox.Text);
+        var raizes = PastasSemConfirmacao.Analisar(WriteRootsTextBox.Text);
 
         if (raizes.Count == 0)
         {
             PastasPermitidasTexto.Text =
-                "Nenhuma pasta configurada: gravar e editar valem para o disco inteiro.";
+                "Nenhuma pasta configurada: toda gravação e toda edição pedem confirmação.";
             return;
         }
 
         var faltando = raizes.Where(r => !System.IO.Directory.Exists(r)).ToList();
 
         PastasPermitidasTexto.Text =
-            $"Valendo agora: {string.Join(" | ", raizes)}."
+            $"Sem confirmação agora: {string.Join(" | ", raizes)}."
             + (faltando.Count == 0
                 ? ""
                 : Environment.NewLine
                   + $"Ainda não existe(m) no disco: {string.Join(" | ", faltando)}. "
-                  + "Confira se digitou certo — uma pasta errada aqui bloqueia gravações válidas.");
+                  + "Confira se digitou certo — uma pasta errada aqui só faz o card continuar aparecendo.");
     }
 
     /// <summary>Reavalia a ajuda a cada tecla: o efeito da linha digitada aparece na hora.</summary>
@@ -1850,7 +1850,7 @@ public partial class SettingsWindow : Window
 
         _currentSettings.EnableIntelligentTools = IntelligentToolsSwitch.IsChecked ?? true;
         _currentSettings.ConfirmDangerousCommands = ConfirmDangerousSwitch.IsChecked ?? true;
-        _currentSettings.WriteRoots = (WriteRootsTextBox.Text ?? "").Trim();
+        _currentSettings.PastasSemConfirmacao = (WriteRootsTextBox.Text ?? "").Trim();
         _currentSettings.ExecutionLogging = ExecutionLogSwitch.IsChecked ?? false;
         _currentSettings.CompactionLogging = CompactionLogSwitch.IsChecked ?? false;
         _currentSettings.KeepAssistantSpeech = KeepAssistantSpeechSwitch.IsChecked ?? true;

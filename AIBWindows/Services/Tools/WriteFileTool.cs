@@ -21,14 +21,13 @@ public class WriteFileTool : ITool
     /// Sem confinamento de raiz, o caminho resolvido é a única defesa que o usuário tem.
     /// </summary>
     /// <summary>
-    /// Recusa a gravação fora das pastas permitidas, antes do portão humano.
-    /// <para>
-    /// O modal mostra o caminho, mas mostrar não é impedir: quem clica "permitir" às pressas
-    /// autoriza a gravação em <c>Startup\</c> do mesmo jeito. Barrar aqui é o que faz a pergunta
-    /// nem chegar a existir. Sem pasta configurada, nada muda. Ver <see cref="PastasPermitidas"/>.
-    /// </para>
+    /// Gravar dentro de uma pasta dispensada não para no card. Fora dela, o card aparece como
+    /// sempre. Ver <see cref="PastasSemConfirmacao"/>.
     /// </summary>
-    public string? Validar(string argumentsJson)
+    public bool DispensaConfirmacao(string argumentsJson)
+        => PastasSemConfirmacao.Dispensa(Caminho(argumentsJson));
+
+    private static string? Caminho(string argumentsJson)
     {
         try
         {
@@ -36,7 +35,7 @@ public class WriteFileTool : ITool
             if (!args.TryGetProperty("path", out var pathEl)) return null;
 
             string caminho = PathArgumentRepair.Normalize(pathEl.GetString());
-            return string.IsNullOrWhiteSpace(caminho) ? null : PastasPermitidas.Barrar(caminho);
+            return string.IsNullOrWhiteSpace(caminho) ? null : caminho;
         }
         catch (JsonException)
         {

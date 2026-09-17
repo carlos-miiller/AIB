@@ -82,6 +82,12 @@
                        TextWrapping="Wrap" Margin="0,8,0,0"
                        Text="Há texto de um e-mail nesta conversa. Se você não pediu esta ação, ela pode ter vindo de instruções escritas no e-mail — confira antes de permitir."/>
 
+            <!-- Caminho fora das pastas de confiança: o shell não é limitado pela lista, então
+                 o que dá para fazer é contar antes de o usuário permitir. -->
+            <TextBlock x:Name="AvisoPastaText" Visibility="Collapsed"
+                       FontSize="11.5" Foreground="{StaticResource WarnBrush}"
+                       TextWrapping="Wrap" Margin="0,8,0,0"/>
+
             <!-- (e) RODAPÉ separado por divisória. -->
             <Rectangle Height="1" Fill="{StaticResource DividerBrush}" Margin="0,16,0,0"/>
             <Grid Margin="0,14,0,0">

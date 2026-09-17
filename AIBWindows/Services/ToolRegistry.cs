@@ -72,8 +72,8 @@ public class ToolRegistry
     /// </param>
     /// <param name="aoDecidir">
     /// Recebe COMO a chamada passou pelo portão, numa palavra: <c>automatica</c> (não pede
-    /// confirmação), <c>permitida</c>, <c>permitida_sempre</c>, <c>sempre_na_sessao</c>,
-    /// <c>recusada</c>, <c>barrada_pelo_piso</c>, <c>negada_sem_contexto</c>,
+    /// confirmação), <c>pasta_dispensada</c>, <c>permitida</c>, <c>permitida_sempre</c>,
+    /// <c>sempre_na_sessao</c>, <c>recusada</c>, <c>barrada_pelo_piso</c>, <c>negada_sem_contexto</c>,
     /// <c>negada_sem_interface</c>, <c>nivel_insuficiente</c>, <c>recusada_no_pre_voo</c> ou
     /// <c>ferramenta_desconhecida</c>. Vai para o raw.jsonl com o resultado: sem ela, um comando
     /// que você autorizou e um que nunca pediu confirmação ficam iguais no registro.
@@ -101,8 +101,16 @@ public class ToolRegistry
 
             if (tool.RequiresConfirmation)
             {
-                var (autorizado, motivo) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano, aoDecidir);
-                if (!autorizado) return motivo!;
+                if (DispensaPelaPasta(tool, argumentsJson))
+                {
+                    var (liberado, recusaDoPiso) = await DispensarAsync(tool, argumentsJson, userLevel, aoDecidir);
+                    if (!liberado) return recusaDoPiso!;
+                }
+                else
+                {
+                    var (autorizado, motivo) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano, aoDecidir);
+                    if (!autorizado) return motivo!;
+                }
             }
             else
             {
@@ -124,6 +132,65 @@ public class ToolRegistry
         Console.WriteLine($"[REGISTRY] AVISO: Ferramenta desconhecida '{toolName}'.");
         aoDecidir?.Invoke("ferramenta_desconhecida");
         return $"ERRO: Ferramenta '{toolName}' não encontrada no registry. Ferramentas disponíveis: {string.Join(", ", _tools.Keys)}.";
+    }
+
+    /// <summary>
+    /// Se a chamada cai numa pasta que o usuário dispensou de confirmação.
+    /// <para>
+    /// Texto de e-mail no contexto ANULA a dispensa, pela mesma razão que anula o "sempre
+    /// permitir": a ação pode ter sido pedida por quem escreveu o e-mail, e uma pasta marcada de
+    /// confiança foi marcada contra os enganos do modelo, não contra um pedido de terceiro.
+    /// </para>
+    /// </summary>
+    private bool DispensaPelaPasta(ITool tool, string argumentsJson)
+    {
+        if (ConteudoDeEmailNoContexto?.Invoke() == true) return false;
+
+        try { return tool.DispensaConfirmacao(argumentsJson); }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Deixa passar sem perguntar, mas nem por isso sem registrar: a auditoria grava TODA
+    /// execução de ferramenta que pediria confirmação, inclusive as dispensadas. Uma gravação que
+    /// não apareceu em card e não aparece no registro seria uma gravação invisível.
+    /// <para>
+    /// A floor list continua valendo. Dispensar o card é dispensar a PERGUNTA, não o piso: o que
+    /// exige Nível 7 segue exigindo Nível 7 dentro da pasta de confiança.
+    /// </para>
+    /// </summary>
+    private async Task<(bool Liberado, string? Motivo)> DispensarAsync(
+        ITool tool, string argumentsJson, int userLevel, Action<string>? aoDecidir)
+    {
+        string comando = "";
+        try { comando = tool.BuildConfirmationContext(argumentsJson, userLevel)?.Command ?? ""; }
+        catch { }
+
+        bool floorLigado = _settingsService?.LoadSettings().ConfirmDangerousCommands ?? true;
+        if (floorLigado)
+        {
+            var (bateu, razao) = CommandFloorList.Match(comando, userLevel);
+            if (bateu)
+            {
+                await AuditLogService.AppendAsync(new { evento = "deny_floor", ferramenta = tool.Name, comando, userLevel, razao });
+                aoDecidir?.Invoke("barrada_pelo_piso");
+                return (false, razao!);
+            }
+        }
+
+        await AuditLogService.AppendAsync(new
+        {
+            evento = "allow_pasta_dispensada",
+            ferramenta = tool.Name,
+            comando,
+            userLevel,
+            pastas = PastasSemConfirmacao.Configuradas
+        });
+
+        Console.WriteLine($"[REGISTRY] {tool.Name}: sem confirmação — alvo em pasta dispensada.");
+        aoDecidir?.Invoke("pasta_dispensada");
+
+        return (true, null);
     }
 
     /// <summary>

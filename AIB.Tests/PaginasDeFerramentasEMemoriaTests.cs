@@ -119,9 +119,9 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void SemPastaConfigurada_ATelaDIZ_QueODiscoInteiroEstaLiberado()
+        public void SemPastaConfigurada_ATelaDIZ_QueTudoPedeConfirmacao()
         {
-            // O padrão é permissivo, e um padrão permissivo que não se anuncia é o pior dos dois
+            // O padrão é perguntar sempre, e um padrão que não se anuncia é o pior dos dois
             // mundos: o usuário abre a aba de segurança e sai dela sem saber o que vale.
             WpfHost.EmSta(() =>
             {
@@ -130,7 +130,7 @@ namespace AIB.Tests
                 janela.IrPara(PaginaDeConfiguracoes.Ferramentas);
 
                 ((TextBlock)janela.FindName("PastasPermitidasTexto")).Text
-                    .Should().Contain("disco inteiro");
+                    .Should().Contain("pedem confirmação");
 
                 janela.Close();
             });
@@ -140,7 +140,7 @@ namespace AIB.Tests
         public void ComPastaDigitada_ATela_MostraOQuePassouAValer()
         {
             // O campo é texto livre: uma linha com erro de digitação some da lista sem avisar, e
-            // o usuário sairia achando que confinou a gravação quando não confinou.
+            // o usuário sairia achando que dispensou uma pasta quando não dispensou.
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
@@ -151,7 +151,7 @@ namespace AIB.Tests
 
                 string ajuda = ((TextBlock)janela.FindName("PastasPermitidasTexto")).Text;
                 ajuda.Should().Contain(@"C:\Trabalho");
-                ajuda.Should().Contain("Ainda não existe", "pasta inexistente bloqueia gravação válida");
+                ajuda.Should().Contain("Ainda não existe", "pasta digitada errado nunca dispensa nada");
 
                 janela.Close();
             });
