@@ -68,6 +68,82 @@ namespace AIB.Tests
                 .Should().Contain("acesso negado");
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // A falha dita na primeira palavra
+        // ─────────────────────────────────────────────────────────────────────
+
+        private const string Cabeca =
+            "#< CLIXML\r\n<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\">";
+
+        [Fact]
+        public void CodigoDeSaidaDiferenteDeZero_ViraERRO_ComASaidaJunto()
+        {
+            // Caso real: powershell -File apontando para um script que a pasta apagada levou.
+            string r = RunCommandTool.Montar(
+                "O argumento 'C:\\x\\gerar.ps1' para o parâmetro -File não existe.", "", -196608);
+
+            r.Should().StartWith("ERRO (código de saída -196608): O argumento");
+            AIB.Services.Memory.ArtifactExtractor.Falhou(r).Should().BeTrue("é o que marca [FALHOU] na memória");
+        }
+
+        [Fact]
+        public void ErroQueNaoEncerra_ComCodigoZero_TambemViraERRO()
+        {
+            // O script segue depois do Get-Content que falhou e sai com 0. Só o registro de erro
+            // no CLIXML denuncia — e era esse o caso da pasta apagada, que o resumo explicou
+            // como "caracteres especiais".
+            string stderr = Cabeca
+                + "<S S=\"Error\">Get-Content : Não é possível localizar o caminho 'C:\\x\\template.html'._x000D__x000A_</S>"
+                + "<S S=\"Error\">No linha:1 caractere:1_x000D__x000A_</S>"
+                + "<S S=\"Error\">    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetContentCommand_x000D__x000A_</S>"
+                + "</Objs>";
+
+            string r = RunCommandTool.Montar("Processamento concluído.", stderr, 0);
+
+            r.Should().StartWith("ERRO: o comando continuou, mas houve erro: Get-Content : Não é possível localizar");
+            r.Should().Contain("Saída completa:").And.Contain("Processamento concluído.");
+        }
+
+        [Fact]
+        public void ProgressoDeProgramaNativo_ComCodigoZero_NaoEhFalha()
+        {
+            // git escreve progresso em stderr; com 2>&1 o PowerShell 5.1 embrulha como erro.
+            string stderr = Cabeca
+                + "<S S=\"Error\">git : Cloning into 'repo'..._x000D__x000A_</S>"
+                + "<S S=\"Error\">    + FullyQualifiedErrorId : NativeCommandError_x000D__x000A_</S>"
+                + "</Objs>";
+
+            RunCommandTool.Montar("", stderr, 0).Should().NotStartWith("ERRO");
+        }
+
+        [Fact]
+        public void StderrEmTextoPuro_ComCodigoZero_NaoEhFalha()
+        {
+            RunCommandTool.Montar("ok", "npm WARN deprecated algo", 0).Should().NotStartWith("ERRO");
+        }
+
+        [Fact]
+        public void Sucesso_SaiComoAntes()
+        {
+            RunCommandTool.Montar("linha 1\n", "", 0).Should().Be("linha 1");
+            RunCommandTool.Montar("", "", 0).Should().Be("Comando executado com sucesso (sem saída).");
+            RunCommandTool.Montar("", Ruido, 0).Should().Be("Comando executado com sucesso (sem saída).");
+        }
+
+        [Fact]
+        public void DoisErros_OPrimeiroVaiNaCabeca()
+        {
+            string stderr = Cabeca
+                + "<S S=\"Error\">Primeiro erro._x000D__x000A_</S>"
+                + "<S S=\"Error\">    + FullyQualifiedErrorId : A_x000D__x000A_</S>"
+                + "<S S=\"Error\">Segundo erro._x000D__x000A_</S>"
+                + "<S S=\"Error\">    + FullyQualifiedErrorId : B_x000D__x000A_</S>"
+                + "</Objs>";
+
+            RunCommandTool.Montar("", stderr, 1).Should().StartWith("ERRO (código de saída 1): Primeiro erro.")
+                .And.Contain("Segundo erro.");
+        }
+
         [Fact]
         public void SemBloco_NadaMuda()
         {

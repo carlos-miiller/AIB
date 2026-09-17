@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -137,6 +139,108 @@ public class RunCommandTool : ITool
         return string.Join("\n", linhas).Trim();
     }
 
+    /// <summary>Teto do texto devolvido ao modelo.</summary>
+    public const int TetoDaSaida = 8000;
+
+    /// <summary>
+    /// O resultado que o modelo lê, com a FALHA dita na primeira palavra.
+    /// <para>
+    /// Antes o código de saída nem era lido, e o erro do PowerShell chegava misturado à saída
+    /// sem marca nenhuma. Tudo o que decide "falhou" no programa — o chip vermelho, o recado ao
+    /// modelo, o [FALHOU] do capítulo, a seção Pendente — olha para o "ERRO" no começo do
+    /// resultado. Numa conversa real, 4 de 9 comandos de um capítulo falharam (script
+    /// inexistente, pasta apagada, parâmetro com tipo errado) e todos entraram na memória como
+    /// sucesso; o resumidor inventou uma causa para o que ninguém tinha marcado como erro.
+    /// </para>
+    /// <para>
+    /// Dois sinais, e nenhum sozinho basta. O código de saída pega o comando nativo que falhou e o
+    /// erro que encerra o script; o erro que NÃO encerra (um Get-Content numa pasta que sumiu, e o
+    /// script segue) sai com código 0, e só aparece como registro de erro no CLIXML. Stderr em
+    /// texto puro não conta: git, npm e afins escrevem progresso ali com sucesso.
+    /// </para>
+    /// </summary>
+    public static string Montar(string? stdout, string? stderr, int codigoDeSaida)
+    {
+        string saida = ((stdout ?? "") + "\n" + SemClixml(stderr)).Trim();
+        var erros = ErrosDoClixml(stderr);
+
+        // Programa nativo que escreve em stderr com 2>&1 vira registro de erro "NativeCommandError"
+        // mesmo quando deu certo. Com código 0, é progresso de git, não falha.
+        if (codigoDeSaida == 0 && erros.Any(e => e.Contains("NativeCommandError", StringComparison.Ordinal)))
+            erros = Array.Empty<string>();
+
+        if (saida.Length > TetoDaSaida)
+            saida = saida.Substring(0, TetoDaSaida) + "\n...[Saída truncada devido ao tamanho máximo].";
+
+        bool falhou = codigoDeSaida != 0 || erros.Count > 0;
+
+        if (!falhou)
+            return saida.Length == 0 ? "Comando executado com sucesso (sem saída)." : saida;
+
+        string primeira = erros.FirstOrDefault()
+                          ?? saida.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0)
+                          ?? "";
+        if (primeira.Length > 200) primeira = primeira[..200] + "…";
+
+        string cabeca = codigoDeSaida != 0
+            ? $"ERRO (código de saída {codigoDeSaida})"
+            : "ERRO: o comando continuou, mas houve erro";
+
+        if (primeira.Length > 0) cabeca += ": " + primeira;
+
+        return saida.Length == 0 || saida == primeira
+            ? cabeca
+            : cabeca + "\n\nSaída completa:\n" + saida;
+    }
+
+    /// <summary>
+    /// As mensagens de erro serializadas no CLIXML, uma por registro. O PowerShell quebra cada
+    /// registro em vários <c>&lt;S S="Error"&gt;</c> seguidos (a mensagem e as linhas "+ No
+    /// linha:1…"); a primeira parte de cada grupo é a mensagem.
+    /// </summary>
+    internal static IReadOnlyList<string> ErrosDoClixml(string? stderr)
+    {
+        if (string.IsNullOrEmpty(stderr) || stderr.IndexOf("S=\"Error\"", StringComparison.Ordinal) < 0)
+            return Array.Empty<string>();
+
+        string texto = string.Concat(
+            System.Text.RegularExpressions.Regex.Matches(stderr, "<S S=\"Error\">(.*?)</S>",
+                    System.Text.RegularExpressions.RegexOptions.Singleline)
+                .Select(m => System.Net.WebUtility.HtmlDecode(m.Groups[1].Value)
+                    .Replace("_x000D__x000A_", "\n")
+                    .Replace("_x000A_", "\n")));
+
+        // Um registro termina na linha "FullyQualifiedErrorId"; a mensagem é a primeira linha
+        // não vazia depois do anterior. Sem essa linha, cada linha que não começa com "+" conta.
+        var erros = new List<string>();
+        bool esperandoMensagem = true;
+
+        foreach (string bruta in texto.Split('\n'))
+        {
+            string linha = bruta.Trim();
+            if (linha.Length == 0) continue;
+
+            if (linha.StartsWith("+", StringComparison.Ordinal))
+            {
+                if (linha.Contains("FullyQualifiedErrorId", StringComparison.Ordinal))
+                {
+                    if (linha.Contains("NativeCommandError", StringComparison.Ordinal) && erros.Count > 0)
+                        erros[^1] += " [NativeCommandError]";
+                    esperandoMensagem = true;
+                }
+                continue;
+            }
+
+            if (esperandoMensagem)
+            {
+                erros.Add(linha);
+                esperandoMensagem = false;
+            }
+        }
+
+        return erros;
+    }
+
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
         try
@@ -215,15 +319,7 @@ public class RunCommandTool : ITool
                 return "ERRO: O comando demorou mais de 30 segundos e foi interrompido (Timeout).";
             }
 
-            string finalOutput = await stdoutTask + "\n" + SemClixml(await stderrTask);
-            
-            if (string.IsNullOrWhiteSpace(finalOutput))
-                return "Comando executado com sucesso (sem saída).";
-
-            if (finalOutput.Length > 8000)
-                finalOutput = finalOutput.Substring(0, 8000) + "\n...[Saída truncada devido ao tamanho máximo].";
-
-            return finalOutput.Trim();
+            return Montar(await stdoutTask, await stderrTask, process.ExitCode);
         }
         catch (Exception ex)
         {

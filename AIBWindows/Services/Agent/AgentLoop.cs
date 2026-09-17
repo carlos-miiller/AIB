@@ -310,6 +310,14 @@ public sealed class AgentLoop
                     if (tc.Name == "materialize_skill") _toolRegistry.Refresh();
                 }
 
+                // O mundo mudou: uma gravação, edição ou comando deu certo. A chamada que falhou
+                // antes pode dar certo agora — rodar o script de novo depois de recriar o template
+                // é exatamente o conserto, e não repetição. Desde que o shell passou a dizer
+                // quando falha, sem isto o bloqueio barraria a segunda execução.
+                if (results.Any(r => r.Tc.Name is Ferramentas.Gravar or Ferramentas.Editar or Ferramentas.Shell
+                                     && !Memory.ArtifactExtractor.Falhou(r.Result)))
+                    jaFalharam.Clear();
+
                 store.Trim(request.UserLevel);
                 store.NotifyTokenCount(request.UserLevel);
                 pulso.Fim($"ferramenta(s) executada(s), voltando ao modelo (iteração {iteration + 1})");
