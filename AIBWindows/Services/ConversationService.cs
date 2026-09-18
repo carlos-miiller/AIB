@@ -1016,8 +1016,8 @@ public sealed class ConversationService : IMessageStore
     /// <summary>
     /// Onde a compactação está, para a tela poder mostrar que não travou.
     /// </summary>
-    /// <param name="Fase">"capítulo" ou "arco" — o que está sendo resumido agora.</param>
-    /// <param name="Numero">O índice do capítulo ou ato em questão.</param>
+    /// <param name="Fase">"capítulo" ou "ato" — o que está sendo resumido agora.</param>
+    /// <param name="Numero">O índice do capítulo ou ato em questão, a partir de 0; a tela soma 1.</param>
     /// <param name="Feitos">Quantos já fecharam nesta passada.</param>
     public sealed record PassoDaCompactacao(string Fase, int Numero, int Feitos);
 
@@ -1551,8 +1551,10 @@ public sealed class ConversationService : IMessageStore
             _registroDaCompactacao.Ato(
                 _memory.NextActIndex, soltos.Count, soltos[0].Index, soltos[^1].Index);
 
+            // Feitos = 0: soltos.Count é o tamanho do ato, não quantos já fecharam — no campo
+            // Feitos virava "ato 1 (12 pronto(s))" antes de o ato existir.
             CompactacaoAndou?.Invoke(new PassoDaCompactacao(
-                "arco", _memory.NextActIndex, soltos.Count));
+                "ato", _memory.NextActIndex, 0));
 
             var ato = await compactor
                 .PromoteAsync(_memory.NextActIndex, soltos, ct)
@@ -1655,11 +1657,12 @@ public sealed class ConversationService : IMessageStore
         int disponiveis = turnos.Count - manter;
         if (disponiveis <= 0) return new List<Turn>();
 
-        int alvo = (int)(quota.Live * LimitesDoProvedor.Atual.AlvoDepoisDeCompactar);
+        // Provedor DESTA conversa, como em CapitulosPorAto e no Compactor — não o Atual global.
+        var settings = _settingsService.LoadSettings();
+        int alvo = (int)(quota.Live * LimitesDoProvedor.Para(settings.AiProvider).AlvoDepoisDeCompactar);
         var escolhidos = new List<Turn>();
         int restante = vivo;
 
-        var settings = _settingsService.LoadSettings();
         int teto = Math.Min(disponiveis, settings.TurnosPorCapitulo);
         int tetoDeTokens = settings.TokensPorCapitulo;
         int somados = 0;
@@ -2561,7 +2564,7 @@ public sealed class ConversationService : IMessageStore
             texto.Append($"No prompt agora: {relatorio.Contexto:N0} de {relatorio.Max:N0} token(s).")
                  .Append('\n');
             texto.Append("A compactação dispara sozinha quando a conversa viva passa do gatilho, ")
-                 .Append("ou na hora com /capitulo.");
+                 .Append("ou na hora com /compact.");
             if (relatorio.CustoUsd is decimal gastoSemCapitulo)
                 texto.Append('\n').Append($"Gasto na conversa: {TokenReport.Dolares(gastoSemCapitulo)} (OpenRouter).");
             string cacheSemCapitulo = LinhasDoCache();

@@ -58,11 +58,16 @@ public static class BlocoEstruturado
     /// de estado, o Aprendido, os pedidos mais antigos do Combinado, e só então o Objetivo é
     /// aparado. Um bloco que não cabe inteiro nunca pode sumir: foi o que aconteceu quando o
     /// Combinado de um ato passou da cota sozinho, e a memória inteira saiu do prompt.
+    /// <para>
+    /// A primeira tentativa usa o mesmo <paramref name="tetoDeItens"/> do <see cref="Render"/>
+    /// inteiro: sem isso, o bloco que cabe na cota sairia menor do que o bloco que foi medido.
+    /// </para>
     /// </summary>
     public static string Fit(
         int maxTokens, TokenCounter counter,
         string titulo, string? objetivo, IReadOnlyList<FalaCombinada>? combinado,
-        EstadoDoTrecho? estado, string fimDe, IReadOnlyList<string>? aprendido)
+        EstadoDoTrecho? estado, string fimDe, IReadOnlyList<string>? aprendido,
+        int tetoDeItens = EstadoDoTrecho.TetoDeItens)
     {
         if (maxTokens <= 0) return "";
 
@@ -70,8 +75,8 @@ public static class BlocoEstruturado
 
         foreach (var (teto, consultados, comAprendido, pedidos) in new[]
                  {
-                     (EstadoDoTrecho.TetoDeItens, true, true, falas),
-                     (EstadoDoTrecho.TetoDeItens, false, true, falas),
+                     (tetoDeItens, true, true, falas),
+                     (tetoDeItens, false, true, falas),
                      (10, false, true, falas),
                      (5, false, true, falas),
                      (5, false, false, falas),
@@ -93,13 +98,13 @@ public static class BlocoEstruturado
     }
     private static string RenderComTeto(EstadoDoTrecho estado, string fimDe, int teto)
     {
-        if (teto >= estado.Itens.Count) return estado.Render(fimDe);
+        if (teto >= estado.Itens.Count) return estado.Render(fimDe, teto);
         if (teto <= 0) return "";
 
         // Os mais recentes ficam: são os que descrevem o fim do trecho.
         var cortado = estado with { Itens = estado.Itens.TakeLast(teto).ToList() };
         int fora = estado.Itens.Count - teto;
-        return ReplaceFirst(cortado.Render(fimDe), ":\n", $":\n- ({fora} item(ns) mais antigo(s) omitido(s))\n");
+        return ReplaceFirst(cortado.Render(fimDe, teto), ":\n", $":\n- ({fora} item(ns) mais antigo(s) omitido(s))\n");
     }
 
     private static string ReplaceFirst(string texto, string de, string para)

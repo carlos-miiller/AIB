@@ -238,7 +238,7 @@ public sealed record EstadoDoTrecho(
 
         void ComandoOpaco(string comando, bool falhou, string resultado, int turno)
         {
-            itens.TryGetValue("cmd:" + comando, out var antes);
+            itens.TryGetValue(ChaveDeComando(comando), out var antes);
             Guardar(new ItemDeEstado(comando, ItemDeEstado.TipoComando,
                 falhou ? "FALHOU" : "ok",
                 falhou ? Primeira(resultado) : null,
@@ -349,8 +349,16 @@ public sealed record EstadoDoTrecho(
         }
     }
 
+    /// <summary>
+    /// Comando casa pela <see cref="ComandoDeShell.Assinatura"/>, como no Pendente: pelo texto
+    /// cru, `x.php | Select-Object -Last 20` que falhou e `x.php` que deu certo eram dois itens, e
+    /// o Estado dizia FALHOU enquanto o Pendente já dava a falha por resolvida. O item guardado
+    /// leva o texto da última execução.
+    /// </summary>
     private static string Chave(ItemDeEstado item) =>
-        item.Tipo == ItemDeEstado.TipoComando ? "cmd:" + item.Alvo : item.Alvo.TrimEnd('\\', '/');
+        item.Tipo == ItemDeEstado.TipoComando ? ChaveDeComando(item.Alvo) : item.Alvo.TrimEnd('\\', '/');
+
+    private static string ChaveDeComando(string comando) => "cmd:" + ComandoDeShell.Assinatura(comando);
 
     private static void Consultar(List<string> consultados, string caminho)
     {
@@ -391,7 +399,11 @@ public sealed record EstadoDoTrecho(
     /// O bloco "Estado ao fim de …". Arquivos agrupados pela pasta em comum — o caminho completo
     /// uma vez no título, o nome em cada linha —, comandos depois, e a linha Consultados no fim.
     /// </summary>
-    public string Render(string fimDe)
+    /// <param name="teto">
+    /// Quantos itens mostrar antes do "e mais N": <see cref="TetoDeItens"/> no capítulo,
+    /// <see cref="TetoDeItensDoAto"/> no ato.
+    /// </param>
+    public string Render(string fimDe, int teto = TetoDeItens)
     {
         if (EstaVazio) return "";
 
@@ -409,7 +421,7 @@ public sealed record EstadoDoTrecho(
             int mostrados = 0;
             foreach (var item in arquivos.Concat(comandos))
             {
-                if (mostrados == TetoDeItens)
+                if (mostrados == teto)
                 {
                     texto.Append("- e mais ").Append(Itens.Count - mostrados).Append(" item(ns)\n");
                     break;

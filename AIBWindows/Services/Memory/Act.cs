@@ -119,7 +119,8 @@ public sealed record Act(
     /// </summary>
     public string Render(int maxTokens, TokenCounter counter) =>
         Versao >= BlocoEstruturado.Versao
-            ? BlocoEstruturado.Fit(maxTokens, counter, TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido)
+            ? BlocoEstruturado.Fit(maxTokens, counter, TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido,
+                                   EstadoDoTrecho.TetoDeItensDoAto)
             : MemoryRender.Fit(Render(), Summary, maxTokens, counter);
 
     private string TituloV2 => FirstChapter == LastChapter

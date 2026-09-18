@@ -349,7 +349,8 @@ namespace AIB.Tests
                 botao.Visibility.Should().Be(Visibility.Visible);
                 botao.Content.Should().Be("Interromper");
 
-                Achar<TextBlock>(janela, "StatusText").Text.Should().Contain("capítulo 3");
+                // Índice 3 é o quarto capítulo: a tela numera como o bloco de memória, a partir de 1.
+                Achar<TextBlock>(janela, "StatusText").Text.Should().Contain("capítulo 4");
 
                 janela.Close();
             });
@@ -366,7 +367,7 @@ namespace AIB.Tests
                 var janela = JanelaDeEnsaio.Nova();
 
                 janela.AnunciarCompactacao(
-                    new ConversationService.PassoDaCompactacao("arco", 1, 0));
+                    new ConversationService.PassoDaCompactacao("ato", 1, 0));
 
                 janela.EsconderEspera();
 

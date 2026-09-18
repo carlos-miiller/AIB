@@ -1647,8 +1647,8 @@ public partial class ChatWindow : Window
     public void AnunciarCompactacao(ConversationService.PassoDaCompactacao passo)
     {
         string frase = passo.Feitos > 0
-            ? $"Compactando a memória — {passo.Fase} {passo.Numero} ({passo.Feitos} pronto(s))"
-            : $"Compactando a memória — {passo.Fase} {passo.Numero}";
+            ? $"Compactando a memória — {passo.Fase} {passo.Numero + 1} ({passo.Feitos} pronto(s))"
+            : $"Compactando a memória — {passo.Fase} {passo.Numero + 1}";
 
         MostrarEspera(frase, "Interromper", () => _conversation.InterromperCompactacao());
     }
@@ -1899,7 +1899,7 @@ public partial class ChatWindow : Window
             return $"Nada compactado ainda.\n"
                  + $"No prompt: {r.Contexto:N0} de {r.Max:N0} tokens.\n\n"
                  + gasto
-                 + "/memoria mostra a conta; /capitulo compacta agora.";
+                 + "/memoria mostra a conta; /compact compacta agora.";
 
         var texto = new StringBuilder();
         texto.Append("ECONOMIA DA MEMÓRIA").Append('\n').Append('\n');

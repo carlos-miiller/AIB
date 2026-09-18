@@ -53,6 +53,12 @@ public sealed class Compactor
     public const int MaxSummaryTokens = 400;
 
     /// <summary>
+    /// Lições que um capítulo guarda. O prompt pede até três; cinco é a folga para o modelo que
+    /// passa um pouco da conta sem que o excesso vire regra.
+    /// </summary>
+    public const int LicoesDoCapitulo = 5;
+
+    /// <summary>
     /// Prompt do capítulo no formato por seções. O modelo escreve SÓ o que código não sabe
     /// escrever: o objetivo, as lições e o que ficou pedido sem fazer. Estado dos arquivos e
     /// pedidos literais já foram montados por código e vão junto, como referência — é sobre eles
@@ -304,8 +310,12 @@ public sealed class Compactor
     /// Separa OBJETIVO, APRENDIDO e PENDENTE da resposta, e confere cada lição contra a fonte.
     /// Tolerante: modelo pequeno põe negrito, troca "- " por "* ", esquece o rótulo.
     /// </summary>
+    /// <param name="maxLicoes">
+    /// Quantas lições ficam. O ato passa <see cref="LimitesDoProvedor.LinhasDoAto"/>: com o teto
+    /// fixo do capítulo, o prompt pedia dez linhas na nuvem e o ato guardava cinco.
+    /// </param>
     public static (string? Objetivo, IReadOnlyList<string> Aprendido, IReadOnlyList<Pendencia> Assunto)
-        LerSecoes(string? texto, string fonte, int indice = 0)
+        LerSecoes(string? texto, string fonte, int indice = 0, int maxLicoes = LicoesDoCapitulo)
     {
         var (semPendente, assunto) = Pendencias.LerDoResumo(texto);
 
@@ -353,7 +363,7 @@ public sealed class Compactor
         if (descartadas > 0)
             Console.WriteLine($"[MEMORIA] {descartadas} lição(ões) do trecho {indice} descartada(s): citavam valor sem origem no material.");
 
-        return (objetivo, aprendido.Take(5).ToList(), assunto);
+        return (objetivo, aprendido.Take(maxLicoes).ToList(), assunto);
 
         void Aprender(string licao)
         {
@@ -514,7 +524,7 @@ public sealed class Compactor
                     .ConfigureAwait(false);
 
                 string texto = ThinkBlockStripper.Strip(resultado.Text);
-                var (obj, apr, assunto) = LerSecoes(texto, material, actIndex);
+                var (obj, apr, assunto) = LerSecoes(texto, material, actIndex, _limites.LinhasDoAto);
 
                 if (obj != null) objetivo = obj;
                 if (apr.Count > 0 || texto.Contains("APRENDIDO", StringComparison.OrdinalIgnoreCase)) aprendido = apr;

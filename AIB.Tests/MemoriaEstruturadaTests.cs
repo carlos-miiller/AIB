@@ -199,6 +199,54 @@ namespace AIB.Tests
             contador.CountText(bloco).Should().BeLessThanOrEqualTo(120);
         }
 
+        private static EstadoDoTrecho EstadoCom(int itens) => new(
+            Enumerable.Range(0, itens)
+                .Select(i => new ItemDeEstado($@"{Pasta}\arquivo{i}.html", ItemDeEstado.TipoArquivo, "criado pelo agente", null, i))
+                .ToList(),
+            Array.Empty<string>(), 0);
+
+        [Fact]
+        public void Ato_UsaOTetoDeItensDoAto_NoRenderENoFit()
+        {
+            // O teto do ato existia, mas o Render do estado cortava sempre em vinte: o ato de
+            // vinte e cinco itens saía com "e mais 5" como se fosse capítulo.
+            var ato = new Act(0, "2026-09-18T00:00:00Z", 0, 3, 0, 9, "", Array.Empty<Artifact>(),
+                Versao: BlocoEstruturado.Versao, Objetivo: "objetivo", Estado: EstadoCom(25));
+
+            ato.Render().Should().NotContain("e mais").And.Contain("arquivo0.html");
+            ato.Render(100_000, new TokenCounter()).Should().NotContain("e mais").And.NotContain("omitido");
+
+            EstadoCom(25).Render("do capítulo 1").Should().Contain("e mais 5", "o capítulo continua no teto de vinte");
+        }
+
+        [Fact]
+        public void LerSecoes_GuardaAsLinhasQueOAtoPediu()
+        {
+            // O ato na nuvem pede dez lições; com o corte fixo em cinco, metade sumia.
+            string texto = "OBJETIVO: x\nAPRENDIDO:\n" + string.Join("\n", Enumerable.Range(1, 8).Select(i => $"- lição simples número um{new string('a', i)}"));
+
+            Compactor.LerSecoes(texto, "fonte", 0, maxLicoes: 10).Aprendido.Should().HaveCount(8);
+            Compactor.LerSecoes(texto, "fonte").Aprendido.Should().HaveCount(Compactor.LicoesDoCapitulo);
+        }
+
+        [Fact]
+        public void Estado_ComandoQueFalhaEDepoisDaCerto_EhUmItemSo_PelaAssinatura()
+        {
+            // O mesmo casamento do Pendente: com o texto cru como chave, a versão com pipe que
+            // falhou ficava no Estado como FALHOU depois de a versão sem pipe dar certo.
+            var estado = EstadoDoTrecho.Montar(new[]
+            {
+                Turno(0, "rode o teste",
+                    Chamada("shell", new { command = "php teste.php | Select-Object -Last 20" }, "ERRO (código de saída 1): falhou"),
+                    Chamada("shell", new { command = "php teste.php" }, "tudo certo"))
+            });
+
+            var item = estado.Itens.Should().ContainSingle().Which;
+            item.Situacao.Should().Be("ok");
+            item.Alvo.Should().Be("php teste.php", "fica o texto da última execução");
+            item.Vezes.Should().Be(2);
+        }
+
         // ─────────────────────────────────────────────────────────────────────
         // Esconder resultados antigos
         // ─────────────────────────────────────────────────────────────────────

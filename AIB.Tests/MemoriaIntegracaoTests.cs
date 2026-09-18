@@ -231,7 +231,8 @@ namespace AIB.Tests
             bloco.Should().NotContain("### Capítulo 1");
 
             File.ReadAllLines(Path.Combine(conversa.SessionMemoryDir, "chapters.jsonl"))
-                .Length.Should().BeGreaterThanOrEqualTo(4, "capítulo resumido continua em disco");
+                .Length.Should().BeGreaterThanOrEqualTo(ato.LastChapter - ato.FirstChapter + 1,
+                    "capítulo resumido continua em disco — todos os que o ato cobre, quantos forem");
         }
 
         [Fact]
