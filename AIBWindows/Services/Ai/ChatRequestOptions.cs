@@ -5,7 +5,7 @@ namespace AIB.Services.Ai;
 /// <summary>Parâmetros de requisição independentes de provider.</summary>
 /// <param name="Temperature">Temperatura. Default 0.1f — igual ao valor atual em produção.</param>
 /// <param name="NumCtx">
-/// Janela de contexto pedida ao Ollama (ignorada pelo OpenAI).
+/// Janela de contexto pedida ao Ollama (ignorada pelo OpenRouter, onde a janela é a do modelo).
 /// <para>
 /// 32.768, e não os 16.384 anteriores. Medido nesta máquina, sem GPU: o modelo suporta 262.144;
 /// o KV cache custa ~0,65 GB a cada 16k (16k → 3,6 GB, 32k → 4,2 GB, 64k → 5,6 GB) contra
@@ -48,7 +48,7 @@ public sealed record ChatRequestOptions(
 {
     /// <summary>
     /// A janela de contexto em vigor, do provedor da conversa. Configurada pelo
-    /// <see cref="SettingsService"/> ao carregar e ao salvar, como as pastas permitidas.
+    /// <see cref="SettingsService"/> ao carregar e ao salvar, como as pastas sem confirmação.
     /// <para>
     /// Era a constante 32768 deste record, lida de onde fosse preciso: os orçamentos por nível e
     /// o teto da poda. Com a janela virando configuração por provedor, uma constante aqui faria

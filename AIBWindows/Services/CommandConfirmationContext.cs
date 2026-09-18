@@ -7,7 +7,6 @@
         public bool DenylistHit { get; set; }
         public string DenylistReason { get; set; } = "";
         public string ScriptBody { get; set; } = "";
-        public string Interpreter { get; set; } = "";
 
         /// <summary>
         /// Há texto original de e-mail no contexto da conversa. O card avisa que o pedido pode

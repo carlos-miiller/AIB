@@ -6,9 +6,9 @@ namespace AIB.Services;
 
 /// <summary>
 /// Floor list de comandos destrutivos para <c>shell</c>. Roda APÓS o
-/// modal (D-04) e refuta apenas quando <c>userLevel &lt; 7</c> e
+/// cartão de confirmação no chat (D-04) e refuta apenas quando <c>userLevel &lt; 7</c> e
 /// <c>ConfirmDangerousCommands == ON</c>. Em L&gt;=7 ou com a flag OFF,
-/// o modal é a autoridade única (D-01, herda Phase 1 D5/D8).
+/// o cartão é a autoridade única (D-01, herda Phase 1 D5/D8).
 ///
 /// Pipeline (D-03):
 ///   1. Lowercase.
@@ -17,8 +17,9 @@ namespace AIB.Services;
 ///   4. <c>-EncodedCommand</c> -> recusa imediata (não-decodável aqui).
 ///   5. Regex com <c>\b</c> word boundaries; first match wins.
 ///
-/// Este é um portão BEST-EFFORT. O modal é o gate canônico per Phase 1 D5
-/// (sempre dispara, independente do nível). Documentado em SEGURANCA.MD.
+/// Este é um portão BEST-EFFORT. O cartão é o gate canônico per Phase 1 D5
+/// (dispara em qualquer nível; só uma pasta sem confirmação o dispensa, e aí esta lista
+/// roda sozinha). Documentado em SEGURANCA.MD.
 /// </summary>
 public static class CommandFloorList
 {
@@ -101,7 +102,7 @@ public static class CommandFloorList
     /// </summary>
     public static (bool Hit, string? Reason) Match(string command, int userLevel)
     {
-        // D-01: floor inativo em L>=7 — o modal é a autoridade única.
+        // D-01: floor inativo em L>=7 — o cartão é a autoridade única.
         if (userLevel >= 7) return (false, null);
 
         // Step 1: lowercase para todo o pipeline.

@@ -66,22 +66,6 @@
         </Style>
 
 
-        <!-- §3.5 — BOLHAS. Raio 18 UNIFORME nas duas: a geometria é de card,
-             herdada da tela de seleção. Não voltar ao canto "rabinho". O4.
-             A do USUÁRIO mora no Controls.xaml: a barra do Shadow Assistant também
-             mostra o que o usuário mandou, e duas cópias do mesmo estilo acabariam
-             divergindo — o usuário veria duas bolhas levemente diferentes na mesma
-             sessão. Foi o que já aconteceu com o SendButton. -->
-        <Style x:Key="AgentBubble" TargetType="Border">
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusBubble}"/>
-            <Setter Property="Padding" Value="17,13"/>
-            <Setter Property="Background" Value="{StaticResource SurfaceCardBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderCardBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Effect" Value="{StaticResource CardShadow}"/>
-            <Setter Property="HorizontalAlignment" Value="Left"/>
-        </Style>
-
         <!-- §3.9 — HORA. Fora da bolha, some por padrão e aparece no hover da
              linha. Dentro da linha ela ocuparia espaço e empurraria a bolha
              para longe da borda. A5. -->
@@ -197,9 +181,9 @@
                 </StackPanel>
             </Border>
 
-                            <!-- Shadow Assistant fica OCULTO: não consta em nenhuma das
-                                 duas specs. Implementação futura — não remover o botão
-                                 nem os handlers, só não exibir. -->
+                            <!-- Nasce Collapsed, mas ApplyShadowAssistantSetting o mostra
+                                 sempre que ShadowAssistantEnabled está ligado — na abertura
+                                 e a cada volta das Configurações. -->
                             <Button x:Name="BtnToggleShadow" Style="{StaticResource IconButton}"
                                     Click="BtnToggleShadow_Click" Visibility="Collapsed"
                                     ToolTip="Shadow Assistant (Alpha)"/>

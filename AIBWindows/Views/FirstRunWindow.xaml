@@ -320,7 +320,7 @@
                                 </Border>
                             </StackPanel>
 
-                            <!-- OpenAI branch -->
+                            <!-- Ramo do OpenRouter -->
                             <StackPanel x:Name="OpenRouterBranch" Visibility="Collapsed">
                                 <Border Background="#06FFFFFF" CornerRadius="8" Padding="20" BorderBrush="#1AFFFFFF" BorderThickness="1">
                                     <StackPanel>

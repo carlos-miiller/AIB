@@ -187,12 +187,16 @@ public static class Pendencias
         return texto.ToString();
     }
 
-    /// <summary>A linha que o resumidor deve acrescentar ao parágrafo.</summary>
+    /// <summary>
+    /// A linha de pendências que o resumidor devolve. Vale para os dois formatos: no antigo ela
+    /// vem depois do parágrafo; no por seções é a seção PENDENTE, depois de OBJETIVO e APRENDIDO.
+    /// </summary>
     public const string MarcaDoResumo = "PENDENTE:";
 
     /// <summary>
-    /// Separa o parágrafo da linha <c>PENDENTE:</c> que o resumidor devolve. Sem a linha, ou com
-    /// "nenhuma", não há pendência de assunto — e o parágrafo sai como veio.
+    /// Separa do resto a linha <c>PENDENTE:</c> que o resumidor devolve — o parágrafo, no formato
+    /// antigo, ou as seções OBJETIVO e APRENDIDO, no formato por seções. Sem a linha, ou com
+    /// "nenhuma", não há pendência de assunto — e o resto sai como veio.
     /// </summary>
     public static (string Resumo, IReadOnlyList<Pendencia> Assunto) LerDoResumo(string? texto)
     {

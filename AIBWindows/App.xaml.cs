@@ -1,6 +1,4 @@
 using System;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using Hardcodet.Wpf.TaskbarNotification;
@@ -48,9 +46,8 @@ public partial class App : System.Windows.Application
     private ConversationService _conversation = null!;
 
     /// <summary>
-    /// Liga e desliga o orbe, gravando a escolha. Existe para o orbe poder ser visto sem
-    /// passar pela tela de configuracoes — enquanto ele nao tem funcao nenhuma, a bandeja e o
-    /// unico lugar de onde da para experimenta-lo.
+    /// Liga e desliga o orbe, gravando a escolha. É a porta da bandeja; a outra é a página
+    /// Shadow das configurações, e as duas desembocam em <see cref="SincronizarOrbe"/>.
     /// </summary>
     private void AlternarOrbe(bool ligado)
     {
@@ -150,55 +147,6 @@ public partial class App : System.Windows.Application
         }
     }
 
-    /// <summary>
-    /// ANDAIME de demonstracao: enfileira um digest falso para o orbe. Segue aqui porque ainda
-    /// e o unico jeito de ver a rajada e a lista cheia sem uma caixa de verdade na frente.
-    /// </summary>
-    private void SimularDigest()
-    {
-        if (_orbe == null)
-        {
-            ShowNotification("AIB", "Ligue o orbe primeiro (menu da bandeja).");
-            return;
-        }
-
-        _orbe.ComecarAProcessarEmail();
-
-        var relogio = new System.Windows.Threading.DispatcherTimer
-        {
-            Interval = TimeSpan.FromSeconds(3)
-        };
-
-        relogio.Tick += (s, e) =>
-        {
-            relogio.Stop();
-            _orbe?.TerminarDeProcessarEmail(
-                "Li os 38 e-mails da manha. Tres precisam de voce hoje; o resto nao pede nada.",
-                new[]
-                {
-                    new MailSummary(
-                        "Juridico - contrato Vertex",
-                        "Pedem sua assinatura no aditivo ate as 18h de hoje, senao a renovacao volta para a fila do trimestre que vem.",
-                        MailUrgency.Maxima,
-                        Url: "https://mail.google.com/mail/u/0/#inbox",
-                        Account: "corporativo"),
-                    new MailSummary(
-                        "Marina Costa - revisao do orcamento",
-                        "Enviou a planilha com os cortes de infra e quer sua confirmacao antes da reuniao de quinta.",
-                        MailUrgency.Media,
-                        Account: "corporativo"),
-                    new MailSummary(
-                        "Notion - resumo semanal",
-                        "Relatorio automatico de atividade do workspace. Nada pendente, so numeros da semana.",
-                        MailUrgency.Baixa,
-                        Account: "pessoal"),
-                    new MailSummary("Quarto e-mail", "para exercitar a linha de excedente", MailUrgency.Baixa)
-                });
-        };
-
-        relogio.Start();
-    }
-
     public void ShowNotification(string title, string message)
     {
         if (_notifyIcon != null)
@@ -223,13 +171,6 @@ public partial class App : System.Windows.Application
             // e um registro que comeca depois perde justamente isso.
             _registro = RegistroDeExecucao.Iniciar(_settingsService.LoadSettings());
             Exit += (_, _) => _registro?.Dispose();
-
-            if (e.Args.Length > 0)
-            {
-                System.Threading.SynchronizationContext.SetSynchronizationContext(null);
-                RunCliCommandAsync(e.Args).GetAwaiter().GetResult();
-                return;
-            }
 
             var settings = _settingsService.LoadSettings();
             DirectoryService.ApplyFromSettings(settings);
@@ -279,9 +220,8 @@ public partial class App : System.Windows.Application
             // janela morrer, ele recusa por padrão.
             _confirmationPrompt.Conectar(_chatWindow.PerguntarConfirmacaoAsync);
 
-            // MainWindow explícito: o modal de confirmação usa Application.Current.MainWindow
-            // como Owner. Sem atribuir, o WPF elege a primeira janela criada — que pode ser a
-            // FirstRunWindow já fechada, e definir Owner como janela fechada lança.
+            // MainWindow explícito. Sem atribuir, o WPF elege a primeira janela criada — que pode
+            // ser a FirstRunWindow já fechada, e qualquer diálogo que a use como Owner lança.
             MainWindow = _chatWindow;
 
             // ── O vigia de e-mail ────────────────────────────────────────
@@ -336,8 +276,9 @@ public partial class App : System.Windows.Application
 
             // O orbe do Shadow Assistant. Opt-in: a setting ja nascia false, e ela continua
             // mandando — quem nao ligou nao ganha uma bola nova sobre o desktop depois de
-            // atualizar. Ligar/desligar em tempo de execucao vem junto com o resto do estado
-            // do orbe; por ora ele e lido uma vez, na abertura.
+            // atualizar. Aqui ele so nasce na abertura; ligar e desligar depois passa por
+            // AplicarEstadoDoOrbe (configuracoes) e AlternarOrbe (bandeja), e e nele que a
+            // triagem de e-mail mostra o digest.
             if (settings.ShadowAssistantEnabled)
             {
                 _orbe = CriarOrbe();
@@ -453,33 +394,6 @@ public partial class App : System.Windows.Application
             });
             Current.Shutdown();
         }
-    }
-
-    private async Task RunCliCommandAsync(string[] args)
-    {
-        bool success = false;
-        if (args.Contains("--test-rag"))
-        {
-            success = await Services.TestRunner.RunRagTestAsync();
-        }
-        else if (args.Contains("--test-tool"))
-        {
-            success = await Services.TestRunner.RunToolTestAsync();
-        }
-        else if (args.Contains("--test-all"))
-        {
-            bool ragSuccess = await Services.TestRunner.RunRagTestAsync();
-            bool toolSuccess = await Services.TestRunner.RunToolTestAsync();
-            success = ragSuccess && toolSuccess;
-        }
-        else
-        {
-            Console.WriteLine($"Unknown argument(s): {string.Join(" ", args)}");
-            Console.WriteLine("Available test arguments: --test-rag, --test-tool, --test-all");
-            Environment.Exit(1);
-        }
-
-        Environment.Exit(success ? 0 : 1);
     }
 
     protected override void OnExit(ExitEventArgs e)

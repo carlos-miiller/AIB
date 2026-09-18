@@ -179,8 +179,9 @@ namespace AIB.Tests
         }
 
         /// <summary>
-        /// O ensaio LENTO: conversa até quatro capítulos fecharem um ato. Contra um modelo local
-        /// na CPU isso passa de dez minutos — é o preço de exercitar a hierarquia inteira com o
+        /// O ensaio LENTO: conversa até os capítulos soltos fecharem um ato — pela cota, que no
+        /// nível 1 do Ollama estoura com poucos capítulos, ou pelo teto de doze. Contra um modelo
+        /// local na CPU isso passa de dez minutos — é o preço de exercitar a hierarquia inteira com o
         /// resumidor de verdade, e não com um dublê que devolve a mesma frase.
         /// </summary>
         [Fact]
@@ -192,8 +193,9 @@ namespace AIB.Tests
             int orcamento = LevelService.GetMaxTokensForLevel(1);
             var relogioTotal = System.Diagnostics.Stopwatch.StartNew();
 
-            // Quatro capítulos, e cada capítulo custa uma conversa inteira: o teto é o do ensaio
-            // de capítulo multiplicado por quatro, com folga.
+            // Vários capítulos, e cada capítulo custa uma conversa inteira: o teto é o do ensaio
+            // de capítulo multiplicado por quatro. Basta porque, no nível 1, a cota de capítulos
+            // tem poucas centenas de tokens e promove bem antes do teto de doze.
             for (int i = 0; i < TetoDeTurnos * 4 && conversa.Acts.Count == 0; i++)
             {
                 var relogio = System.Diagnostics.Stopwatch.StartNew();
@@ -209,7 +211,7 @@ namespace AIB.Tests
             Progresso($"total: {relogioTotal.Elapsed.TotalMinutes:F1} min");
 
             conversa.Acts.Should().NotBeEmpty(
-                $"quatro capítulos deveriam ter fechado um ato dentro de {TetoDeTurnos * 4} turnos");
+                $"os capítulos soltos deveriam ter estourado a cota e fechado um ato dentro de {TetoDeTurnos * 4} turnos");
 
             var ato = conversa.Acts[0];
             _saida.WriteLine("");

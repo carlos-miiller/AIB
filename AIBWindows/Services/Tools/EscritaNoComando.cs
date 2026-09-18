@@ -76,7 +76,7 @@ public static class EscritaNoComando
     }
 
     /// <summary>Os caminhos absolutos citados que estão fora das pastas dispensadas, sem repetir.</summary>
-    public static IReadOnlyList<string> Fora(string? comando, string? pastas)
+    private static IReadOnlyList<string> Fora(string? comando, string? pastas)
     {
         var saida = new List<string>();
 

@@ -14,7 +14,7 @@ namespace AIB.Views;
 /// O MODO E-MAIL da janela de conversa — tela-chat-v3.html §3.3(d), §3.10 e §3.11.
 /// <para>
 /// Parte da MESMA <see cref="ChatWindow"/>: é o mesmo <c>Grid.Row 1</c>, o mesmo cabeçalho e,
-/// na leitura, a MESMA conversa. Está num arquivo separado porque são seiscentas linhas com um
+/// na leitura, a MESMA conversa. Está num arquivo separado porque são centenas de linhas com um
 /// assunto só, e não porque sejam outra tela — dividir por tela, aqui, seria dividir errado.
 /// </para>
 /// <para>
@@ -198,8 +198,9 @@ public partial class ChatWindow
     }
 
     /// <summary>
-    /// Monta a lista de conversas da caixa. Recalculada a cada entrada no modo: a triagem roda
-    /// de vinte em vinte minutos e a lista muda com a janela aberta.
+    /// Monta a lista de conversas da caixa. Recalculada a cada entrada no modo: o vigia sonda a
+    /// caixa de vinte em vinte minutos (só código; o modelo roda no digest, três vezes por dia)
+    /// e a lista muda com a janela aberta.
     /// </summary>
     private void MontarCaixaDeEntrada()
     {
@@ -357,31 +358,6 @@ public partial class ChatWindow
     // ──────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Traz um e-mail para dentro da conversa — o destino de "Abrir com &lt;NOME&gt;".
-    /// <para>
-    /// NÃO troca o switch: continua-se em "E-mail". O que sai é a LISTA; o cabeçalho fica, com
-    /// o título virado caminho.
-    /// </para>
-    /// <para>
-    /// O que abre a conversa é o VEREDITO — remetente, assunto, urgência e resumo — e nunca o
-    /// corpo. Pô-lo aqui o gravaria no <c>raw.jsonl</c>, que é disco, e o resumidor de capítulos
-    /// leria e-mail alheio semanas depois. O corpo só entra sob demanda, por <c>mail_read</c>,
-    /// embrulhado para ser omitido de tudo o que é gravado. É a regra 3, e ela não tem exceção
-    /// nesta tela.
-    /// </para>
-    /// <para>
-    /// Abre uma CONVERSA NOVA. A máquina é a mesma do chat — turno de verdade, histórico,
-    /// compactação, ferramentas —, mas o assunto não é: quem estava discutindo código e foi
-    /// olhar a caixa não pediu para colar um e-mail no meio daquilo. Emendar os dois
-    /// contaminava o contexto do que estava em andamento e, pior, punha o e-mail no
-    /// <c>raw.jsonl</c> de uma sessão sobre outra coisa — o resumidor de capítulos costuraria
-    /// os dois assuntos semanas depois.
-    /// </para>
-    /// <para>
-    /// Nada se perde: <c>ResetHistory</c> arquiva a conversa anterior antes de zerar.
-    /// </para>
-    /// </summary>
-    /// <summary>
     /// Volta à conversa que já existia sobre este e-mail. Devolve false se não deu para ler.
     /// <para>
     /// Nenhum turno é enviado: as bolhas voltam à tela, o histórico volta ao contexto e o
@@ -455,6 +431,31 @@ public partial class ChatWindow
         AplicarEstadoDoModo();
     }
 
+    /// <summary>
+    /// Traz um e-mail para dentro da conversa — o destino de "Abrir com &lt;NOME&gt;".
+    /// <para>
+    /// NÃO troca o switch: continua-se em "E-mail". O que sai é a LISTA; o cabeçalho fica, com
+    /// o título virado caminho.
+    /// </para>
+    /// <para>
+    /// O que abre a conversa é o VEREDITO — remetente, assunto, urgência e resumo — e nunca o
+    /// corpo. Pô-lo aqui o gravaria no <c>raw.jsonl</c>, que é disco, e o resumidor de capítulos
+    /// leria e-mail alheio semanas depois. O corpo só entra sob demanda, por <c>mail_read</c>,
+    /// embrulhado para ser omitido de tudo o que é gravado. É a regra 3, e ela não tem exceção
+    /// nesta tela.
+    /// </para>
+    /// <para>
+    /// Abre uma CONVERSA NOVA. A máquina é a mesma do chat — turno de verdade, histórico,
+    /// compactação, ferramentas —, mas o assunto não é: quem estava discutindo código e foi
+    /// olhar a caixa não pediu para colar um e-mail no meio daquilo. Emendar os dois
+    /// contaminava o contexto do que estava em andamento e, pior, punha o e-mail no
+    /// <c>raw.jsonl</c> de uma sessão sobre outra coisa — o resumidor de capítulos costuraria
+    /// os dois assuntos semanas depois.
+    /// </para>
+    /// <para>
+    /// Nada se perde: <c>ResetHistory</c> arquiva a conversa anterior antes de zerar.
+    /// </para>
+    /// </summary>
     private void AbrirEmailNoChat(MailSummary alvo)
     {
         if (alvo == null) return;
@@ -470,10 +471,7 @@ public partial class ChatWindow
         // NOVA CONVERSA PRIMEIRO, e depois o estado da tela. Invertido, o AtualizarEstadoVazio
         // de dentro de NovaConversa acendia "Nenhuma conversa ainda" por cima do cartão — a
         // última palavra sobre o estado vazio tem de ser de AplicarEstadoDoModo.
-        //
-        // Sem boas-vindas: o cartão entra logo abaixo, e uma saudação antes dele seria uma fala
-        // sobre nada.
-        NovaConversa(comBoasVindas: false);
+        NovaConversa();
 
         // ANTES do primeiro turno: o arquivamento acontece no fim de CADA turno, e um vínculo
         // posto depois deixaria a primeira gravação sem ele — a conversa apareceria na lista do
@@ -638,7 +636,7 @@ public partial class ChatWindow
 
         // Começa limpo, ainda dentro da leitura: o cartão volta e o campo espera. O vínculo é
         // refeito para que o próximo turno já nasça preso a esta thread.
-        NovaConversa(comBoasVindas: false);
+        NovaConversa();
         _conversation.VincularAEmail(chave);
 
         MessagesPanel.Children.Add(CartaoDoEmail(alvo));

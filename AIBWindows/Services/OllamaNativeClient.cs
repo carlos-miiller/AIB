@@ -181,14 +181,14 @@ public class OllamaNativeClient
     {
         var json = CorpoDaRequisicao(
             model, history, tools, temperature, stream: false, numCtx, keepAliveSeconds, think, numPredict);
-        if (debug) Console.WriteLine($"\n[PROVIDER_DEBUG_REQUEST (Warmup)]:\n{json}\n");
+        if (debug) Console.WriteLine($"\n[PROVIDER_DEBUG_REQUEST (sem streaming)]:\n{json}\n");
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         using var response = await _httpClient.PostAsync(_apiUrl, content, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
         var responseJson = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        if (debug) Console.WriteLine($"[PROVIDER_DEBUG_RESPONSE (Warmup)]:\n{responseJson}\n");
+        if (debug) Console.WriteLine($"[PROVIDER_DEBUG_RESPONSE (sem streaming)]:\n{responseJson}\n");
         using var doc = JsonDocument.Parse(responseJson);
         var root = doc.RootElement;
 

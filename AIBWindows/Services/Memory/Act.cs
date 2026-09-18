@@ -71,8 +71,8 @@ public sealed record Act(
     /// O que a PROMOÇÃO em si rendeu — capítulos que saíram menos o ato que entrou.
     /// <para>
     /// Separado da economia total de propósito. Promover cedo demais custa um resumo de resumo
-    /// por quase nada, e este é o número que mostra se os quatro capítulos por ato estão no
-    /// ponto certo. Sem ele, a economia do ato herdaria o crédito do trabalho dos capítulos.
+    /// por quase nada, e este é o número que mostra se a regra de promoção (a cota e o teto
+    /// de capítulos por ato) está no ponto certo. Sem ele, a economia do ato herdaria o crédito do trabalho dos capítulos.
     /// </para>
     /// </summary>
     public int EconomiaDaPromocao => TokensDosCapitulos > TokensDoAto

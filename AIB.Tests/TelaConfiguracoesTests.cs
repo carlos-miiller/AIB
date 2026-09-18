@@ -15,7 +15,7 @@ namespace AIB.Tests
     /// <summary>
     /// A tela de Configurações reestruturada — refactor-interface/tela-configuracoes.html.
     /// <para>
-    /// O que se afirma aqui é o que a spec chama de normativo: as quatro páginas com os rótulos
+    /// O que se afirma aqui é o que a spec chama de normativo: as páginas com os rótulos
     /// verbatim, o menu que troca a View sem descartar edição (§7 A11), e a lista de caixas de
     /// e-mail com as invariantes de §7 A15 no caminho que a tela realmente percorre.
     /// </para>
@@ -267,7 +267,7 @@ namespace AIB.Tests
         [Fact]
         public void TrocarDePagina_NAO_DescartaEdicaoNemLimpaOSujo()
         {
-            // §7 A11 — o ViewModel é UM só para as quatro páginas e IsDirty é global. Ir em
+            // §7 A11 — o ViewModel é UM só para todas as páginas e IsDirty é global. Ir em
             // "E-mail", voltar em "Avançado" e salvar tem de gravar as duas coisas.
             WpfHost.EmSta(() =>
             {

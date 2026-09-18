@@ -289,26 +289,26 @@ public partial class FirstRunWindow : Window
         if (NextButton != null) NextButton.IsEnabled = true;
     }
 
-    // ─── OpenAI key validation ────────────────────────────────────────────────
+    // ─── Validação da chave do OpenRouter ─────────────────────────────────────
 
     private void KeyTextBox_LostFocus(object sender, RoutedEventArgs e)
     {
-        ValidateOpenAiKey(emitAuditOnFail: false);
+        ValidarChaveDoOpenRouter(emitAuditOnFail: false);
     }
 
     private void KeyTextBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
-            ValidateOpenAiKey(emitAuditOnFail: true);
+            ValidarChaveDoOpenRouter(emitAuditOnFail: true);
         }
     }
 
     /// <summary>
-    /// Validates the OpenAI key per D-05 regex.
-    /// Validation timing rule: only on LostFocus, Enter, or Save click — NOT per-keystroke.
+    /// Valida a chave do OpenRouter pela regex D-05.
+    /// Só valida no LostFocus, no Enter ou no Salvar — NUNCA a cada tecla.
     /// </summary>
-    private bool ValidateOpenAiKey(bool emitAuditOnFail = true)
+    private bool ValidarChaveDoOpenRouter(bool emitAuditOnFail = true)
     {
         string key = KeyTextBox.Password.Trim();
         if (_keyRegex.IsMatch(key))

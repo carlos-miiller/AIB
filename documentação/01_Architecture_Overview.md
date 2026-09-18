@@ -117,13 +117,13 @@ Regra dura, e ela explica várias decisões do código:
 - **`ConversationService`**: dona do histórico, do system prompt, da poda e dos eventos da UI.
 - **`Agent/AgentLoop`**, **`Agent/AgentEvent`**, **`Agent/IMessageStore`**,
   **`Agent/EphemeralMessageStore`**, **`Agent/WarmupService`**: a orquestração ReAct.
-- **`Ai/IChatProvider`** e as implementações **`Ai/OllamaProvider`** / **`Ai/OpenAiProvider`**, mais
+- **`Ai/IChatProvider`** e as implementações **`Ai/OllamaProvider`** / **`Ai/OpenRouterProvider`**, mais
   **`Ai/ChannelSplitter`**, **`Ai/ChatTemplateSanitizer`**, **`Ai/RegexToolCallHealer`**,
   **`Ai/ChatProviderFactory`** e o transporte **`OllamaNativeClient`**.
 - **`TokenCounter`**, **`SettingsService`**, **`LevelService`**, **`ToolRegistry`**, **`ITool`**.
 - **`CredentialService`**: cofre DPAPI real (`ProtectedData`), usado pelo onboarding e pela fábrica.
 - **`ChatHistoryService`**: sessões antigas em JSON **em texto claro** (doc 05 §3).
-- **`AuditLogService`**, **`GibberishVoiceService`**, **`AgentProfile`**, **`TestRunner`**.
+- **`AuditLogService`**, **`GibberishVoiceService`**, **`AgentProfile`**.
 
 ### 4.2 Camada de ações
 - **`ToolRegistry` + `Services/Tools/`**: hoje são **três** ferramentas nativas — `run_command`,

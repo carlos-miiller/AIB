@@ -162,11 +162,11 @@ public sealed class MailDigestService : IDisposable
     public int DigestosFeitos { get; private set; }
 
     /// <summary>
-    /// O último digest com conteúdo. É o que a aba de e-mails do painel mostra.
+    /// O último digest com conteúdo. É o que o modo e-mail da janela de conversa mostra.
     /// <para>
-    /// Fica em MEMÓRIA e morre com o programa, de propósito. Gravá-lo seria gravar assunto e
-    /// remetente em disco, e a regra 3 do vigia existe justamente para que conteúdo de e-mail
-    /// não crie raízes no computador.
+    /// Fica em MEMÓRIA e morre com o programa. O que vai a disco da triagem é só o
+    /// <see cref="DiarioDeTriagem"/> — remetente, assunto e resumo, desligável por
+    /// <c>MailJournalDays = 0</c>; o corpo da mensagem nunca.
     /// </para>
     /// </summary>
     public DigestoDeEmail Ultimo { get; private set; } = DigestoDeEmail.Vazio;
@@ -911,7 +911,7 @@ public sealed class MailDigestService : IDisposable
                           $"{digesto.MensagensDescartadas} descartada(s) em " +
                           $"{digesto.Descartadas.Count} linha(s), {digesto.Rajadas.Count} rajada(s).");
 
-        // Sondagem sem novidade não apaga o digest da manhã: o painel continua mostrando o
+        // Sondagem sem novidade não apaga o digest da manhã: a lista continua mostrando o
         // que ainda não foi tratado, em vez de esvaziar sozinho às 9h20.
         if (digesto.Itens.Count > 0 || digesto.Rajadas.Count > 0) Ultimo = digesto;
 

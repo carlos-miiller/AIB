@@ -70,7 +70,7 @@ public sealed class PulsoDoTurno : IDisposable
     private int _encerrado;
 
     /// <summary>
-    /// Quanto cada ferramenta passou parada no modal, esperando o usuário. Por NOME e não um
+    /// Quanto cada ferramenta passou parada no cartão de confirmação, esperando o usuário. Por NOME e não um
     /// total, porque as ferramentas de um turno rodam em paralelo.
     /// </summary>
     private readonly ConcurrentDictionary<string, long> _esperaHumana = new();
@@ -152,7 +152,7 @@ public sealed class PulsoDoTurno : IDisposable
     }
 
     /// <summary>
-    /// Anota que a ferramenta ficou parada esperando o usuário decidir no modal.
+    /// Anota que a ferramenta ficou parada esperando o usuário decidir no cartão de confirmação.
     /// <para>
     /// Existe porque o log dizia "ferramenta shell — ok em 7299,6s" para um
     /// <c>Get-Content</c> trivial: as duas horas eram do modal aberto, não da execução. Misturar

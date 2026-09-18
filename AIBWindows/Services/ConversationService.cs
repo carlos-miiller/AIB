@@ -1005,17 +1005,8 @@ public sealed class ConversationService : IMessageStore
     // junto — e cada compactação reescreve o começo do prompt: prefill frio no Ollama, cache
     // perdido (dinheiro) no OpenRouter.
 
-    /// <summary>
-    /// Teto da chamada de resumo. Independente do turno: o usuário já foi respondido.
-    /// <para>
-    /// Quatro minutos, e não dois. Medido no qwen3.5:4b em CPU, com o raciocínio desligado: o
-    /// prefill de um capítulo grande chega a ~2 minutos e a geração é limitada a
-    /// <see cref="Compactor.MaxSummaryTokens"/>. Os dois minutos anteriores eram chute e
-    /// estouravam em toda tentativa.
-    /// </para>
-    /// </summary>
-    // O PRAZO FOI REMOVIDO. Eram quatro minutos medidos, e mesmo assim estouravam: nesta
-    // máquina o prefill anda a ~30 tok/s e um capítulo grande passa disso sem estar travado.
+    // A chamada de resumo não tem prazo. Já teve — eram quatro minutos medidos, e mesmo assim
+    // estouravam: nesta máquina o prefill anda a ~30 tok/s e um capítulo grande passa disso sem estar travado.
     // Um prazo que corta trabalho válido e devolve "cancelada" é pior que espera nenhuma — o
     // usuário perde os quatro minutos E o capítulo.
     //
@@ -1054,12 +1045,6 @@ public sealed class ConversationService : IMessageStore
         try { _desistencia?.Cancel(); } catch (ObjectDisposedException) { }
     }
 
-    // Teto de turnos por capítulo: UserAppSettings.TurnosPorCapitulo (padrão 8, aba Memória).
-    // Sem ele, uma compactação que falha volta na tentativa seguinte com MAIS turnos — foi o
-    // que se viu contra o Ollama real: 5, 6, 7, 8, 9, 10, 11 turnos, cada tentativa mais cara
-    // que a anterior e todas estourando o tempo. Um teto faz o custo do resumo parar de crescer,
-    // e o que sobrar vira o capítulo seguinte.
-
     /// <summary>
     /// Turnos de descanso depois de uma compactação que falhou.
     /// <para>
@@ -1075,7 +1060,7 @@ public sealed class ConversationService : IMessageStore
     /// Quantos capítulos uma única passada de compactação pode fechar.
     /// <para>
     /// Sem poda no teto do nível, a conversa chega ao fim do turno com muito mais material do
-    /// que um capítulo de oito turnos comporta — e fechar um só deixaria o resto para a passada
+    /// que um capítulo comporta (oito turnos ou vinte mil tokens, no padrão) — e fechar um só deixaria o resto para a passada
     /// seguinte, que talvez nunca venha. A passada fecha quantos forem precisos.
     /// </para>
     /// <para>
@@ -1206,6 +1191,20 @@ public sealed class ConversationService : IMessageStore
     }
 
     /// <summary>
+    /// Um resumidor com as configurações de AGORA: o provedor, o modo "só código" e os limites
+    /// do provedor desta conversa. Novo a cada uso porque qualquer um dos três pode ter mudado
+    /// na aba de configurações desde a última compactação.
+    /// </summary>
+    private Compactor NovoCompactor()
+    {
+        var settings = _settingsService.LoadSettings();
+        return new Compactor(
+            _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
+            comModelo: settings.MemoriaComModelo,
+            limites: LimitesDoProvedor.Para(settings.AiProvider));
+    }
+
+    /// <summary>
     /// Fecha um capitulo sobre <paramref name="candidatos"/>: resume, tira os turnos do
     /// contexto, grava e reescreve o bloco de memoria. Lanca em falha de resumo — quem chama
     /// decide o que dizer ao usuario.
@@ -1213,11 +1212,7 @@ public sealed class ConversationService : IMessageStore
     private async Task<Chapter> FecharCapituloAsync(
         List<Turn> candidatos, MemoryQuota quota, CancellationToken ct)
     {
-        var settings = _settingsService.LoadSettings();
-        var compactor = new Compactor(
-            _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
-            comModelo: settings.MemoriaComModelo,
-            limites: LimitesDoProvedor.Para(settings.AiProvider));
+        var compactor = NovoCompactor();
 
         int conversa;
         lock (_gate) { conversa = _conversaViva; }
@@ -1342,10 +1337,11 @@ public sealed class ConversationService : IMessageStore
             // capítulos soltos não couberem mais na cota deles, ou quando chegarem ao teto.
             //
             // Isto já foi "de dois em dois", e o resultado apareceu numa sessão real: quatro
-            // capítulos recém-fechados viraram dois atos, com o teto em oito. Os dois atos
-            // custaram duas chamadas ao modelo e economizaram 119 e 570 tokens — pagar para trocar
-            // quatro resumos por dois resumos de resumos, com 21 mil tokens de cota sobrando.
-            // Quem quiser o ato antes da hora tem o comando próprio, que aceita dois.
+            // capítulos recém-fechados viraram dois atos, quando o teto ainda era oito. Os dois
+            // atos custaram duas chamadas ao modelo e economizaram 119 e 570 tokens — pagar para
+            // trocar quatro resumos por dois resumos de resumos, com 21 mil tokens de cota
+            // sobrando. O ato antes da hora, com dois, só existe como pedido explícito a
+            // ForcarAtoAsync sem mínimo — a interface não tem comando para isso.
             while (!token.IsCancellationRequested)
             {
                 int porAto = CapitulosParaAto(CurrentQuota(userLevel));
@@ -1415,8 +1411,8 @@ public sealed class ConversationService : IMessageStore
     }
 
     /// <summary>
-    /// Fecha um ato AGORA sobre os capitulos soltos, sem esperar os
-    /// <see cref="CapitulosPorAto"/> de praxe.
+    /// Fecha um ato AGORA sobre os capitulos soltos, sem esperar a regra de cota de
+    /// <see cref="CapitulosParaAto"/>.
     /// <para>
     /// Exige dois capitulos no minimo. Um ato sobre um capitulo so e resumo de resumo sem
     /// ganho nenhum: trocaria o texto por outro mais pobre e ainda esconderia o original, que
@@ -1424,8 +1420,10 @@ public sealed class ConversationService : IMessageStore
     /// </para>
     /// </summary>
     /// <param name="minimoParaOAto">
-    /// Quantos capitulos soltos o ato exige. Nulo e o pedido direto do usuario, que aceita dois.
-    /// A passada do /compact passa o numero da regra de cota — ver <see cref="CapitulosParaAto"/>.
+    /// Quantos capitulos soltos o ato exige. Nulo vale dois: é o pedido explícito, sem regra de
+    /// cota — não há comando de ato na interface, e quem chama assim são os testes e a
+    /// avaliação. A passada do /compact passa o numero da regra de cota — ver
+    /// <see cref="CapitulosParaAto"/>.
     /// </param>
     public async Task<string> ForcarAtoAsync(
         int userLevel, CancellationToken ct = default, int? minimoParaOAto = null)
@@ -1444,11 +1442,7 @@ public sealed class ConversationService : IMessageStore
                     : $"Os {soltos} capitulos soltos ainda cabem na cota deles. Um ato agora "
                     + "trocaria resumos por um resumo de resumos sem precisar.";
 
-            var settings = _settingsService.LoadSettings();
-            var compactor = new Compactor(
-                _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
-                comModelo: settings.MemoriaComModelo,
-                limites: LimitesDoProvedor.Para(settings.AiProvider));
+            var compactor = NovoCompactor();
 
             var ato = await PromoverAsync(compactor, minimo, ct).ConfigureAwait(false);
             if (ato == null) return "A promocao falhou. Os capitulos seguem soltos.";
@@ -1473,8 +1467,10 @@ public sealed class ConversationService : IMessageStore
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Capítulos soltos que fecham um ato, pelo provedor da conversa: quatro no Ollama, oito no
-    /// OpenRouter. Ver <see cref="LimitesDoProvedor.CapitulosPorAto"/>.
+    /// TETO de capítulos soltos num ato, pelo provedor da conversa: doze no Ollama, vinte e
+    /// quatro no OpenRouter — ou o número ajustado à mão na aba Memória. Não é o gatilho: quem
+    /// decide a hora de promover é a cota, em <see cref="CapitulosParaAto"/>. Ver
+    /// <see cref="LimitesDoProvedor.CapitulosPorAto"/>.
     /// <para>
     /// Lido das configurações DESTA conversa, e não de <see cref="LimitesDoProvedor.Atual"/>: o
     /// estático é de quem salvou por último, e a promoção não pode mudar de regra por causa disso.
@@ -1499,13 +1495,16 @@ public sealed class ConversationService : IMessageStore
     /// <para>
     /// O ato existe para o bloco caber no orçamento. Contar capítulos não mede isso, e o mesmo
     /// número erra nas duas pontas: no nível 9 do OpenRouter a faixa de capítulos tem ~24.400
-    /// tokens, e quatro capítulos de uma sessão inteira somaram 3.462 — promover aos oito jogaria
-    /// fora detalhe que tinha espaço de sobra. No Ollama, nível 1 com uma alma de 3.900, a faixa
-    /// tem ~536: um capítulo já estoura, e promover aos quatro é tarde.
+    /// tokens, e quatro capítulos de uma sessão inteira somaram 3.462 — quando o teto era oito,
+    /// promover ao chegar nele jogava fora detalhe que tinha espaço de sobra. No Ollama, nível 1
+    /// com uma alma de 3.900, a faixa tem ~536: um capítulo já estoura, e qualquer contagem fixa
+    /// chega tarde.
     /// </para>
     /// <para>
-    /// A contagem vira TETO de segurança: mesmo com cota sobrando, um ato sobre material demais
-    /// seria resumo de resumo sobre o dobro do material, que é onde a informação some.
+    /// A regra: com dois soltos ou mais que somam 85% ou mais da cota de capítulos, promove
+    /// todos eles. Fora isso, espera o teto — <c>max(2, CapitulosPorAto)</c>, doze no Ollama e
+    /// vinte e quatro no OpenRouter —, que é de segurança: mesmo com cota sobrando, um ato sobre
+    /// material demais seria resumo de resumo sobre o dobro do material, onde a informação some.
     /// </para>
     /// </summary>
     private int CapitulosParaAto(MemoryQuota quota)
@@ -1539,9 +1538,10 @@ public sealed class ConversationService : IMessageStore
     {
         try
         {
-            // Uma FATIA de tamanho fixo, e nao todos os capitulos soltos de uma vez. Com oito
-            // soltos, um ato unico seria resumo de resumo sobre o dobro do material — e resumo
-            // de resumo e onde a informacao some. Dois atos de quatro preservam mais.
+            // Uma FATIA, e nao todos os capitulos soltos de uma vez: os primeiros `minimo`, que e
+            // o que CapitulosParaAto devolveu — os soltos que estouraram a cota, ou o teto. Com
+            // mais soltos que o teto, um ato unico seria resumo de resumo sobre material demais,
+            // e resumo de resumo e onde a informacao some; o resto fica para o ato seguinte.
             var soltos = _memory.UncoveredChapters;
             if (soltos.Count < minimo) return null;
 
@@ -1626,9 +1626,19 @@ public sealed class ConversationService : IMessageStore
     }
 
     /// <summary>
-    /// Turnos mais antigos a compactar: os suficientes para a conversa viva cair à metade da
-    /// cota. Nunca os recentes que cabem na fatia deles (<see cref="RecentesQueFicam"/>), e nunca
-    /// um turno aberto — um tool_calls sem resultado quebra a requisição seguinte.
+    /// Turnos mais antigos a compactar: os suficientes para a conversa viva cair ao alvo
+    /// (<see cref="LimitesDoProvedor.AlvoDepoisDeCompactar"/> da cota — 0,5 no Ollama, 0,3 no
+    /// OpenRouter). Nunca os recentes que cabem na fatia deles (<see cref="RecentesQueFicam"/>),
+    /// e nunca um turno aberto — um tool_calls sem resultado quebra a requisição seguinte.
+    /// <para>
+    /// Dois tetos cortam o capítulo antes do alvo: o de turnos
+    /// (<c>UserAppSettings.TurnosPorCapitulo</c>, padrão 8, aba Memória) e o de tokens
+    /// (<c>UserAppSettings.TokensPorCapitulo</c>, padrão 20.000, entre 4.000 e 60.000). Sem teto,
+    /// uma compactação que falha volta na tentativa seguinte com MAIS turnos — foi o que se viu
+    /// contra o Ollama real: 5, 6, 7, 8, 9, 10, 11 turnos, cada tentativa mais cara que a
+    /// anterior. Com ele o custo do resumo para de crescer, e o que sobrar vira o capítulo
+    /// seguinte.
+    /// </para>
     /// </summary>
     /// <param name="forcado">
     /// Ignora o alvo de tokens e leva os turnos disponiveis mesmo com a conversa folgada. E o

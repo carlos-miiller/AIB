@@ -8,8 +8,8 @@ using AIB.Services.Mail;
 namespace AIB.Views
 {
     /// <summary>
-    /// O item de e-mail das TRÊS telas: a pilha do orbe (shadow-assistant §4.8), a lista da
-    /// área central (tela-chat-v3 §3.10) e — enquanto existir — o que sobrar do painel.
+    /// O item de e-mail das DUAS telas: a pilha do orbe (shadow-assistant §4.8) e a lista da
+    /// área central (tela-chat-v3 §3.10).
     /// <para>
     /// São o mesmo dado com a mesma leitura de relance, e duas cópias divergiriam na primeira
     /// correção feita só de um lado. As diferenças vivem em PROPRIEDADES, não em arquivos.
@@ -216,7 +216,7 @@ namespace AIB.Views
         /// <summary>"Abrir com &lt;NOME&gt;": traz o e-mail para dentro do chat (§3.11).</summary>
         public event EventHandler? PediuAbrirComIA;
 
-        /// <summary>"Abrir no Gmail": sai do app, para o webmail ou cliente configurado.</summary>
+        /// <summary>"Abrir no &lt;provedor&gt;": sai do app, para o webmail ou cliente da conta.</summary>
         public event EventHandler? PediuAbrirNoCliente;
 
         private void Item_Click(object sender, MouseButtonEventArgs e)
@@ -243,11 +243,11 @@ namespace AIB.Views
         /// Abre um endereço fora do app. Devolve false quando não havia o que abrir.
         /// <para>
         /// URL vazia não pode virar <c>Process.Start("")</c>, que levanta exceção. O item vive
-        /// em três telas: falhar aqui derrubaria o orbe, que é a única coisa entre o usuário e a
+        /// em duas telas: falhar aqui derrubaria o orbe, que é a única coisa entre o usuário e a
         /// lista que ele acabou de ler.
         /// </para>
         /// <para>
-        /// Estático e aqui, e não copiado em cada tela: é o mesmo gesto nos três lugares, e a
+        /// Estático e aqui, e não copiado em cada tela: é o mesmo gesto nos dois lugares, e a
         /// segunda cópia perderia o guarda na primeira correção feita só de um lado.
         /// </para>
         /// </summary>
@@ -275,13 +275,6 @@ namespace AIB.Views
         // A linha de metadados, montada
         // ─────────────────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// "Hoje · 10/09/2026, 09:12 · 3 respostas" — a parte neutra da linha.
-        /// <para>
-        /// Montada aqui e não no XAML: são três regras de texto (dia relativo até sete dias,
-        /// plural do tamanho, separador) e um MultiBinding faria cada uma virar um converter.
-        /// </para>
-        /// </summary>
         /// <summary>
         /// Preenche a linha de metadados. Em código e não por binding: são três regras de texto
         /// — dia relativo até sete dias, plural do tamanho, separador — e um MultiBinding faria

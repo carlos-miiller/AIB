@@ -19,8 +19,8 @@ namespace AIB.Services.Memory;
 /// </summary>
 public static class ArtifactExtractor
 {
-    /// <summary>Texto exato que o portão devolve quando o usuário recusa.</summary>
-    private const string TextoRecusa = "Ação Rejeitada pelo Usuário.";
+    /// <summary>Texto exato que o portão devolve quando o usuário recusa — o mesmo, por referência.</summary>
+    private const string TextoRecusa = ToolRegistry.RecusaDoUsuario;
 
     public static IReadOnlyList<Artifact> Extract(Turn turn) =>
         Extract(turn?.Messages);

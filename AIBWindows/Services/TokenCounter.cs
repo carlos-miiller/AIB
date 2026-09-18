@@ -6,7 +6,7 @@ namespace AIB.Services;
 
 /// <summary>
 /// Contagem de tokens do histórico. Instância única por processo — criar o tokenizer
-/// é caro, e antes cada OpenAIService construía o seu.
+/// é caro, e por isso o App cria um só e o repassa a quem conta.
 /// Os métodos Count* são seguros para chamadas concorrentes (o tokenizer não tem estado);
 /// quem enumera a lista viva ainda precisa segurar o lock do dono dela.
 /// </summary>

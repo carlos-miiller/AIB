@@ -44,7 +44,7 @@ public static class MemoryBudget
 
     private const double FactsShare = 0.20;
     private const double ActsShare = 0.30;
-    private const double ChaptersShare = 0.50;
+    // Capítulos não têm fração própria: ficam com o resto, ~0,50 (ver Compute).
 
     /// <summary>
     /// Fração da cota viva a partir da qual vale compactar. Não é 100% de propósito: o gatilho
@@ -77,7 +77,7 @@ public static class MemoryBudget
         int fatos = (int)(memoria * FactsShare);
         int atos = (int)(memoria * ActsShare);
 
-        // Capítulos recebem o resto, e não a sua fração arredondada: assim as três faixas
+        // Capítulos recebem o resto (~0,50), e não uma fração arredondada: assim as três faixas
         // somam exatamente 'memoria' e nenhum token some no arredondamento.
         int capitulos = memoria - fatos - atos;
 

@@ -91,7 +91,7 @@ public static class PastasSemConfirmacao
     }
 
     /// <summary>Um caminho está dentro de uma raiz se é a própria raiz ou desce a partir dela.</summary>
-    public static bool Dentro(string caminho, string raiz)
+    private static bool Dentro(string caminho, string raiz)
     {
         string alvo = caminho.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         string tronco = raiz.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -111,7 +111,7 @@ public static class PastasSemConfirmacao
     /// e um caminho que não casa é um caminho que pergunta.
     /// </para>
     /// </summary>
-    public static string Concreto(string cheio)
+    private static string Concreto(string cheio)
     {
         try
         {

@@ -43,7 +43,6 @@
          ══════════════════════════════════════════════════════════════════ -->
 
     <SolidColorBrush x:Key="BorderCardBrush"        Color="#14FFFFFF"/>
-    <SolidColorBrush x:Key="BorderCardHoverBrush"   Color="#29FFFFFF"/>
     <SolidColorBrush x:Key="DividerBrush"           Color="#0FFFFFFF"/>
     <SolidColorBrush x:Key="DividerTooltipBrush"    Color="#1AFFFFFF"/>
     <SolidColorBrush x:Key="DividerFieldBrush"      Color="#0DFFFFFF"/>
@@ -59,7 +58,6 @@
     <SolidColorBrush x:Key="DangerBorderBrush"      Color="#59E5484D"/>
     <SolidColorBrush x:Key="DangerBorderHovBrush"   Color="#8CE5484D"/>
     <SolidColorBrush x:Key="WarnBorderBrush"        Color="#52E28743"/>
-    <SolidColorBrush x:Key="MagentaBorderBrush"     Color="#57D53F8C"/>
 
     <!-- ══════════════════════════════════════════════════════════════════
          TEXTO
@@ -72,7 +70,6 @@
     <SolidColorBrush x:Key="TextMutedBrush"        Color="#FF6F6A7A"/>
 
     <SolidColorBrush x:Key="AccentLilacBrush"      Color="#FFC79EF0"/>
-    <SolidColorBrush x:Key="AccentLilacHoverBrush" Color="#FFD9BCFF"/>
     <SolidColorBrush x:Key="SuccessBrush"          Color="#FF4ADE80"/>
     <SolidColorBrush x:Key="DangerBrush"           Color="#FFE5484D"/>
     <SolidColorBrush x:Key="DangerTextBrush"       Color="#FFFF8A8D"/>
@@ -101,8 +98,6 @@
     <SolidColorBrush x:Key="DangerEdge32Brush"  Color="#52E5484D"/>  <!-- borda da pill destrutiva -->
 
     <SolidColorBrush x:Key="WarnFill10Brush"    Color="#1AE28743"/>  <!-- faixa de contexto cheio -->
-    <SolidColorBrush x:Key="WarnEdge45Brush"    Color="#73E28743"/>  <!-- botão "Compactar" -->
-    <SolidColorBrush x:Key="MagentaFill10Brush" Color="#1AD53F8C"/>  <!-- faixa de reconexão -->
     <SolidColorBrush x:Key="ReadFill05Brush"    Color="#0DFFFFFF"/>  <!-- marcador de leitura no log -->
 
     <SolidColorBrush x:Key="ScrollThumbBrush"      Color="#26FFFFFF"/>
@@ -160,8 +155,6 @@
          mais escura que a das janelas. -->
     <DropShadowEffect x:Key="OrbShadow"      BlurRadius="28" ShadowDepth="8"
                       Direction="270" Opacity="0.55" Color="Black"/>
-    <DropShadowEffect x:Key="OrbShadowHover" BlurRadius="32" ShadowDepth="10"
-                      Direction="270" Opacity="0.60" Color="Black"/>
     <DropShadowEffect x:Key="BarShadow"      BlurRadius="44" ShadowDepth="16"
                       Direction="270" Opacity="0.58" Color="Black"/>
 
@@ -178,13 +171,10 @@
     <CornerRadius x:Key="RadiusInputFrame">18</CornerRadius>
     <CornerRadius x:Key="RadiusInputInner">16.5</CornerRadius>
     <CornerRadius x:Key="RadiusCard">12</CornerRadius>
-    <CornerRadius x:Key="RadiusCardLarge">16</CornerRadius>
     <CornerRadius x:Key="RadiusControl">10</CornerRadius>
     <CornerRadius x:Key="RadiusButton">10</CornerRadius>
     <CornerRadius x:Key="RadiusIconBtn">8</CornerRadius>
     <CornerRadius x:Key="RadiusTooltip">8</CornerRadius>
-    <CornerRadius x:Key="RadiusCodeBlock">12</CornerRadius>
-    <CornerRadius x:Key="RadiusCodeInline">5</CornerRadius>
     <CornerRadius x:Key="RadiusPill">20</CornerRadius>
     <CornerRadius x:Key="RadiusSwitch">20</CornerRadius>
 
@@ -218,19 +208,12 @@
     <sys:Double x:Key="FontSizeToolArg">11</sys:Double>
     <sys:Double x:Key="FontSizePill">11</sys:Double>
     <sys:Double x:Key="FontSizeHelp">11</sys:Double>
-    <sys:Double x:Key="FontSizeSection">10</sys:Double>
     <sys:Double x:Key="FontSizeStamp">10.5</sys:Double>
     <sys:Double x:Key="FontSizeCode">12.5</sys:Double>
 
     <!-- ══════════════════════════════════════════════════════════════════
          GEOMETRIA
          ══════════════════════════════════════════════════════════════════ -->
-
-    <sys:Double x:Key="ChatWindowWidth">770</sys:Double>
-    <sys:Double x:Key="ChatWindowHeight">520</sys:Double>
-    <sys:Double x:Key="PanelWindowWidth">300</sys:Double>
-    <sys:Double x:Key="SettingsWindowWidth">620</sys:Double>
-    <sys:Double x:Key="SettingsWindowHeight">560</sys:Double>
 
     <sys:Double x:Key="HeaderHeight">52</sys:Double>
     <sys:Double x:Key="IconButtonSize">34</sys:Double>
@@ -247,11 +230,8 @@
          que há mais ações fora de vista: o contador "+N" foi implementado e
          removido de propósito. Chat A11. -->
     <sys:Double x:Key="IconTrackMaxWidth">142</sys:Double>
-    <sys:Double x:Key="ActionIconSize">22</sys:Double>
     <sys:Double x:Key="TooltipBlockWidth">340</sys:Double>
     <sys:Double x:Key="TooltipRawMaxHeight">118</sys:Double>
     <sys:Double x:Key="TooltipDiffMaxHeight">180</sys:Double>
-    <sys:Double x:Key="LogDotSize">25</sys:Double>
-    <sys:Double x:Key="FileTypeIconSize">26</sys:Double>
 
 </ResourceDictionary>

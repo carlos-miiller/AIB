@@ -29,7 +29,10 @@ namespace AIB.Services.Tools;
 /// </summary>
 public class ExecuteSkillTool : ITool
 {
-    /// <summary>Teto de tempo. O mesmo do shell: skill que trava não segura o turno.</summary>
+    /// <summary>
+    /// Teto de tempo: skill que trava não segura o turno. O dobro do shell (30s), porque uma
+    /// skill costuma fazer mais que um comando avulso.
+    /// </summary>
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
     private const int MaxSaida = 8000;
@@ -76,8 +79,9 @@ public class ExecuteSkillTool : ITool
             var skill = SkillService.Find(nome);
 
             // Skill inexistente não vira pergunta: o usuário seria convidado a autorizar algo
-            // que não existe, e responder "sim" não executaria nada. Recusa aqui, e o modelo
-            // recebe a lista do que existe na mensagem de erro.
+            // que não existe, e responder "sim" não executaria nada. Recusa aqui devolvendo null,
+            // e o registry responde ao modelo com o "ACESSO NEGADO" genérico de quem não
+            // conseguiu descrever a operação — sem a lista do que existe.
             if (skill == null || skill.ScriptPath.Length == 0) return null;
 
             return new CommandConfirmationContext
@@ -87,9 +91,7 @@ public class ExecuteSkillTool : ITool
                     ? skill.ScriptPath
                     : $"{skill.ScriptPath} {extra}",
                 Level = userLevel,
-                Cwd = skill.Folder,
-                DenylistHit = false,
-                DenylistReason = ""
+                Cwd = skill.Folder
             };
         }
         catch (JsonException)
@@ -120,7 +122,7 @@ public class ExecuteSkillTool : ITool
     );
 
     /// <summary>
-    /// Confere o caminho citado nos argumentos antes de gastar um modal e um turno com uma
+    /// Confere o caminho citado nos argumentos antes de gastar um cartão e um turno com uma
     /// chamada que não tem como funcionar. Ver <see cref="PreVooDeCaminho"/>.
     /// </summary>
     public string? Validar(string argumentsJson)

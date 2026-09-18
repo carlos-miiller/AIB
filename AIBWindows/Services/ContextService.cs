@@ -16,10 +16,7 @@ public enum ContextOrigin
     ReadByAi = 1,
 
     /// <summary>A IA criou ou sobrescreveu.</summary>
-    CreatedByAi = 2,
-
-    /// <summary>A IA copiou.</summary>
-    CopiedByAi = 3
+    CreatedByAi = 2
 }
 
 /// <summary>
@@ -67,7 +64,6 @@ public sealed class ContextFile
     public string OriginLabel => Origin switch
     {
         ContextOrigin.CreatedByAi => "criado",
-        ContextOrigin.CopiedByAi => "copiado",
         ContextOrigin.ReadByAi => "lido",
         _ => "anexado"
     };
@@ -188,14 +184,13 @@ public static class ContextService
         lock (Trava) return Ativos.Sum(f => f.SizeBytes);
     }
 
-    /// <summary>Tamanho legível: "38 KB", "1,2 MB".</summary>
     /// <summary>
     /// Bloco que apresenta ao modelo os arquivos que o USUÁRIO anexou. Vazio quando não há
     /// nenhum, e nesse caso nada é inserido no prompt.
     /// <para>
     /// Só o caminho, nunca o conteúdo. Embutir o arquivo garantiria que o modelo o visse, mas
-    /// uma planilha de 240 KB não cabe na janela e a lista aceita até
-    /// <see cref="MaxRecentes"/> itens. Com o caminho literal na mão, ele chama
+    /// uma planilha de 240 KB não cabe na janela e a lista de anexos não tem teto — o
+    /// <see cref="MaxRecentes"/> limita só os recentes. Com o caminho literal na mão, ele chama
     /// <c>read</c> quando precisar — e só do que precisar.
     /// </para>
     /// <para>
@@ -221,6 +216,7 @@ public static class ContextService
         return texto.ToString();
     }
 
+    /// <summary>Tamanho legível: "38 KB", "1,2 MB".</summary>
     public static string Humanizar(long bytes)
     {
         if (bytes <= 0) return "0 B";

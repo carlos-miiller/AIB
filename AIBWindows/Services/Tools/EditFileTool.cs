@@ -142,9 +142,7 @@ public sealed class EditFileTool : ITool
             // O card mostra o antes e o depois: autorizar uma edição sem ver o que muda seria
             // autorizar no escuro. ScriptBody é o campo que o card já renderiza como corpo.
             ScriptBody = $"- {Previa(a.De)}\n+ {Previa(a.Para)}",
-            Level = userLevel,
-            DenylistHit = false,
-            DenylistReason = ""
+            Level = userLevel
         };
     }
 

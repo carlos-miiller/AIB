@@ -6,12 +6,12 @@ using OpenAI.Chat;
 namespace AIB.Services.Ai;
 
 /// <summary>
-/// Abstração de um provedor de chat (Ollama, OpenAI). Tudo que sabe falar HTTP,
+/// Abstração de um provedor de chat (Ollama, OpenRouter). Tudo que sabe falar HTTP,
 /// montar payload e classificar o stream vive atrás desta interface.
 /// </summary>
 public interface IChatProvider
 {
-    /// <summary>Nome do provider para log/diagnóstico ("Ollama", "OpenAI").</summary>
+    /// <summary>Nome do provider para log/diagnóstico ("Ollama", "OpenRouter").</summary>
     string Name { get; }
 
     /// <summary>Modelo efetivamente configurado neste provider.</summary>
@@ -38,7 +38,7 @@ public interface IChatProvider
 
     /// <summary>
     /// Prefill de carregamento do modelo. No Ollama: POST /api/generate com keep_alive=-1.
-    /// No OpenAI: no-op. Falha de rede vira log e retorno normal — aquecimento é best-effort.
+    /// No OpenRouter: no-op. Falha de rede vira log e retorno normal — aquecimento é best-effort.
     /// A única exceção que sobe é OperationCanceledException: engolir o cancelamento faria o
     /// aquecimento seguir rodando durante o encerramento do app.
     /// </summary>

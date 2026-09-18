@@ -5,12 +5,13 @@ namespace AIB.Services;
 
 /// <summary>
 /// Contrato base para todas as ferramentas do agente AIB.
-/// Toda ferramenta, seja nativa C# ou um script local Python/PowerShell,
-/// implementa esta interface para ser registrada e executada de forma uniforme.
+/// Toda ferramenta nativa C# implementa esta interface para ser registrada e executada de
+/// forma uniforme. Scripts locais (Python/PowerShell) não a implementam: são skills, e chegam
+/// ao modelo pela ferramenta <c>skill</c> (ver <see cref="Tools.ExecuteSkillTool"/>).
 /// </summary>
 public interface ITool
 {
-    /// <summary>Nome único da ferramenta (ex: "remember", "ocr_screen").</summary>
+    /// <summary>Nome único da ferramenta (ex: "read", "shell"). Ver <see cref="Ferramentas"/>.</summary>
     string Name { get; }
 
     /// <summary>Descrição clara da finalidade da ferramenta para o LLM.</summary>
@@ -30,7 +31,10 @@ public interface ITool
     /// Sempre retorna uma string de resultado (sucesso ou erro) para o agente.
     /// </summary>
     /// <param name="argumentsJson">JSON com os argumentos, conforme o schema definido em ChatToolDefinition.</param>
-    /// <param name="userLevel">Nível atual do usuário para restrições avançadas de sandbox.</param>
+    /// <param name="userLevel">
+    /// Nível atual do usuário. O registry já barrou quem está abaixo de <see cref="RequiredLevel"/>;
+    /// hoje nenhuma ferramenta o usa na execução.
+    /// </param>
     Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1);
 
     /// <summary>
@@ -67,7 +71,7 @@ public interface ITool
     bool DispensaConfirmacao(string argumentsJson) => false;
 
     /// <summary>
-    /// Monta o que o modal mostra ao usuário. Fica na ferramenta porque só ela sabe interpretar
+    /// Monta o que o cartão de confirmação mostra ao usuário. Fica na ferramenta porque só ela sabe interpretar
     /// o próprio JSON de argumentos — o registry não pode adivinhar qual campo é "o comando".
     /// Devolver null recusa a execução: se a ferramenta pede confirmação e não consegue
     /// descrever o que vai fazer, o usuário não tem como autorizar com conhecimento de causa.

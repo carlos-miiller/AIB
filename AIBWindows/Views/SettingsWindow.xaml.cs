@@ -45,7 +45,7 @@ public enum PaginaDeConfiguracoes
 /// visual; o caminho de persistência continua sendo o <see cref="SettingsService"/>.
 /// </para>
 /// <para>
-/// A revisão com menu lateral trocou a página rolável única por quatro páginas. O ViewModel
+/// A revisão com menu lateral trocou a página rolável única por oito páginas. O ViewModel
 /// continua sendo UM (§7 A11): trocar de página só troca Visibility, e o estado sujo é global —
 /// mexer em "E-mail", voltar em "Avançado" e salvar grava as duas coisas.
 /// </para>
@@ -176,8 +176,8 @@ public partial class SettingsWindow : Window
 
             IntelligentToolsSwitch.IsChecked = _currentSettings.EnableIntelligentTools;
             ConfirmDangerousSwitch.IsChecked = _currentSettings.ConfirmDangerousCommands;
-            WriteRootsTextBox.Text = _currentSettings.PastasSemConfirmacao;
-            AtualizarPastasPermitidas();
+            PastasSemConfirmacaoTextBox.Text = _currentSettings.PastasSemConfirmacao;
+            AtualizarResumoDasPastas();
             AtualizarAutorizacoes();
             ExecutionLogSwitch.IsChecked = _currentSettings.ExecutionLogging;
             CompactionLogSwitch.IsChecked = _currentSettings.CompactionLogging;
@@ -562,7 +562,7 @@ public partial class SettingsWindow : Window
             }
         }
 
-        KeepAliveComboBox.SelectedIndex = 1;   // "5 Minutos (Recomendado)"
+        KeepAliveComboBox.SelectedIndex = 1;   // "5 Minutos"
     }
 
     private void RefreshKeyTextBoxLabel()
@@ -693,7 +693,7 @@ public partial class SettingsWindow : Window
         // enquanto a tela está aberta, e a pasta de sessões também.
         if (NavFerramentas.IsChecked == true)
         {
-            AtualizarPastasPermitidas();
+            AtualizarResumoDasPastas();
             AtualizarAutorizacoes();
         }
 
@@ -1262,8 +1262,8 @@ public partial class SettingsWindow : Window
                 // A lista de dispensa volta ao padrão, que é VAZIA — tudo volta a perguntar.
                 // Restaurar APERTA a segurança aqui, mas o texto abaixo do campo diz na hora o
                 // que passou a valer de qualquer forma: mudança calada é o que não pode existir.
-                WriteRootsTextBox.Text = padrao.PastasSemConfirmacao;
-                AtualizarPastasPermitidas();
+                PastasSemConfirmacaoTextBox.Text = padrao.PastasSemConfirmacao;
+                AtualizarResumoDasPastas();
                 break;
 
             case PaginaDeConfiguracoes.Memoria:
@@ -1333,20 +1333,20 @@ public partial class SettingsWindow : Window
     /// dispensou. Mostrar as pastas que de fato valeram é a única forma de ele perceber.
     /// </para>
     /// </summary>
-    private void AtualizarPastasPermitidas()
+    private void AtualizarResumoDasPastas()
     {
-        var raizes = PastasSemConfirmacao.Analisar(WriteRootsTextBox.Text);
+        var raizes = PastasSemConfirmacao.Analisar(PastasSemConfirmacaoTextBox.Text);
 
         if (raizes.Count == 0)
         {
-            PastasPermitidasTexto.Text =
+            PastasSemConfirmacaoResumo.Text =
                 "Nenhuma pasta configurada: toda gravação e toda edição pedem confirmação.";
             return;
         }
 
         var faltando = raizes.Where(r => !System.IO.Directory.Exists(r)).ToList();
 
-        PastasPermitidasTexto.Text =
+        PastasSemConfirmacaoResumo.Text =
             $"Sem confirmação agora: {string.Join(" | ", raizes)}."
             + (faltando.Count == 0
                 ? ""
@@ -1356,10 +1356,10 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>Reavalia a ajuda a cada tecla: o efeito da linha digitada aparece na hora.</summary>
-    private void PastasDeEscrita_Mudou(object sender, TextChangedEventArgs e)
+    private void PastasSemConfirmacao_Mudou(object sender, TextChangedEventArgs e)
     {
-        if (PastasPermitidasTexto == null) return;
-        AtualizarPastasPermitidas();
+        if (PastasSemConfirmacaoResumo == null) return;
+        AtualizarResumoDasPastas();
         MarcarSujo();
     }
 
@@ -1621,12 +1621,12 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// O que a triagem faz HOJE. Enquanto o vigia não existe, a varredura só conta mensagens —
-    /// nenhum assunto ou remetente desce do servidor —, e prometer resumo seria vender o que
-    /// ainda não há.
+    /// O que a triagem faz HOJE (<see cref="AgendaDoVigia"/>): a sondagem de 20 em 20 minutos é só
+    /// código e conta mensagens; o modelo só acorda no digest, três vezes por dia, para resumir
+    /// e priorizar.
     /// </summary>
     public const string TextoDaTriagem =
-        "Por ora o Shadow só conta as mensagens; a triagem que resume e prioriza ainda não existe.";
+        "O Shadow olha a caixa de 20 em 20 minutos sem acordar o modelo; três vezes por dia o digest resume e prioriza o que chegou.";
 
     private void MarcarSujo()
     {
@@ -1851,7 +1851,7 @@ public partial class SettingsWindow : Window
 
         _currentSettings.EnableIntelligentTools = IntelligentToolsSwitch.IsChecked ?? true;
         _currentSettings.ConfirmDangerousCommands = ConfirmDangerousSwitch.IsChecked ?? true;
-        _currentSettings.PastasSemConfirmacao = (WriteRootsTextBox.Text ?? "").Trim();
+        _currentSettings.PastasSemConfirmacao = (PastasSemConfirmacaoTextBox.Text ?? "").Trim();
         _currentSettings.ExecutionLogging = ExecutionLogSwitch.IsChecked ?? false;
         _currentSettings.CompactionLogging = CompactionLogSwitch.IsChecked ?? false;
         _currentSettings.KeepAssistantSpeech = KeepAssistantSpeechSwitch.IsChecked ?? true;

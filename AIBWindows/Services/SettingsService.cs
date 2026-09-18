@@ -286,8 +286,8 @@ public sealed class UserAppSettings
     public int TokensPorCapitulo { get; set; } = PadraoDeTokensPorCapitulo;
 
     /// <summary>
-    /// Capítulos soltos que viram um ato. Zero é automático: 4 no Ollama, 8 no OpenRouter (ver
-    /// <see cref="LimitesDoProvedor.CapitulosPorAto"/>).
+    /// Teto de capítulos soltos por ato. Zero é automático: 12 no Ollama, 24 no OpenRouter (ver
+    /// <see cref="LimitesDoProvedor.CapitulosPorAto"/>); o ato pode nascer antes, pela cota.
     /// </summary>
     public int CapitulosPorAto { get; set; }
 
@@ -415,10 +415,10 @@ public sealed class UserAppSettings
     /// O CORPO da mensagem nunca é gravado, em nenhum valor deste campo. Isso não é
     /// configurável, e é o que sobrou da regra 3 como regra.
     /// </para>
-    /// </summary>
-    /// <summary>
-    /// Retenção do que a TRIAGEM AUTOMÁTICA leu: o diário e o arquivo por conversa. Zero
-    /// apaga tudo e devolve a regra 3 estrita.
+    /// <para>
+    /// Governa a retenção do que a TRIAGEM AUTOMÁTICA leu: o diário e o arquivo por conversa.
+    /// Zero apaga tudo e devolve a regra 3 estrita.
+    /// </para>
     /// <para>
     /// NÃO governa a conversa que o usuário abre sobre um e-mail (§3.11). São atos diferentes:
     /// um é a máquina lendo correspondência sozinha, o outro é uma pessoa decidindo conversar.
@@ -447,15 +447,6 @@ public sealed class UserAppSettings
     /// </summary>
     public List<MailAccountSettings> MailAccounts { get; set; } = new();
 
-    /// <summary>
-    /// Cópia para entregar a quem pediu as configurações.
-    /// <para>
-    /// Era cópia rasa, e a justificativa era "todos os campos são string ou tipo de valor".
-    /// Deixou de valer com <see cref="MailAccounts"/>: o <c>MemberwiseClone</c> copia a
-    /// REFERÊNCIA da lista, e como o <c>LoadSettings</c> devolve um clone do cache, quem
-    /// mexesse na lista recebida estaria mexendo na lista do cache — e na das outras janelas.
-    /// </para>
-    /// </summary>
     /// <summary>
     /// Põe os números dentro de faixas em que o programa ainda funciona.
     /// <para>
@@ -554,6 +545,15 @@ public sealed class UserAppSettings
         MailTriageModel ??= "";
     }
 
+    /// <summary>
+    /// Cópia para entregar a quem pediu as configurações.
+    /// <para>
+    /// Era cópia rasa, e a justificativa era "todos os campos são string ou tipo de valor".
+    /// Deixou de valer com <see cref="MailAccounts"/>: o <c>MemberwiseClone</c> copia a
+    /// REFERÊNCIA da lista, e como o <c>LoadSettings</c> devolve um clone do cache, quem
+    /// mexesse na lista recebida estaria mexendo na lista do cache — e na das outras janelas.
+    /// </para>
+    /// </summary>
     public UserAppSettings Clone()
     {
         var copia = (UserAppSettings)MemberwiseClone();

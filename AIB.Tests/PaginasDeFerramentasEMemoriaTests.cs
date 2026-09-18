@@ -14,7 +14,7 @@ namespace AIB.Tests
     /// <para>
     /// O Avançado ficou, depois da aba Logs, com sete campos de dois assuntos que não se
     /// encostam: o que o agente PODE FAZER na máquina e o que a conversa LEMBRA. Separar não é
-    /// arrumação de gaveta — a página de Ferramentas é onde o confinamento de gravação e a lista
+    /// arrumação de gaveta — a página de Ferramentas é onde as pastas sem confirmação e a lista
     /// de "sempre permitir" passam a ter casa, e as duas são decisões de segurança que até agora
     /// não tinham tela nenhuma.
     /// </para>
@@ -70,7 +70,7 @@ namespace AIB.Tests
                 PaginaDe(janela, "IntelligentToolsSwitch").Should().Be("PaginaFerramentas");
                 PaginaDe(janela, "ConfirmDangerousSwitch").Should().Be("PaginaFerramentas");
                 PaginaDe(janela, "MaxIterationsTextBox").Should().Be("PaginaFerramentas");
-                PaginaDe(janela, "WriteRootsTextBox").Should().Be("PaginaFerramentas");
+                PaginaDe(janela, "PastasSemConfirmacaoTextBox").Should().Be("PaginaFerramentas");
                 PaginaDe(janela, "AutorizacoesTexto").Should().Be("PaginaFerramentas");
 
                 janela.Close();
@@ -129,7 +129,7 @@ namespace AIB.Tests
                 var janela = new SettingsWindow(ServicoDescartavel());
                 janela.IrPara(PaginaDeConfiguracoes.Ferramentas);
 
-                ((TextBlock)janela.FindName("PastasPermitidasTexto")).Text
+                ((TextBlock)janela.FindName("PastasSemConfirmacaoResumo")).Text
                     .Should().Contain("pedem confirmação");
 
                 janela.Close();
@@ -147,9 +147,9 @@ namespace AIB.Tests
                 var janela = new SettingsWindow(ServicoDescartavel());
                 janela.IrPara(PaginaDeConfiguracoes.Ferramentas);
 
-                ((TextBox)janela.FindName("WriteRootsTextBox")).Text = @"C:\Trabalho";
+                ((TextBox)janela.FindName("PastasSemConfirmacaoTextBox")).Text = @"C:\Trabalho";
 
-                string ajuda = ((TextBlock)janela.FindName("PastasPermitidasTexto")).Text;
+                string ajuda = ((TextBlock)janela.FindName("PastasSemConfirmacaoResumo")).Text;
                 ajuda.Should().Contain(@"C:\Trabalho");
                 ajuda.Should().Contain("Ainda não existe", "pasta digitada errado nunca dispensa nada");
 
@@ -177,7 +177,7 @@ namespace AIB.Tests
                       .Invoke(janela, new object[] { botao, new RoutedEventArgs() });
 
                 compactacao.Text.Should().Be("42");
-                ((TextBox)janela.FindName("WriteRootsTextBox")).Text.Should().BeEmpty();
+                ((TextBox)janela.FindName("PastasSemConfirmacaoTextBox")).Text.Should().BeEmpty();
 
                 janela.Close();
             });

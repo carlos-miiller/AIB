@@ -10,17 +10,14 @@ namespace AIB.Services;
 /// O escopo "sessão" é uma exigência explícita do D2 do fase 01 para impedir
 /// que um clique acidental autorize um comando perigoso para sempre.
 ///
-/// D-10 (Phase 3): a chave passou de <c>string</c> para a tupla
-/// <c>(string Tool, string Cmd, string? ContentHash)</c> — a igualdade estrutural
-/// embutida em <c>ValueTuple&lt;string,string,string?&gt;</c> faz match exato
-/// byte-a-byte em cada elemento (ordinal). <c>Tool</c> é o nome da ferramenta
-/// (<c>shell</c> / <c>skill</c> / <c>materialize_skill</c>);
-/// <c>Cmd</c> é o texto exato exibido no modal; <c>ContentHash</c> é null para
-/// <c>shell</c> e o hex SHA256 do corpo do script para as skill tools.
+/// A chave é a tupla <c>(string Tool, string Cmd, string? ContentHash)</c> — a igualdade
+/// estrutural embutida em <c>ValueTuple&lt;string,string,string?&gt;</c> faz match exato
+/// byte-a-byte em cada elemento (ordinal). <c>Tool</c> é o nome da ferramenta que pediu
+/// confirmação (ver <see cref="Ferramentas"/>); <c>Cmd</c> é o texto exato exibido no cartão.
 ///
-/// Mudança de body em disco → tupla nova → modal re-dispara: o cache de
-/// "Sempre permitir" é invalidado automaticamente quando o conteúdo da skill
-/// muda (defesa anti-silent-edit, ver Plan 03 D-09).
+/// <c>ContentHash</c> está reservado e hoje é sempre null: o registry não calcula hash do
+/// script de skill. Consequência: editar o script de uma skill em disco NÃO invalida um
+/// "Sempre permitir" dado a ela nesta sessão — a chave é só ferramenta + comando.
 /// </summary>
 public static class AlwaysAllowSession
 {

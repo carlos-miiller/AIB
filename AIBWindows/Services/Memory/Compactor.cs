@@ -36,16 +36,19 @@ public sealed class Compactor
     /// Pensar não ajuda a resumir; o material já está todo na frente do modelo.
     /// </para>
     /// <para>
-    /// <c>NumPredict</c> é a rede embaixo: um modelo que ignore o "máximo 120 palavras" não
-    /// pode gastar a janela inteira e levar a compactação ao estouro do tempo.
+    /// <c>NumPredict</c> é a rede embaixo: um modelo que ignore o formato pedido — uma frase de
+    /// objetivo, até 3 linhas de ~30 palavras em Aprendido e a linha de pendências — não pode
+    /// gastar a janela inteira e deixar a compactação rodando por minutos.
     /// </para>
     /// </summary>
     private static readonly ChatRequestOptions Options =
         new(Temperature: 0.0f, Think: false, NumPredict: MaxSummaryTokens);
 
     /// <summary>
-    /// Teto de tokens do resumo. 400 dá folga larga sobre as 120 palavras pedidas (~180
-    /// tokens) sem deixar espaço para um resumo desgovernado.
+    /// Teto de tokens do resumo do CAPÍTULO. O pedido cabe em ~150 palavras (a frase de objetivo,
+    /// três lições de até 30 palavras e a linha de pendências, ~250 tokens), e 400 dá folga sobre
+    /// isso sem deixar espaço para um resumo desgovernado. O ato tem teto próprio, em
+    /// <see cref="LimitesDoProvedor.TetoDoResumoDoAto"/>.
     /// </summary>
     public const int MaxSummaryTokens = 400;
 
@@ -389,7 +392,7 @@ public sealed class Compactor
         string agora = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
 
         // As pendências que continuam valendo ao fim dos capítulos. As de assunto são trocadas
-        // pelas que o resumo do ato apontar, se ele apontar: ele vê o arco inteiro.
+        // pelas que o resumo do ato apontar, se ele apontar: ele vê o ato inteiro.
         var herdadas = Pendencias.Resolver(chapters.Select(c => (c.Pendencias, c.Artifacts)).ToList());
         IReadOnlyList<Pendencia>? assuntoDoAto = null;
         decimal? custo = null;
@@ -665,8 +668,9 @@ public sealed class Compactor
     }
 
     /// <summary>
-    /// Palavras do resumo. O pedido é "no máximo 120 palavras", e é a contagem que diz se o
-    /// modelo obedeceu — o número de tokens não responde isso.
+    /// Palavras do resumo. Os prompts pedem em palavras — até 30 por lição no capítulo, até 150
+    /// no parágrafo do ato antigo —, e é a contagem que diz se o modelo obedeceu; o número de
+    /// tokens não responde isso.
     /// </summary>
     public static int Palavras(string? texto) =>
         string.IsNullOrWhiteSpace(texto)

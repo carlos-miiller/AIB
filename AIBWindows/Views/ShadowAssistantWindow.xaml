@@ -49,9 +49,6 @@
 
     <Window.Resources>
         <ui:AlturaParaRaioConverter x:Key="AlturaParaRaio"/>
-        <ui:UrgenciaConverter x:Key="CorDaUrgencia"    Modo="Cor"/>
-        <ui:UrgenciaConverter x:Key="FundoDaUrgencia"  Modo="Fundo"/>
-        <ui:UrgenciaConverter x:Key="RotuloDaUrgencia" Modo="Rotulo"/>
 
         <!-- O topo da pilha ROLADA termina em desvanecimento, e não em corte reto.
              MappingMode absoluto porque os 32px têm de ser 32px sempre: com
@@ -321,7 +318,7 @@
                                               Visibility="{Binding VisibilidadeDaLista}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <!-- §6.6 E3: o MESMO controle do painel. O
+                                            <!-- §6.6 E3: o MESMO controle da lista central. O
                                                  layout deste item ainda vai ser revisto, e
                                                  duas cópias divergiriam na primeira
                                                  correção feita só de um lado. -->

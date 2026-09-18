@@ -8,8 +8,8 @@ public interface IChatProviderFactory
     /// <summary>
     /// Devolve o provider correspondente às settings atuais. Reaproveita a instância
     /// anterior enquanto provider, modelo, URL e credencial efetiva não mudarem — a
-    /// credencial entra na comparação porque o sentinela "use-vault" não muda quando o
-    /// usuário troca a chave no cofre. Deve ser thread-safe: o aquecimento e um turno
+    /// credencial entra na comparação porque trocar a chave no cofre não muda nada nas
+    /// configurações. Deve ser thread-safe: o aquecimento e um turno
     /// podem correr juntos na inicialização.
     /// </summary>
     IChatProvider GetProvider(UserAppSettings settings);

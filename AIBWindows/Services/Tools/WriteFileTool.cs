@@ -15,12 +15,6 @@ public class WriteFileTool : ITool
     public bool RequiresConfirmation => true;
 
     /// <summary>
-    /// O modal mostra o caminho ABSOLUTO já resolvido, e não o que o modelo escreveu: é a
-    /// diferença entre autorizar "config.json" e autorizar a gravação real em
-    /// %APPDATA%\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\config.json.
-    /// Sem confinamento de raiz, o caminho resolvido é a única defesa que o usuário tem.
-    /// </summary>
-    /// <summary>
     /// Gravar dentro de uma pasta dispensada não para no card. Fora dela, o card aparece como
     /// sempre. Ver <see cref="PastasSemConfirmacao"/>.
     /// </summary>
@@ -43,6 +37,12 @@ public class WriteFileTool : ITool
         }
     }
 
+    /// <summary>
+    /// O cartão mostra o caminho ABSOLUTO já resolvido, e não o que o modelo escreveu: é a
+    /// diferença entre autorizar "config.json" e autorizar a gravação real em
+    /// %APPDATA%\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\config.json.
+    /// Fora das pastas sem confirmação, o caminho resolvido é o que o usuário tem para decidir.
+    /// </summary>
     public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel)
     {
         try
@@ -67,8 +67,6 @@ public class WriteFileTool : ITool
                 Command = (existe ? "SOBRESCREVER " : "CRIAR ") + resolvido,
                 Level = userLevel,
                 Cwd = Environment.CurrentDirectory,
-                DenylistHit = false,
-                DenylistReason = "",
                 ScriptBody = previa
             };
         }

@@ -16,9 +16,14 @@ namespace AIB.Services;
 public class ToolRegistry
 {
     private readonly Dictionary<string, ITool> _tools = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _nativeToolNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly IConfirmationPrompt? _confirmationPrompt;
     private readonly SettingsService? _settingsService;
+
+    /// <summary>
+    /// O que o modelo recebe quando o usuário recusa no cartão. Constante porque quem lê o
+    /// histórico depois (o extrator de artefatos) precisa reconhecer a recusa pelo texto exato.
+    /// </summary>
+    public const string RecusaDoUsuario = "Ação Rejeitada pelo Usuário.";
 
     /// <param name="confirmationPrompt">
     /// Portão humano. Quando null, TODA ferramenta que exige confirmação é recusada — sem
@@ -65,7 +70,7 @@ public class ToolRegistry
     }
 
     /// <param name="aoEsperarHumano">
-    /// Recebe os milissegundos que a ferramenta passou parada no modal, esperando o usuário
+    /// Recebe os milissegundos que a ferramenta passou parada no cartão de confirmação, esperando o usuário
     /// decidir. Sem isto o tempo de gente vira tempo de máquina: um <c>Get-Content</c> trivial
     /// apareceu no log como "ok em 7299,6s" porque ninguém tinha clicado em autorizar por duas
     /// horas.
@@ -195,7 +200,7 @@ public class ToolRegistry
 
     /// <summary>
     /// Portão de autorização, na ordem documentada em SEGURANCA.MD:
-    /// modal primeiro (autoridade canônica, dispara em qualquer nível), floor list depois
+    /// cartão primeiro (autoridade canônica, dispara em qualquer nível), floor list depois
     /// (best-effort, só refuta abaixo do Nível 7 e com ConfirmDangerousCommands ligado).
     /// A auditoria grava ANTES da execução, em todos os desfechos.
     /// </summary>
@@ -258,12 +263,12 @@ public class ToolRegistry
 
             aoDecidir?.Invoke(!permitido ? "recusada" : sempre ? "permitida_sempre" : "permitida");
 
-            if (!permitido) return (false, "Ação Rejeitada pelo Usuário.");
+            if (!permitido) return (false, RecusaDoUsuario);
             if (sempre) AlwaysAllowSession.Add(chave);
         }
 
-        // Floor list roda DEPOIS do modal: mesmo autorizado, categorias destrutivas exigem
-        // Nível 7. Em L>=7 ou com a flag desligada, o modal é a autoridade única.
+        // Floor list roda DEPOIS do cartão: mesmo autorizado, categorias destrutivas exigem
+        // Nível 7. Em L>=7 ou com a flag desligada, o cartão é a autoridade única.
         bool floorLigado = _settingsService?.LoadSettings().ConfirmDangerousCommands ?? true;
         if (floorLigado)
         {
@@ -321,7 +326,6 @@ public class ToolRegistry
         foreach (var tool in nativeTools)
         {
             _tools[tool.Name] = tool;
-            _nativeToolNames.Add(tool.Name);
             Console.WriteLine($"[REGISTRY] Ferramenta nativa registrada: '{tool.Name}'");
         }
 
@@ -348,13 +352,11 @@ public class ToolRegistry
         if (quantas > 0)
         {
             _tools[skill.Name] = skill;
-            _nativeToolNames.Add(skill.Name);
             Console.WriteLine($"[REGISTRY] skill registrada ({quantas} habilidade(s) instalada(s)).");
         }
         else
         {
             _tools.Remove(skill.Name);
-            _nativeToolNames.Remove(skill.Name);
         }
     }
 }

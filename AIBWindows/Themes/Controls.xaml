@@ -721,18 +721,6 @@
          TIPOGRAFIA REUTILIZADA
          ══════════════════════════════════════════════════════════════════ -->
 
-    <!-- Cabeçalho de seção. Os TRÊS usam o MESMO cinza: pintar um de azul,
-         outro de magenta e outro de laranja foi o erro que tirou a hierarquia
-         da tela antiga. Configurações O5 / A2. -->
-    <Style x:Key="SectionHeadText" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="{StaticResource FontSizeSection}"/>
-        <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-        <Setter Property="VerticalAlignment" Value="Center"/>
-        <!-- letter-spacing 0.10em ≈ CharacterSpacing 100 (unidade 1/1000 em). -->
-        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-    </Style>
-
     <Style x:Key="FieldLabelText" TargetType="TextBlock">
         <Setter Property="FontSize" Value="{StaticResource FontSizeField}"/>
         <Setter Property="Foreground" Value="{StaticResource TextStrongBrush}"/>

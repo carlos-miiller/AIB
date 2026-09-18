@@ -74,26 +74,20 @@ public sealed record EstadoDoTrecho(
     private static readonly Regex TemCuringa = new(@"[*?]|\$", RegexOptions.Compiled);
 
     /// <summary>
-    /// Percorre os turnos em ordem e dobra cada ação no seu alvo. Parte do estado anterior —
-    /// vazio num capítulo, o do ato anterior numa fusão —, então apagar uma pasta marca também
-    /// o que um trecho ANTERIOR tinha criado dentro dela.
+    /// Percorre os turnos em ordem e dobra cada ação no seu alvo, partindo do vazio: apagar uma
+    /// pasta marca também o que um turno anterior DO TRECHO tinha criado dentro dela. Juntar o
+    /// estado de vários trechos é trabalho de <see cref="Fundir"/>.
     /// </summary>
-    public static EstadoDoTrecho Montar(IReadOnlyList<Turn> turnos, EstadoDoTrecho? anterior = null)
+    public static EstadoDoTrecho Montar(IReadOnlyList<Turn> turnos)
     {
         var itens = new Dictionary<string, ItemDeEstado>(StringComparer.OrdinalIgnoreCase);
         var ordem = new List<string>();
         var consultados = new List<string>();
-        int consultas = anterior?.Consultas ?? 0;
-
-        if (anterior != null)
-        {
-            foreach (var item in anterior.Itens) Guardar(item);
-            consultados.AddRange(anterior.Consultados);
-        }
+        int consultas = 0;
 
         // Comando que muda o disco sem dizer o quê. Depois de um, o arquivo que aparece numa
         // leitura pode ter sido gerado por ele — e não ser "já existia".
-        bool houveComandoOpaco = anterior?.Itens.Any(i => i.Tipo == ItemDeEstado.TipoComando) ?? false;
+        bool houveComandoOpaco = false;
 
         foreach (var turno in turnos ?? Array.Empty<Turn>())
         {
@@ -236,7 +230,7 @@ public sealed record EstadoDoTrecho(
 
         void Guardar(ItemDeEstado item)
         {
-            string chave = item.Tipo == ItemDeEstado.TipoComando ? "cmd:" + item.Alvo : item.Alvo.TrimEnd('\\', '/');
+            string chave = Chave(item);
             if (itens.ContainsKey(chave)) ordem.Remove(chave);
             itens[chave] = item;
             ordem.Add(chave);
@@ -284,7 +278,9 @@ public sealed record EstadoDoTrecho(
 
             // Tudo o que se sabe estar DENTRO vai junto. Só o que já apareceu: o que nunca foi
             // visto não pode ser listado, e inventar a lista seria o erro que isto corrige.
-            string prefixo = alvo + Path.DirectorySeparatorChar;
+            // "\\" literal, como em Fundir e no Render: o app é só Windows, e o separador escrito
+            // igual nos três lugares evita que um mude sem os outros.
+            string prefixo = alvo + "\\";
             foreach (var chave in itens.Keys.Where(k => k.StartsWith(prefixo, StringComparison.OrdinalIgnoreCase)).ToList())
             {
                 var dentro = itens[chave];

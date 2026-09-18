@@ -178,11 +178,11 @@ public sealed class PerfilDeProvedor
 /// <c>ConversationService.CapitulosParaAto</c> —; este número só impede um ato sobre material
 /// demais, que seria resumo de resumo sobre o dobro do material, onde a informação some.
 /// <para>
-/// Oito no Ollama e dezesseis no OpenRouter. Eram quatro e oito, e a conta mostrou que erravam
-/// nos dois sentidos: no nível 9 do OpenRouter a faixa de capítulos tem ~24.400 tokens e quatro
-/// capítulos de uma sessão inteira somaram 3.462 — promover ali é jogar fora detalhe com 21 mil
-/// tokens de espaço sobrando. No Ollama, com a faixa em ~536 tokens, um capítulo já estoura e a
-/// cota promove antes de o teto importar.
+/// Doze no Ollama e vinte e quatro no OpenRouter — é TETO, não gatilho. Já foram oito e dezesseis,
+/// e antes quatro e oito; o número fixo errava nos dois sentidos: no nível 9 do OpenRouter a
+/// faixa de capítulos tem ~24.400 tokens e quatro capítulos de uma sessão inteira somaram 3.462
+/// — promover ali era jogar fora detalhe com 21 mil tokens de espaço sobrando. No Ollama, com a
+/// faixa em ~536 tokens, um capítulo já estoura e a cota promove antes de o teto importar.
 /// </para>
 /// <para>
 /// No OpenRouter há ainda o cache: a promoção reescreve o bloco de capítulos, no começo do
@@ -191,10 +191,12 @@ public sealed class PerfilDeProvedor
 /// </para>
 /// </param>
 /// <param name="LinhasDoAto">
-/// Linhas de Aprendido que um ato guarda. Sobe junto com o teto de capítulos, e por causa dele:
-/// um ato sobre vinte e quatro capítulos com as mesmas cinco lições de um ato sobre dois joga
-/// fora o que a promoção deveria preservar. No Ollama fica em cinco — lá cada linha gerada é
-/// segundo de espera na CPU, e a faixa de atos tem algumas centenas de tokens.
+/// Linhas de Aprendido que um ato guarda. É do provedor, como o teto de capítulos, e foi
+/// dimensionado junto com ele: um ato sobre vinte e quatro capítulos com as mesmas cinco lições
+/// de um ato sobre dois joga fora o que a promoção deveria preservar. Não acompanha um
+/// <c>CapitulosPorAto</c> ajustado à mão — quem muda o teto nas configurações fica com as linhas
+/// do provedor. No Ollama fica em cinco — lá cada linha gerada é segundo de espera na CPU, e a
+/// faixa de atos tem algumas centenas de tokens.
 /// </param>
 /// <param name="TetoDoResumoDoAto">
 /// Teto de tokens que o resumidor do ato pode gerar. Acompanha <paramref name="LinhasDoAto"/>:
@@ -207,7 +209,10 @@ public sealed record LimitesDoProvedor(
     public static readonly LimitesDoProvedor Local = new(
         Tools.ReadFileTool.LinhasPadrao, Tools.ReadFileTool.TetoDaPasta,
         Tools.LerEmailTool.TetoPorMensagem, Tools.LerEmailTool.TetoDaLeitura,
-        Mail.MailDigestService.TetoDoLote, 0.5, 12, 5, Memory.Compactor.MaxSummaryTokens);
+        Mail.MailDigestService.TetoDoLote, 0.5, 12, 5,
+        // 400 tokens para cinco lições. Coincide com o teto do resumo do capítulo
+        // (Compactor.MaxSummaryTokens), mas é número do ato: um não deve arrastar o outro.
+        400);
 
     public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3, 24, 10, 700);
 

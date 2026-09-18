@@ -12,8 +12,8 @@ namespace AIB.Services.Memory;
 /// A pasta da sessão já guarda o QUE a compactação produziu — <c>raw.jsonl</c>, o cru que nunca
 /// é apagado; <c>chapters.jsonl</c>; <c>acts.jsonl</c>. O que não ficava em lugar nenhum era o
 /// CUSTO: quantos tokens saíram do contexto vivo, quanto tempo o resumidor levou, e —
-/// principalmente — as vezes em que ela falhou. Hoje um resumo que estoura o teto de quatro
-/// minutos imprime uma linha no console e morre ali; na execução seguinte ninguém sabe que a
+/// principalmente — as vezes em que ela falhou. Sem ele, um resumo que falha ou é interrompido
+/// imprime uma linha no console e morre ali; na execução seguinte ninguém sabe que a
 /// conversa está andando com a poda de emergência em vez da compactação.
 /// </para>
 /// <para>

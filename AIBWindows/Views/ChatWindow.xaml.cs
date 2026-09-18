@@ -131,7 +131,6 @@ public partial class ChatWindow : Window
         _conversation.ResetHistory();
         ActionLogService.Clear();
 
-        AddWelcomeBubble();
         AtualizarEstadoVazio();
     }
 
@@ -327,16 +326,6 @@ public partial class ChatWindow : Window
         else corDaFaixa = WColor.FromRgb(0x00, 0xBF, 0xFF);                 // Diamante
 
         XpProgressBar.Foreground = new SolidCB(corDaFaixa);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Mensagem de Boas-vindas
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private void AddWelcomeBubble()
-    {   //removido para deixar o inicio limpo
-        //AddAgentBubble("✦ **AIB Online.** Como posso ajudar?"); 
-
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1773,11 +1762,7 @@ public partial class ChatWindow : Window
     /// Começa uma conversa do zero. A anterior NÃO se perde: <c>ResetHistory</c> arquiva o que
     /// havia antes de zerar, e abre uma sessão nova em <c>memory/sessions</c>.
     /// </summary>
-    /// <param name="comBoasVindas">
-    /// Falso quando algo já vai entrar na conversa em seguida — o cartão de §3.11, por
-    /// exemplo. A saudação antes de um e-mail seria uma fala sobre nada.
-    /// </param>
-    private void NovaConversa(bool comBoasVindas = true)
+    private void NovaConversa()
     {
         DescartarConfirmacaoPendente();
         MessagesPanel.Children.Clear();
@@ -1793,7 +1778,6 @@ public partial class ChatWindow : Window
         UpdateTokenCounterUI(new TokenReport(0, 0, maxTokens));
 
         ChatTitleText.Text = "Nova conversa";
-        if (comBoasVindas) AddWelcomeBubble();
         AtualizarEstadoVazio();
     }
 

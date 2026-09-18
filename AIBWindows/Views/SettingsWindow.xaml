@@ -856,7 +856,7 @@
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                                 <TextBlock Text="Enviar System Prompt a cada requisição" Style="{StaticResource FieldLabelText}"/>
                                                 <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
-                                                           Text="KV Caching."/>
+                                                           Text="Desligar tira o prompt de sistema inteiro — a memória e a alma do personagem vão junto. Ligado, o prefixo repetido aproveita o KV Caching."/>
                                             </StackPanel>
                                             <ToggleButton x:Name="SendSystemPromptSwitch" Grid.Column="1" VerticalAlignment="Center"
                                                           Style="{StaticResource Switch}"
@@ -1374,7 +1374,7 @@
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                                 <TextBlock Text="Confirmar comandos perigosos" Style="{StaticResource FieldLabelText}"/>
-                                                <TextBlock Text="Segunda camada além do modal de confirmação, abaixo do Nível 9. Estava fixada em ligada, sem como ver nem mudar." Style="{StaticResource FieldHelpText}"
+                                                <TextBlock Text="Segunda camada além do modal de confirmação, abaixo do Nível 9." Style="{StaticResource FieldHelpText}"
                                                            TextWrapping="Wrap"/>
                                             </StackPanel>
                                             <ToggleButton x:Name="ConfirmDangerousSwitch" Grid.Column="1"
@@ -1410,10 +1410,10 @@
                                                        Style="{StaticResource FieldLabelText}"/>
                                             <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
                                                        Text="Uma pasta por linha, caminho absoluto. Gravar e editar dentro delas executa direto, sem o card. Fora delas o card aparece como sempre — nada é recusado por causa desta lista. Vazio pergunta tudo. NÃO vale para o shell: lá o card sempre aparece, e avisa quando o comando cita caminho fora destas pastas."/>
-                                            <TextBox x:Name="WriteRootsTextBox" Margin="0,8,0,0"
+                                            <TextBox x:Name="PastasSemConfirmacaoTextBox" Margin="0,8,0,0"
                                                      Style="{StaticResource ControlTextBoxLista}"
-                                                     TextChanged="PastasDeEscrita_Mudou"/>
-                                            <TextBlock x:Name="PastasPermitidasTexto" Margin="0,6,0,0"
+                                                     TextChanged="PastasSemConfirmacao_Mudou"/>
+                                            <TextBlock x:Name="PastasSemConfirmacaoResumo" Margin="0,6,0,0"
                                                        Style="{StaticResource FieldHelpText}"
                                                        TextWrapping="Wrap"/>
                                         </StackPanel>
@@ -1664,7 +1664,7 @@
                                     BorderThickness="1" CornerRadius="0" Padding="16,12">
                                 <StackPanel>
                                     <TextBlock Text="Avançado" Style="{StaticResource PageTitle}"/>
-                                    <TextBlock Text="Raciocínio do modelo. Sem GPU, cada opção aqui custa minutos por turno."
+                                    <TextBlock Text="Se o pensamento de cada etapa volta ao modelo ou é descartado."
                                                Style="{StaticResource PageSubtitle}"/>
                                 </StackPanel>
                             </Border>
@@ -1766,7 +1766,7 @@
                                                 <TextBlock Text="Gravar diário da compactação"
                                                            Style="{StaticResource FieldLabelText}"/>
                                                 <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
-                                                           Text="Quando a memória foi compactada em capítulos e arcos, quanto custou e quando falhou. Vai para compactacao.log na pasta da conversa, junto do raw. Grava contagens e tempos, não o texto dos resumos — pode ficar ligado."/>
+                                                           Text="Quando a memória foi compactada em capítulos e atos, quanto custou e quando falhou. Vai para compactacao.log na pasta da conversa, junto do raw. Grava contagens e tempos, não o texto dos resumos — pode ficar ligado."/>
                                             </StackPanel>
                                             <ToggleButton x:Name="CompactionLogSwitch" Grid.Column="1"
                                                           Style="{StaticResource Switch}"

@@ -151,8 +151,8 @@ para todo provider:
 
 **`CallKey`** é a chave de agregação, opaca para o orquestrador e única por chamada lógica dentro de
 uma enumeração:
-- `OpenAiProvider` usa `"oa:" + tc.Index` — o `Index` do SDK é estável entre os chunks de uma mesma
-  chamada.
+- `OpenRouterProvider` usa `"or:" + índice` — o índice do delta é estável entre os chunks de uma
+  mesma chamada.
 - `OllamaProvider` usa um contador **local ao iterador** (`"ol:" + emittedCalls++`). O Ollama manda a
   tool call inteira dentro de uma linha NDJSON e **reinicia o índice do array em 0 a cada linha**;
   indexar por posição de array fundia duas chamadas distintas numa só, corrompida.
@@ -249,15 +249,14 @@ silêncio, a trava feita pelo aquecimento.
 Concentra a seleção de provider e a normalização de URL/credencial que viviam espalhadas em
 `EnsureClient` e `AskStatelessAsync`:
 
-- `AiProvider == "Ollama"` → `OllamaProvider`; qualquer outra coisa → `OpenAiProvider`.
+- `AiProvider` normalizado: `OpenRouter` → `OpenRouterProvider`; o resto → `OllamaProvider`.
 - Ollama: URL default `http://127.0.0.1:11434`, `/v1` removido, e `localhost` → `127.0.0.1` (a
   resolução IPv6 de `localhost` causava timeouts de 2 minutos).
-- OpenAI: `ApiKey == "use-vault"` busca a chave em `CredentialService`; resultado com prefixo `ERRO`
-  vira `"placeholder"`, assim como chave vazia. `NetworkTimeout = Timeout.InfiniteTimeSpan` — quem
-  controla o prazo é o `CancellationToken` do turno.
-- **Cache:** a chave é a tupla `(AiProvider, ModelName, ApiUrl, credencial efetiva)`. A credencial
-  entra na chave porque o sentinela `"use-vault"` não muda quando o usuário troca a chave no cofre —
-  sem isso, um cliente morto era reaproveitado e o 401 só sumia reiniciando o app.
+- OpenRouter: a chave é lida do cofre do próprio provedor (`ChatProviderFactory.ChaveDe`); vazia,
+  a requisição sai sem autorização e o 401 volta com a frase que diz onde configurar.
+- **Cache:** uma instância por tupla `(provedor, ModelName, ApiUrl, credencial efetiva, opções do
+  OpenRouter)`. A credencial entra na chave porque trocar a chave no cofre não muda nada nas
+  configurações — sem isso, um cliente morto era reaproveitado e o 401 só sumia reiniciando o app.
 - `GetProvider` é thread-safe por `lock`: o aquecimento e um turno podem chegar juntos na
   inicialização.
 
@@ -267,13 +266,6 @@ Fala `/api/chat` em NDJSON. Mudanças que importam: o laço de leitura é totalm
 `numCtx`/`keepAliveSeconds` chegam até o payload. O índice da tool call é global ao stream, não por
 linha. Depois deste refactor, `ChatUpdateDto` é detalhe de implementação do
 `OllamaNativeClient` + `OllamaProvider`; nada mais deve referenciá-lo.
-
-### 3.7 `OpenAiProvider`
-Monta `ChatCompletionOptions { Temperature }` e **anexa todas as tools em todos os caminhos**. Essa é
-a linha que faltava: antes as definições nunca eram enviadas no caminho OpenAI, então function
-calling nativo jamais acontecia e 100% das execuções caíam no fallback de regex. O contador de cache
-vem de `Usage.InputTokenDetails.CachedTokenCount` e viaja em `EvalCount`, mapeamento preservado.
-`WarmupAsync` é no-op: o serviço já está quente do outro lado.
 
 ---
 

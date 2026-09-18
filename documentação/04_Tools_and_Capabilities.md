@@ -88,10 +88,14 @@ próprio modelo. Reconstruir o portão de confirmação é pré-requisito para q
   devolve o conteúdo do arquivo interpretado como texto.
 - Erros são amigáveis para o modelo: `ERRO: Arquivo não encontrado em '<path>'.` etc.
 
-### 3.3 `write_file` (`WriteFileTool`)
-- **Schema:** `{ path: string, content: string }`, ambos obrigatórios.
+### 3.3 `write` (`WriteFileTool`)
+- **Schema:** `{ path: string, content: string }`, ambos obrigatórios. `RequiredLevel = 2`.
 - Cria os diretórios ausentes (`Directory.CreateDirectory`) e grava com `File.WriteAllTextAsync`.
-- **Sobrescreve sem aviso e sem backup.** Não há confirmação, não há confinamento de caminho.
+- **Pede confirmação por cartão no chat** (`ConfirmCardView`), mostrando o caminho absoluto já
+  resolvido (`CRIAR` ou `SOBRESCREVER`) e uma prévia do conteúdo. O cartão é dispensado quando o
+  alvo está dentro de uma das pastas sem confirmação (`PastasSemConfirmacao`); fora delas o
+  cartão aparece e nada é recusado por causa da lista. Texto de e-mail no contexto anula a dispensa.
+- Não há confinamento de caminho nem backup: autorizada, a gravação sobrescreve.
 - Devolve `SUCESSO: Arquivo salvo corretamente em '<path>'.`
 
 ## 4. Pontas soltas que o refactor expôs

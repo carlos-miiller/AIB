@@ -25,8 +25,9 @@ public enum MailUrgency
 /// <param name="Description">Resumo gerado pela IA. No máximo duas linhas na tela.</param>
 /// <param name="Urgency">Nível, que decide a cor da barra e do selo.</param>
 /// <param name="Url">
-/// Endereço que abre a mensagem. As duas caixas do usuário são webmail, então é uma URL do
-/// Gmail com a thread — não há cliente de e-mail para invocar. Vazio desativa o clique.
+/// Endereço que abre a mensagem, montado por <see cref="AIB.Services.Mail.LinkDoEmail"/>: a
+/// thread no Gmail, a caixa no Outlook ou vazio quando o provedor é desconhecido. Vazio
+/// desativa o clique.
 /// </param>
 /// <param name="Account">
 /// De qual CAIXA veio — o endereço da conta conectada, nunca o do remetente. É por ele que se

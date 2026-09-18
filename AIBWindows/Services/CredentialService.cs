@@ -50,60 +50,13 @@ public static class CredentialService
         }
     }
 
-    public static string RetrieveCredential(string system, string key)
-    {
-        try
-        {
-            EnsureDir();
-            string filePath = Path.Combine(CredentialsDir, $"{system.ToLower()}.bin");
-            Console.WriteLine($"[DEBUG-COFRE] Buscando sistema: {system} | Chave: {key}");
-            Console.WriteLine($"[DEBUG-COFRE] Caminho do arquivo: {filePath}");
-
-            if (!File.Exists(filePath)) 
-            {
-                Console.WriteLine($"[DEBUG-COFRE] Sistema '{system}' não encontrado. Tentando busca global...");
-                // Busca global: Varre todos os sistemas para ver se a chave existe em algum lugar
-                var allFiles = Directory.GetFiles(CredentialsDir, "*.bin");
-                foreach (var file in allFiles)
-                {
-                    var data = DecryptFile(file);
-                    if (string.IsNullOrEmpty(data)) continue;
-                    var c = JsonSerializer.Deserialize<Dictionary<string, string>>(data);
-                    if (c != null && c.TryGetValue(key, out string? val))
-                    {
-                        Console.WriteLine($"[DEBUG-COFRE] SUCESSO GLOBAL: Chave '{key}' encontrada no sistema '{Path.GetFileNameWithoutExtension(file)}'.");
-                        return val;
-                    }
-                }
-                Console.WriteLine($"[DEBUG-COFRE] ERRO: Chave '{key}' não encontrada em nenhum sistema.");
-                return "ERRO: Credencial não encontrada em nenhum sistema.";
-            }
-
-            var decryptedJson = DecryptFile(filePath);
-            if (string.IsNullOrEmpty(decryptedJson)) return "ERRO: Falha ao descriptografar arquivo.";
-
-            var creds = JsonSerializer.Deserialize<Dictionary<string, string>>(decryptedJson);
-            if (creds != null && creds.TryGetValue(key, out string? value))
-            {
-                Console.WriteLine($"[DEBUG-COFRE] SUCESSO: Chave '{key}' encontrada.");
-                return value;
-            }
-            Console.WriteLine($"[DEBUG-COFRE] ERRO: Chave '{key}' não existe dentro do sistema '{system}'.");
-            return "ERRO: Chave não encontrada para este sistema.";
-        }
-        catch (Exception ex)
-        {
-            return $"ERRO ao recuperar credencial: {ex.Message}";
-        }
-    }
-
     /// <summary>
-    /// A credencial de UM sistema, sem a busca global do <see cref="RetrieveCredential"/>. Nulo
-    /// quando não existe.
+    /// A credencial de UM sistema, sem busca global pelos outros arquivos do cofre. Nulo quando
+    /// não existe.
     /// <para>
-    /// Existe para as chaves de provedor. A busca global devolve a primeira chave com o mesmo NOME
-    /// em qualquer arquivo do cofre: sem chave do OpenRouter, ela entregaria a chave da OpenAI
-    /// gravada por uma versão antiga — e a requisição a mandaria para outro serviço.
+    /// Uma busca global devolveria a primeira chave com o mesmo NOME em qualquer arquivo do cofre:
+    /// sem chave do OpenRouter, ela entregaria a chave da OpenAI gravada por uma versão antiga — e a
+    /// requisição a mandaria para outro serviço.
     /// </para>
     /// </summary>
     public static string? LerDoSistema(string system, string key)
