@@ -86,7 +86,8 @@ public sealed record Act(
     public string Render()
     {
         if (Versao >= BlocoEstruturado.Versao)
-            return BlocoEstruturado.Render(TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido);
+            return BlocoEstruturado.Render(TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido,
+                                           EstadoDoTrecho.TetoDeItensDoAto);
 
         var texto = new StringBuilder();
 

@@ -206,8 +206,15 @@ namespace AIB.Tests
             // Teto, e não gatilho: quem decide a hora de promover é a cota de capítulos. Eram 4 e
             // 8, e a conta mostrou que promoviam cedo — quatro capítulos de uma sessão inteira
             // somaram 3.462 tokens numa faixa de ~24.400.
-            LimitesDoProvedor.Local.CapitulosPorAto.Should().Be(8);
-            nuvem.CapitulosPorAto.Should().Be(16, "cada promoção reescreve o começo do prompt e perde o cache");
+            LimitesDoProvedor.Local.CapitulosPorAto.Should().Be(12);
+            nuvem.CapitulosPorAto.Should().Be(24, "cada promoção reescreve o começo do prompt e perde o cache");
+
+            // O ato cresce junto com o teto: um ato sobre vinte e quatro capítulos com as cinco
+            // lições de um ato sobre dois jogaria fora o que a promoção deveria preservar. No
+            // local fica onde estava — lá cada linha gerada é segundo de espera na CPU.
+            nuvem.LinhasDoAto.Should().BeGreaterThan(LimitesDoProvedor.Local.LinhasDoAto);
+            nuvem.TetoDoResumoDoAto.Should().BeGreaterThan(LimitesDoProvedor.Local.TetoDoResumoDoAto,
+                "mais linhas pedidas com o mesmo teto seria pedir e cortar no meio");
         }
 
         [Fact]

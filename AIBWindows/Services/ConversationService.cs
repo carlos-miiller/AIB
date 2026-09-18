@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -1216,7 +1216,8 @@ public sealed class ConversationService : IMessageStore
         var settings = _settingsService.LoadSettings();
         var compactor = new Compactor(
             _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
-            comModelo: settings.MemoriaComModelo);
+            comModelo: settings.MemoriaComModelo,
+            limites: LimitesDoProvedor.Para(settings.AiProvider));
 
         int conversa;
         lock (_gate) { conversa = _conversaViva; }
@@ -1446,7 +1447,8 @@ public sealed class ConversationService : IMessageStore
             var settings = _settingsService.LoadSettings();
             var compactor = new Compactor(
                 _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
-            comModelo: settings.MemoriaComModelo);
+                comModelo: settings.MemoriaComModelo,
+                limites: LimitesDoProvedor.Para(settings.AiProvider));
 
             var ato = await PromoverAsync(compactor, minimo, ct).ConfigureAwait(false);
             if (ato == null) return "A promocao falhou. Os capitulos seguem soltos.";

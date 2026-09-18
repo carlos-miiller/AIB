@@ -190,16 +190,26 @@ public sealed class PerfilDeProvedor
 /// vezes é também gastar menos.
 /// </para>
 /// </param>
+/// <param name="LinhasDoAto">
+/// Linhas de Aprendido que um ato guarda. Sobe junto com o teto de capítulos, e por causa dele:
+/// um ato sobre vinte e quatro capítulos com as mesmas cinco lições de um ato sobre dois joga
+/// fora o que a promoção deveria preservar. No Ollama fica em cinco — lá cada linha gerada é
+/// segundo de espera na CPU, e a faixa de atos tem algumas centenas de tokens.
+/// </param>
+/// <param name="TetoDoResumoDoAto">
+/// Teto de tokens que o resumidor do ato pode gerar. Acompanha <paramref name="LinhasDoAto"/>:
+/// mais linhas pedidas com o mesmo teto seria pedir e cortar no meio.
+/// </param>
 public sealed record LimitesDoProvedor(
     int LinhasDeLeitura, int ItensDaPasta, int EmailPorMensagem, int EmailPorLeitura, int LoteDaTriagem,
-    double AlvoDepoisDeCompactar, int CapitulosPorAto)
+    double AlvoDepoisDeCompactar, int CapitulosPorAto, int LinhasDoAto, int TetoDoResumoDoAto)
 {
     public static readonly LimitesDoProvedor Local = new(
         Tools.ReadFileTool.LinhasPadrao, Tools.ReadFileTool.TetoDaPasta,
         Tools.LerEmailTool.TetoPorMensagem, Tools.LerEmailTool.TetoDaLeitura,
-        Mail.MailDigestService.TetoDoLote, 0.5, 8);
+        Mail.MailDigestService.TetoDoLote, 0.5, 12, 5, Memory.Compactor.MaxSummaryTokens);
 
-    public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3, 16);
+    public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3, 24, 10, 700);
 
     public static LimitesDoProvedor Para(string? provedor) =>
         provedor == ProvedoresDeIa.OpenRouter ? Nuvem : Local;

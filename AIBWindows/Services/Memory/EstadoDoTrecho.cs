@@ -51,6 +51,14 @@ public sealed record EstadoDoTrecho(
     /// <summary>Teto de itens no prompt. O resto vira "e mais N".</summary>
     public const int TetoDeItens = 20;
 
+    /// <summary>
+    /// Teto do ATO, maior porque ele funde o estado de muitos capítulos — até vinte e quatro, na
+    /// nuvem. O mesmo vinte de um capítulo faria a fusão nascer já cortada. Não é gasto garantido:
+    /// o <see cref="BlocoEstruturado.Fit"/> encolhe até caber na cota, e no modelo local ele
+    /// encolhe de qualquer jeito.
+    /// </summary>
+    public const int TetoDeItensDoAto = 28;
+
     /// <summary>Teto de nomes na linha Consultados.</summary>
     public const int TetoDeConsultados = 12;
 

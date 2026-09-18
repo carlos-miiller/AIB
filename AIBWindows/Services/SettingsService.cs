@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
@@ -481,7 +481,7 @@ public sealed class UserAppSettings
         TurnosPorCapitulo = Entre(TurnosPorCapitulo <= 0 ? PadraoDeTurnosPorCapitulo : TurnosPorCapitulo, 2, 20);
         TokensPorCapitulo = Entre(
             TokensPorCapitulo <= 0 ? PadraoDeTokensPorCapitulo : TokensPorCapitulo, 4_000, 60_000);
-        CapitulosPorAto = CapitulosPorAto <= 0 ? 0 : Entre(CapitulosPorAto, 2, 16);
+        CapitulosPorAto = CapitulosPorAto <= 0 ? 0 : Entre(CapitulosPorAto, 2, 24);
         EsconderResultadosDepoisDe = EsconderResultadosDepoisDe <= 0 ? 0 : Entre(EsconderResultadosDepoisDe, 2, 50);
         ShadowMailPreviewCount = Entre(ShadowMailPreviewCount, 1, 10);
         MailWindowDays = Entre(MailWindowDays, 1, 30);
