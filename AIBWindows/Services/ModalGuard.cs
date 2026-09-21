@@ -6,7 +6,7 @@ namespace AIB.Services;
 /// <summary>
 /// Marca que existe um diálogo modal do próprio AIB na tela.
 /// <para>
-/// A ChatWindow se esconde ao perder o foco (o "ghosting" documentado em 02_Views_and_UI.md):
+/// A ChatWindow se esconde ao perder o foco (o "ghosting" descrito em documentação/tecnica/06-interface.md):
 /// clicar num jogo ou noutro programa some com o chat. Só que abrir um modal também tira o foco
 /// dela — então o chat desaparecia atrás do próprio diálogo que tinha acabado de abrir, e o
 /// usuário precisava do atalho global para trazê-lo de volta.

@@ -8,7 +8,7 @@ using OpenAI.Chat;
 namespace AIB.Services.Agent;
 
 /// <summary>
-/// Aquecimento intencional (doc 03 §1): carrega o modelo com o keep-alive em vigor e compila
+/// Aquecimento intencional (documentação/tecnica/02-turno-e-provedores.md §13): carrega o modelo com o keep-alive em vigor e compila
 /// a gramática das ferramentas com um heartbeat fantasma, mascarando a latência de carga.
 /// NÃO é disparado por construtor — o App chama explicitamente depois que a UI existe.
 /// Todo o trabalho acontece sobre um EphemeralMessageStore: o histórico vivo nunca é

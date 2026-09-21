@@ -11,7 +11,7 @@ public sealed record HealedToolCall(string ToolName, string ArgumentsJson, strin
 
 /// <summary>
 /// Cura a alucinação de modelos pequenos que escrevem a chamada de ferramenta como texto
-/// em vez de usar function calling. Recurso INTENCIONAL (doc 03 §3.1).
+/// em vez de usar function calling. Recurso INTENCIONAL (documentação/tecnica/02-turno-e-provedores.md §11).
 /// </summary>
 public interface IToolCallHealer
 {

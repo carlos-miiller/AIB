@@ -11,7 +11,7 @@ namespace AIB.Services.Ai;
 /// <summary>
 /// Implementação do healer por regex. Cura a alucinação de modelos pequenos que escrevem
 /// a chamada de ferramenta como prosa ("Action: read(caminho.txt)") em vez de usar
-/// function calling. Recurso INTENCIONAL (doc 03 §3.1).
+/// function calling. Recurso INTENCIONAL (documentação/tecnica/02-turno-e-provedores.md §11).
 ///
 /// Três garantias que o fallback antigo não dava:
 ///   1. só analisa texto do canal FINAL — conteúdo de &lt;think&gt; nunca vira execução;

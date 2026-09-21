@@ -54,7 +54,7 @@ public sealed class EstadoDaCaixa
 }
 
 /// <summary>
-/// O <c>estado.json</c> de <c>~/.AIB/email/</c> — §Arquivos de ideias_futuras/07_Vigia_de_Email.
+/// O <c>estado.json</c> de <c>~/.AIB/email/</c> — ver documentação/tecnica/05-email.md §5.
 /// <para>
 /// Um arquivo só, uma entrada por caixa, CHAVEADA PELO ENDEREÇO. Chavear por rótulo abria a
 /// classe de bug em que renomear a caixa na tela faz o vigia perder o <c>lastUid</c> e retriar
