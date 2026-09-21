@@ -173,6 +173,86 @@ namespace AIB.Tests
     }
 
     /// <summary>
+    /// A conversa nova pela janela: o que ela leva e o que ela deixa para trás.
+    /// <para>
+    /// Na coleção ContextoGlobal porque <c>NovaConversa</c> limpa <c>ContextService</c> e
+    /// <c>ActionLogService</c>, que são estáticos — ver a nota da coleção.
+    /// </para>
+    /// </summary>
+    [Collection("ContextoGlobal")]
+    public class ConversaNovaNaJanelaTests
+    {
+        private static T Achar<T>(System.Windows.DependencyObject janela, string nome) where T : class
+            => (T)((System.Windows.FrameworkElement)janela).FindName(nome)!;
+
+        private static void Clicar(System.Windows.Controls.Button botao) =>
+            botao.RaiseEvent(new System.Windows.RoutedEventArgs(
+                System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
+        [Fact]
+        public void ConversaNova_TIRA_OsAnexosDaAnterior()
+        {
+            // Os anexos são "desta conversa", mas só os ensaios limpavam a lista: depois de uma
+            // conversa nova eles continuavam lá e entravam no prompt da seguinte
+            // (RenderizarAnexados), sobre um assunto em que ninguém os anexou.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                ContextService.Clear();
+
+                var janela = JanelaDeEnsaio.Nova();
+
+                ContextService.AddFile(@"C:\projeto\anexo-da-conversa-velha.txt");
+                ContextService.AddRecentFile(@"C:\projeto\lido-pela-ia.txt");
+                ContextService.RenderizarAnexados().Should().NotBeEmpty();
+
+                Clicar(Achar<System.Windows.Controls.Button>(janela, "ClearButton"));
+
+                ContextService.ActiveFiles.Should().BeEmpty();
+                ContextService.RenderizarAnexados().Should().BeEmpty();
+                ContextService.RecentFiles.Should().NotBeEmpty("os recentes são histórico, não estado");
+
+                janela.Close();
+                ContextService.Clear();
+            });
+        }
+
+        [Fact]
+        public void TrocarDePersonagem_COMECA_ConversaNova_PeloCaminhoInteiro()
+        {
+            // O prompt de sistema é do personagem: com ele trocado a conversa recomeça — e por
+            // NovaConversa, não pela cópia parcial que esquecia o título, o contador e os anexos.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var servico = JanelaDeEnsaio.Servico();
+                var janela = new AIB.Views.ChatWindow(JanelaDeEnsaio.Conversa(servico), servico);
+
+                var mensagens = Achar<System.Windows.Controls.StackPanel>(janela, "MessagesPanel");
+                mensagens.Children.Add(new System.Windows.Controls.TextBlock { Text = "uma fala" });
+                Achar<System.Windows.Controls.TextBlock>(janela, "ChatTitleText").Text = "Conversa em andamento";
+                ContextService.AddFile(@"C:\projeto\anexo.txt");
+
+                var config = servico.LoadSettings();
+                config.ActiveCharacter = config.ActiveCharacter + "-outro";
+                servico.SaveSettings(config);
+
+                janela.ApplyCharacterUI();
+
+                mensagens.Children.Count.Should().Be(0);
+                Achar<System.Windows.Controls.TextBlock>(janela, "ChatTitleText").Text.Should().Be("Nova conversa");
+                Achar<System.Windows.Controls.TextBlock>(janela, "AgentNameText").Text
+                    .Should().Be(config.ActiveCharacter.ToUpper());
+                ContextService.ActiveFiles.Should().BeEmpty();
+
+                janela.Close();
+                ContextService.Clear();
+            });
+        }
+    }
+
+    /// <summary>
     /// Os serviços de painel são ESTÁTICOS e compartilhados, e o xUnit roda classes em
     /// paralelo. Sem esta coleção uma classe limpa a lista da outra no meio do ensaio.
     /// <para>

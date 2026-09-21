@@ -39,12 +39,18 @@ public sealed class ContaDeEmailConverter : IValueConverter
 
     public Saida Modo { get; set; } = Saida.CorDoPonto;
 
-    // Congelados: são criados uma vez e usados em toda linha da lista.
+    // Congelados: são criados uma vez e usados em toda linha da lista. Verde e âmbar ficam em
+    // hex porque não há token com a MESMA cor (SuccessBrush e WarnBrush são outros tons), e
+    // trocá-los mudaria o ponto de estado.
     private static readonly SolidColorBrush Verde = Congelar(0x3F, 0xBF, 0x7F);
     private static readonly SolidColorBrush Ambar = Congelar(0xE2, 0xA0, 0x3F);
-    private static readonly SolidColorBrush Vermelho = Congelar(0xE5, 0x48, 0x4D);
-    private static readonly SolidColorBrush Cinza = Congelar(0x6F, 0x6A, 0x7A);
-    private static readonly SolidColorBrush VermelhoDeTexto = Congelar(0xFF, 0x8A, 0x8D);
+
+    // Estes três SÃO tokens de Themes/Tokens.xaml, e vêm de lá — ver PincelDoTema. Lidos a cada
+    // uso, e não num campo estático: o campo seria preenchido na primeira linha desenhada, e
+    // se ela viesse antes do dicionário carregado a reserva ficaria para sempre.
+    private static SolidColorBrush Vermelho => PincelDoTema.De("DangerBrush", "#FFE5484D");
+    private static SolidColorBrush Cinza => PincelDoTema.De("TextMutedBrush", "#FF6F6A7A");
+    private static SolidColorBrush VermelhoDeTexto => PincelDoTema.De("DangerTextBrush", "#FFFF8A8D");
 
     private static SolidColorBrush Congelar(byte r, byte g, byte b)
     {

@@ -63,9 +63,16 @@ public sealed class ConversasIgnoradas
     /// A chave de uma linha da lista.
     /// <para>
     /// Com thread, a mesma do arquivo de conversas. SEM thread, não dá para usar
-    /// <c>conta|uid:0</c> como o resto do código faz: <see cref="MailSummary"/> não carrega o UID,
-    /// e todas as mensagens sem thread da conta cairiam na mesma chave — ignorar uma ignoraria
-    /// todas. Assunto e data exatos identificam aquela mensagem e nenhuma outra.
+    /// <c>conta|uid:0</c>: todas as mensagens sem thread da conta cairiam na mesma chave —
+    /// ignorar uma ignoraria todas. Assunto e data exatos identificam aquela mensagem e nenhuma
+    /// outra.
+    /// </para>
+    /// <para>
+    /// <see cref="MailSummary"/> passou a carregar o UID nas linhas sem thread, e a conversa com
+    /// a IA usa ele (<see cref="ArquivoDeConversas.ChaveDaConversa"/>). Esta chave NÃO mudou
+    /// junto: o <c>ignoradas.json</c> já gravado usa assunto + data, e trocar o formato
+    /// devolveria à tela tudo o que o usuário tinha ignorado. Por levar o assunto, ela não vai
+    /// para o log em claro — quem registra usa o hash (ver <c>MailDigestService.Ignorar</c>).
     /// </para>
     /// </summary>
     public static string ChaveDe(MailSummary item) =>

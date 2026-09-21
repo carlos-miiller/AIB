@@ -44,7 +44,7 @@ public sealed class UrgenciaConverter : IValueConverter
         {
             Saida.Rotulo => Rotulo(nivel),
             Saida.Fundo => Pincel(Fundo(nivel)),
-            _ => Pincel(Cor(nivel))
+            _ => PincelDaCor(nivel)
         };
     }
 
@@ -56,7 +56,19 @@ public sealed class UrgenciaConverter : IValueConverter
     /// a quarta cópia do mesmo âmbar, e a primeira a não acompanhar uma correção.
     /// </para>
     /// </summary>
-    public static Brush CorDe(MailUrgency nivel) => Pincel(Cor(nivel));
+    public static Brush CorDe(MailUrgency nivel) => PincelDaCor(nivel);
+
+    /// <summary>
+    /// A cor sólida, vinda do TOKEN quando existe um com o mesmo valor: Máxima é
+    /// <c>DangerBrush</c> e Baixa é <c>TextSecondaryBrush</c>. O âmbar da Média não tem token
+    /// igual (o <c>WarnBrush</c> é outro tom) e fica no hex — trocá-lo mudaria a barra.
+    /// </summary>
+    private static SolidColorBrush PincelDaCor(MailUrgency nivel) => nivel switch
+    {
+        MailUrgency.Maxima => PincelDoTema.De("DangerBrush", Cor(nivel)),
+        MailUrgency.Media => Pincel(Cor(nivel)),
+        _ => PincelDoTema.De("TextSecondaryBrush", Cor(nivel))
+    };
 
     /// <summary>
     /// O rótulo de um nível, para quem precisa dele FORA de um Binding — o enquadramento que

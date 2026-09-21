@@ -110,28 +110,56 @@ public partial class ChatWindow : Window
     // Controle de Visibilidade
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// O personagem que a tela e a conversa refletem agora. <c>null</c> antes da primeira
+    /// aplicação, que é a do construtor.
+    /// </summary>
+    private string? _personagemAplicado;
+
+    /// <summary>
+    /// Põe na tela o nome do personagem ativo — header, estado vazio e placeholder.
+    /// <para>
+    /// Chamado também ao SALVAR AS CONFIGURAÇÕES, qualquer que tenha sido a mudança. Por isso
+    /// ele não zera mais a conversa por conta própria: zerava sempre, e trocar o tema ou o
+    /// prazo do diário apagava da tela a conversa em andamento — e, sendo uma cópia parcial de
+    /// <see cref="NovaConversa"/>, deixava o título, o contador e a leitura de e-mail da
+    /// conversa anterior.
+    /// </para>
+    /// <para>
+    /// Só quando o PERSONAGEM muda começa uma conversa nova, e pelo caminho de sempre: o
+    /// prompt de sistema é do personagem (SOUL), e continuar a conversa com a alma trocada no
+    /// meio misturaria duas vozes no mesmo histórico.
+    /// </para>
+    /// </summary>
     public void ApplyCharacterUI()
     {
-        var settings = _settingsService.LoadSettings();
-
-        string nome = string.IsNullOrEmpty(settings.ActiveCharacter) ? "AIB" : settings.ActiveCharacter;
+        string personagem = (_settingsService.LoadSettings().ActiveCharacter ?? "").Trim();
+        string nome = NomeDaInteligencia();
 
         if (AgentNameText != null) AgentNameText.Text = nome.ToUpper();
 
         // O placeholder e o estado vazio falam com o nome do personagem ativo, como o
-        // "Fale com a KAI..." de §3.7(b).
-        if (InputPlaceholder != null) InputPlaceholder.Text = $"Fale com {nome}...";
+        // "Fale com a KAI..." de §3.7(b). O placeholder por AplicarPlaceholder, que sabe se
+        // se está lendo um e-mail — escrevê-lo aqui apagava o "sobre este e-mail".
         if (EmptyTitleText != null) EmptyTitleText.Text = $"Converse com {nome}";
+        AplicarPlaceholder();
 
-        // Limpa a tela
-        DescartarConfirmacaoPendente();
-        if (MessagesPanel != null) MessagesPanel.Children.Clear();
-        _cadeiaAtual = null;
-        // Limpa o contexto do OpenAI Service (injeta o SOUL.MD atual)
-        _conversation.ResetHistory();
-        ActionLogService.Clear();
+        bool trocou = _personagemAplicado != null
+                      && !string.Equals(_personagemAplicado, personagem, StringComparison.Ordinal);
+        _personagemAplicado = personagem;
 
-        AtualizarEstadoVazio();
+        if (!trocou) return;
+
+        NovaConversa();
+
+        // A conversa nova não é sobre e-mail nenhum: ficar na leitura mostraria o cabeçalho de
+        // um e-mail em cima de uma conversa que não está mais ligada a ele.
+        if (_emailEmLeitura != null)
+        {
+            _emailEmLeitura = null;
+            AplicarEstadoDoModo();
+            if (ModoEmail.IsChecked == true) MontarCaixaDeEntrada();
+        }
     }
 
     private void HandleWarmupState(bool isWarmingUp)
@@ -1708,13 +1736,19 @@ public partial class ChatWindow : Window
     }
 
     /// <summary>
-    /// Mostra/esconde o botão do olho conforme a setting ShadowAssistantEnabled.
-    /// Se a setting estiver OFF e o Shadow estava rodando, para tudo e fecha os widgets.
+    /// O botão do olho fica SEMPRE escondido; a setting só decide se o Shadow antigo, se
+    /// estiver rodando, tem de parar e fechar os widgets.
+    /// <para>
+    /// <c>ShadowAssistantEnabled</c> hoje liga o ORBE (<c>App.AplicarEstadoDoOrbe</c>), e não
+    /// este Shadow antigo de captura de tela. Mostrar o botão com a chave ligada oferecia a
+    /// quem acabou de ligar o orbe um segundo "Shadow" — o serviço vazio, com o aviso de
+    /// captura de tela. O código do botão continua aqui; só não aparece.
+    /// </para>
     /// </summary>
     private void ApplyShadowAssistantSetting()
     {
         bool enabled = _settingsService.LoadSettings().ShadowAssistantEnabled;
-        BtnToggleShadow.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        BtnToggleShadow.Visibility = Visibility.Collapsed;
 
         if (!enabled && _isShadowModeEnabled)
         {
@@ -1772,6 +1806,11 @@ public partial class ChatWindow : Window
         // O registro é da CONVERSA (§6.4). Sem limpar, a conversa nova herdava na aba as ações
         // da anterior, que já foram arquivadas com ela.
         ActionLogService.Clear();
+
+        // Os anexos também são da conversa — "arquivos no contexto desta conversa". Sem limpar,
+        // eles entravam no prompt da conversa seguinte (RenderizarAnexados), sobre um assunto
+        // em que ninguém os anexou. Os RECENTES ficam: são histórico, não estado.
+        ContextService.Clear();
 
         int userLevel = LevelService.GetLevel(_settingsService.LoadSettings().MessageCount);
         int maxTokens = LevelService.GetMaxTokensForLevel(userLevel);
@@ -2113,6 +2152,33 @@ public partial class ChatWindow : Window
         var falas = ChatHistoryService.Parse(sessao.Content);
         if (falas.Count == 0) return;
 
+        RestaurarConversaGravada(sessao, falas);
+
+        AtualizarEstadoVazio();
+        ChatScrollViewer.ScrollToEnd();
+
+        // O painel continua aberto, mas a lista mudou de posição: a conversa que estava na
+        // tela foi arquivada e agora é o item mais recente.
+        _painel?.Recarregar();
+    }
+
+    /// <summary>
+    /// Põe uma conversa gravada de volta no lugar da atual: no modelo, no registro de ações, nas
+    /// bolhas, no título e no contador.
+    /// <para>
+    /// UM caminho para "Abrir conversa" (<see cref="AbrirChat"/>) e para a reabertura de um
+    /// e-mail (<c>RetomarConversaDoEmail</c>). Eram duas cópias, e a do e-mail já tinha
+    /// esquecido o título: reabrir um e-mail deixava no cabeçalho o nome da conversa anterior.
+    /// </para>
+    /// </summary>
+    /// <param name="cartaoNoLugarDaPrimeiraFala">
+    /// Quando presente, entra no lugar da PRIMEIRA fala, se ela for do usuário — é o
+    /// enquadramento do e-mail, montado pelo programa, e não algo que o usuário escreveu.
+    /// </param>
+    private void RestaurarConversaGravada(
+        ChatSession sessao, IReadOnlyList<ChatTurn> falas,
+        Func<FrameworkElement>? cartaoNoLugarDaPrimeiraFala = null)
+    {
         DescartarConfirmacaoPendente();
 
         _conversation.LoadConversation(falas, sessao.MemorySessionId, sessao.Id);
@@ -2124,8 +2190,19 @@ public partial class ChatWindow : Window
         MessagesPanel.Children.Clear();
         _cadeiaAtual = null;
 
+        bool primeira = true;
+
         foreach (var fala in falas)
         {
+            if (primeira && fala.DoUsuario && cartaoNoLugarDaPrimeiraFala != null)
+            {
+                MessagesPanel.Children.Add(cartaoNoLugarDaPrimeiraFala());
+                primeira = false;
+                continue;
+            }
+
+            primeira = false;
+
             if (fala.DoUsuario) AddUserBubble(fala.Texto);
             else AddAgentBubble(fala.Texto);
         }
@@ -2133,13 +2210,6 @@ public partial class ChatWindow : Window
         ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
 
         UpdateTokenCounterUI(_conversation.CurrentTokenReport);
-
-        AtualizarEstadoVazio();
-        ChatScrollViewer.ScrollToEnd();
-
-        // O painel continua aberto, mas a lista mudou de posição: a conversa que estava na
-        // tela foi arquivada e agora é o item mais recente.
-        _painel?.Recarregar();
     }
 
     /// <summary>

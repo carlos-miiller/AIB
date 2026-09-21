@@ -62,6 +62,13 @@ public sealed record PassadaAnotada(
 /// de a conversa não saber mais nada sobre a caixa.
 /// </para>
 /// <para>
+/// O QUE O ZERO NÃO COBRE: o e-mail aberto no chat com "Abrir com". A primeira fala daquela
+/// conversa é o enquadramento — remetente, assunto, data, urgência e resumo — e ele é gravado
+/// no <c>raw.jsonl</c> (que nunca é apagado) e no <c>chat_history.json</c> como qualquer fala,
+/// com qualquer <c>MailJournalDays</c>. O corpo continua fora (<see cref="ConteudoDeTerceiros"/>).
+/// É uma exceção conhecida e ainda sem decisão; ver <c>ChatWindow.EnquadramentoDoEmail</c>.
+/// </para>
+/// <para>
 /// Um arquivo por dia, e não um só: apagar o de anteontem é apagar um arquivo, e ler "hoje" não
 /// obriga a carregar a semana. O <c>raw.jsonl</c> nunca é apagado; este não é ele.
 /// </para>

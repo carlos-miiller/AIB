@@ -124,7 +124,10 @@ namespace AIB.Views
         public static readonly DependencyProperty NomeDaInteligenciaProperty =
             DependencyProperty.Register(
                 nameof(NomeDaInteligencia), typeof(string), typeof(MailListItem),
-                new PropertyMetadata("a IA"));
+                // "AIB", o mesmo padrão de ChatWindow.NomeDaInteligencia quando não há
+                // personagem ativo. Era "a IA", e a lista dizia "Abrir com a IA" enquanto o
+                // placeholder ao lado dizia "Fale com AIB...".
+                new PropertyMetadata("AIB"));
 
         public string NomeDaInteligencia
         {

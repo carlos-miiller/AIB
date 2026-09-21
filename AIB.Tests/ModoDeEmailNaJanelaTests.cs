@@ -323,6 +323,101 @@ namespace AIB.Tests
             });
         }
 
+        [Fact]
+        public void SemTHREAD_ORecarregarSOME_ComoOAbrirNoCliente()
+        {
+            // Recarregar relê a THREAD no servidor. Sem X-GM-THRID o clique terminava sempre em
+            // "Não consegui reler" — botão que nunca funciona ensina que os desta tela não
+            // funcionam.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+                var recarregar = Achar<Button>(janela, "BotaoRecarregarEmail");
+
+                Achar<RadioButton>(janela, "ModoEmail").IsChecked = true;
+
+                janela.EntrarNaLeitura(Email() with { ThreadId = "", Url = "", Uid = 5 });
+                recarregar.Visibility.Should().Be(Visibility.Collapsed);
+
+                janela.EntrarNaLeitura(Email());
+                recarregar.Visibility.Should().Be(Visibility.Visible, "com thread há o que reler");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void OItemDaLista_SemNome_DIZ_AIB_ComoORestoDaTela()
+        {
+            // O padrão era "a IA" aqui e "AIB" no placeholder: "Abrir com a IA" ao lado de
+            // "Fale com AIB...".
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                new MailListItem().NomeDaInteligencia.Should().Be("AIB");
+            });
+        }
+
+        // ──────────────────────────────────────────────────────────
+        // Salvar as configurações — ApplyCharacterUI
+        // ──────────────────────────────────────────────────────────
+
+        private static ChatWindow JanelaCom(out SettingsService servico)
+        {
+            servico = JanelaDeEnsaio.Servico();
+            return new ChatWindow(JanelaDeEnsaio.Conversa(servico), servico);
+        }
+
+        [Fact]
+        public void SalvarConfiguracoes_SemTrocarPersonagem_NaoAPAGA_AConversa()
+        {
+            // ApplyCharacterUI roda a cada "Salvar" das configurações. Zerava sempre: trocar o
+            // tema apagava da tela a conversa em andamento.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaCom(out _);
+
+                var mensagens = Achar<StackPanel>(janela, "MessagesPanel");
+                mensagens.Children.Add(new TextBlock { Text = "uma fala" });
+                Achar<TextBlock>(janela, "ChatTitleText").Text = "Conversa em andamento";
+
+                janela.ApplyCharacterUI();
+
+                mensagens.Children.Count.Should().Be(1);
+                Achar<TextBlock>(janela, "ChatTitleText").Text.Should().Be("Conversa em andamento");
+
+                janela.Close();
+            });
+        }
+
+        // Trocar de PERSONAGEM começa conversa nova, e NovaConversa mexe no estado estático
+        // (ContextService, ActionLogService): esse ensaio mora em ContextServiceTests, na
+        // coleção ContextoGlobal.
+
+        [Fact]
+        public void SalvarConfiguracoes_NaLEITURA_MantemOPlaceholderDoEmail()
+        {
+            // O placeholder era reescrito à mão com "Fale com X...", apagando o "sobre este
+            // e-mail" de quem salvou as configurações no meio de uma leitura.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = JanelaDeEnsaio.Nova();
+
+                Achar<RadioButton>(janela, "ModoEmail").IsChecked = true;
+                janela.EntrarNaLeitura(Email());
+
+                janela.ApplyCharacterUI();
+
+                Achar<TextBlock>(janela, "InputPlaceholder").Text.Should().EndWith("sobre este e-mail...");
+
+                janela.Close();
+            });
+        }
+
         // ──────────────────────────────────────────────────────────
         // A faixa de espera — §5.4
         // ──────────────────────────────────────────────────────────

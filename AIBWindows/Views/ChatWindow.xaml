@@ -181,9 +181,10 @@
                 </StackPanel>
             </Border>
 
-                            <!-- Nasce Collapsed, mas ApplyShadowAssistantSetting o mostra
-                                 sempre que ShadowAssistantEnabled está ligado — na abertura
-                                 e a cada volta das Configurações. -->
+                            <!-- O Shadow ANTIGO (captura de tela). Fica SEMPRE Collapsed:
+                                 ShadowAssistantEnabled hoje liga o ORBE, e mostrar este botão
+                                 com a chave ligada oferecia um segundo "Shadow" que não faz
+                                 nada. O código continua; ver ApplyShadowAssistantSetting. -->
                             <Button x:Name="BtnToggleShadow" Style="{StaticResource IconButton}"
                                     Click="BtnToggleShadow_Click" Visibility="Collapsed"
                                     ToolTip="Shadow Assistant (Alpha)"/>

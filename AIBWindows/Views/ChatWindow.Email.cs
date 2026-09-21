@@ -251,8 +251,7 @@ public partial class ChatWindow
                 Aberto = ReferenceEquals(conversa, _emailAberto),
                 NomeDaInteligencia = NomeDaInteligencia(),
                 RotuloDoCliente = RotuloDoCliente(conversa),
-                TemConversa = comConversa.Contains(
-                    ArquivoDeConversas.Chave(conversa.Account, conversa.ThreadId, 0)),
+                TemConversa = comConversa.Contains(ArquivoDeConversas.ChaveDaConversa(conversa)),
                 PodeIgnorar = IgnorarEmail != null,
                 Margin = new Thickness(0, 0, 0, 8)
             };
@@ -369,38 +368,14 @@ public partial class ChatWindow
         var falas = ChatHistoryService.Parse(sessao.Content);
         if (falas.Count == 0) return false;
 
-        DescartarConfirmacaoPendente();
-
-        _conversation.LoadConversation(falas, sessao.MemorySessionId, sessao.Id);
-        _conversation.VincularAEmail(sessao.MailThreadKey);
-        ActionLogService.Restaurar(ActionLogService.Reconstruir(_conversation.TurnosGravados()));
-
-        MessagesPanel.Children.Clear();
-        _cadeiaAtual = null;
-
         // O CARTÃO entra no lugar da PRIMEIRA fala, que foi o enquadramento — e não algo que o
         // usuário tenha escrito. Mostrá-la como bolha aqui seria pôr na boca dele um texto
         // montado pelo programa.
-        bool primeira = true;
-
-        foreach (var fala in falas)
-        {
-            if (fala.DoUsuario && primeira)
-            {
-                MessagesPanel.Children.Add(CartaoDoEmail(alvo));
-                primeira = false;
-                continue;
-            }
-
-            primeira = false;
-
-            if (fala.DoUsuario) AddUserBubble(fala.Texto);
-            else AddAgentBubble(fala.Texto);
-        }
+        RestaurarConversaGravada(sessao, falas, () => CartaoDoEmail(alvo));
+        _conversation.VincularAEmail(sessao.MailThreadKey);
 
         EntrarNaLeitura(alvo);
 
-        UpdateTokenCounterUI(_conversation.CurrentTokenReport);
         AtualizarEstadoVazio();
         ChatScrollViewer.ScrollToEnd();
 
@@ -428,8 +403,22 @@ public partial class ChatWindow
         BotaoAbrirNoClienteDaLeitura.Visibility =
             LinkDoCliente(alvo).Length == 0 ? Visibility.Collapsed : Visibility.Visible;
 
+        // Mesma regra do botão de cima, pelo mesmo motivo: reler é reler a THREAD no servidor
+        // (MailDigestService.RecarregarConversaAsync), e sem X-GM-THRID não há o que pedir — o
+        // clique terminava sempre em "Não consegui reler". Botão que nunca funciona ensina que
+        // os desta tela não funcionam.
+        BotaoRecarregarEmail.Visibility =
+            PodeRecarregar(alvo) ? Visibility.Visible : Visibility.Collapsed;
+
         AplicarEstadoDoModo();
     }
+
+    /// <summary>
+    /// Se o "Recarregar" de §3.11 tem como funcionar para este e-mail. Público e estático para o
+    /// ensaio conferir a regra sem servidor.
+    /// </summary>
+    public static bool PodeRecarregar(MailSummary? alvo) =>
+        alvo != null && !string.IsNullOrWhiteSpace(alvo.ThreadId);
 
     /// <summary>
     /// Traz um e-mail para dentro da conversa — o destino de "Abrir com &lt;NOME&gt;".
@@ -441,8 +430,12 @@ public partial class ChatWindow
     /// O que abre a conversa é o VEREDITO — remetente, assunto, urgência e resumo — e nunca o
     /// corpo. Pô-lo aqui o gravaria no <c>raw.jsonl</c>, que é disco, e o resumidor de capítulos
     /// leria e-mail alheio semanas depois. O corpo só entra sob demanda, por <c>mail_read</c>,
-    /// embrulhado para ser omitido de tudo o que é gravado. É a regra 3, e ela não tem exceção
-    /// nesta tela.
+    /// embrulhado para ser omitido de tudo o que é gravado. Para o CORPO, a regra 3 não tem
+    /// exceção nesta tela.
+    /// </para>
+    /// <para>
+    /// O VEREDITO, sim, vai para o disco — e é a exceção a <c>MailJournalDays = 0</c>, que
+    /// promete "nada de e-mail em disco": ver <see cref="EnquadramentoDoEmail"/>.
     /// </para>
     /// <para>
     /// Abre uma CONVERSA NOVA. A máquina é a mesma do chat — turno de verdade, histórico,
@@ -460,7 +453,9 @@ public partial class ChatWindow
     {
         if (alvo == null) return;
 
-        string chave = ArquivoDeConversas.Chave(alvo.Account, alvo.ThreadId, 0);
+        // Por MENSAGEM quando não há thread — ver ArquivoDeConversas.ChaveDaConversa. Com
+        // conta|uid:0 para todas, "Abrir com" retomava a mesma conversa para qualquer e-mail.
+        string chave = ArquivoDeConversas.ChaveDaConversa(alvo);
         var anterior = ChatHistoryService.ConversaDoEmail(chave);
 
         // JÁ SE CONVERSOU SOBRE ESTE E-MAIL: volta de onde parou, em vez de recomeçar. A
@@ -508,6 +503,14 @@ public partial class ChatWindow
     /// tivesse lido a mensagem inteira, e inventa cláusula, anexo e prazo que ninguém escreveu.
     /// E diz ONDE ele está — na ferramenta <c>mail_read</c> —, porque um modelo que só sabe o que
     /// não tem responde "não sei" a perguntas que tinham resposta a uma chamada de distância.
+    /// </para>
+    /// <para>
+    /// EXCEÇÃO CONHECIDA A <c>MailJournalDays = 0</c>. Este texto é a primeira fala da conversa
+    /// e é gravado como qualquer fala: no <c>raw.jsonl</c> da sessão, que por regra nunca é
+    /// apagado, e no <c>chat_history.json</c>. Remetente, assunto, data, urgência e resumo vão
+    /// para o disco mesmo com o diário desligado — o zero só varre o diário e o histórico da
+    /// triagem. O corpo não (não está aqui, e o de <c>mail_read</c> é redigido). O comportamento
+    /// está mantido de propósito até decisão do usuário; não "corrigir" por conta própria.
     /// </para>
     /// </summary>
     public static string EnquadramentoDoEmail(MailSummary alvo)
@@ -628,7 +631,7 @@ public partial class ChatWindow
         var alvo = _emailEmLeitura;
         if (alvo == null || !ConfirmarDescarteDaConversa(alvo)) return;
 
-        string chave = ArquivoDeConversas.Chave(alvo.Account, alvo.ThreadId, 0);
+        string chave = ArquivoDeConversas.ChaveDaConversa(alvo);
 
         // Encerra a conversa viva ANTES de apagar — ver ConversationService.DescartarConversaDoEmail.
         // Apagar e só depois chamar NovaConversa fazia a conversa descartada voltar ao histórico.
@@ -686,7 +689,7 @@ public partial class ChatWindow
     {
         if (!ConfirmarDescarteDaConversa(alvo)) return;
 
-        string chave = ArquivoDeConversas.Chave(alvo.Account, alvo.ThreadId, 0);
+        string chave = ArquivoDeConversas.ChaveDaConversa(alvo);
 
         if (_conversation.DescartarConversaDoEmail(chave))
             NovaConversa();

@@ -59,6 +59,17 @@ public enum MailUrgency
 /// mensagem do Gmail numa conta Outlook prometia "Abrir no Gmail".
 /// </para>
 /// </param>
+/// <param name="Uid">
+/// UID IMAP da mensagem, preenchido SÓ quando não há <see cref="ThreadId"/> — zero em conversa
+/// com thread, onde quem identifica é a thread.
+/// <para>
+/// Existe porque, sem thread (Outlook e todo provedor sem X-GM-THRID), conta + thread vazia não
+/// distingue mensagem nenhuma: a conversa com a IA de TODOS os e-mails da caixa caía na mesma
+/// chave <c>conta|uid:0</c>. "Abrir com" retomava a mesma conversa para qualquer e-mail, e
+/// "Descartar" apagava todas. Com o UID, a chave é a mesma do histórico da triagem
+/// (<c>conta|uid:N</c>) e não carrega assunto — ver <c>ArquivoDeConversas.ChaveDaConversa</c>.
+/// </para>
+/// </param>
 public sealed record MailSummary(
     string Name,
     string Description,
@@ -70,4 +81,5 @@ public sealed record MailSummary(
     bool AwaitingMe = true,
     int ContextTokens = 0,
     string ThreadId = "",
-    string De = "");
+    string De = "",
+    uint Uid = 0);

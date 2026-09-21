@@ -319,6 +319,70 @@ namespace AIB.Tests
             _arquivo.Guardadas().Should().HaveCount(1);
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // A chave da conversa com a IA
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static AIB.Services.MailSummary Linha(
+            string assunto, string thread = "", uint uid = 0, DateTime? quando = null) =>
+            new(assunto, "resumo", AIB.Services.MailUrgency.Maxima,
+                Account: "eu@outlook.com",
+                LastMessageAt: quando ?? new DateTime(2026, 9, 10, 9, 0, 0),
+                ThreadId: thread,
+                Uid: uid);
+
+        [Fact]
+        public void ComTHREAD_AChaveDaConversaEhAMesmaDeAntes()
+        {
+            // As conversas já gravadas no chat_history.json usam conta|thr:id. Mudar a chave
+            // das contas com thread faria "Abrir com" deixar de achá-las.
+            ArquivoDeConversas.ChaveDaConversa(Linha("Contrato", thread: "123", uid: 9))
+                .Should().Be(ArquivoDeConversas.Chave("eu@outlook.com", "123", 0))
+                .And.Be("eu@outlook.com|thr:123");
+        }
+
+        [Fact]
+        public void SemTHREAD_CadaMensagemTemASuaConversa()
+        {
+            // O defeito: Chave(conta, "", 0) é conta|uid:0 para TODOS os e-mails da caixa —
+            // "Abrir com" retomava a mesma conversa, "Descartar" apagava todas.
+            string a = ArquivoDeConversas.ChaveDaConversa(Linha("Proposta", uid: 41));
+            string b = ArquivoDeConversas.ChaveDaConversa(Linha("Reunião", uid: 42));
+
+            a.Should().Be("eu@outlook.com|uid:41", "é a mesma chave do histórico da triagem");
+            a.Should().NotBe(b);
+            a.Should().NotEndWith("|uid:0");
+        }
+
+        [Fact]
+        public void SemTHREAD_ESemUID_AChaveEhUmHASH_EstavelEPorMensagem()
+        {
+            // Linha montada por outro caminho, sem UID. A chave vai para o disco, e assunto é
+            // conteúdo de terceiros: vai o hash, nunca o assunto em claro.
+            var proposta = Linha("Proposta confidencial");
+
+            string chave = ArquivoDeConversas.ChaveDaConversa(proposta);
+
+            chave.Should().StartWith("eu@outlook.com|msg:");
+            chave.Should().NotContain("Proposta").And.NotContain("confidencial");
+            chave.Should().NotEndWith("|uid:0");
+
+            ArquivoDeConversas.ChaveDaConversa(Linha("Proposta confidencial"))
+                .Should().Be(chave, "a mesma mensagem reaberta tem de achar a mesma conversa");
+
+            ArquivoDeConversas.ChaveDaConversa(Linha("Outro assunto"))
+                .Should().NotBe(chave);
+        }
+
+        [Theory]
+        [InlineData("eu@x.com|uid:77", 77u)]
+        [InlineData("eu@x.com|thr:77", 0u)]
+        [InlineData("eu@x.com|uid:", 0u)]
+        [InlineData("eu@x.com|uid:abc", 0u)]
+        [InlineData("", 0u)]
+        public void OUid_SAI_DaChave(string chave, uint uid) =>
+            ArquivoDeConversas.UidDaChave(chave).Should().Be(uid);
+
         [Theory]
         [InlineData("eu@gmail.com|thr:42", "eu@gmail.com", "42")]
         [InlineData("eu@gmail.com|uid:7", "eu@gmail.com", "")]

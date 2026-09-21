@@ -128,5 +128,94 @@ namespace AIB.Tests
 
             Buscar(id).Should().BeNull();
         }
+
+        // ─────────────────────────────────────────────────────────────────
+        // A quarta saída para o disco
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void CorpoDeEmailEmbrulhado_NaoCHEGA_AoArquivo()
+        {
+            // chat_history.json é disco como o raw.jsonl e o registro de execução, e era a única
+            // saída sem o redator. O que o modelo citar de um mail_read não pode ir para cá.
+            string id = Id("redigido");
+            const string Segredo = "SENHA-DO-COFRE-DA-EMPRESA-7781";
+
+            string corpo = AIB.Services.Mail.ConteudoDeTerceiros.Embrulhar(Segredo);
+
+            ChatHistoryService.SaveCurrentSession(
+                Conversa($"leia o e-mail {id} {corpo}", $"o e-mail diz: {corpo} — e só."),
+                "com corpo", id);
+
+            var sessao = Buscar(id);
+            sessao.Should().NotBeNull();
+            sessao!.Content.Should().NotContain(Segredo)
+                .And.NotContain(AIB.Services.Mail.ConteudoDeTerceiros.Inicio)
+                .And.Contain(AIB.Services.Mail.ConteudoDeTerceiros.Omitido);
+
+            // O arquivo inteiro, e não só o campo: o título também sai da primeira fala.
+            string arquivo = System.IO.File.ReadAllText(System.IO.Path.Combine(
+                ChatHistoryService.ResolverDiretorio(ChatHistoryService.HistoryDirectoryOverride),
+                "chat_history.json"));
+
+            arquivo.Should().NotContain(Segredo);
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // O corte — pura, para não atropelar o arquivo da suíte
+        // ─────────────────────────────────────────────────────────────────
+
+        private static ChatSession Sessao(int minutos, string chaveDoEmail = "") => new()
+        {
+            Id = Guid.NewGuid().ToString(),
+            Timestamp = new DateTime(2026, 9, 1, 12, 0, 0).AddMinutes(minutos),
+            Content = "USER: x",
+            MailThreadKey = chaveDoEmail
+        };
+
+        [Fact]
+        public void CaixaMovimentada_NaoEXPULSA_AsConversasDoUsuario()
+        {
+            // O corte contava as de e-mail, que ficam fora da lista do painel: abrir e-mail atrás
+            // de e-mail tirava do arquivo as conversas que o usuário começou.
+            var doUsuario = Enumerable.Range(0, 10).Select(i => Sessao(i)).ToList();
+            var deEmail = Enumerable.Range(100, 80)
+                .Select(i => Sessao(i, $"eu@x.com|thr:{i}")).ToList();
+
+            var podado = ChatHistoryService.Podar(deEmail.Concat(doUsuario).ToList());
+
+            podado.Where(h => h.MailThreadKey == "").Should().HaveCount(10, "todas as do usuário ficam");
+            podado.Count(h => h.MailThreadKey != "")
+                .Should().Be(ChatHistoryService.MaxConversasDeEmail, "as de e-mail têm teto próprio");
+
+            podado.Where(h => h.MailThreadKey != "").Min(h => h.Timestamp)
+                .Should().Be(deEmail.OrderByDescending(h => h.Timestamp)
+                    .ElementAt(ChatHistoryService.MaxConversasDeEmail - 1).Timestamp,
+                    "saem as de e-mail mais antigas");
+        }
+
+        [Fact]
+        public void ConversasDoUsuario_TemTetoProprio_EAsMaisRecentesFicam()
+        {
+            var doUsuario = Enumerable.Range(0, ChatHistoryService.MaxConversasDoUsuario + 5)
+                .Select(i => Sessao(i)).ToList();
+            var umaDeEmail = Sessao(-1000, "eu@x.com|uid:5");
+
+            var podado = ChatHistoryService.Podar(doUsuario.Append(umaDeEmail).ToList());
+
+            podado.Count(h => h.MailThreadKey == "").Should().Be(ChatHistoryService.MaxConversasDoUsuario);
+            podado.Should().Contain(umaDeEmail, "a de e-mail não disputa lugar com as do usuário");
+            podado.Should().NotContain(doUsuario.Take(5), "as mais antigas do usuário saem");
+        }
+
+        [Fact]
+        public void OCorte_MantemAOrdemDoArquivo()
+        {
+            // O arquivo guarda a mais nova no topo (Persistir insere no índice 0). O corte só
+            // tira linhas; reordenar mudaria a lista do painel sem ninguém ter pedido.
+            var lista = new List<ChatSession> { Sessao(1), Sessao(3, "eu@x.com|thr:1"), Sessao(2) };
+
+            ChatHistoryService.Podar(lista).Should().Equal(lista);
+        }
     }
 }

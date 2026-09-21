@@ -55,6 +55,11 @@ public sealed record EntradaDaConversa(
 /// aplicar a regra do chat aqui por analogia.
 /// </para>
 /// <para>
+/// "Zero varre tudo" vale para ESTE arquivo. O veredito de um e-mail aberto no chat também
+/// chega ao <c>raw.jsonl</c> e ao <c>chat_history.json</c>, pelo enquadramento da conversa —
+/// exceção conhecida e sem decisão ainda; ver <see cref="Apagar"/>.
+/// </para>
+/// <para>
 /// O nome da pasta é um HASH, e não o assunto: assunto em nome de diretório vaza conteúdo para
 /// qualquer listagem, backup ou indexador, sem ninguém abrir arquivo nenhum. O assunto fica
 /// DENTRO do JSON, onde a regra 6 pede que esteja.
@@ -101,6 +106,51 @@ public sealed class ArquivoDeConversas
         string.IsNullOrWhiteSpace(threadId)
             ? $"{conta}|uid:{uid}"
             : $"{conta}|thr:{threadId}";
+
+    /// <summary>
+    /// A chave da CONVERSA COM A IA sobre um item da lista — o vínculo gravado em
+    /// <c>chat_history.json</c> (<c>MailThreadKey</c>), e o que "Abrir com", "Descartar" e o
+    /// selo de "tem conversa" comparam.
+    /// <para>
+    /// COM THREAD, exatamente a chave de sempre (<c>conta|thr:id</c>): as conversas já gravadas
+    /// continuam sendo reencontradas.
+    /// </para>
+    /// <para>
+    /// SEM THREAD, era <c>Chave(conta, "", 0)</c> — e isso é <c>conta|uid:0</c> para TODOS os
+    /// e-mails da caixa. Num Outlook, "Abrir com" retomava a mesma conversa para qualquer
+    /// e-mail, "Descartar" apagava todas e o selo acendia em todos. Agora vale o UID da
+    /// mensagem, que é a mesma chave do histórico da triagem; e, quando nem o UID veio (linha
+    /// montada por outro caminho), um HASH de conta + assunto + data. Hash e não o assunto em
+    /// claro: esta chave vai para o disco, e assunto é conteúdo de terceiros — ver a nota da
+    /// classe sobre nomes.
+    /// </para>
+    /// </summary>
+    public static string ChaveDaConversa(MailSummary item)
+    {
+        if (item == null) return "";
+
+        if (!string.IsNullOrWhiteSpace(item.ThreadId) || item.Uid != 0)
+            return Chave(item.Account, item.ThreadId, item.Uid);
+
+        return $"{item.Account}|msg:{NomeDaPasta(ConversasIgnoradas.ChaveDe(item))}";
+    }
+
+    /// <summary>
+    /// O UID de uma chave <c>conta|uid:N</c>. Zero em chave de thread ou fora do formato.
+    /// <para>
+    /// É como a linha que volta do disco no arranque recupera o UID: o arquivo guarda a chave,
+    /// e sem isto a conversa sem thread voltaria a cair em <c>conta|uid:0</c>.
+    /// </para>
+    /// </summary>
+    public static uint UidDaChave(string? chave)
+    {
+        int marca = (chave ?? "").LastIndexOf("|uid:", StringComparison.Ordinal);
+        if (marca < 0) return 0;
+
+        return uint.TryParse(chave![(marca + 5)..], NumberStyles.None, CultureInfo.InvariantCulture, out uint uid)
+            ? uid
+            : 0;
+    }
 
     /// <summary>
     /// Nome de pasta a partir da chave: SHA-256 em hex, 32 caracteres.
@@ -356,7 +406,17 @@ public sealed class ArquivoDeConversas
 
     /// <summary>
     /// Varre tudo. É o que <c>MailJournalDays = 0</c> significa: a regra 3 estrita de volta,
-    /// sem nada de e-mail em disco.
+    /// sem nada de e-mail em disco — NESTE arquivo.
+    /// <para>
+    /// EXCEÇÃO CONHECIDA, e não coberta por esta varredura: um e-mail aberto no chat com
+    /// "Abrir com" começa por um enquadramento (remetente, assunto, data, urgência e resumo da
+    /// triagem — ver <c>ChatWindow.EnquadramentoDoEmail</c>), e esse texto é a primeira fala
+    /// da conversa. Ele vai para o <c>raw.jsonl</c> da sessão, que por regra nunca é apagado,
+    /// e para o <c>chat_history.json</c>. O corpo não vai (é redigido por
+    /// <see cref="ConteudoDeTerceiros"/>), mas o veredito vai, qualquer que seja
+    /// <c>MailJournalDays</c>. Decisão pendente com o usuário; até lá, "zero" quer dizer "nada
+    /// de e-mail no diário e no histórico da triagem", e não "nada de e-mail em disco".
+    /// </para>
     /// </summary>
     public void Apagar()
     {

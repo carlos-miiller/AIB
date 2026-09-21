@@ -131,7 +131,12 @@ public sealed class MailDigestService : IDisposable
 
         // Linha de log por clique: o registro de execução é onde se confere, depois, por que uma
         // conversa sumiu da tela.
-        Console.WriteLine($"[VIGIA] conversa ignorada por você: {ConversasIgnoradas.ChaveDe(item)} " +
+        //
+        // Um HASH curto da chave, e não a chave: sem thread, ChaveDe carrega o ASSUNTO, e o
+        // registro de execução é disco — assunto de e-mail alheio num log que ninguém apaga.
+        // O hash ainda casa uma linha com a outra (é o mesmo SHA-256 do nome das pastas).
+        string marca = ArquivoDeConversas.NomeDaPasta(ConversasIgnoradas.ChaveDe(item))[..12];
+        Console.WriteLine($"[VIGIA] conversa ignorada por você: #{marca} " +
                           "— volta quando chegar mensagem nova.");
 
         Ultimo = Ultimo with { Itens = _ignoradas.Filtrar(Ultimo.Itens).Visiveis };
@@ -710,7 +715,11 @@ public sealed class MailDigestService : IDisposable
                     LastMessageAt = (estado?.UltimaEm ?? m.RecebidaUtc).ToLocalTime(),
                     MessageCount = Math.Max(estado?.Mensagens ?? 0, c.Mensagens),
                     AwaitingMe = estado?.EsperandoVoce ?? c.EsperandoVoce,
-                    ThreadId = m.ThreadId ?? ""
+                    ThreadId = m.ThreadId ?? "",
+
+                    // Só sem thread: ali cada mensagem é a própria conversa, e o UID é o que a
+                    // distingue das outras da caixa — ver ArquivoDeConversas.ChaveDaConversa.
+                    Uid = string.IsNullOrWhiteSpace(m.ThreadId) ? m.Uid : 0
                 };
             })
             .ToList();
@@ -845,7 +854,12 @@ public sealed class MailDigestService : IDisposable
                     MessageCount: Math.Max(1, e.Mensagens),
                     AwaitingMe: e.EsperandoVoce,
                     ThreadId: g.ThreadId,
-                    De: e.De));
+                    De: e.De,
+                    // A chave gravada é conta|uid:N quando não há thread. Sem recuperar o N,
+                    // a conversa com a IA de toda linha sem thread voltaria a ser uma só.
+                    Uid: string.IsNullOrWhiteSpace(g.ThreadId)
+                        ? ArquivoDeConversas.UidDaChave(g.Chave)
+                        : 0));
             }
 
             // As ignoradas ficam de fora também no arranque: sem isto, cada reinicialização

@@ -9,13 +9,16 @@ namespace AIB.Services.Mail;
 /// A conversa com a IA pode ler o corpo de um e-mail sob demanda (<c>mail_read</c>), e ele fica
 /// no contexto vivo enquanto a conversa está aberta. Mas tudo o que passa pela conversa vai
 /// para lugares que ficam: o <c>raw.jsonl</c>, que nunca é apagado; o texto que o resumidor de
-/// capítulos lê; e o registro de execução, que espelha o console inteiro. A REGRA 3 diz que o
-/// corpo não toca o disco, e ela continua valendo — só deixou de valer para a memória RAM.
+/// capítulos lê; o registro de execução, que espelha o console inteiro; e o
+/// <c>chat_history.json</c>, de onde a conversa volta pelo painel. A REGRA 3 diz que o corpo
+/// não toca o disco, e ela continua valendo — só deixou de valer para a memória RAM.
 /// </para>
 /// <para>
 /// Por isso o corpo entra EMBRULHADO entre dois marcadores, e cada saída para disco passa por
 /// <see cref="Redigir"/>, que troca o trecho inteiro por <see cref="Omitido"/>. Um redator só,
-/// chamado nos três pontos de saída, em vez de três regras parecidas que um dia discordariam.
+/// chamado nos QUATRO pontos de saída, em vez de quatro regras parecidas que um dia
+/// discordariam. Eram três: o histórico do painel ficou de fora até ser notado — quem abrir um
+/// quinto caminho para o disco tem de passar por aqui também.
 /// </para>
 /// <para>
 /// Os marcadores são ASCII sem sinal de menor, maior, aspas ou barra: o serializador de JSON

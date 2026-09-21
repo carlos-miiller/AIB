@@ -112,6 +112,49 @@ namespace AIB.Services
             }
         }
 
+        /// <summary>Quantas conversas do USUÁRIO o arquivo guarda — as que a lista do painel mostra.</summary>
+        public const int MaxConversasDoUsuario = 50;
+
+        /// <summary>Quantas conversas nascidas de e-mail o arquivo guarda, num teto à parte.</summary>
+        public const int MaxConversasDeEmail = 50;
+
+        /// <summary>
+        /// Corta o histórico nos dois tetos, mantendo as mais recentes de cada lado e a ordem
+        /// em que estavam.
+        /// <para>
+        /// DOIS tetos, e não um de cinquenta para tudo: as conversas de e-mail ficam fora da
+        /// lista do painel (<see cref="ConversasDoUsuario"/>), mas contavam no corte. Uma caixa
+        /// movimentada, com o usuário abrindo e-mail atrás de e-mail, expulsava do arquivo as
+        /// conversas que ELE começou — sem aviso, porque as que entravam nem apareciam na lista.
+        /// </para>
+        /// <para>
+        /// O corte tira a entrada DESTE arquivo e nada mais. A sessão em <c>memory/sessions</c>,
+        /// com o <c>raw.jsonl</c>, fica onde está: por regra do projeto ele nunca é apagado.
+        /// </para>
+        /// <para>
+        /// Função pura, pública para o ensaio: o arquivo do histórico é um só para a suíte
+        /// inteira, e gravar cem conversas nele para testar o corte atropelaria os outros.
+        /// </para>
+        /// </summary>
+        public static List<ChatSession> Podar(List<ChatSession>? history)
+        {
+            if (history == null) return new List<ChatSession>();
+
+            var ficam = new HashSet<ChatSession>(ReferenceEqualityComparer.Instance);
+
+            ficam.UnionWith(history
+                .Where(h => string.IsNullOrEmpty(h.MailThreadKey))
+                .OrderByDescending(h => h.Timestamp)
+                .Take(MaxConversasDoUsuario));
+
+            ficam.UnionWith(history
+                .Where(h => !string.IsNullOrEmpty(h.MailThreadKey))
+                .OrderByDescending(h => h.Timestamp)
+                .Take(MaxConversasDeEmail));
+
+            return history.Where(ficam.Contains).ToList();
+        }
+
         public static void SaveHistory(List<ChatSession> history)
         {
             try
@@ -119,11 +162,7 @@ namespace AIB.Services
                 var dir = Path.GetDirectoryName(HistoryFilePath);
                 if (!Directory.Exists(dir)) Directory.CreateDirectory(dir!);
 
-                // Keep only top 50 histories to avoid gigantic files
-                if (history.Count > 50)
-                {
-                    history = history.OrderByDescending(h => h.Timestamp).Take(50).ToList();
-                }
+                history = Podar(history);
 
                 var json = JsonSerializer.Serialize(history, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(HistoryFilePath, json);
@@ -158,11 +197,18 @@ namespace AIB.Services
             var lines = new List<string>();
             string firstUserMessage = "Novo Chat";
 
+            // REDIGIDO na entrada: este arquivo é a QUARTA saída da conversa para o disco, ao
+            // lado do raw.jsonl, do texto do resumidor e do registro de execução — e era a única
+            // sem o redator. Um corpo de e-mail embrulhado que chegasse a uma fala (o modelo
+            // citando o resultado de mail_read, por exemplo) vinha para cá inteiro. Aplicado
+            // antes do título, para ele também não levar um pedaço do corpo.
+            static string Gravavel(string texto) => Mail.ConteudoDeTerceiros.Redigir(texto);
+
             foreach (var msg in currentHistory)
             {
                 if (msg is UserChatMessage u)
                 {
-                    var text = string.Join("\n", u.Content.Where(c => !string.IsNullOrEmpty(c.Text)).Select(c => c.Text));
+                    var text = Gravavel(string.Join("\n", u.Content.Where(c => !string.IsNullOrEmpty(c.Text)).Select(c => c.Text)));
                     if (!string.IsNullOrWhiteSpace(text) && !text.StartsWith("[SYSTEM"))
                     {
                         if (firstUserMessage == "Novo Chat")
@@ -174,7 +220,7 @@ namespace AIB.Services
                 }
                 else if (msg is AssistantChatMessage a && a.Content != null)
                 {
-                    var text = string.Join("\n", a.Content.Where(c => !string.IsNullOrEmpty(c.Text)).Select(c => c.Text));
+                    var text = Gravavel(string.Join("\n", a.Content.Where(c => !string.IsNullOrEmpty(c.Text)).Select(c => c.Text)));
                     if (!string.IsNullOrWhiteSpace(text))
                     {
                         lines.Add($"AIB: {text}");

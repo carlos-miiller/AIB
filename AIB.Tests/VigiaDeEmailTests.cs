@@ -1196,6 +1196,48 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task SemTHREAD_ALinhaCarregaOUid_EComThreadNao()
+        {
+            // Sem X-GM-THRID (Outlook), conta + thread vazia não distingue mensagem nenhuma: a
+            // conversa com a IA de todos os e-mails da caixa caía em conta|uid:0. O UID na linha
+            // é o que separa uma da outra.
+            var (vigia, _, _, _) = MontarComPasta(
+                lidas: new[]
+                {
+                    Msg(uid: 7, assunto: "Sem thread", thread: ""),
+                    Msg(uid: 8, assunto: "Com thread", thread: "T8")
+                },
+                resposta: "[{\"uid\":7,\"urgencia\":\"maxima\",\"resumo\":\"a\"}," +
+                          "{\"uid\":8,\"urgencia\":\"maxima\",\"resumo\":\"b\"}]");
+
+            var digesto = await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            digesto.Itens.Single(i => i.Name == "Sem thread").Uid.Should().Be(7u);
+            digesto.Itens.Single(i => i.Name == "Com thread").Uid
+                .Should().Be(0u, "com thread quem identifica é a thread");
+        }
+
+        [Fact]
+        public void AoVoltarDoDisco_SemThread_OUidVOLTA_DaChave()
+        {
+            // O arquivo guarda conta|uid:N. Sem recuperar o N, toda conversa sem thread que
+            // voltasse no arranque cairia de novo na mesma chave de conversa com a IA.
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+
+            new ArquivoDeConversas(pasta).Anotar(
+                ArquivoDeConversas.Chave("eu@empresa.com", "", 77),
+                new EntradaDaConversa(
+                    ArquivoDeConversas.Agora(Ontem),
+                    77, "cliente@x.com", "Proposta", "Maxima", "resumo"));
+
+            vigia.Reconstituir().Should().Be(1);
+
+            var item = vigia.Ultimo.Itens.Single();
+            item.Uid.Should().Be(77u);
+            ArquivoDeConversas.ChaveDaConversa(item).Should().Be("eu@empresa.com|uid:77");
+        }
+
+        [Fact]
         public void Ignorar_TiraDaTelaNaHora_EContinuaForaDepoisDoArranque()
         {
             var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
@@ -1342,7 +1384,6 @@ namespace AIB.Tests
             // O par que reproduz o defeito de producao: um 9B na conversa e um 0.8b no campo
             // do Shadow. A triagem tem de escolher o primeiro.
             config.ModelName = "qwen3.5:9b";
-            config.ShadowModelName = "qwen3.5:0.8b";
             config.MailAccounts = new List<MailAccountSettings>
             {
                 new() { Address = "eu@empresa.com", ImapHost = "imap.gmail.com", ImapPort = 993, IsPrimary = true }
