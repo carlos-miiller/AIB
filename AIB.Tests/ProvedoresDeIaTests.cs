@@ -21,6 +21,78 @@ namespace AIB.Tests
         /// <summary>O catálogo é estático: o fingido destes ensaios não pode sobrar para os outros.</summary>
         public void Dispose() => CatalogoDoOpenRouter.DefinirCache(null);
 
+        // ── Endereço do Ollama, chave e teto do capítulo ─────────────────────
+
+        [Theory]
+        [InlineData(null, "http://127.0.0.1:11434")]
+        [InlineData("", "http://127.0.0.1:11434")]
+        [InlineData("   ", "http://127.0.0.1:11434")]
+        [InlineData("http://localhost:11434", "http://127.0.0.1:11434")]
+        [InlineData("http://localhost:11434/v1", "http://127.0.0.1:11434")]
+        [InlineData("http://localhost:11434/v1/", "http://127.0.0.1:11434")]
+        [InlineData("http://127.0.0.1:11434/", "http://127.0.0.1:11434")]
+        [InlineData("http://192.168.0.10:11434/v1", "http://192.168.0.10:11434")]
+        public void OEnderecoDoOllama_SaiNaFormaUnica(string? entrada, string esperado)
+        {
+            // Quatro cópias de ".Replace("/v1","").TrimEnd('/')", e só a da fábrica trocava o
+            // localhost — a lista de modelos da tela esperava o IPv6 desistir.
+            ProvedoresDeIa.NormalizarUrlDoOllama(entrada).Should().Be(esperado);
+        }
+
+        [Fact]
+        public void OEnderecoPadrao_JaEstaNormalizado()
+        {
+            ProvedoresDeIa.NormalizarUrlDoOllama(ProvedoresDeIa.UrlDoOllama).Should().Be(ProvedoresDeIa.UrlDoOllama);
+        }
+
+        [Theory]
+        // Chaves FALSAS, só com o formato. Nenhum ensaio usa chave de verdade.
+        [InlineData("sk-or-v1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true)]
+        [InlineData("  sk-or-v1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  ", true)]
+        [InlineData("sk-or-curta", false)]
+        [InlineData("sk-xx-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", false)]
+        [InlineData("sk-or-aaaaaaaaaa aaaaaaaaaaaaaaaaaaaa", false)]
+        [InlineData("", false)]
+        [InlineData(null, false)]
+        public void AChaveDoOpenRouter_TemUmCriterioSo(string? chave, bool valida)
+        {
+            // O primeiro arranque pedia o formato inteiro e as configurações só o prefixo: a mesma
+            // chave passava numa tela e era recusada na outra.
+            ProvedoresDeIa.ChaveValida(chave).Should().Be(valida);
+        }
+
+        [Fact]
+        public void OModeloPadraoDoOllama_EhUmSo()
+        {
+            new UserAppSettings().ModelName.Should().Be(ProvedoresDeIa.ModeloPadraoDoOllama);
+            ProvedoresDeIa.PerfilPadrao(ProvedoresDeIa.Ollama).Modelo.Should().Be(ProvedoresDeIa.ModeloPadraoDoOllama);
+        }
+
+        [Fact]
+        public void NoOllama_OCapituloNaoPassaDeUmaFracaoDaJanela()
+        {
+            // O teto da tela vai a 60.000 e a janela pode ser 16k. O Ollama TRUNCA em silêncio o
+            // prompt maior que o num_ctx, e o resumidor perdia as instruções e os primeiros turnos.
+            var ollama = new UserAppSettings { AiProvider = ProvedoresDeIa.Ollama, ContextWindow = 16384, TokensPorCapitulo = 60_000 };
+            ConversationService.TetoDeTokensDoCapitulo(ollama)
+                .Should().Be((int)(16384 * ConversationService.FracaoDaJanelaPorCapitulo));
+
+            ollama.TokensPorCapitulo = 5_000;
+            ConversationService.TetoDeTokensDoCapitulo(ollama).Should().Be(5_000, "abaixo da fração vale o da tela");
+
+            // Provedor vazio é Ollama, como na fábrica.
+            var semProvedor = new UserAppSettings { AiProvider = "", ContextWindow = 8192, TokensPorCapitulo = 20_000 };
+            ConversationService.TetoDeTokensDoCapitulo(semProvedor).Should().BeLessThan(8192);
+        }
+
+        [Fact]
+        public void NoOpenRouter_OTetoDoCapitulo_EhODaTela()
+        {
+            // Lá estourar a janela dá erro, não corte calado; o número da tela vale como está.
+            var nuvem = new UserAppSettings { AiProvider = ProvedoresDeIa.OpenRouter, ContextWindow = 16384, TokensPorCapitulo = 60_000 };
+            ConversationService.TetoDeTokensDoCapitulo(nuvem).Should().Be(60_000);
+        }
+
         // ── Migração do arquivo antigo ───────────────────────────────────────
 
         [Fact]

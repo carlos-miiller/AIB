@@ -1664,7 +1664,7 @@ public sealed class ConversationService : IMessageStore
         int restante = vivo;
 
         int teto = Math.Min(disponiveis, settings.TurnosPorCapitulo);
-        int tetoDeTokens = settings.TokensPorCapitulo;
+        int tetoDeTokens = TetoDeTokensDoCapitulo(settings);
         int somados = 0;
         int anterior = _memory.LastCoveredTurn;
 
@@ -1692,6 +1692,41 @@ public sealed class ConversationService : IMessageStore
         }
 
         return escolhidos;
+    }
+
+    /// <summary>
+    /// Fração da janela que um capítulo pode ocupar no Ollama. Os outros 40% são do prompt do
+    /// resumidor, das instruções e dos 400 tokens de resposta — com folga para a diferença entre
+    /// a contagem da AIB e o tokenizador do modelo, que não são o mesmo.
+    /// </summary>
+    public const double FracaoDaJanelaPorCapitulo = 0.6;
+
+    /// <summary>
+    /// O teto de tokens EFETIVO de um capítulo: o da aba Memória, limitado no Ollama a
+    /// <see cref="FracaoDaJanelaPorCapitulo"/> da janela.
+    /// <para>
+    /// O teto da tela vai até 60.000, e a janela pode ser de 8k. No Ollama, um prompt maior que o
+    /// <c>num_ctx</c> não dá erro: ele é TRUNCADO em silêncio, pelo começo — o resumidor perde as
+    /// instruções e os primeiros turnos, e o capítulo sai resumindo o que sobrou como se fosse
+    /// tudo. No OpenRouter não há o corte calado (a janela é a do modelo, e estourar dá erro),
+    /// então lá o número da tela vale como está.
+    /// </para>
+    /// <para>
+    /// Continua valendo que um turno sozinho maior que o teto entra assim mesmo — ver
+    /// <see cref="SelectTurnsToCompact"/>. Esse caso é raro e a alternativa, cortar o turno,
+    /// quebraria o par tool_call/resultado.
+    /// </para>
+    /// </summary>
+    public static int TetoDeTokensDoCapitulo(UserAppSettings settings)
+    {
+        int daTela = settings.TokensPorCapitulo;
+
+        // Provedor vazio é Ollama, como na fábrica.
+        string provedor = ProvedoresDeIa.Normalizar(settings.AiProvider, settings.ApiUrl);
+        if (provedor == ProvedoresDeIa.OpenRouter) return daTela;
+
+        int janela = settings.ContextWindow > 0 ? settings.ContextWindow : ChatRequestOptions.JanelaDoOllama;
+        return Math.Min(daTela, (int)(janela * FracaoDaJanelaPorCapitulo));
     }
 
     /// <summary>Remove as <paramref name="count"/> mensagens mais antigas depois do prefixo de sistema.</summary>
@@ -2840,14 +2875,8 @@ public sealed class ConversationService : IMessageStore
             Raciocinio = settings.AiProvider == ProvedoresDeIa.OpenRouter ? settings.Reasoning : null
         };
 
-    /// <summary>"1m", "5m", "30m" ou "-1" em segundos. Desconhecido trava na memória, como sempre foi.</summary>
-    public static int SegundosDeKeepAlive(string? valor) => valor switch
-    {
-        "1m" => 60,
-        "5m" => 300,
-        "30m" => 1800,
-        _ => OllamaProvider.KeepAliveLockSeconds
-    };
+    /// <summary>"1m", "5m", "30m" ou "-1" em segundos. A conversão mora em <see cref="ChatRequestOptions.SegundosDeKeepAlive"/>.</summary>
+    public static int SegundosDeKeepAlive(string? valor) => ChatRequestOptions.SegundosDeKeepAlive(valor);
 
     /// <summary>A mensagem que a simulação põe no lugar da primeira fala do usuário.</summary>
     public const string MensagemDaSimulacao = "oi";
@@ -2923,7 +2952,8 @@ public sealed class ConversationService : IMessageStore
             opcoes.Temperature,
             stream: true,
             opcoes.NumCtx,
-            opcoes.KeepAliveSeconds ?? OllamaProvider.KeepAliveLockSeconds,
+            // O mesmo nulo-vira-em-vigor do OllamaProvider.
+            opcoes.KeepAliveSeconds ?? ChatRequestOptions.KeepAliveAtual,
             opcoes.Think,
             opcoes.NumPredict);
     }

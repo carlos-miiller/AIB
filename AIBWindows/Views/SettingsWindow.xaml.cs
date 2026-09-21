@@ -352,10 +352,9 @@ public partial class SettingsWindow : Window
 
         int nivel = LevelService.GetLevel(_currentSettings.MessageCount);
 
-        // A MESMA conta do LevelService, sobre a janela da tela e não a em vigor.
-        int piso = janela / 4, teto = janela * 3 / 4;
-        int passo = (teto - piso) / (LevelService.NivelMaximo - 1);
-        MaxHistoryTextBox.Text = (piso + (Math.Clamp(nivel, 1, LevelService.NivelMaximo) - 1) * passo).ToString();
+        // A conta do LevelService, sobre a janela da TELA e não a em vigor. Era uma cópia da
+        // conta aqui; a próxima mudança da escala mudaria o programa e deixaria a tela mentindo.
+        MaxHistoryTextBox.Text = LevelService.GetMaxTokensForLevel(nivel, janela).ToString();
     }
 
     private void Janela_Mudou(object sender, TextChangedEventArgs e)
@@ -527,15 +526,23 @@ public partial class SettingsWindow : Window
         SelecionarPorTag(MemoriaQuemEscreveComboBox, s.MemoriaComModelo ? "modelo" : "codigo");
         TurnosPorCapituloTextBox.Text = s.TurnosPorCapitulo.ToString();
         TokensPorCapituloTextBox.Text = s.TokensPorCapitulo.ToString();
-        SelecionarPorTag(CapitulosPorAtoComboBox, s.CapitulosPorAto.ToString());
-        SelecionarPorTag(EsconderResultadosComboBox, s.EsconderResultadosDepoisDe.ToString());
+        SelecionarPorTag(CapitulosPorAtoComboBox, s.CapitulosPorAto.ToString(), n => n);
+        SelecionarPorTag(EsconderResultadosComboBox, s.EsconderResultadosDepoisDe.ToString(), n => $"Depois de {n} turnos");
     }
 
     /// <summary>
-    /// Seleciona o item com a Tag; valor que não está na lista (editado à mão no arquivo) cai no
-    /// primeiro, que é sempre o padrão.
+    /// Seleciona o item com a Tag. Valor que não está na lista cai no primeiro, que é sempre o
+    /// padrão — A MENOS que <paramref name="rotuloDoValor"/> seja dado: aí o valor ganha um item
+    /// próprio, no formato dos outros, e fica selecionado.
+    /// <para>
+    /// O rótulo existe para os números. O arquivo aceita 2 a 24 capítulos por ato e 2 a 50 turnos
+    /// para esconder resultados, e a lista oferece alguns. Um 6 no arquivo caía no primeiro item
+    /// ("Automático", "Nunca") e o próximo Salvar — de qualquer outra página — gravava 0 em
+    /// silêncio. Mostrar o valor que está valendo é o que impede a tela de desfazê-lo.
+    /// </para>
     /// </summary>
-    private static void SelecionarPorTag(System.Windows.Controls.ComboBox combo, string valor)
+    private static void SelecionarPorTag(System.Windows.Controls.ComboBox combo, string valor,
+                                         Func<string, string>? rotuloDoValor = null)
     {
         foreach (ComboBoxItem item in combo.Items)
         {
@@ -546,7 +553,27 @@ public partial class SettingsWindow : Window
             }
         }
 
-        combo.SelectedIndex = 0;
+        if (rotuloDoValor == null || !int.TryParse(valor, out int numero))
+        {
+            combo.SelectedIndex = 0;
+            return;
+        }
+
+        // Na ordem numérica, entre os que já estão: a lista continua lida de cima para baixo.
+        int posicao = combo.Items.Count;
+        for (int i = 0; i < combo.Items.Count; i++)
+        {
+            if (combo.Items[i] is ComboBoxItem existente
+                && int.TryParse(existente.Tag?.ToString(), out int dele) && dele > numero)
+            {
+                posicao = i;
+                break;
+            }
+        }
+
+        var novo = new ComboBoxItem { Content = rotuloDoValor(valor), Tag = valor };
+        combo.Items.Insert(posicao, novo);
+        combo.SelectedItem = novo;
     }
 
     private static string? TagDe(System.Windows.Controls.ComboBox combo) => (combo.SelectedItem as ComboBoxItem)?.Tag?.ToString();
@@ -562,7 +589,16 @@ public partial class SettingsWindow : Window
             }
         }
 
-        KeepAliveComboBox.SelectedIndex = 1;   // "5 Minutos"
+        // Valor desconhecido cai no "Sempre carregado", que é o padrão e o que a tela recomenda.
+        // Caía no índice 1, "5 Minutos": o próximo Salvar trocava o padrão por 5 minutos calado.
+        foreach (ComboBoxItem item in KeepAliveComboBox.Items)
+        {
+            if (item.Tag?.ToString() == "-1")
+            {
+                KeepAliveComboBox.SelectedItem = item;
+                return;
+            }
+        }
     }
 
     private void RefreshKeyTextBoxLabel()
@@ -580,7 +616,9 @@ public partial class SettingsWindow : Window
 
     private void NovaChave_Mudou(object sender, RoutedEventArgs e)
     {
-        GuardarChaveBotao.IsEnabled = NovaChaveBox.Password.Trim().Length >= 20;
+        // O formato inteiro, o mesmo do primeiro arranque. Só o tamanho deixava o botão aceso
+        // para um texto que o clique ia recusar.
+        GuardarChaveBotao.IsEnabled = ProvedoresDeIa.ChaveValida(NovaChaveBox.Password);
         ChaveErro.Visibility = Visibility.Collapsed;
     }
 
@@ -600,9 +638,9 @@ public partial class SettingsWindow : Window
     {
         string chave = NovaChaveBox.Password.Trim();
 
-        if (!chave.StartsWith("sk-or-", StringComparison.Ordinal))
+        if (!ProvedoresDeIa.ChaveValida(chave))
         {
-            ChaveErro.Text = "Não parece uma chave do OpenRouter: elas começam com sk-or-.";
+            ChaveErro.Text = "Não parece uma chave do OpenRouter: elas começam com sk-or- e seguem com pelo menos 20 letras, números, - ou _.";
             ChaveErro.Visibility = Visibility.Visible;
             return;
         }
@@ -1233,8 +1271,18 @@ public partial class SettingsWindow : Window
                 ProvedorFixoComboBox.Text = padrao.OpenRouterProvedorFixo;
                 // O perfil de fábrica DO PROVEDOR NA TELA. O provedor e a chave ficam: restaurar
                 // não é trocar de provedor nem apagar credencial.
-                _perfis[_provedorNaTela] = ProvedoresDeIa.PerfilPadrao(_provedorNaTela);
-                MostrarPerfil(_provedorNaTela);
+                {
+                    ColherPerfil(_provedorNaTela);
+                    var restaurado = ProvedoresDeIa.PerfilPadrao(_provedorNaTela);
+
+                    // O OpenRouter não tem modelo de fábrica — o padrão é vazio. Restaurar ali
+                    // apagava o modelo escolhido e deixava a conversa sem ter com quem falar;
+                    // o modelo é escolha, como o provedor, e fica.
+                    if (restaurado.Modelo.Length == 0) restaurado.Modelo = _perfis[_provedorNaTela].Modelo;
+
+                    _perfis[_provedorNaTela] = restaurado;
+                    MostrarPerfil(_provedorNaTela);
+                }
                 break;
 
             case PaginaDeConfiguracoes.Email:
@@ -1830,11 +1878,11 @@ public partial class SettingsWindow : Window
         _currentSettings.ActiveCharacter = CharacterComboBox.SelectedItem?.ToString() ?? "Ayano";
         // O perfil na tela, os guardados, e o escolhido vira o ativo. A chave NÃO passa por aqui:
         // foi guardada no cofre pelo "Guardar" da própria linha.
+        // AplicarPerfis ativa ANTES de gravar os outros: na ordem inversa, trocar de provedor
+        // sobrescrevia o perfil do anterior com os valores de antes da edição.
         ColherPerfil(_provedorNaTela);
-        foreach (var (nome, perfil) in _perfis) _currentSettings.Perfis[nome] = perfil.Clone();
-
         string escolhido = ProviderComboBox.SelectedItem as string ?? ProvedoresDeIa.Ollama;
-        _currentSettings.Ativar(escolhido, _perfis[escolhido]);
+        _currentSettings.AplicarPerfis(escolhido, _perfis);
 
         _currentSettings.MailTriageProvider = TriagemProvedorComboBox.SelectedItem as string ?? ProvedoresDeIa.Ollama;
         _currentSettings.MailTriageModel = (TriagemModeloComboBox.Text ?? "").Trim();

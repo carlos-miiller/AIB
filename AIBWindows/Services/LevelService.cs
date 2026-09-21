@@ -61,10 +61,15 @@ public static class LevelService
     /// recarregar o runner e descartar o KV cache — medido: prefill de 343ms volta a 204s.
     /// </para>
     /// </summary>
-    public static int GetMaxTokensForLevel(int level)
-    {
-        int janela = Ai.ChatRequestOptions.Default.NumCtx;
+    public static int GetMaxTokensForLevel(int level) =>
+        GetMaxTokensForLevel(level, Ai.ChatRequestOptions.Default.NumCtx);
 
+    /// <summary>
+    /// A mesma conta sobre uma janela DADA — a que está digitada na tela de configurações, antes
+    /// de salvar. Existe para a tela não precisar de uma cópia da conta.
+    /// </summary>
+    public static int GetMaxTokensForLevel(int level, int janela)
+    {
         int piso = janela / 4;
         int teto = janela * 3 / 4;
         int passo = (teto - piso) / (NivelMaximo - 1);

@@ -13,8 +13,12 @@ namespace AIB.Services;
 public sealed class UserAppSettings
 {
     public string ApiUrl { get; set; } = ProvedoresDeIa.UrlDoOllama;
-    public string ApiKey { get; set; } = "ollama";
-    public string ModelName { get; set; } = "qwen2.5:7b";
+
+    // Não há ApiKey aqui, de propósito. O campo antigo era um sentinela ("use-vault"/"ollama")
+    // que ninguém lia — a chave mora no cofre DPAPI, por provedor — e em arquivos antigos podia
+    // guardar a chave em texto. O System.Text.Json ignora o campo ao carregar, e o próximo Save
+    // o tira do arquivo.
+    public string ModelName { get; set; } = ProvedoresDeIa.ModeloPadraoDoOllama;
     public string ActiveCharacter { get; set; } = "Ayano";
     /// <summary>
     /// keep_alive do Ollama no provedor ATIVO. Nasce "-1" (sempre carregado) porque era o que de fato
@@ -23,7 +27,6 @@ public sealed class UserAppSettings
     /// </summary>
     public string KeepAlive { get; set; } = "-1";
     public string AiProvider { get; set; } = ""; // Vazio por default força a tela de Onboarding
-    public string ShadowModelName { get; set; } = "qwen2.5:7b";
 
     // ─────────────────────────────────────────────────────────────────────
     // Provedor: os campos acima (AiProvider, ApiUrl, ModelName, KeepAlive) e os dois abaixo são
@@ -108,6 +111,25 @@ public sealed class UserAppSettings
         Reasoning = p.Raciocinio;
         ModelThinking = p.Raciocinio != PerfilDeProvedor.RaciocinioDesligado;
         Perfis[provedor] = p.Clone();
+    }
+
+    /// <summary>
+    /// O "Salvar" da tela de configurações: os perfis como estão na tela, e
+    /// <paramref name="escolhido"/> como o ativo.
+    /// <para>
+    /// A ORDEM é o conserto. A tela gravava os perfis e só depois chamava <see cref="Ativar"/>; ao
+    /// trocar de provedor, o <see cref="Ativar"/> guarda o perfil do ativo ANTERIOR a partir dos
+    /// campos da conversa — que ainda tinham os valores de antes da edição — e passava por cima do
+    /// que a tela acabara de gravar. Mudar o modelo do Ollama e trocar para o OpenRouter no mesmo
+    /// Salvar perdia o modelo novo. Ativando primeiro, os perfis da tela são a última palavra.
+    /// </para>
+    /// </summary>
+    public void AplicarPerfis(string escolhido, IReadOnlyDictionary<string, PerfilDeProvedor> perfis)
+    {
+        Ativar(escolhido, perfis[escolhido]);
+
+        foreach (var (nome, perfil) in perfis)
+            if (nome != escolhido) Perfis[nome] = perfil.Clone().Sanear(nome);
     }
 
     /// <summary>
@@ -622,8 +644,7 @@ public sealed class SettingsService
 
         var loaded = ReadFromDisk(path);
         AIB.Services.PastasSemConfirmacao.Configurar(loaded.PastasSemConfirmacao);
-        Ai.ChatRequestOptions.JanelaAtual = loaded.ContextWindow;
-        LimitesDoProvedor.Atual = LimitesDoProvedor.Para(loaded.AiProvider);
+        AplicarEmVigor(loaded);
 
         lock (_gate)
         {
@@ -692,8 +713,7 @@ public sealed class SettingsService
 
         // A janela vale no mesmo instante, pelo mesmo motivo: os orçamentos por nível e o teto
         // da poda são lidos dela, e continuar contando a antiga até reabrir o app seria mentir.
-        Ai.ChatRequestOptions.JanelaAtual = settings.ContextWindow;
-        LimitesDoProvedor.Atual = LimitesDoProvedor.Para(settings.AiProvider);
+        AplicarEmVigor(settings);
 
         lock (_gate)
         {
@@ -702,11 +722,29 @@ public sealed class SettingsService
         }
     }
 
+    /// <summary>
+    /// Os valores estáticos que o resto do programa lê sem carregar configurações: a janela, os
+    /// limites do provedor e — do perfil do OLLAMA, qualquer que seja o provedor da conversa — a
+    /// janela e o keep-alive das chamadas ao Ollama. Um lugar só, chamado ao carregar e ao salvar.
+    /// </summary>
+    private static void AplicarEmVigor(UserAppSettings settings)
+    {
+        Ai.ChatRequestOptions.JanelaAtual = settings.ContextWindow;
+        LimitesDoProvedor.Atual = LimitesDoProvedor.Para(settings.AiProvider);
+
+        // Do perfil do Ollama porque é a ele que estes valores vão: com a conversa no OpenRouter,
+        // a triagem pode continuar no Ollama, e o keep-alive e a janela dela são os do Ollama.
+        var ollama = settings.PerfilDe(ProvedoresDeIa.Ollama);
+        Ai.ChatRequestOptions.JanelaDoOllama = ollama.JanelaDeContexto;
+        Ai.ChatRequestOptions.KeepAliveAtual = Ai.ChatRequestOptions.SegundosDeKeepAlive(ollama.KeepAlive);
+    }
+
     public async Task<List<string>> GetOllamaModelsAsync(string baseUrl)
     {
-        string baseOllamaUrl = string.IsNullOrEmpty(baseUrl) ? "http://localhost:11434" : baseUrl;
-        baseOllamaUrl = baseOllamaUrl.Replace("/v1", "").TrimEnd('/');
-        
+        // 127.0.0.1, e não "localhost": ver NormalizarUrlDoOllama. Era o único endereço do
+        // Ollama que ainda ia pelo IPv6, e a lista de modelos da tela esperava por isso.
+        string baseOllamaUrl = ProvedoresDeIa.NormalizarUrlDoOllama(baseUrl);
+
         try
         {
             var response = await _httpClient.GetAsync($"{baseOllamaUrl}/api/tags");

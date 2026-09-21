@@ -8,7 +8,7 @@ using OpenAI.Chat;
 namespace AIB.Services.Agent;
 
 /// <summary>
-/// Aquecimento intencional (doc 03 §1): trava o modelo na VRAM com keep_alive=-1 e compila
+/// Aquecimento intencional (doc 03 §1): carrega o modelo com o keep-alive em vigor e compila
 /// a gramática das ferramentas com um heartbeat fantasma, mascarando a latência de carga.
 /// NÃO é disparado por construtor — o App chama explicitamente depois que a UI existe.
 /// Todo o trabalho acontece sobre um EphemeralMessageStore: o histórico vivo nunca é
@@ -56,7 +56,7 @@ public sealed class WarmupService
 
             var provider = _providerFactory.GetProvider(settings);
 
-            // 1. Trava o modelo na VRAM (POST /api/generate com keep_alive=-1).
+            // 1. Carrega o modelo (POST /api/generate com o keep-alive em vigor).
             await provider.WarmupAsync(ct).ConfigureAwait(false);
 
             // Trava a interface só depois da carga, como sempre foi.
@@ -78,7 +78,9 @@ public sealed class WarmupService
             var result = await provider.CompleteAsync(
                 store.Snapshot(),
                 tools,
-                ChatRequestOptions.Default with { KeepAliveSeconds = -1 },
+                // O keep-alive da tela, que o Default já traz. Era -1 fixo aqui: quem escolhia
+                // "5 minutos" tinha o modelo travado na memória desde a abertura do app.
+                ChatRequestOptions.Default,
                 ct).ConfigureAwait(false);
 
             if (result.PromptEvalCount.HasValue)

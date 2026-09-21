@@ -150,5 +150,58 @@ namespace AIB.Tests
             recebido.Should().Be(OllamaNativeClient.CorpoDaRequisicao(
                 "gemma", historico, ferramentas, 0.1f, stream: true, 32768, -1, false, null));
         }
+
+        private static HttpClient Respondendo(string corpo)
+        {
+            var handler = new Mock<HttpMessageHandler>();
+            handler
+                .Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.IsAny<CancellationToken>())
+                .ReturnsAsync(() => new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(corpo)
+                });
+            return new HttpClient(handler.Object);
+        }
+
+        [Theory]
+        [InlineData(",\"done_reason\":\"length\"", "length")]
+        [InlineData(",\"done_reason\":\"stop\"", "stop")]
+        [InlineData("", "stop")]
+        public async Task ODoneReason_CHEGA_AoFimDoStream(string campo, string esperado)
+        {
+            // Era "stop" fixo: uma resposta cortada pelo num_predict ou pela janela chegava ao laço
+            // como completa. Sem o campo (Ollama antigo) continua "stop".
+            string ndjson =
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"meio\"},\"done\":false}\n" +
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true" + campo + "}\n";
+
+            var client = new OllamaNativeClient("http://127.0.0.1:11434", Respondendo(ndjson));
+
+            string? motivo = null;
+            await foreach (var dto in client.StreamChatAsync(
+                "modelo", new List<ChatMessage> { new UserChatMessage("oi") }, null, 0.1f, false, CancellationToken.None))
+            {
+                if (dto.FinishReason != null) motivo = dto.FinishReason;
+            }
+
+            motivo.Should().Be(esperado);
+        }
+
+        [Fact]
+        public async Task ODoneReason_CHEGA_NaChamadaSemStream()
+        {
+            var client = new OllamaNativeClient("http://127.0.0.1:11434", Respondendo(
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"corta\"},\"done\":true,\"done_reason\":\"length\"}"));
+
+            var dto = await client.CompleteChatAsync(
+                "modelo", new List<ChatMessage> { new UserChatMessage("oi") }, null, 0.1f, false, CancellationToken.None);
+
+            dto.FinishReason.Should().Be("length");
+        }
 }
 }

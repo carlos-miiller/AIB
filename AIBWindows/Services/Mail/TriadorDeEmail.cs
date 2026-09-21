@@ -46,9 +46,12 @@ public sealed class TriadorDeEmail
     public static ChatRequestOptions Opcoes(bool comRaciocinio = false, int mensagens = 0)
     {
         int teto = TetoDeResposta * Math.Max(1, (mensagens + 24) / 25);
-        return new(Temperature: 0.0f,
-            Think: comRaciocinio ? (bool?)null : false,
-            NumPredict: comRaciocinio ? teto * 3 : teto);
+
+        // Janela e keep-alive em vigor, os do perfil do Ollama: com os 32.768 fixos do padrão
+        // do record, uma janela diferente na tela fazia cada triagem recarregar o modelo.
+        return ChatRequestOptions.DeServico(
+            comRaciocinio ? teto * 3 : teto,
+            think: comRaciocinio ? (bool?)null : false);
     }
 
     private const string Prompt =

@@ -37,7 +37,8 @@ public interface IChatProvider
         CancellationToken ct);
 
     /// <summary>
-    /// Prefill de carregamento do modelo. No Ollama: POST /api/generate com keep_alive=-1.
+    /// Prefill de carregamento do modelo. No Ollama: POST /api/generate com o keep-alive em vigor
+    /// (<see cref="ChatRequestOptions.KeepAliveAtual"/>).
     /// No OpenRouter: no-op. Falha de rede vira log e retorno normal — aquecimento é best-effort.
     /// A única exceção que sobe é OperationCanceledException: engolir o cancelamento faria o
     /// aquecimento seguir rodando durante o encerramento do app.

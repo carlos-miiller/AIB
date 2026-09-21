@@ -104,6 +104,22 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task StreamAsync_RespostaCortadaPeloTamanho_TERMINA_EmLength()
+        {
+            // O done_reason do Ollama era ignorado e todo fim virava Stop. O OpenRouter já dizia
+            // Length; agora os dois dizem, pela mesma tradução.
+            string ndjson =
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"resposta pela met\"},\"done\":false}\n" +
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true,\"done_reason\":\"length\"}\n";
+
+            var provider = BuildProvider(FakeOllama(ndjson, _ => { }));
+            var chunks = await DrainAsync(provider, Array.Empty<ChatTool>());
+
+            chunks.OfType<StreamChunk.Done>().Should().ContainSingle()
+                  .Which.Reason.Should().Be(StreamFinishReason.Length);
+        }
+
+        [Fact]
         public async Task StreamAsync_NeverHealsAToolCallWrittenInsideAThinkBlock()
         {
             // O raciocínio privado do modelo não pode virar execução real de ferramenta.

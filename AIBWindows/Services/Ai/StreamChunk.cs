@@ -26,6 +26,23 @@ public enum StreamFinishReason
     Unknown = 3
 }
 
+/// <summary>A tradução do motivo cru do provider para <see cref="StreamFinishReason"/>.</summary>
+public static class MotivoDeFim
+{
+    /// <summary>
+    /// "stop", "tool_calls" e "length" — os nomes do formato da OpenAI, que o OpenRouter repete e
+    /// o <c>done_reason</c> do Ollama também usa. Estava copiada nos dois providers; uma cópia que
+    /// ganhasse um motivo novo deixaria o outro contando o mesmo fim como desconhecido.
+    /// </summary>
+    public static StreamFinishReason De(string? raw) => (raw ?? "").ToLowerInvariant() switch
+    {
+        "stop" => StreamFinishReason.Stop,
+        "tool_calls" => StreamFinishReason.ToolCalls,
+        "length" => StreamFinishReason.Length,
+        _ => StreamFinishReason.Unknown
+    };
+}
+
 /// <summary>
 /// Unidade única do stream de um provider. A pergunta "isso é texto ou tool call?"
 /// é respondida AQUI, uma vez por provider — nunca no orquestrador.

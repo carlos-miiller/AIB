@@ -40,9 +40,13 @@ public sealed class Compactor
     /// objetivo, até 3 linhas de ~30 palavras em Aprendido e a linha de pendências — não pode
     /// gastar a janela inteira e deixar a compactação rodando por minutos.
     /// </para>
+    /// <para>
+    /// Propriedade, e não campo estático: a janela e o keep-alive são os EM VIGOR, lidos a cada
+    /// resumo. O campo levava os 32.768 do padrão do record, e com outra janela na tela cada
+    /// compactação fazia o Ollama recarregar o modelo — duas vezes, contando a volta do turno.
+    /// </para>
     /// </summary>
-    private static readonly ChatRequestOptions Options =
-        new(Temperature: 0.0f, Think: false, NumPredict: MaxSummaryTokens);
+    private static ChatRequestOptions Options => ChatRequestOptions.DeServico(MaxSummaryTokens);
 
     /// <summary>
     /// Teto de tokens do resumo do CAPÍTULO. O pedido cabe em ~150 palavras (a frase de objetivo,
@@ -176,8 +180,7 @@ public sealed class Compactor
     /// crus, e o que se pede dele é uma frase e algumas lições. O ato resume capítulos, e com o
     /// teto de capítulos em vinte e quatro pode ter muito mais material embaixo.
     /// </summary>
-    private ChatRequestOptions OpcoesDoAto =>
-        new(Temperature: 0.0f, Think: false, NumPredict: _limites.TetoDoResumoDoAto);
+    private ChatRequestOptions OpcoesDoAto => ChatRequestOptions.DeServico(_limites.TetoDoResumoDoAto);
 
     /// <summary>
     /// Se o modelo escreve Objetivo, Aprendido e as pendências de assunto. Falso é o modo "só

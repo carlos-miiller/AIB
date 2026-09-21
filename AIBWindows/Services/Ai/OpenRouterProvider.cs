@@ -523,7 +523,7 @@ public sealed class OpenRouterProvider : IChatProvider
         }
 
         yield return new StreamChunk.Done(
-            anyToolCall ? StreamFinishReason.ToolCalls : MapFinishReason(rawFinish),
+            anyToolCall ? StreamFinishReason.ToolCalls : MotivoDeFim.De(rawFinish),
             rawFinish,
             splitter.RawText);
     }
@@ -787,12 +787,4 @@ public sealed class OpenRouterProvider : IChatProvider
 
     private static int? Numero(JsonElement el, string nome) =>
         el.TryGetProperty(nome, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
-
-    private static StreamFinishReason MapFinishReason(string? raw) => (raw ?? "").ToLowerInvariant() switch
-    {
-        "stop" => StreamFinishReason.Stop,
-        "tool_calls" => StreamFinishReason.ToolCalls,
-        "length" => StreamFinishReason.Length,
-        _ => StreamFinishReason.Unknown
-    };
 }

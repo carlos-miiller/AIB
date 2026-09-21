@@ -75,10 +75,32 @@ public static class CatalogoDoOpenRouter
     public static async Task<ModeloDoOpenRouter?> BuscarAsync(HttpClient http, string id, CancellationToken ct)
     {
         if (_cache == null && DateTime.UtcNow - _falhouEm > PausaDepoisDeFalhar)
-            await ListarAsync(http, ct).ConfigureAwait(false);
+        {
+            // Prazo PRÓPRIO, curto. O HttpClient do provider não tem timeout — o turno pode durar
+            // minutos, e quem vigia o silêncio é o prazo do stream. Mas esta busca vem ANTES do
+            // turno: um /models pendurado segurava a conversa inteira sem nada na tela. O
+            // catálogo é ajuda, não requisito; passado o prazo o turno segue sem ele, como já
+            // seguia quando a rede devolvia erro.
+            using var prazo = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            prazo.CancelAfter(PrazoDaBusca);
+            try
+            {
+                await ListarAsync(http, prazo.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Cancelamento do PRAZO, não de quem chamou: conta como falha, com a mesma pausa
+                // de antes para não pagar os quinze segundos a cada turno.
+                _falhouEm = DateTime.UtcNow;
+                Console.WriteLine($"[CONFIG] catálogo do OpenRouter não respondeu em {PrazoDaBusca.TotalSeconds:0}s; seguindo sem ele.");
+            }
+        }
 
         return NoCache(id);
     }
+
+    /// <summary>Quanto o turno espera pelo catálogo antes de seguir sem ele.</summary>
+    public static readonly TimeSpan PrazoDaBusca = TimeSpan.FromSeconds(15);
 
     /// <summary>Ensaio: põe um catálogo no lugar, sem rede. Nulo limpa.</summary>
     public static void DefinirCache(IReadOnlyList<ModeloDoOpenRouter>? modelos)

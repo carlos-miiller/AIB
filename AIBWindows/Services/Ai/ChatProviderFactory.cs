@@ -89,12 +89,8 @@ public sealed class ChatProviderFactory : IChatProviderFactory
                 settings.OpenRouterProvedorFixo);
         }
 
-        string ollamaUrl = string.IsNullOrEmpty(settings.ApiUrl) ? ProvedoresDeIa.UrlDoOllama : settings.ApiUrl;
-
-        // Evita a resolução IPv6 de "localhost", que causa timeouts de 2 minutos.
-        ollamaUrl = ollamaUrl.Replace("localhost", "127.0.0.1");
-
-        string baseUrl = ollamaUrl.Replace("/v1", "").TrimEnd('/');
+        // Sem /v1 e sem "localhost" — ver NormalizarUrlDoOllama, que diz por quê.
+        string baseUrl = ProvedoresDeIa.NormalizarUrlDoOllama(settings.ApiUrl);
         var ollamaClient = new OllamaNativeClient(baseUrl, _httpClient);
 
         Console.WriteLine($"[AI] Cliente inicializado: {modelo} @ {baseUrl}");

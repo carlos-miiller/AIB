@@ -52,7 +52,7 @@ public class OllamaNativeClient
         _httpClient = httpClient ?? new HttpClient();
         if (httpClient == null)
             _httpClient.Timeout = Timeout.InfiniteTimeSpan;
-        _apiUrl = apiUrl.Replace("/v1", "").TrimEnd('/') + "/api/chat";
+        _apiUrl = ProvedoresDeIa.NormalizarUrlDoOllama(apiUrl) + "/api/chat";
     }
 
     public async IAsyncEnumerable<ChatUpdateDto> StreamChatAsync(
@@ -153,7 +153,7 @@ public class OllamaNativeClient
 
             if (root.TryGetProperty("done", out var doneElement) && doneElement.GetBoolean())
             {
-                dto.FinishReason = "stop";
+                dto.FinishReason = MotivoDoFim(root);
 
                 if (root.TryGetProperty("prompt_eval_count", out var pEval))
                     dto.PromptEvalCount = pEval.GetInt32();
@@ -199,6 +199,8 @@ public class OllamaNativeClient
             dto.Text = contentElement.GetString() ?? "";
         }
 
+        dto.FinishReason = MotivoDoFim(root);
+
         if (root.TryGetProperty("prompt_eval_count", out var pEval))
             dto.PromptEvalCount = pEval.GetInt32();
         if (root.TryGetProperty("eval_count", out var eval))
@@ -208,6 +210,19 @@ public class OllamaNativeClient
 
         return dto;
     }
+
+    /// <summary>
+    /// O <c>done_reason</c> da última linha: "stop", ou "length" quando a resposta bateu no
+    /// <c>num_predict</c> ou na janela. Era "stop" fixo, e um resumo ou uma resposta cortada no
+    /// meio chegava ao laço como resposta completa — o OpenRouter já dizia "length" nesse caso e
+    /// o Ollama não. Sem o campo (versões antigas do Ollama) continua "stop", como era.
+    /// </summary>
+    private static string MotivoDoFim(JsonElement root) =>
+        root.TryGetProperty("done_reason", out var motivo)
+        && motivo.ValueKind == JsonValueKind.String
+        && !string.IsNullOrEmpty(motivo.GetString())
+            ? motivo.GetString()!
+            : "stop";
 
     /// <summary>
     /// O corpo JSON de <c>/api/chat</c>, montado num lugar só.
@@ -235,7 +250,7 @@ public class OllamaNativeClient
             stream = stream,
             // keep_alive precisa viajar em TODA requisição de chat: o Ollama reaplica o valor
             // recebido e, quando o campo é omitido, volta ao default de 5 minutos — desfazendo
-            // em silêncio a trava de VRAM feita pelo aquecimento (keep_alive=-1).
+            // em silêncio o keep-alive escolhido na tela (ChatRequestOptions.KeepAliveAtual).
             keep_alive = keepAliveSeconds,
             // Nulos somem do JSON (WhenWritingNull): omitir o campo deixa o modelo no padrão
             // dele, que é o comportamento certo para a conversa normal.

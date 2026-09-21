@@ -17,11 +17,11 @@ namespace AIB.Services.Ai;
 public sealed class OllamaProvider : IChatProvider
 {
     /// <summary>
-    /// keep_alive padrão das requisições de chat. -1 mantém o modelo travado na VRAM.
-    /// Omitir o campo faz o Ollama reaplicar o default de 5 minutos e desfazer a trava
-    /// feita pelo aquecimento — por isso o provider envia -1 quando ninguém pediu outro valor.
+    /// keep_alive que trava o modelo na memória. NÃO é mais o que vai quando ninguém pede outro
+    /// valor: esse é o <see cref="ChatRequestOptions.KeepAliveAtual"/>, o da tela. O campo
+    /// continua indo em toda requisição — omiti-lo faz o Ollama reaplicar os 5 minutos dele.
     /// </summary>
-    public const int KeepAliveLockSeconds = -1;
+    public const int KeepAliveLockSeconds = ChatRequestOptions.SempreCarregado;
 
     private readonly OllamaNativeClient _client;
     private readonly string _baseUrl;
@@ -44,7 +44,7 @@ public sealed class OllamaProvider : IChatProvider
         bool verboseLogging)
     {
         _client = client;
-        _baseUrl = baseUrl.Replace("/v1", "").TrimEnd('/');
+        _baseUrl = ProvedoresDeIa.NormalizarUrlDoOllama(baseUrl);
         Model = model;
         _healer = healer;
         _httpClient = httpClient;
@@ -86,7 +86,7 @@ public sealed class OllamaProvider : IChatProvider
             _verboseLogging,
             ct,
             options.NumCtx,
-            options.KeepAliveSeconds ?? KeepAliveLockSeconds,
+            options.KeepAliveSeconds ?? ChatRequestOptions.KeepAliveAtual,
             options.Think,
             options.NumPredict);
 
@@ -192,7 +192,7 @@ public sealed class OllamaProvider : IChatProvider
         }
 
         yield return new StreamChunk.Done(
-            anyToolCall ? StreamFinishReason.ToolCalls : MapFinishReason(rawFinish),
+            anyToolCall ? StreamFinishReason.ToolCalls : MotivoDeFim.De(rawFinish),
             rawFinish,
             splitter.RawText);
     }
@@ -211,7 +211,7 @@ public sealed class OllamaProvider : IChatProvider
             _verboseLogging,
             ct,
             options.NumCtx,
-            options.KeepAliveSeconds ?? KeepAliveLockSeconds,
+            options.KeepAliveSeconds ?? ChatRequestOptions.KeepAliveAtual,
             options.Think,
             options.NumPredict).ConfigureAwait(false);
 
@@ -222,7 +222,10 @@ public sealed class OllamaProvider : IChatProvider
     {
         try
         {
-            Console.WriteLine($"[WARMUP] Iniciando trava de memória (Keep-Alive Infinita) para {Model}...");
+            // O keep-alive EM VIGOR, e não -1 fixo: com "5 minutos" escolhido na tela, o
+            // aquecimento travava o modelo para sempre e só o turno seguinte o soltava.
+            int keepAlive = ChatRequestOptions.KeepAliveAtual;
+            Console.WriteLine($"[WARMUP] Carregando {Model} (keep_alive={keepAlive})...");
 
             // num_ctx IGUAL ao do turno. Era 16384 fixo, de quando a janela era essa; ela subiu
             // para 32768 e o aquecimento ficou. Como o Ollama recarrega o modelo quando o num_ctx
@@ -231,7 +234,7 @@ public sealed class OllamaProvider : IChatProvider
             var payload = new
             {
                 model = Model,
-                keep_alive = KeepAliveLockSeconds,
+                keep_alive = keepAlive,
                 options = new { num_ctx = ChatRequestOptions.Default.NumCtx }
             };
 
@@ -243,7 +246,19 @@ public sealed class OllamaProvider : IChatProvider
             using var response = await _httpClient
                 .PostAsync($"{_baseUrl}/api/generate", content, ct)
                 .ConfigureAwait(false);
-            Console.WriteLine("[WARMUP] Modelo trancado na memória com sucesso.");
+
+            // O Ollama responde 404 a modelo não baixado e 500 a modelo que não cabe na memória.
+            // Sem olhar o status, os dois apareciam no console como "carregado com sucesso" — e o
+            // primeiro turno falhava sem pista de por quê.
+            if (!response.IsSuccessStatusCode)
+            {
+                string corpo = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                if (corpo.Length > 300) corpo = corpo[..300];
+                Console.WriteLine($"[WARMUP ERRO] {(int)response.StatusCode} {response.ReasonPhrase}: {corpo}");
+                return;
+            }
+
+            Console.WriteLine("[WARMUP] Modelo carregado na memória com sucesso.");
         }
         catch (OperationCanceledException)
         {
@@ -255,17 +270,5 @@ public sealed class OllamaProvider : IChatProvider
         {
             Console.WriteLine($"[WARMUP ERRO] {ex.Message}");
         }
-    }
-
-    private static StreamFinishReason MapFinishReason(string? raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return StreamFinishReason.Unknown;
-        return raw.ToLowerInvariant() switch
-        {
-            "stop" => StreamFinishReason.Stop,
-            "tool_calls" => StreamFinishReason.ToolCalls,
-            "length" => StreamFinishReason.Length,
-            _ => StreamFinishReason.Unknown
-        };
     }
 }

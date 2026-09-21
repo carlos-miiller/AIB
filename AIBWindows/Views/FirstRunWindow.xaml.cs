@@ -1,7 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -35,10 +34,6 @@ public partial class FirstRunWindow : Window
     private readonly SettingsService _settingsService;
     private string? _fallbackModel = null;
     private int _currentStep = 1;
-
-    // Chave do OpenRouter: sk-or- seguido de pelo menos 20 caracteres. Só formato — quem diz se
-    // ela vale é o OpenRouter, na primeira requisição.
-    private static readonly Regex _keyRegex = new(@"^sk-or-[a-zA-Z0-9_-]{20,}$", RegexOptions.Compiled);
 
     private static readonly System.Net.Http.HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
     private System.Collections.Generic.IReadOnlyList<AIB.Services.Ai.ModeloDoOpenRouter> _catalogo =
@@ -158,7 +153,7 @@ public partial class FirstRunWindow : Window
         else
         {
             string key = KeyTextBox.Password.Trim();
-            NextButton.IsEnabled = _keyRegex.IsMatch(key)
+            NextButton.IsEnabled = ProvedoresDeIa.ChaveValida(key)
                                    && (OpenRouterModelComboBox.Text ?? "").Trim().Length > 0;
         }
     }
@@ -236,7 +231,7 @@ public partial class FirstRunWindow : Window
 
         try
         {
-            var models = await _settingsService.GetOllamaModelsAsync("http://127.0.0.1:11434/v1");
+            var models = await _settingsService.GetOllamaModelsAsync(ProvedoresDeIa.UrlDoOllama);
             if (models.Any())
             {
                 ModelComboBox.ItemsSource = models;
@@ -282,7 +277,9 @@ public partial class FirstRunWindow : Window
     private void ApplyFallbackModel()
     {
         // UI-SPEC S5: hide error block, show read-only fallback display, enable Salvar
-        _fallbackModel = "qwen2.5:7b";
+        _fallbackModel = ProvedoresDeIa.ModeloPadraoDoOllama;
+        // O texto do XAML traz o nome como exemplo; o que vale é a constante.
+        FallbackModelDisplay.Text = $"Modelo padrão ({_fallbackModel}) selecionado temporariamente.";
         OllamaErrorBlock.Visibility = Visibility.Collapsed;
         ModelComboBox.Visibility = Visibility.Collapsed;
         FallbackModelDisplay.Visibility = Visibility.Visible;
@@ -305,13 +302,14 @@ public partial class FirstRunWindow : Window
     }
 
     /// <summary>
-    /// Valida a chave do OpenRouter pela regex D-05.
+    /// Valida o formato da chave do OpenRouter (<see cref="ProvedoresDeIa.ChaveValida"/>, o mesmo
+    /// critério da tela de configurações).
     /// Só valida no LostFocus, no Enter ou no Salvar — NUNCA a cada tecla.
     /// </summary>
     private bool ValidarChaveDoOpenRouter(bool emitAuditOnFail = true)
     {
         string key = KeyTextBox.Password.Trim();
-        if (_keyRegex.IsMatch(key))
+        if (ProvedoresDeIa.ChaveValida(key))
         {
             if (ErrorLabel != null) ErrorLabel.Visibility = Visibility.Collapsed;
             ValidateStep3SaveButton();
@@ -368,9 +366,10 @@ public partial class FirstRunWindow : Window
         string key = KeyTextBox.Password.Trim();
         string modelo = (OpenRouterModelComboBox.Text ?? "").Trim();
 
-        if (!_keyRegex.IsMatch(key) || modelo.Length == 0)
+        bool chaveValida = ProvedoresDeIa.ChaveValida(key);
+        if (!chaveValida || modelo.Length == 0)
         {
-            if (ErrorLabel != null) ErrorLabel.Visibility = _keyRegex.IsMatch(key) ? Visibility.Collapsed : Visibility.Visible;
+            if (ErrorLabel != null) ErrorLabel.Visibility = chaveValida ? Visibility.Collapsed : Visibility.Visible;
             if (NextButton != null) NextButton.IsEnabled = false;
             _ = AuditLogService.AppendAsync(new
             {
@@ -400,7 +399,6 @@ public partial class FirstRunWindow : Window
             perfil.JanelaDeContexto = Math.Clamp(doCatalogo.Janela, PerfilDeProvedor.JanelaMinima, PerfilDeProvedor.JanelaMaxima);
 
         settings.Ativar(ProvedoresDeIa.OpenRouter, perfil);
-        settings.ApiKey = "use-vault";
 
         // Quem escolheu nuvem no primeiro arranque pode não ter Ollama: a triagem acompanha, e a
         // página E-mail deixa trocar.
@@ -443,8 +441,6 @@ public partial class FirstRunWindow : Window
         var perfil = settings.PerfilDe(ProvedoresDeIa.Ollama);
         perfil.Modelo = selectedModel;
         settings.Ativar(ProvedoresDeIa.Ollama, perfil);
-        settings.ApiKey = "ollama";
-        settings.ShadowModelName = selectedModel;   // D-09 mirror by default
         settings.MailTriageProvider = ProvedoresDeIa.Ollama;
         settings.MailTriageModel = selectedModel;
         _settingsService.SaveSettings(settings.Sanear());

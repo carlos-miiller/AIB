@@ -20,7 +20,10 @@ namespace AIB.Services.Ai;
 /// fim do turno.
 /// </para>
 /// </param>
-/// <param name="KeepAliveSeconds">keep_alive do Ollama; -1 trava na VRAM. null = não enviar.</param>
+/// <param name="KeepAliveSeconds">
+/// keep_alive do Ollama; -1 trava na memória. null = o provider manda o <see cref="KeepAliveAtual"/>
+/// — omitir o campo faria o Ollama voltar aos 5 minutos dele e desfazer a escolha da tela.
+/// </param>
 /// <param name="Think">
 /// Raciocínio do modelo. <c>false</c> desliga o bloco de pensamento em modelos que o têm;
 /// null = não enviar o campo e deixar o modelo no padrão dele.
@@ -57,6 +60,60 @@ public sealed record ChatRequestOptions(
     /// </summary>
     public static int JanelaAtual { get; set; } = PerfilDeProvedor.JanelaPadrao;
 
-    /// <summary>As opções de fábrica, com a janela em vigor.</summary>
-    public static ChatRequestOptions Default => new(NumCtx: JanelaAtual);
+    /// <summary>
+    /// A janela do PERFIL DO OLLAMA — o <c>num_ctx</c> das chamadas de serviço (resumo, título,
+    /// triagem). Configurada pelo <see cref="SettingsService"/> junto com <see cref="JanelaAtual"/>.
+    /// <para>
+    /// Existe porque o Ollama RECARREGA o modelo quando o <c>num_ctx</c> muda. O compactador e o
+    /// título mandavam os 32.768 do padrão deste record: com a janela configurada em 16k ou 64k,
+    /// cada capítulo e cada título descarregava o modelo e o carregava de novo — e o turno
+    /// seguinte, de volta na janela da tela, recarregava outra vez.
+    /// </para>
+    /// <para>
+    /// Não é a <see cref="JanelaAtual"/> porque aquela é a do provedor da CONVERSA. Com a conversa
+    /// no OpenRouter e a triagem no Ollama, ela pode ser 128k ou mais, e pedir isso ao Ollama numa
+    /// máquina sem GPU é paginar a RAM. Com a conversa no Ollama as duas são o mesmo número.
+    /// </para>
+    /// </summary>
+    public static int JanelaDoOllama { get; set; } = PerfilDeProvedor.JanelaPadrao;
+
+    /// <summary>
+    /// O keep-alive em vigor, em segundos (-1 = sempre carregado), do perfil do Ollama.
+    /// Configurado pelo <see cref="SettingsService"/> ao carregar e ao salvar, como a janela.
+    /// <para>
+    /// Um lugar só porque eram quatro: o turno lia o da tela, o aquecimento forçava -1, e o
+    /// provider trocava o nulo do compactador, do título e da triagem por -1. Escolher "5
+    /// minutos" valia até a próxima compactação, que voltava a travar o modelo na memória.
+    /// Agora quem não diz nada recebe este, e o aquecimento também.
+    /// </para>
+    /// </summary>
+    public static int KeepAliveAtual { get; set; } = SempreCarregado;
+
+    /// <summary>keep_alive do Ollama que trava o modelo na memória.</summary>
+    public const int SempreCarregado = -1;
+
+    /// <summary>"1m", "5m", "30m" ou "-1" em segundos. Desconhecido trava na memória, como sempre foi.</summary>
+    public static int SegundosDeKeepAlive(string? valor) => valor switch
+    {
+        "1m" => 60,
+        "5m" => 300,
+        "30m" => 1800,
+        _ => SempreCarregado
+    };
+
+    /// <summary>As opções de fábrica, com a janela e o keep-alive em vigor.</summary>
+    public static ChatRequestOptions Default => new(NumCtx: JanelaAtual, KeepAliveSeconds: KeepAliveAtual);
+
+    /// <summary>
+    /// As opções das chamadas de SERVIÇO — resumo de capítulo e de ato, título, triagem —: sem
+    /// raciocínio por padrão, com teto de resposta, e com a janela do Ollama em vigor.
+    /// <para>
+    /// É PROPRIEDADE lida a cada chamada, e não campo estático: um <c>static readonly</c> com
+    /// estas opções congelaria a janela do momento em que a classe foi carregada, e mudar a
+    /// janela na tela voltaria a recarregar o modelo a cada resumo. O keep-alive vai nulo e o
+    /// provider aplica o <see cref="KeepAliveAtual"/> no instante do envio, pelo mesmo motivo.
+    /// </para>
+    /// </summary>
+    public static ChatRequestOptions DeServico(int? numPredict, bool? think = false, float temperature = 0.0f) =>
+        new(Temperature: temperature, NumCtx: JanelaDoOllama, Think: think, NumPredict: numPredict);
 }

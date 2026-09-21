@@ -27,6 +27,50 @@ public static class ProvedoresDeIa
     public const string UrlDoOllama = "http://127.0.0.1:11434";
     public const string UrlDoOpenRouter = "https://openrouter.ai/api/v1";
 
+    /// <summary>
+    /// O modelo que o Ollama recebe quando ninguém escolheu outro — padrão das configurações, do
+    /// perfil de fábrica e do "usar o padrão" do primeiro arranque. Um nome só: com o literal
+    /// repetido em cada um, trocar o padrão deixava metade do programa no antigo.
+    /// </summary>
+    public const string ModeloPadraoDoOllama = "qwen2.5:7b";
+
+    /// <summary>
+    /// O endereço do Ollama na forma que a AIB usa: sem o <c>/v1</c> da API compatível com a
+    /// OpenAI (a AIB fala a nativa, <c>/api/chat</c>), sem barra no fim, e com <c>localhost</c>
+    /// trocado por <c>127.0.0.1</c>.
+    /// <para>
+    /// A troca do <c>localhost</c> não é estética: no Windows ele resolve primeiro para IPv6, o
+    /// Ollama escuta só em IPv4, e cada conexão esperava o IPv6 desistir — timeouts de até dois
+    /// minutos. Era feita só na fábrica; a lista de modelos da tela usava <c>localhost</c> cru e
+    /// pagava a espera. Vazio vira o endereço padrão.
+    /// </para>
+    /// </summary>
+    public static string NormalizarUrlDoOllama(string? url)
+    {
+        string u = string.IsNullOrWhiteSpace(url) ? UrlDoOllama : url.Trim();
+        u = u.Replace("localhost", "127.0.0.1", StringComparison.OrdinalIgnoreCase).TrimEnd('/');
+
+        // Só o /v1 do FIM: um Replace solto comeria "/v1" de qualquer ponto do caminho.
+        if (u.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) u = u[..^3].TrimEnd('/');
+        return u;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex _formatoDaChave =
+        new(@"^sk-or-[a-zA-Z0-9_-]{20,}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Se <paramref name="chave"/> TEM O FORMATO de uma chave do OpenRouter: <c>sk-or-</c> e pelo
+    /// menos vinte caracteres depois. Só formato — quem diz se ela vale é o OpenRouter, na
+    /// primeira requisição.
+    /// <para>
+    /// Um critério para as duas telas. O primeiro arranque usava esta regra e as configurações só
+    /// olhavam o prefixo: a mesma chave passava numa e era recusada na outra. Não registra nada —
+    /// quem chama decide o que auditar, e nunca a chave.
+    /// </para>
+    /// </summary>
+    public static bool ChaveValida(string? chave) =>
+        !string.IsNullOrEmpty(chave) && _formatoDaChave.IsMatch(chave.Trim());
+
     /// <summary>Onde a chave do provedor mora no cofre. Nulo para quem não usa chave.</summary>
     public static string? SistemaDaChave(string provedor) =>
         provedor == OpenRouter ? "openrouter" : null;
@@ -64,7 +108,7 @@ public static class ProvedoresDeIa
         : new PerfilDeProvedor
         {
             Url = UrlDoOllama,
-            Modelo = "qwen2.5:7b",
+            Modelo = ModeloPadraoDoOllama,
             KeepAlive = "-1",
             JanelaDeContexto = PerfilDeProvedor.JanelaPadrao,
             Raciocinio = PerfilDeProvedor.RaciocinioDesligado

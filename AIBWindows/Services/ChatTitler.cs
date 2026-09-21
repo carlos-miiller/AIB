@@ -43,8 +43,12 @@ public sealed class ChatTitler
     /// <summary>Limite de caracteres do título já limpo. Acima disso não cabe no cabeçalho.</summary>
     public const int MaxCaracteres = 48;
 
-    private static readonly ChatRequestOptions Options =
-        new(Temperature: 0.0f, Think: false, NumPredict: MaxTitleTokens);
+    /// <summary>
+    /// Lidas a cada título, com a janela e o keep-alive em vigor. Eram um campo estático com os
+    /// 32.768 do padrão do record: com outra janela na tela, cada título fazia o Ollama
+    /// descarregar e recarregar o modelo — e o turno seguinte recarregava de novo.
+    /// </summary>
+    private static ChatRequestOptions Options => ChatRequestOptions.DeServico(MaxTitleTokens);
 
     private const string Prompt =
         """

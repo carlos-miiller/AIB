@@ -177,23 +177,6 @@ public partial class App : System.Windows.Application
             // ApplyFromSettings pode ter movido o diretório de dados: o cache aponta para o caminho antigo.
             _settingsService.InvalidateCache();
 
-            // D-11 one-shot migration: force re-entry by overwriting any non-sentinel ApiKey.
-            // Idempotent — guard skips already-migrated installs ("use-vault") and pure Ollama installs ("ollama").
-            // SECURITY: do NOT copy the previous key into the vault — rotation must happen first (D-12).
-            if (settings.ApiKey != "use-vault" && settings.ApiKey != "ollama")
-            {
-                bool hadKey = !string.IsNullOrEmpty(settings.ApiKey);
-                settings.ApiKey = "use-vault";
-                _settingsService.SaveSettings(settings);
-                _ = AuditLogService.AppendAsync(new
-                {
-                    ts = DateTime.UtcNow.ToString("o"),
-                    outcome = "migration_clear_apikey",
-                    previous_key_present = hadKey
-                });
-                Console.WriteLine("[MIGRATION] settings.ApiKey replaced with 'use-vault' sentinel (D-11).");
-            }
-
             // Portão humano ligado aqui: é o único lugar do app onde existe UI para pedir
             // autorização. Sem este argumento o registry recusa toda ferramenta destrutiva.
             //
@@ -294,7 +277,7 @@ public partial class App : System.Windows.Application
             var contextMenu = new System.Windows.Controls.ContextMenu();
 
             var openItem = new System.Windows.Controls.MenuItem { Header = "✦ Abrir Chat" };
-            openItem.Click += (s, ev) => _chatWindow.ToggleWindow();
+            openItem.Click += (s, ev) => AlternarChat();
 
             var orbeItem = new System.Windows.Controls.MenuItem
             {
@@ -320,7 +303,7 @@ public partial class App : System.Windows.Application
             contextMenu.Items.Add(exitItem);
 
             _notifyIcon.ContextMenu = contextMenu;
-            _notifyIcon.TrayLeftMouseDown += (s, ev) => _chatWindow.ToggleWindow();
+            _notifyIcon.TrayLeftMouseDown += (s, ev) => AlternarChat();
 
             try
             {
@@ -352,12 +335,34 @@ public partial class App : System.Windows.Application
     private void OnHotkeyDetected(object? sender, HotkeyEventArgs e)
     {
         e.Handled = true;
-        var settings = _settingsService.LoadSettings();
+        AlternarChat();
+    }
 
-        // D-01 + D-03 + D-08: provider-aware first-run detector; show FirstRunWindow before ChatWindow.
-        if (NeedsFirstRun(settings))
+    /// <summary>Se o primeiro arranque está aberto — ver <see cref="AlternarChat"/>.</summary>
+    private bool _primeiroArranqueAberto;
+
+    /// <summary>
+    /// A ÚNICA porta para o chat: atalho, "Abrir Chat" da bandeja e clique no ícone.
+    /// <para>
+    /// Só o atalho checava o primeiro arranque (D-01 + D-03 + D-08). Pela bandeja, o chat abria
+    /// sem provedor escolhido ou sem a chave do OpenRouter no cofre, e o primeiro turno falhava
+    /// com um 401 em vez de levar à tela que resolve. Três portas com a mesma checagem copiada
+    /// voltariam a divergir; uma função não.
+    /// </para>
+    /// <para>
+    /// O primeiro arranque é modal, mas o ícone da bandeja não é da janela: sem a guarda, um
+    /// segundo clique com ele aberto abria outro por cima.
+    /// </para>
+    /// </summary>
+    private void AlternarChat()
+    {
+        if (_primeiroArranqueAberto) return;
+
+        if (NeedsFirstRun(_settingsService.LoadSettings()))
         {
-            ShowFirstRunWindow();
+            _primeiroArranqueAberto = true;
+            try { ShowFirstRunWindow(); }
+            finally { _primeiroArranqueAberto = false; }
             return;
         }
 
