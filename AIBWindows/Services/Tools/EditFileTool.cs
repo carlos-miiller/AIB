@@ -42,7 +42,11 @@ public sealed class EditFileTool : ITool
         + "ser único no arquivo — inclua as linhas em volta se precisar desambiguar, ou passe "
         + "'replace_all' para trocar todas as ocorrências.";
 
-    public int RequiredLevel => 1;
+    /// <summary>
+    /// O mesmo nível do <c>write</c>: os dois mudam arquivo e passam pelo mesmo portão. Era 1, e
+    /// quem estava no nível 1 podia editar o que não podia gravar.
+    /// </summary>
+    public int RequiredLevel => 2;
 
     public bool RequiresConfirmation => true;
 

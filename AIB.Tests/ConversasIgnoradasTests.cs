@@ -65,6 +65,32 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void SemThread_OAssuntoNaoVaiEmClaroParaODisco()
+        {
+            new ConversasIgnoradas(_raiz).Ignorar(Item("", Chegou, assunto: "Contrato sigiloso"));
+
+            string arquivo = File.ReadAllText(Path.Combine(_raiz, "email", ConversasIgnoradas.NomeDoArquivo));
+            arquivo.Should().NotContain("sigiloso");
+        }
+
+        [Fact]
+        public void ArquivoDoFormatoAntigo_ContinuaEscondendo_ESaiDoDiscoSemOAssunto()
+        {
+            // O formato antigo levava o assunto em claro. Migrar não pode devolver à tela o que o
+            // usuário já tinha ignorado, e o assunto tem de sair do arquivo na primeira leitura.
+            var item = Item("", Chegou, assunto: "Contrato sigiloso");
+            string antiga = $"{item.Account}|sem-thread:{item.Name}|{Chegou:o}";
+            string arquivo = Path.Combine(_raiz, "email", ConversasIgnoradas.NomeDoArquivo);
+            Directory.CreateDirectory(Path.GetDirectoryName(arquivo)!);
+            File.WriteAllText(arquivo, System.Text.Json.JsonSerializer.Serialize(
+                new[] { new Ignorada(antiga, Chegou, Chegou) }));
+
+            new ConversasIgnoradas(_raiz).Filtrar(new[] { item })
+                .Visiveis.Should().BeEmpty("a linha migrada casa com a mesma mensagem");
+            File.ReadAllText(arquivo).Should().NotContain("sigiloso");
+        }
+
+        [Fact]
         public void SemThread_IgnoraSoAquelaMensagem()
         {
             // Sem thread o resto do código usa conta|uid:0 — e todas as mensagens sem thread da

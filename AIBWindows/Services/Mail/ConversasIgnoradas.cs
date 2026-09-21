@@ -68,17 +68,36 @@ public sealed class ConversasIgnoradas
     /// outra.
     /// </para>
     /// <para>
-    /// <see cref="MailSummary"/> passou a carregar o UID nas linhas sem thread, e a conversa com
-    /// a IA usa ele (<see cref="ArquivoDeConversas.ChaveDaConversa"/>). Esta chave NÃO mudou
-    /// junto: o <c>ignoradas.json</c> já gravado usa assunto + data, e trocar o formato
-    /// devolveria à tela tudo o que o usuário tinha ignorado. Por levar o assunto, ela não vai
-    /// para o log em claro — quem registra usa o hash (ver <c>MailDigestService.Ignorar</c>).
+    /// O assunto entra só como HASH: a chave vai para o <c>ignoradas.json</c>, e o assunto em
+    /// claro ali era o único lugar do disco onde a triagem guardava um assunto sem o usuário ter
+    /// pedido diário. O formato antigo, com o texto, é convertido na leitura
+    /// (<see cref="Migrar"/>), sem devolver à tela nada do que já estava ignorado.
     /// </para>
     /// </summary>
     public static string ChaveDe(MailSummary item) =>
         string.IsNullOrWhiteSpace(item.ThreadId)
-            ? $"{item.Account}|sem-thread:{item.Name}|{Utc(item.LastMessageAt):o}"
+            ? ChaveSemThread(item.Account, $"{item.Name}|{Utc(item.LastMessageAt):o}")
             : ArquivoDeConversas.Chave(item.Account, item.ThreadId, 0);
+
+    private const string MarcaAntiga = "|sem-thread:";
+    private const string MarcaNova = "|sem-thread#";
+
+    private static string ChaveSemThread(string? conta, string assuntoEData)
+    {
+        byte[] hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(assuntoEData));
+        return $"{conta}{MarcaNova}{Convert.ToHexString(hash)[..32].ToLowerInvariant()}";
+    }
+
+    /// <summary>
+    /// Chave do formato antigo (<c>conta|sem-thread:assunto|data</c>) na forma nova. O hash é
+    /// sobre o mesmo texto que a chave antiga levava, então a linha migrada casa com a mesma
+    /// mensagem que casava antes.
+    /// </summary>
+    internal static string Migrar(string chave)
+    {
+        int i = chave.IndexOf(MarcaAntiga, StringComparison.Ordinal);
+        return i < 0 ? chave : ChaveSemThread(chave[..i], chave[(i + MarcaAntiga.Length)..]);
+    }
 
     /// <summary>Tira a conversa da lista até chegar mensagem nova nela.</summary>
     public void Ignorar(MailSummary item)
@@ -121,14 +140,26 @@ public sealed class ConversasIgnoradas
         return (visiveis, lista.Count - visiveis.Count);
     }
 
-    /// <summary>O que está gravado. Arquivo ausente ou ilegível é lista vazia: ignorar é conforto.</summary>
+    /// <summary>
+    /// O que está gravado. Arquivo ausente ou ilegível é lista vazia: ignorar é conforto.
+    /// <para>
+    /// Linha com chave do formato antigo (assunto em claro) é convertida e o arquivo regravado
+    /// na hora, para o assunto sair do disco na primeira leitura, e não só no próximo clique.
+    /// </para>
+    /// </summary>
     public IReadOnlyList<Ignorada> Ler()
     {
         try
         {
             if (!File.Exists(_caminho)) return Array.Empty<Ignorada>();
-            return JsonSerializer.Deserialize<List<Ignorada>>(File.ReadAllText(_caminho), Json)
-                   ?? new List<Ignorada>();
+            var linhas = JsonSerializer.Deserialize<List<Ignorada>>(File.ReadAllText(_caminho), Json)
+                         ?? new List<Ignorada>();
+
+            if (!linhas.Any(l => l.Chave.Contains(MarcaAntiga, StringComparison.Ordinal))) return linhas;
+
+            var migradas = linhas.Select(l => l with { Chave = Migrar(l.Chave) }).ToList();
+            lock (_porta) Gravar(migradas);
+            return migradas;
         }
         catch (Exception ex)
         {
