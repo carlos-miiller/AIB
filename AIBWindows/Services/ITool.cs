@@ -38,6 +38,21 @@ public interface ITool
     Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1);
 
     /// <summary>
+    /// Executa sabendo O QUE foi autorizado: o contexto que o card mostrou, ou que a dispensa
+    /// descreveu. Null para ferramenta que não pede confirmação. É o único ponto de execução que
+    /// o registry usa.
+    /// <para>
+    /// Existe porque entre autorizar e executar há um intervalo — segundos na dispensa, horas
+    /// com o card aberto — e o disco pode mudar nele. Uma skill de documentação era dispensada
+    /// como "só lê o manual"; se o SKILL.md ganhasse um script antes da execução, o script
+    /// rodava sem card nenhum. Quem sabe comparar o autorizado com o que vai acontecer agora é
+    /// a ferramenta. Default: executa como sempre.
+    /// </para>
+    /// </summary>
+    Task<string> ExecutarAutorizadoAsync(string argumentsJson, int userLevel, CommandConfirmationContext? autorizado)
+        => ExecuteAsync(argumentsJson, userLevel);
+
+    /// <summary>
     /// Se a execução precisa de autorização humana explícita antes de rodar.
     /// Default falso: só ferramentas que alteram a máquina do usuário sobrescrevem.
     /// </summary>
@@ -67,8 +82,25 @@ public interface ITool
     /// responder pergunta. Quem decide de verdade é o registry, que ainda checa o contexto da
     /// conversa e a floor list antes de aceitar a dispensa.
     /// </para>
+    /// <para>
+    /// O outro caso é a skill de documentação (<c>markdown</c>): ela só entrega o manual ao
+    /// modelo e não executa nada. Ver <see cref="Tools.ExecuteSkillTool.DispensaConfirmacao"/>.
+    /// </para>
     /// </summary>
     bool DispensaConfirmacao(string argumentsJson) => false;
+
+    /// <summary>
+    /// Se o <see cref="CommandConfirmationContext.Command"/> desta ferramenta é uma linha de
+    /// comando que a <see cref="CommandFloorList"/> sabe ler.
+    /// <para>
+    /// Default falso: a floor list foi escrita para shell. No <c>write</c> e no <c>edit</c> o
+    /// Command é "CRIAR/SOBRESCREVER/EDITAR &lt;caminho&gt;", e um caminho com "logoff",
+    /// "shutdown" ou "format" no nome era recusado como "desligamento/reboot" — uma recusa que
+    /// mente sobre o motivo manda o modelo procurar solução no lugar errado. Só o
+    /// <c>shell</c> e a <c>skill</c> (que monta a linha de comando do script) respondem true.
+    /// </para>
+    /// </summary>
+    bool PassaPelaFloorList => false;
 
     /// <summary>
     /// Monta o que o cartão de confirmação mostra ao usuário. Fica na ferramenta porque só ela sabe interpretar

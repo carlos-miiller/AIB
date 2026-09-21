@@ -5,8 +5,8 @@ using Xunit;
 namespace AIB.Tests
 {
     /// <summary>
-    /// Floor list de comandos destrutivos. Roda DEPOIS do modal e só refuta abaixo do Nível 7 —
-    /// é rede best-effort, não o portão canônico.
+    /// Floor list de comandos destrutivos. Roda ANTES do card — o que ela barra não vira
+    /// pergunta — e só refuta abaixo do Nível 7. É rede best-effort, não o portão canônico.
     /// </summary>
     public class CommandFloorListTests
     {

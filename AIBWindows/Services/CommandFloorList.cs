@@ -5,10 +5,14 @@ using System.Text.RegularExpressions;
 namespace AIB.Services;
 
 /// <summary>
-/// Floor list de comandos destrutivos para <c>shell</c>. Roda APÓS o
-/// cartão de confirmação no chat (D-04) e refuta apenas quando <c>userLevel &lt; 7</c> e
-/// <c>ConfirmDangerousCommands == ON</c>. Em L&gt;=7 ou com a flag OFF,
-/// o cartão é a autoridade única (D-01, herda Phase 1 D5/D8).
+/// Floor list de comandos destrutivos para <c>shell</c> e <c>skill</c> — só as ferramentas
+/// que respondem <see cref="ITool.PassaPelaFloorList"/>. Roda ANTES do cartão de confirmação
+/// no chat e refuta apenas quando <c>userLevel &lt; 7</c> e <c>ConfirmDangerousCommands == ON</c>.
+/// Em L&gt;=7 ou com a flag OFF, o cartão é a autoridade única (D-01, herda Phase 1 D5/D8).
+/// <para>
+/// Rodava DEPOIS do cartão (D-04): o comando aparecia com "Motivo do bloqueio", o usuário
+/// clicava Permitir e era recusado do mesmo jeito. O que o piso barra não vira pergunta.
+/// </para>
 ///
 /// Pipeline (D-03):
 ///   1. Lowercase.
@@ -18,8 +22,8 @@ namespace AIB.Services;
 ///   5. Regex com <c>\b</c> word boundaries; first match wins.
 ///
 /// Este é um portão BEST-EFFORT. O cartão é o gate canônico per Phase 1 D5
-/// (dispara em qualquer nível; só uma pasta sem confirmação o dispensa, e aí esta lista
-/// roda sozinha). Documentado em SEGURANCA.MD.
+/// (dispara em qualquer nível; só uma dispensa o pula, e aí esta lista roda sozinha).
+/// Documentado em SEGURANCA.MD.
 /// </summary>
 public static class CommandFloorList
 {

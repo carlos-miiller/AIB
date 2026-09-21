@@ -8,6 +8,17 @@ O assistente é capaz de rodar código real de infraestrutura no seu computador.
 - **A Janela Modal:** Toda chamada para a tool `windows_console_execution` é obrigatoriamente roteada para parar a thread e abrir a `CommandConfirmationWindow`. A interface deve cuspir o script perigoso explícito para o usuário e forçar um Clique Físico Humano em "Aprovar" ou "Rejeitar".
 - Qualquer bypass ou "jeitinho" pra pular essa tela modal será considerado violação crítica da arquitetura.
 
+### 1.1 Floor list (piso de comandos destrutivos)
+- **Roda ANTES do cartão**, no `ToolRegistry`, tanto no caminho com cartão quanto no dispensado por pasta. O que ela barra é negado direto com `ACESSO NEGADO (FLOOR): …`, sem perguntar: antes ela rodava depois, e o usuário clicava "Permitir" num comando que seria recusado de qualquer jeito.
+- **Só para `shell` e `skill`** — as ferramentas com `ITool.PassaPelaFloorList = true`, cujo comando é linha de comando. No `write`/`edit` o comando é `CRIAR/SOBRESCREVER/EDITAR <caminho>`, e um caminho com "logoff" ou "format" no nome era recusado com motivo falso.
+- **Exceção por nível:** abaixo do Nível 7 e com `ConfirmDangerousCommands` ligado ela barra; em Nível 7+ ou com a flag desligada, não barra — e o cartão continua perguntando.
+- É **best-effort**: lê o texto do comando, não o conteúdo de um script. O cartão continua sendo o portão canônico.
+
+### 1.2 Fail-closed no portão
+- Toda negação do portão começa com `ACESSO NEGADO` e conta como **falha** (chip, memória, bloqueio de repetição).
+- Sem contexto para descrever a operação (nulo ou exceção ao montá-lo) → **nega**, com cartão ou com dispensa de pasta.
+- **O autorizado viaja até a execução** (`ITool.ExecutarAutorizadoAsync`). Uma skill de documentação (`markdown`) é dispensada do cartão porque só lê o manual; se entre a autorização e a execução o `SKILL.md` passar a ter script — ou o script aprovado trocar de arquivo —, a execução recusa ("a habilidade mudou") em vez de rodar. Sem autorização descrita, o script não roda.
+
 ## 2. Tratamento Criptográfico de Segredos (O Cofre)
 Você quer que a Inteligência saiba todas as suas senhas de sites para logar você, mas você não pode jogar suas senhas num banco de dados texto.
 - **Não Salvar em TXT/LiteDB:** É proibido armazenar credenciais, Tokens JWT ou senhas em texto plano no banco de dados vetorial ou em arquivos da pasta `%appdata%`.

@@ -8,6 +8,9 @@ namespace AIB.Services.Tools;
 
 public class WriteFileTool : ITool
 {
+    /// <summary>Quanto do conteúdo aparece na prévia do card.</summary>
+    private const int TetoDaPrevia = 400;
+
     public string Name => Ferramentas.Gravar;
     public string Description => "Cria ou sobrescreve um arquivo com o texto fornecido. Sempre use caminhos absolutos.";
     public int RequiredLevel => 2;
@@ -19,22 +22,32 @@ public class WriteFileTool : ITool
     /// sempre. Ver <see cref="PastasSemConfirmacao"/>.
     /// </summary>
     public bool DispensaConfirmacao(string argumentsJson)
-        => PastasSemConfirmacao.Dispensa(Caminho(argumentsJson));
+        => PastasSemConfirmacao.Dispensa(Ler(argumentsJson)?.Caminho);
 
-    private static string? Caminho(string argumentsJson)
+    /// <summary>
+    /// Recusa antes do portão humano o que não pode dar certo. Ver <see cref="ITool.Validar"/>.
+    /// <para>
+    /// Sem isto, uma chamada sem <c>content</c> mostrava "CRIAR …" no card, o usuário
+    /// autorizava, e só DEPOIS vinha o "parâmetros obrigatórios" — uma autorização pedida para
+    /// algo que não ia acontecer.
+    /// </para>
+    /// </summary>
+    public string? Validar(string argumentsJson)
     {
-        try
-        {
-            var args = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
-            if (!args.TryGetProperty("path", out var pathEl)) return null;
+        if (!ObjetoJson(argumentsJson))
+            return "ERRO: argumentos ilegíveis. Envie um objeto JSON com 'path' e 'content'.";
 
-            string caminho = PathArgumentRepair.Normalize(pathEl.GetString());
-            return string.IsNullOrWhiteSpace(caminho) ? null : caminho;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        var a = Ler(argumentsJson);
+        if (a == null)
+            return "ERRO: O parâmetro 'path' é obrigatório e não pode estar vazio.";
+
+        if (a.Conteudo == null)
+            return "ERRO: O parâmetro 'content' é obrigatório (texto; vazio cria um arquivo vazio).";
+
+        try { Path.GetFullPath(a.Caminho); }
+        catch (Exception ex) { return $"ERRO: caminho inválido '{a.Caminho}': {ex.Message}"; }
+
+        return null;
     }
 
     /// <summary>
@@ -45,35 +58,26 @@ public class WriteFileTool : ITool
     /// </summary>
     public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel)
     {
-        try
+        var a = Ler(argumentsJson);
+        if (a == null || a.Conteudo == null) return null;
+
+        string resolvido;
+        try { resolvido = Path.GetFullPath(a.Caminho); }
+        catch { return null; }
+
+        bool existe = File.Exists(resolvido);
+        string previa = a.Conteudo.Length > TetoDaPrevia
+            ? a.Conteudo[..TetoDaPrevia] + "\n...[prévia truncada]"
+            : a.Conteudo;
+
+        return new CommandConfirmationContext
         {
-            var args = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
-            if (!args.TryGetProperty("path", out var pathEl)) return null;
-
-            string caminho = PathArgumentRepair.Normalize(pathEl.GetString());
-            if (string.IsNullOrWhiteSpace(caminho)) return null;
-
-            string resolvido;
-            try { resolvido = Path.GetFullPath(caminho); }
-            catch { return null; }
-
-            bool existe = File.Exists(resolvido);
-            string conteudo = args.TryGetProperty("content", out var c) ? (c.GetString() ?? "") : "";
-            string previa = conteudo.Length > 400 ? conteudo[..400] + "\n...[prévia truncada]" : conteudo;
-
-            return new CommandConfirmationContext
-            {
-                Tool = Name,
-                Command = (existe ? "SOBRESCREVER " : "CRIAR ") + resolvido,
-                Level = userLevel,
-                Cwd = Environment.CurrentDirectory,
-                ScriptBody = previa
-            };
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+            Tool = Name,
+            Command = (existe ? "SOBRESCREVER " : "CRIAR ") + resolvido,
+            Level = userLevel,
+            Cwd = Environment.CurrentDirectory,
+            ScriptBody = previa
+        };
     }
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
@@ -101,17 +105,11 @@ public class WriteFileTool : ITool
     {
         try
         {
-            var args = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
-            if (!args.TryGetProperty("path", out var pathElement) || !args.TryGetProperty("content", out var contentElement))
+            var a = Ler(argumentsJson);
+            if (a == null || a.Conteudo == null)
                 return "ERRO: Os parâmetros 'path' e 'content' são obrigatórios.";
 
-            // Só o caminho passa pelo reparo. O conteúdo NUNCA: ali uma tabulação ou quebra
-            // de linha de verdade é legítima, e reescrevê-la corromperia o arquivo.
-            string path = PathArgumentRepair.Normalize(pathElement.GetString(), out bool pathRepaired);
-            string content = contentElement.GetString() ?? string.Empty;
-
-            if (string.IsNullOrWhiteSpace(path))
-                return "ERRO: O caminho não pode estar vazio.";
+            string path = a.Caminho;
 
             Console.WriteLine($"[TOOL: write] Escrevendo em: {path}");
 
@@ -122,11 +120,11 @@ public class WriteFileTool : ITool
                 Directory.CreateDirectory(dir);
             }
 
-            await File.WriteAllTextAsync(path, content);
+            await File.WriteAllTextAsync(path, a.Conteudo);
 
             // Avisa o modelo do reparo para que ele corrija o escape na próxima chamada, em
             // vez de repetir o erro a cada arquivo.
-            string aviso = pathRepaired
+            string aviso = a.CaminhoReparado
                 ? " AVISO: o caminho recebido continha escapes JSON inválidos e foi corrigido. Em JSON, escreva a barra invertida duplicada (C:\\temp\\x.txt)."
                 : "";
 
@@ -136,5 +134,49 @@ public class WriteFileTool : ITool
         {
             return $"ERRO ao escrever arquivo: {ex.Message}";
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <param name="Conteudo">Null quando <c>content</c> não veio ou não é texto.</param>
+    private sealed record Argumentos(string Caminho, string? Conteudo, bool CaminhoReparado);
+
+    /// <summary>
+    /// A leitura ÚNICA dos argumentos, usada pela dispensa, pelo pré-voo, pelo card e pela
+    /// execução. Eram quatro leituras parecidas, e bastava uma divergir para o card descrever uma
+    /// gravação e a execução fazer outra.
+    /// <para>
+    /// Só o caminho passa pelo reparo. O conteúdo NUNCA: ali uma tabulação ou quebra de linha de
+    /// verdade é legítima, e reescrevê-la corromperia o arquivo.
+    /// </para>
+    /// </summary>
+    private static Argumentos? Ler(string argumentsJson)
+    {
+        try
+        {
+            var args = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
+            if (args.ValueKind != JsonValueKind.Object) return null;
+
+            if (!args.TryGetProperty("path", out var p) || p.ValueKind != JsonValueKind.String) return null;
+
+            string caminho = PathArgumentRepair.Normalize(p.GetString(), out bool reparado);
+            if (string.IsNullOrWhiteSpace(caminho)) return null;
+
+            string? conteudo = args.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String
+                ? c.GetString()
+                : null;
+
+            return new Argumentos(caminho, conteudo, reparado);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool ObjetoJson(string argumentsJson)
+    {
+        try { return JsonSerializer.Deserialize<JsonElement>(argumentsJson).ValueKind == JsonValueKind.Object; }
+        catch (JsonException) { return false; }
     }
 }

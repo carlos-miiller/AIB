@@ -18,6 +18,9 @@ public class RunCommandTool : ITool
 
     public bool RequiresConfirmation => true;
 
+    /// <summary>A floor list existe para esta ferramenta. Ver <see cref="ITool.PassaPelaFloorList"/>.</summary>
+    public bool PassaPelaFloorList => true;
+
     public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel)
     {
         try
@@ -143,8 +146,15 @@ public class RunCommandTool : ITool
         return string.Join("\n", linhas).Trim();
     }
 
-    /// <summary>Teto do texto devolvido ao modelo.</summary>
+    /// <summary>Teto do texto devolvido ao modelo. Vale também para a saída das skills.</summary>
     public const int TetoDaSaida = 8000;
+
+    /// <summary>
+    /// O que <see cref="Montar"/> devolve quando deu certo e não houve saída. Constante porque a
+    /// <see cref="ExecuteSkillTool"/> troca este texto pelo dela — "Comando executado" numa
+    /// habilidade confunde quem lê.
+    /// </summary>
+    public const string SucessoSemSaida = "Comando executado com sucesso (sem saída).";
 
     /// <summary>
     /// O resultado que o modelo lê, com a FALHA dita na primeira palavra.
@@ -179,7 +189,7 @@ public class RunCommandTool : ITool
         bool falhou = codigoDeSaida != 0 || erros.Count > 0;
 
         if (!falhou)
-            return saida.Length == 0 ? "Comando executado com sucesso (sem saída)." : saida;
+            return saida.Length == 0 ? SucessoSemSaida : saida;
 
         string primeira = erros.FirstOrDefault()
                           ?? saida.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0)

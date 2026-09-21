@@ -323,6 +323,48 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void DoisCaminhosSEM_ASPAS_SaoDoisCaminhos()
+        {
+            // O defeito: a regex não parava em espaço, e "C:\dentro\a C:\fora\b" virava um
+            // caminho só — que começa DENTRO da pasta de confiança. O aviso sobre o destino, que
+            // era o que importava, não aparecia.
+            string dentro = Path.Combine(_dir, "a.txt");
+
+            string? aviso = EscritaNoComando.Aviso($@"Copy-Item {dentro} C:\fora\b.txt", _dir);
+
+            aviso.Should().NotBeNull();
+            aviso.Should().Contain(@"C:\fora\b.txt");
+            aviso.Should().NotContain(dentro, "o caminho de dentro está na pasta de confiança");
+        }
+
+        [Fact]
+        public void CaminhoENTRE_ASPAS_ComEspaco_ContinuaInteiro()
+        {
+            // "emails fisio" é nome de pasta legítimo: entre aspas, o espaço faz parte do nome.
+            EscritaNoComando.Aviso(@"Set-Content ""C:\fora\emails fisio\a.txt"" -Value x", _dir)
+                .Should().Contain(@"C:\fora\emails fisio\a.txt");
+        }
+
+        [Fact]
+        public async Task NaPastaDispensada_CaminhoComNomeDeComando_NaoEhBarradoPeloPiso()
+        {
+            // A floor list lia o Command do write — "CRIAR <caminho>" — e um caminho com
+            // "logoff" ou "format" no nome era recusado como desligamento ou formatação de disco.
+            var prompt = new PromptQueConta();
+            var registry = new ToolRegistry(prompt);
+            string alvo = Path.Combine(_dir, "logoff-shutdown", "format.txt");
+            string args = JsonSerializer.Serialize(new { path = alvo, content = "oi" });
+            string? decisao = null;
+
+            PastasSemConfirmacao.Configurar(_dir);
+            string r = await registry.ExecuteToolAsync("write", args, 2, null, d => decisao = d);
+
+            r.Should().StartWith("SUCESSO");
+            decisao.Should().Be("pasta_dispensada");
+            File.ReadAllText(alvo).Should().Be("oi");
+        }
+
+        [Fact]
         public void OAviso_ChegaAoCardDoShell()
         {
             PastasSemConfirmacao.Configurar(_dir);

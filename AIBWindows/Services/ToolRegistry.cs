@@ -104,17 +104,23 @@ public class ToolRegistry
                 return recusa;
             }
 
+            // O que foi autorizado viaja até a execução: a ferramenta confere se ainda é aquilo.
+            // Ver ITool.ExecutarAutorizadoAsync.
+            CommandConfirmationContext? autorizado = null;
+
             if (tool.RequiresConfirmation)
             {
                 if (DispensaPelaPasta(tool, argumentsJson))
                 {
-                    var (liberado, recusaDoPiso) = await DispensarAsync(tool, argumentsJson, userLevel, aoDecidir);
-                    if (!liberado) return recusaDoPiso!;
+                    var (liberado, motivo, ctxDispensa) = await DispensarAsync(tool, argumentsJson, userLevel, aoDecidir);
+                    if (!liberado) return motivo!;
+                    autorizado = ctxDispensa;
                 }
                 else
                 {
-                    var (autorizado, motivo) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano, aoDecidir);
-                    if (!autorizado) return motivo!;
+                    var (permitido, motivo, ctxCard) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano, aoDecidir);
+                    if (!permitido) return motivo!;
+                    autorizado = ctxCard;
                 }
             }
             else
@@ -125,7 +131,7 @@ public class ToolRegistry
             Console.WriteLine($"[REGISTRY] Executando: {toolName}({(argumentsJson.Length > 100 ? argumentsJson[..100] + "..." : argumentsJson)})");
             try
             {
-                return await tool.ExecuteAsync(argumentsJson, userLevel);
+                return await tool.ExecutarAutorizadoAsync(argumentsJson, userLevel, autorizado);
             }
             catch (Exception ex)
             {
@@ -163,24 +169,27 @@ public class ToolRegistry
     /// A floor list continua valendo. Dispensar o card é dispensar a PERGUNTA, não o piso: o que
     /// exige Nível 7 segue exigindo Nível 7 dentro da pasta de confiança.
     /// </para>
+    /// <para>
+    /// Sem contexto, NEGA — como o <see cref="AuthorizeAsync"/>. Antes, contexto nulo ou exceção
+    /// ao montá-lo viravam <c>comando = ""</c>, a floor list não via nada e a chamada passava: o
+    /// mesmo caso que o caminho com card recusa como <c>deny_sem_contexto</c> era permitido aqui,
+    /// e ainda gravado na auditoria com o comando em branco.
+    /// </para>
     /// </summary>
-    private async Task<(bool Liberado, string? Motivo)> DispensarAsync(
+    private async Task<(bool Liberado, string? Motivo, CommandConfirmationContext? Contexto)> DispensarAsync(
         ITool tool, string argumentsJson, int userLevel, Action<string>? aoDecidir)
     {
-        string comando = "";
-        try { comando = tool.BuildConfirmationContext(argumentsJson, userLevel)?.Command ?? ""; }
-        catch { }
+        var ctx = MontarContexto(tool, argumentsJson, userLevel);
+        if (ctx == null) return (false, await NegarSemContextoAsync(tool, userLevel, aoDecidir), null);
 
-        bool floorLigado = _settingsService?.LoadSettings().ConfirmDangerousCommands ?? true;
-        if (floorLigado)
+        string comando = ctx.Command ?? "";
+
+        string? razao = BateNoPiso(tool, comando, userLevel);
+        if (razao != null)
         {
-            var (bateu, razao) = CommandFloorList.Match(comando, userLevel);
-            if (bateu)
-            {
-                await AuditLogService.AppendAsync(new { evento = "deny_floor", ferramenta = tool.Name, comando, userLevel, razao });
-                aoDecidir?.Invoke("barrada_pelo_piso");
-                return (false, razao!);
-            }
+            await AuditLogService.AppendAsync(new { evento = "deny_floor", ferramenta = tool.Name, comando, userLevel, razao });
+            aoDecidir?.Invoke("barrada_pelo_piso");
+            return (false, razao, null);
         }
 
         await AuditLogService.AppendAsync(new
@@ -195,28 +204,37 @@ public class ToolRegistry
         Console.WriteLine($"[REGISTRY] {tool.Name}: sem confirmação — alvo em pasta dispensada.");
         aoDecidir?.Invoke("pasta_dispensada");
 
-        return (true, null);
+        return (true, null, ctx);
     }
 
     /// <summary>
-    /// Portão de autorização, na ordem documentada em SEGURANCA.MD:
-    /// cartão primeiro (autoridade canônica, dispara em qualquer nível), floor list depois
-    /// (best-effort, só refuta abaixo do Nível 7 e com ConfirmDangerousCommands ligado).
-    /// A auditoria grava ANTES da execução, em todos os desfechos.
+    /// Portão de autorização: floor list primeiro (best-effort, só refuta abaixo do Nível 7 e com
+    /// ConfirmDangerousCommands ligado), cartão depois (autoridade canônica, dispara em qualquer
+    /// nível). A auditoria grava ANTES da execução, em todos os desfechos.
+    /// <para>
+    /// A floor list rodava DEPOIS do cartão: o comando aparecia com "Motivo do bloqueio", o
+    /// usuário clicava Permitir, e era recusado do mesmo jeito — uma pergunta cuja resposta "sim"
+    /// não valia nada. O que o piso barra não vira pergunta. A exceção por nível é a mesma de
+    /// sempre, e mora no <see cref="CommandFloorList.Match"/>: em L&gt;=7 o piso não barra nada.
+    /// </para>
     /// </summary>
-    private async Task<(bool Autorizado, string? Motivo)> AuthorizeAsync(
+    private async Task<(bool Autorizado, string? Motivo, CommandConfirmationContext? Contexto)> AuthorizeAsync(
         ITool tool, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null,
         Action<string>? aoDecidir = null)
     {
-        var ctx = tool.BuildConfirmationContext(argumentsJson, userLevel);
-        if (ctx == null)
-        {
-            await AuditLogService.AppendAsync(new { evento = "deny_sem_contexto", ferramenta = tool.Name, userLevel });
-            aoDecidir?.Invoke("negada_sem_contexto");
-            return (false, $"ACESSO NEGADO: '{tool.Name}' exige confirmação, mas não foi possível descrever a operação para autorizar.");
-        }
+        var ctx = MontarContexto(tool, argumentsJson, userLevel);
+        if (ctx == null) return (false, await NegarSemContextoAsync(tool, userLevel, aoDecidir), null);
 
         string comando = ctx.Command ?? "";
+
+        string? razao = BateNoPiso(tool, comando, userLevel);
+        if (razao != null)
+        {
+            await AuditLogService.AppendAsync(new { evento = "deny_floor", ferramenta = tool.Name, comando, userLevel, razao });
+            aoDecidir?.Invoke("barrada_pelo_piso");
+            return (false, razao, null);
+        }
+
         var chave = (tool.Name, comando, (string?)null);
 
         // Texto de e-mail no contexto: o pedido desta ação pode ter vindo de instruções escritas
@@ -237,7 +255,7 @@ public class ToolRegistry
             {
                 await AuditLogService.AppendAsync(new { evento = "deny_sem_ui", ferramenta = tool.Name, comando, userLevel });
                 aoDecidir?.Invoke("negada_sem_interface");
-                return (false, $"ACESSO NEGADO: '{tool.Name}' exige confirmação do usuário e não há interface disponível para pedi-la.");
+                return (false, $"ACESSO NEGADO: '{tool.Name}' exige confirmação do usuário e não há interface disponível para pedi-la.", null);
             }
 
             Console.WriteLine($"[REGISTRY] {tool.Name}: esperando você autorizar...");
@@ -263,30 +281,92 @@ public class ToolRegistry
 
             aoDecidir?.Invoke(!permitido ? "recusada" : sempre ? "permitida_sempre" : "permitida");
 
-            if (!permitido) return (false, RecusaDoUsuario);
+            if (!permitido) return (false, RecusaDoUsuario, null);
             if (sempre) AlwaysAllowSession.Add(chave);
         }
 
-        // Floor list roda DEPOIS do cartão: mesmo autorizado, categorias destrutivas exigem
-        // Nível 7. Em L>=7 ou com a flag desligada, o cartão é a autoridade única.
-        bool floorLigado = _settingsService?.LoadSettings().ConfirmDangerousCommands ?? true;
-        if (floorLigado)
-        {
-            var (bateu, razao) = CommandFloorList.Match(comando, userLevel);
-            if (bateu)
-            {
-                await AuditLogService.AppendAsync(new { evento = "deny_floor", ferramenta = tool.Name, comando, userLevel, razao });
-                aoDecidir?.Invoke("barrada_pelo_piso");
-                return (false, razao!);
-            }
-        }
+        return (true, null, ctx);
+    }
 
-        return (true, null);
+    /// <summary>
+    /// O contexto do cartão, ou null. Exceção da ferramenta ao montá-lo também é null: sem
+    /// descrever a operação não há o que autorizar, e null é negação nos dois caminhos.
+    /// </summary>
+    private static CommandConfirmationContext? MontarContexto(ITool tool, string argumentsJson, int userLevel)
+    {
+        try { return tool.BuildConfirmationContext(argumentsJson, userLevel); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[REGISTRY] {tool.Name}: falha ao montar o contexto de confirmação: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static async Task<string> NegarSemContextoAsync(ITool tool, int userLevel, Action<string>? aoDecidir)
+    {
+        await AuditLogService.AppendAsync(new { evento = "deny_sem_contexto", ferramenta = tool.Name, userLevel });
+        aoDecidir?.Invoke("negada_sem_contexto");
+        return $"ACESSO NEGADO: '{tool.Name}' exige confirmação, mas não foi possível descrever a operação para autorizar.";
+    }
+
+    /// <summary>
+    /// O motivo da floor list, ou null quando ela não barra. Só para as ferramentas cujo comando
+    /// é linha de comando — ver <see cref="ITool.PassaPelaFloorList"/>.
+    /// </summary>
+    private string? BateNoPiso(ITool tool, string comando, int userLevel)
+    {
+        if (!tool.PassaPelaFloorList) return null;
+
+        bool floorLigado = _settingsService?.LoadSettings().ConfirmDangerousCommands ?? true;
+        if (!floorLigado) return null;
+
+        var (bateu, razao) = CommandFloorList.Match(comando, userLevel);
+        return bateu ? razao ?? "ACESSO NEGADO (FLOOR): comando destrutivo — requer Nível 7." : null;
+    }
+
+    /// <summary>
+    /// Reavalia as skills quando um <c>write</c> ou <c>edit</c> bem-sucedido caiu dentro da pasta
+    /// delas.
+    /// <para>
+    /// Quem fazia isto era o laço do agente, ao ver a ferramenta <c>materialize_skill</c> — que
+    /// não existe mais. Uma skill escrita pelo modelo durante a conversa (um SKILL.md novo) só
+    /// passava a existir na próxima abertura do app: a ferramenta <c>skill</c> nem aparecia no
+    /// schema quando era a primeira.
+    /// </para>
+    /// <para>
+    /// Quem chama é o laço, DEPOIS de o lote paralelo terminar, e não o
+    /// <see cref="ExecuteToolAsync"/>: as ferramentas de um turno rodam em paralelo, e o
+    /// <see cref="Refresh"/> mexe no dicionário que as outras chamadas estão lendo.
+    /// </para>
+    /// </summary>
+    public void ReavaliarSkillsSeTocou(string ferramenta, string argumentsJson, string resultado)
+    {
+        try
+        {
+            if (ferramenta is not (Ferramentas.Gravar or Ferramentas.Editar)) return;
+            if (Memory.ArtifactExtractor.Falhou(resultado)) return;
+
+            var args = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(argumentsJson);
+            if (args.ValueKind != System.Text.Json.JsonValueKind.Object) return;
+            if (!args.TryGetProperty("path", out var p) || p.ValueKind != System.Text.Json.JsonValueKind.String) return;
+
+            string caminho = PathArgumentRepair.Normalize(p.GetString());
+
+            // A mesma comparação de "está dentro da pasta" das pastas sem confirmação: resolve
+            // '..' e junções, e não confunde "skills" com "skills-velhas".
+            if (PastasSemConfirmacao.Dispensa(caminho, SkillService.Raiz)) Refresh();
+        }
+        catch (Exception ex)
+        {
+            // A gravação já aconteceu e deu certo. Falhar em reavaliar não pode virar erro dela.
+            Console.WriteLine($"[REGISTRY] Falha ao reavaliar as skills: {ex.Message}");
+        }
     }
 
     /// <summary>
     /// Reavalia as skills em disco. Chamado quando uma skill nasce durante a conversa: sem
-    /// isto, a habilidade recem-instalada so existiria na proxima abertura do app.
+    /// isto, a habilidade recem-instalada so existiria na proxima abertura do app. Ver
+    /// <see cref="ReavaliarSkillsSeTocou"/>.
     /// </summary>
     public void Refresh()
     {
@@ -295,6 +375,15 @@ public class ToolRegistry
     }
 
     public bool Contains(string toolName) => _tools.ContainsKey(toolName);
+
+    /// <summary>
+    /// Registra uma ferramenta além das nativas. Existe para os ensaios do PORTÃO: os caminhos
+    /// de falha dele (contexto que não se monta, ferramenta que lança ao descrever a operação)
+    /// não são alcançáveis pelas nativas depois do pré-voo — e um caminho de negação que
+    /// ninguém exercita é um caminho que vira "permitir" sem ninguém ver. Foi o que aconteceu
+    /// na dispensa por pasta. A ferramenta registrada aqui passa pelo mesmo portão de todas.
+    /// </summary>
+    public void Registrar(ITool tool) => _tools[tool.Name] = tool;
 
     private void RegisterNativeTools()
     {

@@ -169,6 +169,174 @@ namespace AIB.Tests
             saida.Should().NotContain("ISTO NAO DEVE APARECER");
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // Saída: o mesmo Montar do shell
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task ScriptQueSaiComCodigoDeErro_ComecaComERRO()
+        {
+            // A skill montava a saída sozinha e não olhava o código: "exit 3" com algo escrito
+            // voltava sem "ERRO" na frente, e o chip, a memória e o bloqueio de repetição viam
+            // sucesso.
+            Instalar("quebra", "powershell",
+                script: "Write-Output 'metade feita'; exit 3",
+                corpo: "MANUAL DA QUEBRA");
+
+            string saida = await _tool.ExecuteAsync("{\"skill_name\":\"quebra\"}");
+
+            saida.Should().StartWith("ERRO (código de saída 3)");
+            saida.Should().Contain("metade feita");
+            saida.Should().Contain("MANUAL DA QUEBRA", "o manual continua indo junto da falha");
+            AIB.Services.Memory.ArtifactExtractor.Falhou(saida).Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task ScriptSemSaida_DizQueAHabilidadeRodou()
+        {
+            Instalar("muda", "powershell", script: "$x = 1");
+
+            (await _tool.ExecuteAsync("{\"skill_name\":\"muda\"}"))
+                .Should().Be("Habilidade 'muda' executada (sem saída).");
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Pré-voo e portão
+        // ─────────────────────────────────────────────────────────────────────
+
+        private sealed class PromptQueConta : IConfirmationPrompt
+        {
+            private readonly bool _permitir;
+            public PromptQueConta(bool permitir) => _permitir = permitir;
+
+            public System.Collections.Generic.List<CommandConfirmationContext> Perguntas { get; } = new();
+
+            public Task<(bool Allowed, bool AlwaysAllow)> AskAsync(CommandConfirmationContext context)
+            {
+                Perguntas.Add(context);
+                return Task.FromResult((_permitir, false));
+            }
+        }
+
+        [Fact]
+        public async Task SkillInexistente_RecusadaNoPreVoo_ComALista()
+        {
+            // O card não sabe descrever o que não existe, e o registry negava com um "ACESSO
+            // NEGADO" genérico — o ramo que responde com a lista nunca era alcançado.
+            Instalar("alfa", "markdown", corpo: "corpo");
+
+            _tool.Validar("{\"skill_name\":\"fantasma\"}")
+                .Should().Contain("não encontrada").And.Contain("alfa");
+
+            var prompt = new PromptQueConta(permitir: true);
+            var registry = new ToolRegistry(prompt);
+            string? decisao = null;
+
+            string r = await registry.ExecuteToolAsync("skill", "{\"skill_name\":\"fantasma\"}", 9, null, d => decisao = d);
+
+            r.Should().StartWith("ERRO").And.Contain("alfa");
+            decisao.Should().Be("recusada_no_pre_voo");
+            prompt.Perguntas.Should().BeEmpty();
+        }
+
+        [Fact]
+        public void SkillDeDocumentacao_DispensaOCard_ScriptNao()
+        {
+            Instalar("procedimento", "markdown", corpo: "Passo 1.");
+            Instalar("roda", "powershell", script: "Write-Output 'x'");
+
+            ((ITool)_tool).DispensaConfirmacao("{\"skill_name\":\"procedimento\"}").Should().BeTrue();
+            ((ITool)_tool).DispensaConfirmacao("{\"skill_name\":\"roda\"}")
+                .Should().BeFalse("rodar um script é rodar código: o card continua");
+            ((ITool)_tool).DispensaConfirmacao("{\"skill_name\":\"fantasma\"}").Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task SkillDeDocumentacao_PeloRegistry_EntregaOManualSemPerguntar()
+        {
+            Instalar("procedimento", "markdown", corpo: "Passo 1: respire.");
+            var prompt = new PromptQueConta(permitir: false);
+            var registry = new ToolRegistry(prompt);
+
+            string r = await registry.ExecuteToolAsync("skill", "{\"skill_name\":\"procedimento\"}", 9);
+
+            r.Should().Contain("Passo 1: respire.");
+            prompt.Perguntas.Should().BeEmpty("ler um manual não executa nada");
+        }
+
+        [Fact]
+        public async Task SkillDeDocumentacao_ComEmailNoContexto_Pergunta()
+        {
+            // Texto de e-mail anula toda dispensa. O card precisa saber descrever a leitura.
+            Instalar("procedimento", "markdown", corpo: "Passo 1: respire.");
+            var prompt = new PromptQueConta(permitir: true);
+            var registry = new ToolRegistry(prompt) { ConteudoDeEmailNoContexto = () => true };
+
+            string r = await registry.ExecuteToolAsync("skill", "{\"skill_name\":\"procedimento\"}", 9);
+
+            prompt.Perguntas.Should().ContainSingle()
+                .Which.Command.Should().StartWith("LER MANUAL ");
+            r.Should().Contain("Passo 1: respire.");
+        }
+
+        [Fact]
+        public async Task ManualDispensado_QueVIROU_Script_NaoRoda()
+        {
+            // A brecha: a skill de documentação é dispensada do card porque só lê o manual. Se o
+            // SKILL.md ganha um script entre a dispensa e a execução, o script rodava sem card.
+            Instalar("procedimento", "markdown", corpo: "Passo 1.");
+            string args = "{\"skill_name\":\"procedimento\"}";
+
+            ((ITool)_tool).DispensaConfirmacao(args).Should().BeTrue();
+            var autorizado = _tool.BuildConfirmationContext(args, 9)!;
+            autorizado.Command.Should().StartWith(ExecuteSkillTool.PrefixoDoManual);
+
+            // Entre a dispensa e a execução, o SKILL.md passa a apontar para um script.
+            string marca = Path.Combine(_raiz, "o-script-rodou.txt");
+            Instalar("procedimento", "powershell",
+                script: $"Set-Content -Path '{marca}' -Value x",
+                corpo: "Passo 1.");
+
+            string r = await _tool.ExecutarAutorizadoAsync(args, 9, autorizado);
+
+            r.Should().StartWith("ERRO").And.Contain("mudou");
+            File.Exists(marca).Should().BeFalse("o que foi autorizado era LER, não executar");
+        }
+
+        [Fact]
+        public async Task ScriptAutorizado_QueTrocouDeArquivo_NaoRoda()
+        {
+            Instalar("roda", "powershell", script: "Write-Output 'a'");
+            string args = "{\"skill_name\":\"roda\"}";
+            var autorizado = _tool.BuildConfirmationContext(args, 9)!;
+
+            // Mesmo nome, outro script declarado: o card aprovou o caminho antigo.
+            string pasta = Path.Combine(_raiz, "roda");
+            File.WriteAllText(Path.Combine(pasta, "outro.ps1"), "Write-Output 'b'");
+            File.WriteAllText(Path.Combine(pasta, "SKILL.md"),
+                "---\nname: roda\ndescription: ensaio\ninterpreter: powershell\nscript_file: outro.ps1\n---\n");
+
+            (await _tool.ExecutarAutorizadoAsync(args, 9, autorizado)).Should().StartWith("ERRO");
+            (await _tool.ExecutarAutorizadoAsync(args, 9, null)).Should().StartWith("ERRO",
+                "sem autorização descrita, o script não roda");
+        }
+
+        [Fact]
+        public async Task SkillComArgumentoDestrutivo_BarradaPeloPiso_SemPerguntar()
+        {
+            _tool.PassaPelaFloorList.Should().BeTrue("o Command da skill é uma linha de comando");
+
+            Instalar("eco", "powershell", script: "param([string]$Texto) Write-Output $Texto");
+            var prompt = new PromptQueConta(permitir: false);
+            var registry = new ToolRegistry(prompt);
+
+            string r = await registry.ExecuteToolAsync(
+                "skill", "{\"skill_name\":\"eco\",\"arguments\":\"shutdown /s\"}", 5);
+
+            r.Should().StartWith("ACESSO NEGADO (FLOOR)");
+            prompt.Perguntas.Should().BeEmpty();
+        }
+
         [Fact]
         public async Task ScriptPowerShell_RodaEDevolveASaida()
         {

@@ -305,8 +305,11 @@ public sealed class AgentLoop
 
                     // O modelo lê o erro com o recado no fim; a tela e o registro de ações, não.
                     store.AppendToolResult(tc.Id, ParaOModelo(tc.Name, result));
-                    TrackRecentFile(tc);
-                    if (tc.Name == "materialize_skill") _toolRegistry.Refresh();
+                    TrackRecentFile(tc, result);
+
+                    // Um SKILL.md gravado agora passa a existir já no próximo pedido ao modelo.
+                    // Aqui, fora do lote paralelo: o Refresh mexe no dicionário de ferramentas.
+                    _toolRegistry.ReavaliarSkillsSeTocou(tc.Name, tc.ArgumentsOrEmpty(), result);
                 }
 
                 // O mundo mudou: uma gravação, edição ou comando deu certo. A chamada que falhou
@@ -433,14 +436,12 @@ public sealed class AgentLoop
     /// </summary>
     public static string ParaOModelo(string ferramenta, string resultado)
     {
+        // Resposta do portão — nível insuficiente, piso, sem contexto, recusa do usuário — é
+        // FALHA e cai aqui: ganha o recado, não ganha a marca de conteúdo (não é texto de fora),
+        // e o "ACESSO NEGADO" continua na primeira posição.
         if (Memory.ArtifactExtractor.Falhou(resultado)) return resultado + RecadoDeFalha;
 
-        // Resposta do portão — nível insuficiente, recusa do usuário — não é conteúdo de fora, e
-        // o "ACESSO NEGADO" também precisa continuar na primeira posição.
-        bool doPortao = resultado.StartsWith("ACESSO NEGADO", StringComparison.Ordinal)
-                        || Memory.ArtifactExtractor.Recusado(resultado);
-
-        return TrazemConteudo.Contains(ferramenta) && !doPortao ? MarcaDeConteudo + resultado : resultado;
+        return TrazemConteudo.Contains(ferramenta) ? MarcaDeConteudo + resultado : resultado;
     }
 
     /// <summary>
@@ -520,21 +521,30 @@ public sealed class AgentLoop
         return t.Length > 300 ? t.Substring(0, 300) + "…" : t;
     }
 
-    /// <summary>Mantém a lista de arquivos recentes acessados pelo agente.</summary>
-    private static void TrackRecentFile(ToolCallAccumulator tc)
+    /// <summary>
+    /// Mantém a lista de arquivos recentes acessados pelo agente.
+    /// <para>
+    /// A lista antiga de nomes era de outra geração de ferramentas (<c>view_file</c>,
+    /// <c>write_to_file</c>, <c>replace_file_content</c>): só o <c>read</c> sobrevivia, e gravar
+    /// ou editar um arquivo não o punha entre os recentes. Os nomes vêm de
+    /// <see cref="Ferramentas"/> para não envelhecerem de novo. Chamada que falhou ou foi negada
+    /// não conta — o arquivo não foi tocado.
+    /// </para>
+    /// </summary>
+    private static void TrackRecentFile(ToolCallAccumulator tc, string resultado)
     {
-        if (tc.Name != Ferramentas.Ler && tc.Name != "view_file" && tc.Name != "write_to_file"
-            && tc.Name != "replace_file_content" && tc.Name != "multi_replace_file_content")
-            return;
+        if (tc.Name is not (Ferramentas.Ler or Ferramentas.Gravar or Ferramentas.Editar)) return;
+        if (Memory.ArtifactExtractor.Falhou(resultado)) return;
 
         try
         {
             var dict = System.Text.Json.JsonSerializer
                 .Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(tc.ArgumentsOrEmpty());
-            string? path = null;
-            if (dict != null && dict.ContainsKey("AbsolutePath")) path = dict["AbsolutePath"].GetString();
-            else if (dict != null && dict.ContainsKey("TargetFile")) path = dict["TargetFile"].GetString();
-            else if (dict != null && dict.ContainsKey("path")) path = dict["path"].GetString();
+
+            string? path = dict != null && dict.TryGetValue("path", out var p)
+                           && p.ValueKind == System.Text.Json.JsonValueKind.String
+                ? p.GetString()
+                : null;
 
             if (!string.IsNullOrEmpty(path)) ContextService.AddRecentFile(path);
         }

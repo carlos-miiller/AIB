@@ -35,8 +35,6 @@ public class ExecuteSkillTool : ITool
     /// </summary>
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
-    private const int MaxSaida = 8000;
-
     /// <summary>
     /// Habilidades cujo manual já foi mandado ao modelo. Uma vez basta.
     /// <para>
@@ -65,6 +63,37 @@ public class ExecuteSkillTool : ITool
 
     public bool RequiresConfirmation => true;
 
+    /// <summary>
+    /// O card mostra a linha de comando do script, e a floor list sabe lê-la. Ver
+    /// <see cref="ITool.PassaPelaFloorList"/>.
+    /// </summary>
+    public bool PassaPelaFloorList => true;
+
+    /// <summary>
+    /// Skill de documentação não executa nada: só entrega o manual ao modelo. Pedir autorização
+    /// para LER um texto que o próprio usuário instalou treina o clique em "Permitir" sem ler,
+    /// e esvazia o portão onde ele importa. Antes, ela nem chegava a ser lida: o card não sabia
+    /// descrevê-la, e o registry negava com "ACESSO NEGADO" genérico.
+    /// <para>
+    /// Com texto de e-mail no contexto o registry ignora esta dispensa, e o card aparece — por
+    /// isso <see cref="BuildConfirmationContext"/> também sabe descrever a leitura do manual.
+    /// </para>
+    /// </summary>
+    public bool DispensaConfirmacao(string argumentsJson)
+    {
+        var skill = SkillService.Find(Argumentos(argumentsJson)?.Nome);
+        return skill != null && SoManual(skill);
+    }
+
+    /// <summary>
+    /// Se a habilidade só entrega instruções: interpretador <c>markdown</c>, ou sem script em
+    /// disco. É a MESMA condição que o <see cref="ExecuteAsync"/> usa para devolver o manual em
+    /// vez de rodar — as duas não podem divergir, ou a dispensa valeria para algo que executa.
+    /// </summary>
+    private static bool SoManual(LocalSkill skill) =>
+        skill.Interpreter.Equals("markdown", StringComparison.OrdinalIgnoreCase)
+        || skill.ScriptPath.Length == 0;
+
     public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel)
     {
         try
@@ -79,17 +108,27 @@ public class ExecuteSkillTool : ITool
             var skill = SkillService.Find(nome);
 
             // Skill inexistente não vira pergunta: o usuário seria convidado a autorizar algo
-            // que não existe, e responder "sim" não executaria nada. Recusa aqui devolvendo null,
-            // e o registry responde ao modelo com o "ACESSO NEGADO" genérico de quem não
-            // conseguiu descrever a operação — sem a lista do que existe.
-            if (skill == null || skill.ScriptPath.Length == 0) return null;
+            // que não existe. O Validar já recusou antes, com a lista do que existe; aqui é só a
+            // segunda linha, para a skill que sumiu entre um e outro.
+            if (skill == null) return null;
+
+            // Só o manual: é o que o card descreve quando a dispensa não vale (e-mail no
+            // contexto). Nada roda — a ExecuteAsync devolve o texto do SKILL.md.
+            if (SoManual(skill))
+            {
+                return new CommandConfirmationContext
+                {
+                    Tool = Name,
+                    Command = PrefixoDoManual + System.IO.Path.Combine(skill.Folder, "SKILL.md"),
+                    Level = userLevel,
+                    Cwd = skill.Folder
+                };
+            }
 
             return new CommandConfirmationContext
             {
                 Tool = Name,
-                Command = string.IsNullOrWhiteSpace(extra)
-                    ? skill.ScriptPath
-                    : $"{skill.ScriptPath} {extra}",
+                Command = ComandoDoScript(skill, extra),
                 Level = userLevel,
                 Cwd = skill.Folder
             };
@@ -122,31 +161,130 @@ public class ExecuteSkillTool : ITool
     );
 
     /// <summary>
-    /// Confere o caminho citado nos argumentos antes de gastar um cartão e um turno com uma
-    /// chamada que não tem como funcionar. Ver <see cref="PreVooDeCaminho"/>.
+    /// Recusa antes do portão o que não tem como funcionar: nome ausente, habilidade que não
+    /// existe (com a lista do que existe) e caminho citado nos argumentos que não existe. Ver
+    /// <see cref="PreVooDeCaminho"/>.
+    /// <para>
+    /// A habilidade inexistente era deixada para o <see cref="ExecuteAsync"/>, que responderia
+    /// com a lista — mas ele nunca chegava a rodar: o card não sabia descrever uma skill que não
+    /// existe, e o registry negava antes com um "ACESSO NEGADO" genérico. O modelo ficava sem
+    /// saber que o nome estava errado nem qual era o certo.
+    /// </para>
+    /// <para>
+    /// JSON ilegível passa daqui sem recusa: o <see cref="BuildConfirmationContext"/> não o
+    /// descreve, e o registry nega sem contexto. Não executa de um jeito nem de outro.
+    /// </para>
     /// </summary>
     public string? Validar(string argumentsJson)
+    {
+        var a = Argumentos(argumentsJson);
+        if (a == null) return null;
+
+        if (string.IsNullOrWhiteSpace(a.Value.Nome))
+            return "ERRO: O parâmetro 'skill_name' é obrigatório.";
+
+        var skill = SkillService.Find(a.Value.Nome);
+        if (skill == null) return NaoEncontrada(a.Value.Nome);
+
+        // O manual não recebe argumento nenhum: não há caminho a conferir.
+        if (SoManual(skill) || a.Value.Extra.Length == 0) return null;
+
+        return PreVooDeCaminho.Conferir(a.Value.Extra, skill.Accepts);
+    }
+
+    /// <summary>"Não encontrada", com o que existe — é o que deixa o modelo se corrigir.</summary>
+    private static string NaoEncontrada(string nome)
+    {
+        var existentes = SkillService.ListLocalSkills();
+        string lista = existentes.Count == 0
+            ? "nenhuma habilidade instalada"
+            : string.Join(", ", existentes.ConvertAll(s => s.Name));
+
+        return $"ERRO: habilidade '{nome}' não encontrada. Disponíveis: {lista}.";
+    }
+
+    /// <summary><c>skill_name</c> e <c>arguments</c>, ou null quando o JSON é ilegível.</summary>
+    private static (string Nome, string Extra)? Argumentos(string argumentsJson)
     {
         try
         {
             var args = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
+            if (args.ValueKind != JsonValueKind.Object) return null;
 
-            string nome = args.TryGetProperty("skill_name", out var n) ? n.GetString() ?? "" : "";
-            string extra = args.TryGetProperty("arguments", out var a) ? a.GetString() ?? "" : "";
+            string nome = args.TryGetProperty("skill_name", out var n) && n.ValueKind == JsonValueKind.String
+                ? n.GetString() ?? "" : "";
+            string extra = args.TryGetProperty("arguments", out var a) && a.ValueKind == JsonValueKind.String
+                ? a.GetString() ?? "" : "";
 
-            if (extra.Length == 0) return null;
-
-            var skill = SkillService.Find(nome);
-
-            // Habilidade inexistente é problema do ExecuteAsync, que já responde com a lista do
-            // que existe. Aqui só se confere caminho.
-            return PreVooDeCaminho.Conferir(extra, skill?.Accepts);
+            return (nome, extra);
         }
         catch (JsonException)
         {
             return null;
         }
     }
+
+    /// <summary>Começo do Command quando o que se autoriza é só ler o manual.</summary>
+    public const string PrefixoDoManual = "LER MANUAL ";
+
+    /// <summary>A linha que o card mostra para um script — e que a execução confere de novo.</summary>
+    private static string ComandoDoScript(LocalSkill skill, string extra) =>
+        string.IsNullOrWhiteSpace(extra) ? skill.ScriptPath : $"{skill.ScriptPath} {extra}";
+
+    /// <summary>
+    /// A execução pelo registry: roda só o que foi autorizado, e recusa se a habilidade mudou.
+    /// <para>
+    /// A brecha que isto fecha: uma skill de documentação é dispensada do card porque só lê o
+    /// manual. Se o SKILL.md ganhasse um script entre a dispensa e a execução — outra chamada do
+    /// mesmo lote gravando na pasta de skills, por exemplo —, o <see cref="ExecuteAsync"/>
+    /// encontraria o script e o rodaria SEM card nenhum. Vale igual para o card que aprovou
+    /// "LER MANUAL", e para o script aprovado que trocou de arquivo enquanto o card esperava.
+    /// </para>
+    /// <para>
+    /// Sem estado guardado entre chamadas: a autorização vem na mão, e nada cresce nem vaza.
+    /// Na dúvida — sem contexto, contexto de outra forma, linha diferente —, o script não roda.
+    /// </para>
+    /// </summary>
+    public async Task<string> ExecutarAutorizadoAsync(
+        string argumentsJson, int userLevel, CommandConfirmationContext? autorizado)
+    {
+        const string Mudou =
+            "ERRO: a habilidade mudou desde a autorização e não foi executada. Chame de novo para "
+            + "o usuário ver o que ela faz agora.";
+
+        if (autorizado == null)
+            return "ERRO: a habilidade não foi executada — não há autorização descrita para ela.";
+
+        var a = Argumentos(argumentsJson);
+        if (a == null) return "ERRO: argumentos ilegíveis.";
+
+        var skill = SkillService.Find(a.Value.Nome);
+        if (skill == null) return NaoEncontrada(a.Value.Nome);
+
+        string comando = autorizado.Command ?? "";
+
+        if (comando.StartsWith(PrefixoDoManual, StringComparison.Ordinal))
+        {
+            // Autorizado ler. Se agora há script, ler não é mais o que a chamada faria.
+            return SoManual(skill) ? Manual(skill) : Mudou;
+        }
+
+        // Autorizado um script. Virar manual é inofensivo (só entrega texto); trocar de script
+        // ou de linha não é — o usuário aprovou OUTRA coisa.
+        if (SoManual(skill)) return Manual(skill);
+
+        if (!string.Equals(comando, ComandoDoScript(skill, a.Value.Extra), StringComparison.Ordinal))
+            return Mudou;
+
+        // O MESMO objeto que acabou de ser conferido: reler do disco aqui reabriria a janela.
+        return await RodarAsync(skill, a.Value.Extra);
+    }
+
+    /// <summary>O texto do SKILL.md, que é tudo o que uma skill de documentação faz.</summary>
+    private static string Manual(LocalSkill skill) =>
+        skill.Instructions.Length > 0
+            ? skill.Instructions
+            : $"A habilidade '{skill.Name}' não tem script nem instruções.";
 
     public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
@@ -167,26 +305,14 @@ public class ExecuteSkillTool : ITool
         if (string.IsNullOrWhiteSpace(nome))
             return "ERRO: O parâmetro 'skill_name' é obrigatório.";
 
+        // O Validar já recusou o nome que não existe. Fica aqui para a habilidade que foi
+        // apagada entre o pré-voo e a execução — o card pode ter ficado aberto por horas.
         var skill = SkillService.Find(nome);
-        if (skill == null)
-        {
-            var existentes = SkillService.ListLocalSkills();
-            string lista = existentes.Count == 0
-                ? "nenhuma habilidade instalada"
-                : string.Join(", ", existentes.ConvertAll(s => s.Name));
-
-            return $"ERRO: habilidade '{nome}' não encontrada. Disponíveis: {lista}.";
-        }
+        if (skill == null) return NaoEncontrada(nome);
 
         // Skill de documentação: não roda, ENTREGA o texto. É o caso de uma skill que ensina um
         // procedimento em vez de automatizá-lo.
-        if (skill.Interpreter.Equals("markdown", StringComparison.OrdinalIgnoreCase)
-            || skill.ScriptPath.Length == 0)
-        {
-            return skill.Instructions.Length > 0
-                ? skill.Instructions
-                : $"A habilidade '{skill.Name}' não tem script nem instruções.";
-        }
+        if (SoManual(skill)) return Manual(skill);
 
         return await RodarAsync(skill, extra);
     }
@@ -255,10 +381,16 @@ public class ExecuteSkillTool : ITool
                 return $"ERRO: a habilidade '{skill.Name}' passou de {Timeout.TotalSeconds:0} segundos e foi interrompida.";
             }
 
-            string texto = (await saida + "\n" + RunCommandTool.SemClixml(await erro)).Trim();
+            // O MESMO Montar do shell, com o mesmo teto. A skill montava a saída sozinha e não
+            // olhava o código de saída: um script que terminava com "exit 1" e escrevia algo
+            // voltava sem "ERRO" na frente, e tudo o que decide "falhou" — chip, memória, bloqueio
+            // de repetição — via sucesso. Um PowerShell com erro que não encerra (código 0, erro
+            // no CLIXML) também passa a contar, como no shell.
+            string texto = RunCommandTool.Montar(await saida, await erro, processo.ExitCode);
+            bool falhou = Memory.ArtifactExtractor.Falhou(texto);
 
-            if (texto.Length > MaxSaida)
-                texto = texto.Substring(0, MaxSaida) + "\n...[Saída truncada devido ao tamanho máximo].";
+            if (texto == RunCommandTool.SucessoSemSaida)
+                texto = $"Habilidade '{skill.Name}' executada (sem saída).";
 
             // O corpo do SKILL.md so vai ao modelo QUANDO A CHAMADA FALHA, e e para isso
             // que ele serve: o prompt de sistema lista nome e descricao, nada sobre os
@@ -266,7 +398,7 @@ public class ExecuteSkillTool : ITool
             // recebia de volta um erro sem nenhuma pista da forma certa - foram tres
             // tentativas cegas seguidas. Mandar as instrucoes sempre custaria contexto em
             // toda chamada bem-sucedida; manda-las no erro custa so quando servem.
-            if (processo.ExitCode == 0)
+            if (!falhou)
             {
                 // Funcionou: se falhar de novo mais tarde, o assunto é outro e o manual volta.
                 _manualEnviado.Remove(skill.Name);
@@ -277,13 +409,6 @@ public class ExecuteSkillTool : ITool
                     ? $"\n\n--- Como usar a habilidade '{skill.Name}' ---\n{skill.Instructions}"
                     : $"\n\n(o manual de '{skill.Name}' já foi enviado nesta sessão — releia acima "
                       + "em vez de repetir a mesma chamada.)";
-            }
-
-            if (texto.Length == 0)
-            {
-                return processo.ExitCode == 0
-                    ? $"Habilidade '{skill.Name}' executada (sem saída)."
-                    : $"ERRO: a habilidade '{skill.Name}' terminou com código {processo.ExitCode} e nao escreveu nada.";
             }
 
             return texto;

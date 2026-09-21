@@ -39,20 +39,41 @@ public partial class ConfirmCardView : UserControl
         string ferramenta = contexto.Tool ?? "";
         string alvo = contexto.Command ?? "";
 
+        // CRIAR e SOBRESCREVER são decisões diferentes. O card dizia "o conteúdo atual será
+        // substituído" também para um arquivo que ainda não existe — e um aviso que erra no caso
+        // comum ensina a não ler o aviso. Quem sabe qual dos dois é o WriteFileTool, que olhou o
+        // disco e escreveu no começo do comando.
+        bool criar = ferramenta == Ferramentas.Gravar
+                     && alvo.StartsWith("CRIAR ", StringComparison.Ordinal);
+        bool manual = ferramenta == Ferramentas.Habilidade
+                      && alvo.StartsWith("LER MANUAL ", StringComparison.Ordinal);
+
         TituloText.Text = ferramenta switch
         {
-            Ferramentas.Gravar => "Gravar neste arquivo?",
+            Ferramentas.Gravar => criar ? "Criar este arquivo?" : "Sobrescrever este arquivo?",
+            Ferramentas.Editar => "Editar este arquivo?",
             Ferramentas.Shell => "Executar este comando?",
+            Ferramentas.Habilidade => manual ? "Ler o manual desta habilidade?" : "Executar esta habilidade?",
             _ => "Autorizar esta ação?"
         };
 
         ConsequenciaText.Text = ferramenta switch
         {
+            Ferramentas.Gravar when criar =>
+                "Um arquivo novo será criado com o conteúdo abaixo.",
             Ferramentas.Gravar =>
                 "O conteúdo atual do arquivo será substituído. Não é possível desfazer pelo AIB.",
+            Ferramentas.Editar =>
+                "O trecho da linha \"-\" será trocado pelo da linha \"+\". O resto do arquivo não "
+                + "muda. Não é possível desfazer pelo AIB.",
             Ferramentas.Shell =>
                 "O comando roda no seu PowerShell, com as suas permissões. O AIB não desfaz o "
                 + "que ele fizer.",
+            Ferramentas.Habilidade when manual =>
+                "Nada será executado: o texto do SKILL.md vai para o modelo ler.",
+            Ferramentas.Habilidade =>
+                "O script da habilidade roda na sua máquina, com as suas permissões. O AIB não "
+                + "desfaz o que ele fizer.",
             _ => "Esta ação altera o seu sistema e não pode ser desfeita pelo AIB."
         };
 
@@ -60,6 +81,15 @@ public partial class ConfirmCardView : UserControl
         AlvoText.Text = alvo;
         AlvoText.ToolTip = alvo;
         IconeAlvo.Data = ToolIcons.De(ferramenta);
+
+        // A prévia que o WriteFileTool e o EditFileTool montavam e nenhuma view lia: o usuário
+        // autorizava uma gravação vendo só o caminho. Autorizar sem ver o que muda é autorizar
+        // no escuro.
+        if (!string.IsNullOrWhiteSpace(contexto.ScriptBody))
+        {
+            PreviaText.Text = contexto.ScriptBody;
+            PreviaBorder.Visibility = Visibility.Visible;
+        }
 
         if (contexto.DenylistHit && !string.IsNullOrWhiteSpace(contexto.DenylistReason))
         {

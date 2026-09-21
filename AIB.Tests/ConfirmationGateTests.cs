@@ -190,18 +190,52 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public async Task FloorList_RefutaDestrutivoMesmoComOUsuarioAutorizando()
+        public async Task FloorList_RefutaDestrutivo_SemPerguntar()
         {
-            // O floor roda DEPOIS do modal de propósito: um clique distraído em "permitir" não
-            // pode liberar deleção recursiva abaixo do Nível 7.
+            // O floor rodava DEPOIS do card: o usuário via "Motivo do bloqueio", clicava
+            // Permitir, e era recusado do mesmo jeito. Uma pergunta cuja resposta "sim" não vale
+            // nada não pode ser feita — o piso agora barra antes do card.
             var prompt = new PromptFalso(permitir: true);
             var registry = new ToolRegistry(prompt);
+            string? decisao = null;
 
             string r = await registry.ExecuteToolAsync(
-                "shell", ComandoInofensivo("Remove-Item -Recurse C:\\\\dados"), userLevel: 6);
+                "shell", ComandoInofensivo("Remove-Item -Recurse C:\\\\dados"), 6, null, d => decisao = d);
 
-            prompt.Perguntas.Should().HaveCount(1, "o modal ainda é consultado primeiro");
+            prompt.Perguntas.Should().BeEmpty("o que o piso barra não vira pergunta");
             r.Should().StartWith("ACESSO NEGADO (FLOOR)");
+            decisao.Should().Be("barrada_pelo_piso");
+        }
+
+        [Fact]
+        public async Task FloorList_NoNivel7_OCardContinuaPerguntando()
+        {
+            // A exceção por nível é a de sempre: em L>=7 o piso não barra, e o card é a
+            // autoridade única — ele PERGUNTA, não libera sozinho.
+            var prompt = new PromptFalso(permitir: false);
+            var registry = new ToolRegistry(prompt);
+
+            await registry.ExecuteToolAsync(
+                "shell", ComandoInofensivo("Remove-Item -Recurse C:\\\\dados"), userLevel: 7);
+
+            prompt.Perguntas.Should().HaveCount(1);
+        }
+
+        [Fact]
+        public async Task FloorList_NaoLeOCaminhoDoWrite()
+        {
+            // O Command do write é "CRIAR <caminho>". Um caminho com "logoff" no nome era
+            // recusado como "desligamento/reboot/logoff" — o piso é para linha de comando.
+            var prompt = new PromptFalso(permitir: false);
+            var registry = new ToolRegistry(prompt);
+            string alvo = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "aib-logoff-shutdown-" + System.Guid.NewGuid().ToString("N"), "format.txt");
+
+            string r = await registry.ExecuteToolAsync(
+                "write", System.Text.Json.JsonSerializer.Serialize(new { path = alvo, content = "x" }), userLevel: 2);
+
+            prompt.Perguntas.Should().HaveCount(1, "o card pergunta; o piso não tem o que dizer sobre um caminho");
+            r.Should().Be("Ação Rejeitada pelo Usuário.");
         }
 
         [Fact]

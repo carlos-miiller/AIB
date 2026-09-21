@@ -102,6 +102,37 @@ namespace AIB.Tests
             artefato.Failed.Should().BeTrue();
         }
 
+        [Theory]
+        [InlineData("ACESSO NEGADO: A ferramenta 'write' exige Nível 2, mas o seu nível atual é 1.")]
+        [InlineData("ACESSO NEGADO (FLOOR): desligamento/reboot/logoff — requer Nível 7.")]
+        [InlineData("ACESSO NEGADO: 'write' exige confirmação, mas não foi possível descrever a operação para autorizar.")]
+        [InlineData("ACESSO NEGADO: 'write' exige confirmação do usuário e não há interface disponível para pedi-la.")]
+        public void NegacaoDoPortao_EhFALHA(string resultado)
+        {
+            // Só "ERRO" e a recusa do usuário contavam. Uma gravação barrada pelo nível aparecia
+            // com chip verde, entrava na memória como feita e limpava o bloqueio de repetição.
+            ArtifactExtractor.Falhou(resultado).Should().BeTrue();
+
+            var mensagens = new List<ChatMessage>
+            {
+                ToolCall("c1", "write", """{"path":"C:\\x.txt","content":"y"}"""),
+                ChatMessage.CreateToolMessage("c1", resultado)
+            };
+
+            var artefato = ArtifactExtractor.Extract(mensagens)[0];
+            artefato.Failed.Should().BeTrue("a memória não pode registrar como feito o que foi negado");
+            artefato.Detail.Should().StartWith("ACESSO NEGADO");
+        }
+
+        [Fact]
+        public void NegacaoDoPortao_VaiAoModeloComORecado_ESemAMarcaDeConteudo()
+        {
+            string r = AIB.Services.Agent.AgentLoop.ParaOModelo("shell", "ACESSO NEGADO (FLOOR): x");
+
+            r.Should().StartWith("ACESSO NEGADO", "é pelo começo que a falha é reconhecida");
+            r.Should().EndWith(AIB.Services.Agent.AgentLoop.RecadoDeFalha);
+        }
+
         [Fact]
         public void ChamadaSemResultado_NaoViraArtefato()
         {

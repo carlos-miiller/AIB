@@ -70,6 +70,24 @@
                 </StackPanel>
             </Border>
 
+            <!-- PRÉVIA do que vai ser gravado: o conteúdo do write, o antes e depois do edit.
+                 Mesma caixa do alvo, com altura contida — um arquivo longo rola aqui dentro em
+                 vez de empurrar os botões para fora da tela. Só aparece quando há prévia. -->
+            <Border x:Name="PreviaBorder" Visibility="Collapsed"
+                    Background="{StaticResource SurfaceCodeBrush}"
+                    CornerRadius="{StaticResource RadiusCard}"
+                    Padding="12,10" Margin="0,8,0,0">
+                <ScrollViewer MaxHeight="140"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <TextBlock x:Name="PreviaText"
+                               FontFamily="{StaticResource MonoFontFamily}"
+                               FontSize="11.5" LineHeight="17"
+                               Foreground="{StaticResource TextBodyBrush}"
+                               TextWrapping="Wrap"/>
+                </ScrollViewer>
+            </Border>
+
             <!-- Motivo do bloqueio, quando veio da lista de negação. -->
             <TextBlock x:Name="MotivoText" Visibility="Collapsed"
                        FontSize="11.5" Foreground="{StaticResource WarnBrush}"

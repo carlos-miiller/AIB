@@ -82,14 +82,29 @@ public static class ArtifactExtractor
     /// que não tem devolve artefato nulo mesmo quando falhou, e deduzir o fracasso da ausência
     /// de artefato marcaria todo erro dessas como sucesso.
     /// </para>
+    /// <para>
+    /// "ACESSO NEGADO" também é falha: é como começa TODA negação do portão — nível
+    /// insuficiente, floor list, contexto que não se descreve, sem interface para perguntar. Antes
+    /// só "ERRO" e a recusa do usuário contavam, e uma gravação barrada pelo nível aparecia com
+    /// chip verde, entrava na memória como feita, e limpava o bloqueio de repetição como se o
+    /// mundo tivesse mudado.
+    /// </para>
     /// </summary>
     public static bool Falhou(string? resultado)
     {
         if (string.IsNullOrEmpty(resultado)) return false;
 
         return resultado.Contains(TextoRecusa, StringComparison.Ordinal)
+            || NegadoPeloPortao(resultado)
             || resultado.StartsWith("ERRO", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>Prefixo de toda negação do portão (ver <see cref="ToolRegistry"/> e a floor list).</summary>
+    public const string PrefixoDeNegacao = "ACESSO NEGADO";
+
+    /// <summary>Se o resultado é uma negação do portão, e não da ferramenta.</summary>
+    public static bool NegadoPeloPortao(string? resultado) =>
+        resultado != null && resultado.StartsWith(PrefixoDeNegacao, StringComparison.Ordinal);
 
     /// <summary>Se o resultado veio de uma recusa do usuário no portão de confirmação.</summary>
     public static bool Recusado(string? resultado) =>
@@ -255,7 +270,7 @@ public static class ArtifactExtractor
     private static Artifact? Build(string ferramenta, string argumentosJson, string resultado)
     {
         bool recusado = resultado.Contains(TextoRecusa, StringComparison.Ordinal);
-        bool falhou = recusado || resultado.StartsWith("ERRO", StringComparison.OrdinalIgnoreCase);
+        bool falhou = Falhou(resultado);
 
         switch (ferramenta)
         {

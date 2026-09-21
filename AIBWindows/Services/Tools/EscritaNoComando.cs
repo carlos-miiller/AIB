@@ -41,11 +41,23 @@ public static class EscritaNoComando
     private static readonly Regex Redirecionamento = new(@"(?<![0-9>])>{1,2}(?!&)", RegexOptions.Compiled);
 
     /// <summary>
-    /// Caminho absoluto citado no texto: <c>C:\algo</c> ou <c>\\servidor\pasta</c>. Para no que
-    /// costuma terminar um caminho em linha de comando — aspa, pipe, ponto e vírgula, espaço.
+    /// Caminho absoluto citado no texto: <c>C:\algo</c> ou <c>\\servidor\pasta</c>.
+    /// <para>
+    /// ENTRE ASPAS, vai até a aspa que fecha — espaço dentro do nome é legítimo ("emails fisio").
+    /// SEM ASPAS, para no espaço, como o próprio shell para. A versão anterior não parava em
+    /// espaço (embora este comentário dissesse que sim): em <c>Copy-Item C:\dentro\a C:\fora\b</c>
+    /// os dois caminhos viravam um só, "C:\dentro\a C:\fora\b", que começa dentro da pasta de
+    /// confiança — e o aviso sobre o destino, que era o que importava, não aparecia.
+    /// </para>
+    /// <para>
+    /// O <see cref="PreVooDeCaminho"/> não serve aqui: ele aceita espaço sem aspas de propósito,
+    /// porque confere UM caminho de argumento de skill, e não separa dois.
+    /// </para>
     /// </summary>
     private static readonly Regex Caminhos = new(
-        @"(?:[A-Za-z]:\\|\\\\)[^""'|;,)\r\n]*",
+        @"""(?<c>(?:[A-Za-z]:\\|\\\\)[^""\r\n]*)"""
+        + @"|'(?<c>(?:[A-Za-z]:\\|\\\\)[^'\r\n]*)'"
+        + @"|(?<c>(?:[A-Za-z]:\\|\\\\)[^\s""'|;,)]*)",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -82,7 +94,7 @@ public static class EscritaNoComando
 
         foreach (Match m in Caminhos.Matches(comando ?? ""))
         {
-            string bruto = m.Value.Trim().TrimEnd('\\', '"', '\'', '.', ',', ')');
+            string bruto = m.Groups["c"].Value.Trim().TrimEnd('\\', '"', '\'', '.', ',', ')');
             if (bruto.Length < 4) continue;
 
             if (PastasSemConfirmacao.Dispensa(bruto, pastas)) continue;
