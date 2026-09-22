@@ -340,16 +340,16 @@
                     <!-- Passo 4: Sistema de Níveis -->
                     <Grid x:Name="Step4_Levels" Visibility="Collapsed">
                         <StackPanel VerticalAlignment="Center" MaxWidth="550">
-                            <TextBlock Text="Níveis de Autonomia" FontSize="28" FontWeight="Bold" Margin="0,0,0,10" Foreground="#F5F4F7" HorizontalAlignment="Center"/>
-                            <TextBlock Text="A inteligência artificial opera através de diferentes níveis de permissão. Isso garante a sua segurança enquanto você se acostuma com as capacidades do agente." FontSize="15" Foreground="#8B8794" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,30"/>
+                            <TextBlock Text="Níveis de Permissão" FontSize="28" FontWeight="Bold" Margin="0,0,0,10" Foreground="#F5F4F7" HorizontalAlignment="Center"/>
+                            <TextBlock Text="O que a IA pode fazer no seu computador cresce com o nível. Em todos eles, gravar, editar ou rodar um comando passa pelo cartão de confirmação na conversa." FontSize="15" Foreground="#8B8794" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,30"/>
                             
                             <Border Background="#06FFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,15">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="🟢" FontSize="24" Margin="0,0,15,0" VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Nível 1: Assistente Passivo" FontWeight="SemiBold" FontSize="15" Foreground="#F5F4F7" Margin="0,0,0,4"/>
-                                        <TextBlock Text="A IA apenas lê arquivos e sugere ações. Nenhuma modificação é feita sem a sua autorização expressa em cada passo." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Nível 1: Só leitura" FontWeight="SemiBold" FontSize="15" Foreground="#F5F4F7" Margin="0,0,0,4"/>
+                                        <TextBlock Text="A IA lê e procura arquivos e consulta seus e-mails. Não grava, não edita e não roda comandos." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>
@@ -359,8 +359,8 @@
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="🟡" FontSize="24" Margin="0,0,15,0" VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Nível 2: Operador Guiado" FontWeight="SemiBold" FontSize="15" Foreground="#F5F4F7" Margin="0,0,0,4"/>
-                                        <TextBlock Text="Pode criar e modificar arquivos de projeto, mas exige confirmação antes de rodar comandos no terminal ou apagar dados." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Nível 2 em diante: Age com a sua autorização" FontWeight="SemiBold" FontSize="15" Foreground="#F5F4F7" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Pode criar e editar arquivos, rodar comandos e habilidades — cada ação depois de você permitir no cartão. Comandos que apagam em massa, formatam ou desligam o computador são bloqueados de saída." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>
@@ -370,8 +370,8 @@
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="🔴" FontSize="24" Margin="0,0,15,0" VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Nível 3: Autonomia Total" FontWeight="SemiBold" FontSize="15" Foreground="#F5F4F7" Margin="0,0,0,4"/>
-                                        <TextBlock Text="A IA atua sozinha para resolver problemas, executando comandos complexos no sistema operacional de forma independente." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Nível 7 em diante: Comandos destrutivos" FontWeight="SemiBold" FontSize="15" Foreground="#F5F4F7" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Esses comandos deixam de ser bloqueados de saída, mas continuam precisando da sua autorização no cartão. A IA nunca age sozinha." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>
@@ -391,7 +391,7 @@
                                     <StackPanel>
                                         <TextBlock Text="🥉 Níveis 1 a 3" FontWeight="Bold" FontSize="14" Foreground="#F5F4F7" Margin="0,0,0,8" HorizontalAlignment="Center"/>
                                         <TextBlock Text="Iniciante" FontWeight="SemiBold" FontSize="13" Foreground="#E28743" Margin="0,0,0,4" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="Foco em aprendizado e tarefas guiadas." Foreground="#8B8794" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+                                        <TextBlock Text="Começa só lendo; no nível 2 passa a gravar e rodar comandos com o cartão." Foreground="#8B8794" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
 
@@ -399,7 +399,7 @@
                                     <StackPanel>
                                         <TextBlock Text="🥈 Níveis 4 a 6" FontWeight="Bold" FontSize="14" Foreground="#F5F4F7" Margin="0,0,0,8" HorizontalAlignment="Center"/>
                                         <TextBlock Text="Intermediário" FontWeight="SemiBold" FontSize="13" Foreground="#A0AEC0" Margin="0,0,0,4" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="Maior autonomia, criação de scripts." Foreground="#8B8794" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+                                        <TextBlock Text="As mesmas ações, com mais memória da conversa a cada nível." Foreground="#8B8794" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
 
@@ -407,12 +407,12 @@
                                     <StackPanel>
                                         <TextBlock Text="🥇 Níveis 7 a 9" FontWeight="Bold" FontSize="14" Foreground="#F5F4F7" Margin="0,0,0,8" HorizontalAlignment="Center"/>
                                         <TextBlock Text="Avançado" FontWeight="SemiBold" FontSize="13" Foreground="#ECC94B" Margin="0,0,0,4" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="Domínio total sem supervisão." Foreground="#8B8794" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+                                        <TextBlock Text="Comandos destrutivos liberados, sempre com o cartão." Foreground="#8B8794" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
                             </Grid>
                             
-                            <TextBlock Text="Ao subir de nível, você destrava customizações visuais, permissões avançadas e mais flexibilidade no sistema de autonomia." FontSize="13" Foreground="#E28743" TextWrapping="Wrap" TextAlignment="Center" Margin="0,30,0,0"/>
+                            <TextBlock Text="Ao subir de nível, a IA ganha mais espaço para lembrar da conversa e novas permissões. O cartão de confirmação vale em todos eles." FontSize="13" Foreground="#E28743" TextWrapping="Wrap" TextAlignment="Center" Margin="0,30,0,0"/>
                         </StackPanel>
                     </Grid>
 

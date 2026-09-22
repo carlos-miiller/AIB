@@ -26,10 +26,11 @@ O histórico de conversas foi o último arquivo a sair de `%APPDATA%\AIB` para `
 | `LogsDir` | `~/.AIB/logs` |
 | `CharactersDir` | `~/.AIB/character` |
 | `SettingsPath` | `~/.AIB/profile.dat` |
-| `TempDir` | `%TEMP%\AIB`, com `screenshots`, `ocr_cache` e `cmd_output` |
+
+O AIB não usa pasta temporária.
 
 - `DirectoryService.EnsureDirectories` roda no arranque, antes de tudo. Se existe a pasta antiga `%APPDATA%\AIB` e ainda não existe `~/.AIB`, copia a antiga. Depois cria as pastas e semeia os personagens que faltam (ver [Personagens](#personagens)). Nunca lança: falha vai para o console.
-- `DirectoryService.ApplyFromSettings` troca `DataDir` e `TempDir` se `UserAppSettings.DataDirectory` ou `TempDirectory` estiverem preenchidos, e roda `EnsureDirectories` de novo. Não há campo na tela para eles. Depois disso o `App` chama `SettingsService.InvalidateCache`, porque o caminho das configurações pode ter mudado.
+- `DirectoryService.ApplyFromSettings` troca `DataDir` se `UserAppSettings.DataDirectory` estiver preenchido, e roda `EnsureDirectories` de novo. Não há campo na tela para ele. Depois disso o `App` chama `SettingsService.InvalidateCache`, porque o caminho das configurações pode ter mudado.
 - `DirectoryService.FailsafeCharactersDir` acha a pasta `character` da instalação: primeiro ao lado do executável (é a que vale em produção; o `.csproj` copia `character\**` para lá), depois subindo três ou quatro níveis, o que cobre a execução a partir da árvore de build.
 
 ## Estrutura de `~/.AIB`

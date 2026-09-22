@@ -194,21 +194,22 @@ public sealed class UserAppSettings
     /// </para>
     /// </summary>
     public bool CompactionLogging { get; set; } = false;
-    public string DataDir { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AIB");
 
-    // Diretórios
+    /// <summary>
+    /// Pasta de dados fora de <c>~/.AIB</c>, quando preenchida. Hoje sem campo na tela. Os antigos
+    /// <c>DataDir</c> e <c>TempDirectory</c> saíram — nada os lia.
+    /// </summary>
     public string DataDirectory { get; set; } = "";
-    public string TempDirectory { get; set; } = "";
 
     // Avançado
 
     /// <summary>
-    /// Controla apenas o denylist pós-modal de <c>shell</c>; NÃO controla o modal em si.
-    /// Modal sempre dispara em shell (independente desta flag).
+    /// Controla apenas a floor list (<see cref="CommandFloorList"/>) de <c>shell</c> e <c>skill</c>;
+    /// NÃO controla o cartão de confirmação, que dispara sempre.
     ///
-    /// ON (default): o denylist roda como segunda camada após o modal em níveis &lt; 9.
-    /// OFF: denylist é ignorado; o modal é o único portão.
-    /// L9: denylist sempre ignorado, independente desta flag (D5).
+    /// ON (default): abaixo do Nível 7, a floor list nega ANTES do cartão.
+    /// OFF: a floor list é ignorada; o cartão é o único portão.
+    /// Nível 7 ou mais: a floor list não barra, independente desta flag.
     ///
     /// Migração: perfis legados sem este campo desserializam para o C# default <c>true</c>
     /// automaticamente via <see cref="System.Text.Json.JsonSerializer"/>.

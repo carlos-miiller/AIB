@@ -45,7 +45,7 @@ namespace AIB.Tests
             Environment.GetEnvironmentVariable("AIB_MODELO") ?? "qwen3.5:9b";
 
         private static string Url =>
-            Environment.GetEnvironmentVariable("AIB_URL") ?? "http://localhost:11434";
+            Environment.GetEnvironmentVariable("AIB_URL") ?? "http://127.0.0.1:11434"; // localhost tenta IPv6 antes e demora; o app normaliza igual
 
         /// <summary>
         /// Teto de turnos dos ensaios longos. Existe só para o ensaio não rodar para sempre se

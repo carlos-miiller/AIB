@@ -6,21 +6,14 @@ namespace AIB.Services;
 public static class DirectoryService
 {
     private static string _dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".AIB");
-    private static string _tempDir = Path.Combine(Path.GetTempPath(), "AIB");
 
     public static string DataDir => _dataDir;
-    public static string TempDir => _tempDir;
 
     // Subdiretórios de Dados
     public static string SkillsDir => Path.Combine(DataDir, "skills");
     public static string MemoryDir => Path.Combine(DataDir, "memory");
     public static string LogsDir => Path.Combine(DataDir, "logs");
     public static string CharactersDir => Path.Combine(DataDir, "character");
-
-    // Subdiretórios Temporários
-    public static string ScreenshotCacheDir => Path.Combine(TempDir, "screenshots");
-    public static string OcrCacheDir => Path.Combine(TempDir, "ocr_cache");
-    public static string CmdOutputDir => Path.Combine(TempDir, "cmd_output");
 
     // Arquivos específicos
     public static string SettingsPath => Path.Combine(DataDir, "profile.dat");
@@ -44,10 +37,8 @@ public static class DirectoryService
             Directory.CreateDirectory(CharactersDir);
             SeedMissingCharacters();
 
-            Directory.CreateDirectory(TempDir);
-            Directory.CreateDirectory(ScreenshotCacheDir);
-            Directory.CreateDirectory(OcrCacheDir);
-            Directory.CreateDirectory(CmdOutputDir);
+            // Não há pasta temporária: screenshots, ocr_cache e cmd_output em %TEMP%\AIB eram
+            // criadas a cada arranque e nada gravava nelas.
         }
         catch (Exception ex)
         {
@@ -130,9 +121,6 @@ public static class DirectoryService
     {
         if (!string.IsNullOrWhiteSpace(settings.DataDirectory))
             _dataDir = settings.DataDirectory;
-        
-        if (!string.IsNullOrWhiteSpace(settings.TempDirectory))
-            _tempDir = settings.TempDirectory;
 
         EnsureDirectories();
     }

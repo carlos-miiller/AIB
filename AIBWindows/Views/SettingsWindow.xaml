@@ -887,7 +887,7 @@
                                 <StackPanel>
                                     <TextBlock Text="E-mail" Style="{StaticResource PageTitle}"/>
                                     <TextBlock Style="{StaticResource PageSubtitle}"
-                                               Text="A IA lê a caixa de entrada por IMAP, resume e prioriza. Nada é enviado sem sua confirmação."/>
+                                               Text="A IA lê a caixa de entrada por IMAP, resume e prioriza. Só leitura: nada é enviado, apagado ou movido no servidor."/>
                                 </StackPanel>
                             </Border>
 
@@ -1374,7 +1374,7 @@
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                                 <TextBlock Text="Confirmar comandos perigosos" Style="{StaticResource FieldLabelText}"/>
-                                                <TextBlock Text="Segunda camada além do modal de confirmação, abaixo do Nível 9." Style="{StaticResource FieldHelpText}"
+                                                <TextBlock Text="Abaixo do Nível 7, bloqueia de saída apagar em massa, formatar, desligar e mexer no registro — antes mesmo do cartão." Style="{StaticResource FieldHelpText}"
                                                            TextWrapping="Wrap"/>
                                             </StackPanel>
                                             <ToggleButton x:Name="ConfirmDangerousSwitch" Grid.Column="1"
