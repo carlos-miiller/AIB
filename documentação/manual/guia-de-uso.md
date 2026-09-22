@@ -272,9 +272,13 @@ página".
 | Avançado | Se o raciocínio do modelo volta para ele nas etapas seguintes. |
 | Logs | Registros para diagnóstico e "Simular o primeiro envio". |
 
-**Reset de Fábrica**, no rodapé, apaga as configurações, o histórico de conversas e tudo o que está
-no cofre (chave do OpenRouter e senhas de e-mail), e fecha o AIB. Não há desfazer. Na próxima
-abertura, o primeiro arranque aparece de novo.
+**Reset de Fábrica**, no rodapé, apaga as configurações, o histórico de conversas, tudo o que está
+no cofre (chave do OpenRouter e senhas de e-mail), a memória das conversas e os arquivos de e-mail,
+e fecha o AIB. Não há desfazer. Na próxima abertura, o primeiro arranque aparece de novo.
+
+Duas coisas **não** são apagadas: a transcrição crua de cada conversa e o seu `facts.md`. As duas
+são renomeadas, com a data e a hora no nome e a terminação `.bak`, e continuam na pasta `memory`.
+O AIB deixa de lê-las; você continua podendo abri-las.
 
 ## Onde ficam os seus dados
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Input;
 using Hardcodet.Wpf.TaskbarNotification;
@@ -78,6 +78,7 @@ public partial class App : System.Windows.Application
 
         if (!ligado)
         {
+            SoltarOrbe();
             _orbe?.Close();
             _orbe = null;
             if (_itemDoOrbe != null) _itemDoOrbe.IsChecked = false;
@@ -111,16 +112,113 @@ public partial class App : System.Windows.Application
             TetoDeEmails = configuracoes.ShadowMailPreviewCount
         };
 
-        // O orbe manda a mensagem e a janela de chat roda o turno inteiro ESCONDIDA: laco de
-        // stream, ferramentas, portao de confirmacao, historico e XP acontecem la, como sempre.
-        // O orbe so exibe o texto final. Duas implementacoes de turno divergiriam em qual delas
-        // grava o que, e o usuario acabaria com metade da conversa em cada lugar.
-        orbe.MensagemEnviada += texto => _chatWindow?.AbrirComMensagem(texto, mostrarJanela: false);
+        // Solta a ligação do orbe ANTERIOR antes de criar a do novo. Sem isto, desligar e
+        // religar o orbe deixava a conversa com duas assinaturas: a do orbe vivo e a do orbe
+        // fechado, que continuava recebendo o fim de cada turno e mexendo numa janela morta.
+        SoltarOrbe();
 
-        if (_chatWindow != null)
-            _chatWindow.TurnoConcluido += texto => orbe.ResponderTurno(texto);
+        if (_chatWindow != null) _soltarOrbe = LigarOrbe(_chatWindow, orbe);
 
         return orbe;
+    }
+
+    /// <summary>Como soltar a ligação do orbe que está de pé. Nulo quando não há orbe.</summary>
+    private Action? _soltarOrbe;
+
+    private void SoltarOrbe()
+    {
+        _soltarOrbe?.Invoke();
+        _soltarOrbe = null;
+    }
+
+    /// <summary>
+    /// Liga um orbe a uma conversa e devolve COMO SOLTÁ-LOS.
+    /// <para>
+    /// A ligação tem dois sentidos. Do orbe para a conversa: a barra manda a mensagem e o turno
+    /// inteiro roda ESCONDIDO na janela de chat — laço de stream, ferramentas, portão de
+    /// confirmação, histórico e XP acontecem lá, como sempre. Duas implementações de turno
+    /// divergiriam em qual delas grava o quê, e o usuário acabaria com metade da conversa em
+    /// cada lugar.
+    /// </para>
+    /// <para>
+    /// Da conversa para o orbe: o orbe é a JANELA DO QUE A AIB ESTÁ FAZENDO. Ele acende o anel
+    /// no passo corrente de qualquer turno — inclusive dos digitados na conversa — e só REPETE
+    /// a fala quando ela não tem outro lugar onde aparecer (ver
+    /// <see cref="ShadowAssistantWindow.OrbeDeveFalar"/>).
+    /// </para>
+    /// <para>
+    /// Devolve o desfazer, e é estático, porque a conversa VIVE MAIS que o orbe: ela nasce no
+    /// arranque e morre com o programa, enquanto o orbe é fechado e recriado a cada vez que a
+    /// chave é desligada e religada. Assinar sem guardar como soltar foi o que deixou orbes
+    /// fechados recebendo o fim de cada turno. Estático também para o ensaio conferir a
+    /// não-duplicação sem subir o App inteiro.
+    /// </para>
+    /// </summary>
+    public static Action LigarOrbe(ChatWindow conversa, ShadowAssistantWindow orbe)
+    {
+        void Enviou(string texto) => conversa.AbrirComMensagem(texto, mostrarJanela: false);
+
+        // O clique num item da pilha leva ao MESMO lugar que a lista da área central: o e-mail
+        // entra na conversa, e a janela vem à frente. Antes o item era desenho — clicar nele
+        // não fazia nada.
+        void EscolheuEmail(MailSummary item) => conversa.AbrirEmailDoOrbe(item);
+
+        void Andou(string passo) => orbe.MostrarEstado(passo);
+
+        void Concluiu(string texto)
+        {
+            // O anel já parou: o passo vazio chega imediatamente antes deste evento. O que
+            // sobra decidir aqui é só se a resposta tem de ser DITA outra vez no orbe.
+            if (ShadowAssistantWindow.OrbeDeveFalar(conversa.TurnoVeioDoOrbe, conversa.IsVisible))
+                orbe.ResponderTurno(texto);
+        }
+
+        orbe.MensagemEnviada += Enviou;
+        orbe.EmailEscolhido += EscolheuEmail;
+        conversa.PassoDoTurnoMudou += Andou;
+        conversa.TurnoConcluido += Concluiu;
+
+        return () =>
+        {
+            orbe.MensagemEnviada -= Enviou;
+            orbe.EmailEscolhido -= EscolheuEmail;
+            conversa.PassoDoTurnoMudou -= Andou;
+            conversa.TurnoConcluido -= Concluiu;
+        };
+    }
+
+    /// <summary>
+    /// Um digest ficou pronto: põe o resultado onde houver superfície para ele.
+    /// <para>
+    /// A TRIAGEM É INDEPENDENTE DO ORBE — o orbe só mostra. Quem ligou "triar os e-mails" não
+    /// pediu, junto, uma bola no desktop, e a chave da triagem funciona com ele desligado. O
+    /// que não pode acontecer é o trabalho rodar sem aparecer em lugar nenhum, que era o caso:
+    /// com o orbe fora, o digest acontecia e morria ali.
+    /// </para>
+    /// <para>
+    /// As superfícies já existem, e são estas duas: a lista de e-mails da janela de conversa e
+    /// o aviso da bandeja. Nenhuma tela nova.
+    /// </para>
+    /// </summary>
+    private void AnunciarDigesto(Services.Mail.DigestoDeEmail digesto)
+    {
+        // A lista é montada ao ENTRAR no modo e-mail. Com a caixa já na tela, a passada nova
+        // não aparecia até o usuário sair do modo e voltar.
+        _chatWindow?.AtualizarCaixaDeEntrada();
+
+        if (_orbe != null)
+        {
+            // RAJADA é o incidente aberto — doze alertas do mesmo monitor em quarenta minutos —
+            // e é o que pinta o pulso de vermelho. O argumento existia no orbe desde o começo e
+            // nunca chegava até aqui: o pulso vermelho era código que não rodava.
+            _orbe.TerminarDeProcessarEmail(digesto.Frase(), digesto.Itens,
+                                           urgente: digesto.Rajadas.Count > 0);
+            return;
+        }
+
+        // Sem orbe não há pulso, e o pulso era o único aviso. A bandeja é o que sobra, e é a
+        // mesma porta que o fim de turno com a janela escondida já usa.
+        ShowNotification("AIB", digesto.Frase());
     }
 
     /// <summary>
@@ -210,7 +308,7 @@ public partial class App : System.Windows.Application
             // ── O vigia de e-mail ────────────────────────────────────────
             // Ele é quem faz a leitura virar produto: roda com a janela fechada, três vezes ao
             // dia com o modelo e de vinte em vinte minutos só com código. Nasce sempre; quem
-            // decide se ele trabalha é a chave "Deixar o Shadow tratar os e-mails", lida a cada
+            // decide se ele trabalha é a chave "Deixar a AIB triar os e-mails", lida a cada
             // batida. Ligá-lo condicionalmente aqui faria a chave só valer no próximo arranque.
             _vigia = new Services.Mail.MailDigestService(
                 _settingsService,
@@ -222,8 +320,7 @@ public partial class App : System.Windows.Application
                 Dispatcher.BeginInvoke(new Action(() => _orbe?.ComecarAProcessarEmail()));
 
             _vigia.Pronto += digesto =>
-                Dispatcher.BeginInvoke(new Action(() =>
-                    _orbe?.TerminarDeProcessarEmail(digesto.Frase(), digesto.Itens)));
+                Dispatcher.BeginInvoke(new Action(() => AnunciarDigesto(digesto)));
 
             // Pronto não apaga o anel: ele só fala quando há o que dizer, e a passada calada é
             // o caso comum. Este é o par do Trabalhando, e chega DEPOIS do Pronto quando os

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -208,7 +208,7 @@ public sealed class MailDigestService : IDisposable
             var config = _settings.LoadSettings();
             if (!config.ShadowHandlesMail)
             {
-                Anotar("a chave 'Deixar o Shadow tratar os e-mails' está desligada");
+                Anotar("a chave 'Deixar a AIB triar os e-mails' está desligada");
                 return;
             }
 
@@ -386,13 +386,13 @@ public sealed class MailDigestService : IDisposable
 
         // Sondagem sem rajada não tem por que acordar ninguém nem falar com o usuário: no
         // estado estável ela não encontra nada, e é justamente por isso que ela é barata.
-        if (!comModelo && !Urgente(vigiadas, lidas, rajadas))
-        {
-            return rajadas.Count > 0
-                ? Publicar(new DigestoDeEmail(Array.Empty<MailSummary>(), lidas.Count,
-                                              descartadas, rajadas, DateTime.UtcNow))
-                : DigestoDeEmail.Vazio;
-        }
+        //
+        // Aqui NÃO há rajada para publicar, por mais que a leitura do código sugerisse: é a
+        // rajada que torna a passada urgente (ver Urgente), então chegar a este ponto já
+        // significa rajadas vazias. O ramo que publicava um digest de rajada daqui era
+        // inalcançável, e escondia que o caminho da rajada é o de baixo — com modelo,
+        // resumindo o incidente.
+        if (!comModelo && !Urgente(rajadas)) return DigestoDeEmail.Vazio;
 
         _ignoradasPeloModelo = 0;
         var itens = await ResumirAsync(sobem, config, ct).ConfigureAwait(false);
@@ -426,24 +426,17 @@ public sealed class MailDigestService : IDisposable
     /// <summary>
     /// Se esta sondagem merece acordar o modelo antes da hora.
     /// <para>
-    /// Rajada, sempre: um incidente às 9h14 descoberto no digest das 12h55 não vale nada. E
-    /// resposta chegando numa conversa marcada com <c>acorda9b</c> — o campo existe para que
-    /// essa decisão seja um DADO no arquivo, conferível, e não uma frase que o modelo
-    /// interpretaria de um jeito hoje e de outro amanhã.
+    /// A rajada, e só ela: um incidente às 9h14 descoberto no digest das 12h55 não vale nada.
+    /// Resposta chegando numa conversa vigiada NÃO acorda — ela espera o próximo digest, que é
+    /// o normal de quem respondeu e aguarda retorno.
+    /// </para>
+    /// <para>
+    /// Havia aqui um segundo motivo, o <c>acorda9b</c> da vigia. Ele nunca disparou: quem
+    /// escreve as vigias gravava o campo sempre falso, e não havia interface para mudá-lo. O
+    /// campo saiu, e com ele a condição morta.
     /// </para>
     /// </summary>
-    public static bool Urgente(
-        IReadOnlyList<VigiaDeThread> vigiadas,
-        IReadOnlyList<MensagemDeEmail> lidas,
-        IReadOnlyList<Rajada> rajadas)
-    {
-        if (rajadas.Count > 0) return true;
-
-        var acordam = new HashSet<string>(
-            vigiadas.Where(v => v.Acorda9b).Select(v => v.Thrid), StringComparer.Ordinal);
-
-        return acordam.Count > 0 && lidas.Any(m => acordam.Contains(m.ThreadId));
-    }
+    public static bool Urgente(IReadOnlyList<Rajada> rajadas) => rajadas.Count > 0;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Recarregar uma conversa — §3.11

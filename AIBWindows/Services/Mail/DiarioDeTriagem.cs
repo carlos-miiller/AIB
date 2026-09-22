@@ -167,27 +167,62 @@ public sealed class DiarioDeTriagem
         return tudo.OrderBy(p => Quando(p.QuandoUtc)).ToList();
     }
 
-    /// <summary>Apaga os dias antigos. Só mexe em arquivos com o prefixo desta feature.</summary>
-    public void Limpar(int diasMantidos = DiasMantidos)
+    /// <summary>
+    /// Apaga os dias antigos. Só mexe em arquivos com o prefixo desta feature.
+    /// <para>
+    /// Corta por DATA, e não por contagem. A versão anterior mantinha os N arquivos mais
+    /// recentes: quem abre o AIB dois dias por semana ficava com um mês e meio de diário sob
+    /// um mostrador que diz "dias", e quem o abre todo dia perdia o de ontem se uma passada
+    /// tivesse falhado no meio. O mostrador promete dias; o corte tem de ser em dias.
+    /// </para>
+    /// <para>
+    /// A data sai do NOME do arquivo, não do carimbo do sistema de arquivos: copiar a pasta de
+    /// dados atualiza o carimbo e ressuscitaria o diário de meses atrás.
+    /// </para>
+    /// </summary>
+    /// <param name="hojeLocal">O dia de referência. Existe para o ensaio não depender do relógio.</param>
+    public void Limpar(int diasMantidos = DiasMantidos, DateTime? hojeLocal = null)
     {
+        if (diasMantidos <= 0) { Apagar(); return; }
+
         try
         {
             if (!Directory.Exists(_pasta)) return;
 
-            var velhos = Directory.GetFiles(_pasta, "diario-*.json")
-                .OrderByDescending(a => a, StringComparer.Ordinal)
-                .Skip(Math.Max(1, diasMantidos))
-                .ToList();
+            // Inclusivo nas duas pontas: "7 dias" é hoje mais os seis anteriores, e não hoje
+            // mais sete — senão o mostrador entrega sempre um dia a mais do que promete.
+            DateTime corte = (hojeLocal ?? DateTime.Now).Date.AddDays(-(diasMantidos - 1));
 
-            foreach (string velho in velhos)
+            foreach (string arquivo in Directory.GetFiles(_pasta, "diario-*.json"))
             {
-                try { File.Delete(velho); } catch { }
+                // Nome fora do padrão FICA. Não sabemos de que dia ele é, e apagar por não
+                // entender é a diferença entre uma poda e uma varredura.
+                if (!DiaDoArquivo(arquivo, out var dia)) continue;
+                if (dia >= corte) continue;
+
+                try { File.Delete(arquivo); } catch { }
             }
         }
         catch
         {
             // Não conseguir limpar não é motivo para não anotar.
         }
+    }
+
+    /// <summary>
+    /// O dia que o nome do arquivo carrega. Público porque é o que liga o mostrador em dias ao
+    /// que existe em disco, e é isso que o ensaio confere.
+    /// </summary>
+    public static bool DiaDoArquivo(string caminho, out DateTime diaLocal)
+    {
+        diaLocal = default;
+
+        string nome = Path.GetFileNameWithoutExtension(caminho);
+        if (!nome.StartsWith("diario-", StringComparison.Ordinal)) return false;
+
+        return DateTime.TryParseExact(nome.Substring("diario-".Length), "yyyy-MM-dd",
+                                      CultureInfo.InvariantCulture, DateTimeStyles.None,
+                                      out diaLocal);
     }
 
     /// <summary>Apaga o diário inteiro. É o que o mostrador em zero faz.</summary>

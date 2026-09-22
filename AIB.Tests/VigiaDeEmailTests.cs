@@ -550,32 +550,49 @@ namespace AIB.Tests
                 new VigiaDeThread
                 {
                     Thrid = "17ab", Porque = "voce respondeu",
-                    Ate = new DateTime(2026, 9, 11), Acorda9b = true
+                    Ate = new DateTime(2026, 9, 11)
                 }
             });
 
             var lidas = arquivo.Ler();
             lidas.Should().HaveCount(1);
             lidas[0].Thrid.Should().Be("17ab");
-            lidas[0].Acorda9b.Should().BeTrue();
         }
 
         [Fact]
-        public void SondagemACORDA_OModelo_SoQuandoAVigiaMANDA()
+        public void OVigiasJson_ANTIGO_ComAcorda9b_CONTINUA_Abrindo()
         {
-            // O campo acorda9b existe para essa decisao ser um DADO conferivel no arquivo, e
-            // nao uma frase que o modelo interpretaria de um jeito hoje e de outro amanha.
-            var msg = new MensagemDeEmail(1, "17ab", "x@y.com", "X", "Re:", DateTime.UtcNow,
-                                          true, false, Array.Empty<string>(), true, "");
+            // O campo saiu da classe, mas nao dos arquivos de quem ja usava o AIB. Uma leitura
+            // que engasgasse aqui devolveria "sem vigias" e o funil pararia de deixar subir as
+            // respostas que o usuario esta esperando — sem uma linha de erro que explicasse.
+            string pasta = Path.Combine(Path.GetTempPath(), "aib-vigias-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(pasta);
+            Directory.CreateDirectory(Path.Combine(pasta, "email"));
 
-            var calada = new VigiaDeThread { Thrid = "17ab", Acorda9b = false };
-            var barulhenta = new VigiaDeThread { Thrid = "17ab", Acorda9b = true };
+            File.WriteAllText(Path.Combine(pasta, "email", "vigias.json"),
+                """
+                [{"thrid":"17ab","porque":"voce respondeu","ate":"2026-09-11T00:00:00",
+                  "acorda9b":true,"respondidaEm":"2026-09-04T00:00:00"}]
+                """);
 
-            MailDigestService.Urgente(new[] { calada }, new[] { msg }, Array.Empty<Rajada>())
+            var lidas = new VigiasDoEmail(pasta).Ler();
+
+            lidas.Should().HaveCount(1);
+            lidas[0].Thrid.Should().Be("17ab");
+            lidas[0].Porque.Should().Be("voce respondeu");
+        }
+
+        [Fact]
+        public void ACONVERSA_VIGIADA_NaoACORDA_ASondagem()
+        {
+            // Houve um "vigiar esta conversa" (acorda9b) que prometia interromper na hora. O
+            // Atualizar gravava sempre falso e nunca houve interface: a promessa nunca valeu.
+            // Agora esta escrito no comportamento — responder nao e emergencia.
+            MailDigestService.Urgente(Array.Empty<Rajada>())
                 .Should().BeFalse("responder nao e emergencia");
 
-            MailDigestService.Urgente(new[] { barulhenta }, new[] { msg }, Array.Empty<Rajada>())
-                .Should().BeTrue();
+            typeof(VigiaDeThread).GetProperty("Acorda9b")
+                .Should().BeNull("o campo saiu; a promessa que ele carregava tambem");
         }
 
         [Fact]
@@ -585,8 +602,7 @@ namespace AIB.Tests
                                     DateTime.UtcNow.AddMinutes(-40), DateTime.UtcNow,
                                     Array.Empty<string>());
 
-            MailDigestService.Urgente(
-                Array.Empty<VigiaDeThread>(), Array.Empty<MensagemDeEmail>(), new[] { rajada })
+            MailDigestService.Urgente(new[] { rajada })
                 .Should().BeTrue("um incidente as 9h14 no digest das 12h55 nao vale nada");
         }
 
@@ -603,6 +619,29 @@ namespace AIB.Tests
 
             new VigiasDoEmail(pasta).Ler()
                 .Should().ContainSingle(v => v.Thrid == "17ab");
+        }
+
+        [Fact]
+        public async Task ATriagem_NaoDEPENDE_DoOrbeEstarLigado()
+        {
+            // O orbe só MOSTRA o digest. Quem liga "triar os e-mails" não pediu, junto, uma
+            // bola no desktop — e a tela chegou a desabilitar a chave da triagem com o orbe
+            // desligado, deixando-a GRAVADA como ligada: o vigia continuava lendo a caixa e
+            // nada na tela dizia isso. A decisão é que a triagem é independente; o que muda sem
+            // orbe é só ONDE o resultado aparece (lista da conversa e bandeja).
+            var (vigia, _, _, _) = MontarComPasta(
+                lidas: new[] { Msg(uid: 1, assunto: "Contrato") },
+                resposta: "[{\"uid\":1,\"urgencia\":\"media\",\"resumo\":\"responder\"}]",
+                ajuste: c => c.ShadowAssistantEnabled = false);
+
+            DigestoDeEmail? dito = null;
+            vigia.Pronto += d => dito = d;
+
+            await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            vigia.DigestosFeitos.Should().Be(1, "a chave da triagem é a única que manda aqui");
+            dito.Should().NotBeNull("e o resultado continua sendo anunciado a quem quiser mostrar");
+            dito!.Itens.Should().ContainSingle();
         }
 
         // ─────────────────────────────────────────────────────────────────

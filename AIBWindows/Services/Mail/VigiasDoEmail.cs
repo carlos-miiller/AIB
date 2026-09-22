@@ -27,14 +27,14 @@ public sealed class VigiaDeThread
     /// <summary>Até quando. Passou a data, a vigia morre sozinha.</summary>
     public DateTime Ate { get; set; }
 
-    /// <summary>
-    /// Se uma mensagem nova nesta conversa acorda o modelo NA HORA, em vez de esperar o digest.
-    /// <para>
-    /// Falso por padrão. Interromper é caro, e o que justifica interromper é a rajada, não toda
-    /// resposta que chega.
-    /// </para>
-    /// </summary>
-    public bool Acorda9b { get; set; }
+    // Houve aqui um "acorda9b": vigiar esta conversa acordaria o modelo na hora, em vez de
+    // esperar o digest. Nunca acordou ninguém — quem escreve as vigias é o Atualizar, e ele
+    // gravava sempre falso. O campo saiu em vez de ganhar a interface que faltava: o que
+    // justifica interromper é a RAJADA, não toda resposta que chega, e um mostrador para
+    // interromper por resposta seria vender a interrupção como se ela fosse barata.
+    //
+    // O arquivo de quem já tem o campo continua abrindo: o leitor de JSON ignora propriedade
+    // que a classe não tem, e é assim de propósito.
 
     /// <summary>Quando o usuário escreveu naquela conversa pela última vez.</summary>
     public DateTime RespondidaEm { get; set; }
@@ -153,8 +153,7 @@ public sealed class VigiasDoEmail
                 Thrid = r.Thrid,
                 Porque = $"você respondeu em {r.QuandoUtc.ToLocalTime():dd/MM}; aguarda retorno",
                 RespondidaEm = r.QuandoUtc,
-                Ate = r.QuandoUtc.AddDays(DiasDeVigia),
-                Acorda9b = false
+                Ate = r.QuandoUtc.AddDays(DiasDeVigia)
             };
         }
 

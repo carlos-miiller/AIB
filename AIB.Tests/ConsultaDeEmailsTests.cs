@@ -142,6 +142,108 @@ namespace AIB.Tests
             Directory.Exists(diario.Pasta).Should().BeFalse();
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // A retenção: o mostrador diz DIAS
+        // ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>Um arquivo de um dia, sem depender do relógio da máquina.</summary>
+        private static void Forjar(DiarioDeTriagem diario, DateTime diaLocal)
+        {
+            Directory.CreateDirectory(diario.Pasta);
+            File.WriteAllText(diario.CaminhoDoDia(diaLocal), "[]");
+        }
+
+        private static string[] NomesNaPasta(DiarioDeTriagem diario) =>
+            Directory.Exists(diario.Pasta)
+                ? Directory.GetFiles(diario.Pasta).Select(c => Path.GetFileName(c)!).ToArray()
+                : Array.Empty<string>();
+
+        [Fact]
+        public void ARetencao_CORTA_PorDATA_ENaoPorContagemDeArquivos()
+        {
+            // A poda mantinha os N arquivos mais RECENTES; o mostrador promete N DIAS. Quem abre
+            // o AIB dois dias por semana ficava com um mes e meio de diario sob um mostrador
+            // escrito "7".
+            string pasta = PastaNova();
+            var diario = new DiarioDeTriagem(pasta);
+
+            var hoje = new DateTime(2026, 9, 22);
+            foreach (int atras in new[] { 0, 1, 6, 7, 40 })
+                Forjar(diario, hoje.AddDays(-atras));
+
+            diario.Limpar(diasMantidos: 7, hojeLocal: hoje);
+
+            NomesNaPasta(diario).Should().BeEquivalentTo(new[]
+            {
+                "diario-2026-09-22.json",  // hoje
+                "diario-2026-09-21.json",
+                "diario-2026-09-16.json"   // o sexto dia atras ainda cabe nos sete
+            }, "sete dias e hoje mais os seis anteriores — o de sete dias atras ja saiu");
+        }
+
+        [Fact]
+        public void TRES_ArquivosANTIGOS_SAEM_MesmoCabendoNaContagem()
+        {
+            // Este e o defeito ao contrario: com tres arquivos e o mostrador em 7, a contagem
+            // guardava para sempre um diario de marco.
+            string pasta = PastaNova();
+            var diario = new DiarioDeTriagem(pasta);
+
+            var hoje = new DateTime(2026, 9, 22);
+            Forjar(diario, new DateTime(2026, 3, 1));
+            Forjar(diario, new DateTime(2026, 3, 2));
+            Forjar(diario, hoje);
+
+            diario.Limpar(diasMantidos: 7, hojeLocal: hoje);
+
+            NomesNaPasta(diario).Should().BeEquivalentTo(new[] { "diario-2026-09-22.json" });
+        }
+
+        [Fact]
+        public void UM_Dia_GUARDA_SoODeHOJE()
+        {
+            string pasta = PastaNova();
+            var diario = new DiarioDeTriagem(pasta);
+
+            var hoje = new DateTime(2026, 9, 22);
+            Forjar(diario, hoje);
+            Forjar(diario, hoje.AddDays(-1));
+
+            diario.Limpar(diasMantidos: 1, hojeLocal: hoje);
+
+            NomesNaPasta(diario).Should().BeEquivalentTo(new[] { "diario-2026-09-22.json" });
+        }
+
+        [Fact]
+        public void ArquivoComNOME_FORA_DoPadrao_FICA()
+        {
+            // Apagar por nao entender o nome e a diferenca entre uma poda e uma varredura: o
+            // arquivo pode ser de outra coisa, ou uma copia que a pessoa fez a mao.
+            string pasta = PastaNova();
+            var diario = new DiarioDeTriagem(pasta);
+
+            var hoje = new DateTime(2026, 9, 22);
+            Forjar(diario, hoje.AddDays(-90));
+            Directory.CreateDirectory(diario.Pasta);
+            File.WriteAllText(Path.Combine(diario.Pasta, "diario-copia.json"), "[]");
+
+            diario.Limpar(diasMantidos: 7, hojeLocal: hoje);
+
+            NomesNaPasta(diario).Should().BeEquivalentTo(new[] { "diario-copia.json" });
+        }
+
+        [Fact]
+        public void ODiaSAI_DoNOME_ENaoDoCarimboDoSistemaDeArquivos()
+        {
+            // Copiar a pasta de dados atualiza o carimbo do arquivo e ressuscitaria o diario de
+            // meses atras. O nome nao muda numa copia.
+            DiarioDeTriagem.DiaDoArquivo("x/diario-2026-09-22.json", out var dia).Should().BeTrue();
+            dia.Should().Be(new DateTime(2026, 9, 22));
+
+            DiarioDeTriagem.DiaDoArquivo("x/outro.json", out _).Should().BeFalse();
+            DiarioDeTriagem.DiaDoArquivo("x/diario-copia.json", out _).Should().BeFalse();
+        }
+
         [Fact]
         public void OPeriodo_ATRAVESSA_Dias()
         {

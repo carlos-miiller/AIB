@@ -1273,8 +1273,17 @@
                                     </Border>
 
                                     <!-- CAMPO — a triagem de e-mail.
-                                         Chave SEPARADA da do Shadow: querer a bola no desktop
-                                         não é querer que ela abra a caixa de entrada. -->
+                                         Chave SEPARADA da do Shadow, e INDEPENDENTE dela nos
+                                         dois sentidos: querer a bola no desktop não é querer
+                                         que ela abra a caixa de entrada, e não querer a bola
+                                         não é desistir da triagem. O orbe só MOSTRA o digest;
+                                         sem ele o resultado aparece na aba E-mail da conversa e
+                                         num aviso da bandeja.
+
+                                         Por isso a chave fica sempre habilitada. Desabilitada
+                                         com o orbe desligado, ela continuava GRAVADA como
+                                         ligada e a triagem continuava rodando — uma chave que
+                                         esconde o que está acontecendo em vez de decidir. -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">
                                             <Grid.ColumnDefinitions>
@@ -1282,12 +1291,12 @@
                                                 <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                                <TextBlock Text="Deixar o Shadow tratar os e-mails"
+                                                <TextBlock Text="Deixar a AIB triar os e-mails"
                                                            Style="{StaticResource FieldLabelText}"/>
                                                 <!-- O texto sai do ESTADO, não é constante: sem
-                                                     Shadow, sem caixa conectada e com tudo pronto
-                                                     são três situações diferentes, e uma frase
-                                                     só mentiria em duas delas. -->
+                                                     caixa conectada, com o orbe na tela e sem
+                                                     ele são três situações diferentes, e uma
+                                                     frase só mentiria em duas delas. -->
                                                 <TextBlock x:Name="ShadowMailAjuda"
                                                            Style="{StaticResource FieldHelpText}"/>
                                             </StackPanel>

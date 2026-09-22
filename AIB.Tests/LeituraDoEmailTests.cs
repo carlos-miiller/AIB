@@ -22,7 +22,13 @@ namespace AIB.Tests
     /// contexto vivo e nunca chega ao disco. Estes ensaios travam as duas metades — que ele
     /// chega ao modelo, e que ele não chega a nenhum dos três arquivos por onde a conversa passa.
     /// </para>
+    /// <para>
+    /// Na coleção global porque um dos ensaios liga o registro de execução, e ligar o registro é
+    /// trocar o <c>Console.Out</c> do processo inteiro. Em paralelo com outro ensaio que captura
+    /// o console, os dois se desfariam um ao outro.
+    /// </para>
     /// </summary>
+    [Collection("ContextoGlobal")]
     public class LeituraDoEmailTests : IDisposable
     {
         private readonly string _raiz =
@@ -91,6 +97,57 @@ namespace AIB.Tests
             });
 
             RegistroDeExecucao.Redigir(json).Should().NotContain(Segredo);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // O prompt da triagem
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void OPromptDaTriagem_LEVA_OCorpoEmbrulhado()
+        {
+            // O modelo continua vendo o texto inteiro — a triagem não pode piorar. O que muda é
+            // que o trecho vem entre marcadores, e é isso que o redator reconhece na saída.
+            string prompt = TriadorDeEmail.Montar(new[] { Msg(1, Segredo) });
+
+            prompt.Should().Contain(Segredo, "sem o corpo o veredito cai de qualidade");
+            prompt.Should().Contain(ConteudoDeTerceiros.Inicio).And.Contain(ConteudoDeTerceiros.Fim);
+            prompt.Should().Contain("Contrato Vertex", "assunto e remetente ficam fora do embrulho");
+
+            ConteudoDeTerceiros.Redigir(prompt).Should().NotContain(Segredo);
+        }
+
+        [Fact]
+        public void RegistroDeExecucao_NaoGRAVA_OCorpoQueFoiParaATriagem()
+        {
+            // Era a última exceção documentada à regra 3: com ExecutionLogging e o log detalhado
+            // ligados, o prompt da triagem ia inteiro para um arquivo em disco. Este ensaio lê o
+            // ARQUIVO, e não o redator, porque a exceção morava no caminho, não na função.
+            string pasta = Path.Combine(_raiz, "logs-triagem");
+            Directory.CreateDirectory(pasta);
+
+            var config = new UserAppSettings { ExecutionLogging = true };
+            var registro = RegistroDeExecucao.Iniciar(config, pasta);
+            registro.Should().NotBeNull("a chave está ligada e a pasta existe");
+
+            try
+            {
+                // É assim que o corpo chega lá: o provedor imprime a requisição no console.
+                Console.WriteLine(TriadorDeEmail.Montar(new[] { Msg(1, Segredo) }));
+            }
+            finally
+            {
+                registro!.Dispose();
+            }
+
+            string gravado = File.ReadAllText(registro!.Caminho);
+
+            gravado.Should().NotContain(Segredo, "o corpo do e-mail não vai para disco");
+            gravado.Should().Contain(ConteudoDeTerceiros.Omitido);
+            gravado.Should().Contain("Contrato Vertex",
+                                     "o assunto fica: sem ele o arquivo não diagnostica nada");
+            gravado.Should().NotContain("carrega assunto, remetente e corpo",
+                                        "o cabeçalho não pode continuar avisando de um risco que saiu");
         }
 
         // ─────────────────────────────────────────────────────────────────────

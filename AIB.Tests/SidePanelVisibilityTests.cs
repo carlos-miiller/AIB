@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using System.Windows;
+using System.Windows.Input;
 using AIB.Services;
 using AIB.Services.Agent;
 using AIB.Views;
@@ -103,6 +104,53 @@ namespace AIB.Tests
                 esconder!.Invoke(chat, null);
 
                 painel.IsVisible.Should().BeFalse("o painel some junto com a conversa");
+
+                painel.Close();
+                chat.Close();
+            });
+        }
+
+        [Fact]
+        public void Esc_NoCampoDeTexto_LevaOPainelJunto()
+        {
+            // Esc chamava Hide() direto, e Hide() é justamente o que não basta: escondia a
+            // conversa e deixava o painel na tela sozinho — o mesmo defeito que EsconderTudo
+            // existe para não deixar acontecer, e que o atalho e a perda de foco já evitavam.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var servico = ServicoDescartavel();
+                var chat = new ChatWindow(ConversaDescartavel(servico), servico);
+
+                var campoPainel = typeof(ChatWindow).GetField(
+                    "_painel", BindingFlags.NonPublic | BindingFlags.Instance);
+                campoPainel.Should().NotBeNull();
+
+                var painel = new SidePanelWindow();
+                campoPainel!.SetValue(chat, painel);
+
+                // A tecla só vira evento com uma janela de verdade atrás: o KeyEventArgs exige
+                // a PresentationSource, e ela só existe depois que a janela apareceu.
+                chat.Show();
+                painel.Show();
+
+                var fonte = PresentationSource.FromVisual(chat);
+                fonte.Should().NotBeNull("sem fonte de entrada não há como montar a tecla");
+
+                var tecla = new KeyEventArgs(Keyboard.PrimaryDevice, fonte, 0, Key.Escape)
+                {
+                    RoutedEvent = Keyboard.PreviewKeyDownEvent
+                };
+
+                var handler = typeof(ChatWindow).GetMethod(
+                    "InputBox_PreviewKeyDown", BindingFlags.NonPublic | BindingFlags.Instance);
+                handler.Should().NotBeNull();
+
+                handler!.Invoke(chat, new object[] { chat.FindName("InputBox")!, tecla });
+
+                chat.IsVisible.Should().BeFalse("Esc esconde a conversa");
+                painel.IsVisible.Should().BeFalse("e o painel vai junto, como em qualquer outra saída");
 
                 painel.Close();
                 chat.Close();

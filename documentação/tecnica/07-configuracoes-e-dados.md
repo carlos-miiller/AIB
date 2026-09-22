@@ -70,18 +70,29 @@ O AIB não usa pasta temporária.
 Detalhes que importam:
 
 - **`memory/sessions/<id>/`** (`SessionMemory`). O id é o instante de abertura, `yyyyMMdd-HHmmss-fff`; os milissegundos existem porque duas sessões no mesmo segundo misturariam dois `raw.jsonl`. O id passa por `Path.GetFileName`, para não virar caminho fora da pasta. Os JSONL são UTF-8 **sem BOM** (o BOM estragaria a primeira linha para qualquer parser) e sem escapar acentos. Gravar nunca lança: falha de disco vira `false` e linha no console, porque a memória é um acréscimo e não pode derrubar a conversa. O formato e o papel de cada arquivo estão em [04-memoria.md](04-memoria.md).
-- **`raw.jsonl` nunca é apagado.** Resumo é perda irreversível, e um resumo errado aqui não gera só incoerência: gera um agente agindo sobre informação errada com shell na mão. O cru sai do prompt, não sai do disco. Nenhum código apaga esse arquivo, nem o reset de fábrica.
+- **`raw.jsonl` nunca é apagado.** Resumo é perda irreversível, e um resumo errado aqui não gera só incoerência: gera um agente agindo sobre informação errada com shell na mão. O cru sai do prompt, não sai do disco. Nenhum código apaga esse arquivo. O reset de fábrica, que desde a decisão do usuário limpa `memory/`, o **renomeia** para `raw.<carimbo>.jsonl.bak` — sai do caminho de quem lê, não sai do disco.
 - **`compactacao.log`** (`RegistroDaCompactacao`) só é escrito com `CompactionLogging` ligado. Guarda contagens e tempos, não o texto dos resumos. A pasta é resolvida a cada escrita, porque a sessão troca quando a conversa é zerada ou restaurada.
-- **`facts.md`** é do usuário: a AIB só acrescenta linhas no fim, nunca reescreve nem apaga. `facts.index.jsonl` é append-only e impede que um fato apagado pelo usuário volte na próxima promoção.
+- **`facts.md`** é do usuário: a AIB só acrescenta linhas no fim, nunca reescreve nem apaga — nem no reset de fábrica, que o renomeia para `facts.<carimbo>.md.bak`. `facts.index.jsonl` é append-only e impede que um fato apagado pelo usuário volte na próxima promoção; ele, sim, é apagado no reset, porque é da máquina.
 - **`chat_history.json`** (`ChatHistoryService`) é regravado a cada turno, com a conversa viva por cima da própria entrada. Guarda até 50 conversas do usuário e, num teto à parte, até 50 conversas nascidas de e-mail — com um teto só, uma caixa movimentada expulsava as conversas que o usuário começou. Cada `ChatSession` guarda `MemorySessionId`, que liga a entrada à pasta da sessão, e `MailThreadKey` quando nasceu de um e-mail.
 - **`email/`**: o corpo de uma mensagem **nunca** é gravado. O diário guarda remetente, assunto e o resumo de uma frase; `MailJournalDays` controla a retenção e em zero desliga o diário. A pasta de cada conversa de e-mail tem nome de hash, para o assunto não vazar em listagens. Ver [05-email.md](05-email.md).
 - **`logs/audit-*.jsonl`** (`AuditLogService`): append-only, um arquivo por dia (data UTC), sem BOM, gravado **antes** da execução da ação auditada. Falha ao auditar vai para o console e não derruba a conversa. Nos testes, `AuditLogService.LogDirectoryOverride` desvia tudo para uma pasta temporária.
-- **`logs/execucao-*.log`** (`RegistroDeExecucao`): só com `ExecutionLogging` ligado. Espelha o console, que inclui os prompts inteiros — e o da triagem leva assunto, remetente e corpo dos e-mails. Por isso nasce desligado e o cabeçalho do arquivo avisa. Guarda os 20 mais recentes e só apaga arquivos com o próprio prefixo, porque a pasta também guarda a auditoria.
+- **`logs/execucao-*.log`** (`RegistroDeExecucao`): só com `ExecutionLogging` ligado. Espelha o console, que inclui os prompts inteiros — e o da triagem leva assunto e remetente dos e-mails. O **corpo, não**: ele desce para o prompt embrulhado por `ConteudoDeTerceiros` e `RegistroDeExecucao.Redigir` o troca pelo aviso de omissão antes de a linha chegar ao arquivo (era a última exceção documentada à regra 3, e deixou de ser). Ainda assim nasce desligado, e o cabeçalho do arquivo diz o que ele contém. Guarda os 20 mais recentes e só apaga arquivos com o próprio prefixo, porque a pasta também guarda a auditoria.
 - **`logs/prompt-*.txt`** (`RetratoDoEnvio.Gravar`): prefixo diferente de propósito, para a poda do registro de execução não apagá-lo.
 
 ### Reset de fábrica
 
-`SettingsWindow.WipeData_Click`, depois de confirmação, faz três coisas: `CredentialService.WipeAllCredentials` (apaga `credentials/` inteira, o que inclui as senhas de e-mail), `ChatHistoryService.ClearHistory` (apaga `chat_history.json`) e grava um `UserAppSettings` novo. Audita `factory_reset` e encerra o app. A pasta `memory/` e o `raw.jsonl` ficam, como manda a regra acima.
+`SettingsWindow.WipeData_Click`, depois de confirmação, faz quatro coisas: `CredentialService.WipeAllCredentials` (apaga `credentials/` inteira, o que inclui as senhas de e-mail), `ChatHistoryService.ClearHistory` (apaga `chat_history.json`), `ResetDeFabrica.Limpar` (varre `memory/` e `email/`) e grava um `UserAppSettings` novo. Audita `factory_reset` com as contagens da limpeza e encerra o app.
+
+`ResetDeFabrica` (`AIBWindows/Services/ResetDeFabrica.cs`) existe fora da tela porque é a parte com regra — o diálogo antigo mostrava `memory/` como alvo e não encostava nela, e uma promessa cumprida sobre arquivo apagado precisa de ensaio:
+
+| | |
+|---|---|
+| Varre | `memory/` e `email/`, recursivamente. Nada fora das duas é tocado — `logs/` fica, porque auditoria que o reset apaga não é auditoria. |
+| Preserva | `raw.jsonl` e `facts.md`, **renomeados** para `<nome>.<carimbo>.<ext>.bak` (carimbo `yyyyMMdd-HHmm`). Arquivo que já termina em `.bak` também fica: senão a regra duraria um reset. |
+| Apaga | Todo o resto: `chapters.jsonl`, `acts.jsonl`, `turno-aberto.json`, `compactacao.log`, `facts.index.jsonl` e `email/` inteira. Pasta que ficou vazia sai junto. |
+| Falha | Vira linha `[RESET]` no console e entra na contagem. **Nunca lança e nunca aborta o resto**: a metade que morre é sempre a que ainda não rodou. |
+
+O texto do diálogo lista o que some e o que fica, com o nome do `.bak` escrito nele. Ensaios em `AIB.Tests/ResetDeFabricaTests.cs`, sempre em raiz temporária.
 
 ## Configurações: `SettingsService` e `UserAppSettings`
 

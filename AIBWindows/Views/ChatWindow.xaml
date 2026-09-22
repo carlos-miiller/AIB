@@ -618,7 +618,9 @@
                                         <Button x:Name="SendButton" Style="{StaticResource SendButton}"
                                                 Click="SendButton_Click" ToolTip="Enviar" Margin="4,0,0,0">
                                             <!-- Aviãozinho. O conteúdo troca para um quadrado
-                                                 vermelho enquanto grava (§3.7(e)). -->
+                                                 vermelho enquanto grava e enquanto o turno
+                                                 corre (§3.7(e)), e VOLTA para este mesmo
+                                                 desenho depois — ver RestaurarIconeDeEnviar. -->
                                             <Path x:Name="SendIcon"
                                                   Data="M2,9 L16,2.5 L10.4,15.5 L8.6,10.4 Z"
                                                   Fill="White" Width="18" Height="18" Stretch="None"/>

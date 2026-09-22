@@ -1658,15 +1658,25 @@ public partial class SettingsWindow : Window
         bool temCaixa = MailAccountList.AlgumaCaixaPronta(
             _currentSettings.MailAccounts, _cofre);
 
-        // Sem Shadow não há onde o aviso aparecer: a chave fica de pé, mas inerte e dizendo
-        // por quê.
-        ShadowMailSwitch.IsEnabled = shadowLigado;
-
+        // A triagem é INDEPENDENTE do orbe: o orbe só mostra. A chave ficava desabilitada com
+        // ele desligado e CONTINUAVA GRAVADA como ligada — a triagem rodava, lendo a caixa três
+        // vezes por dia, e a tela dizia que não. Desabilitar uma chave sem desmarcá-la é pior
+        // que não ter chave: ela esconde o que está acontecendo em vez de decidir.
+        //
+        // O que falta sem orbe não é o trabalho, é o pulso; e o resultado tem onde aparecer
+        // mesmo assim — a lista de e-mails da conversa e o aviso da bandeja.
         ShadowMailAjuda.Text =
-            !shadowLigado ? "Ligue o Shadow acima para usar."
-            : !temCaixa ? "Nenhuma caixa conectada — conecte uma na página E-mail."
-            : TextoDaTriagem;
+            !temCaixa ? "Nenhuma caixa conectada — conecte uma na página E-mail."
+            : shadowLigado ? TextoDaTriagem
+            : TextoDaTriagem + " " + TextoDaTriagemSemOrbe;
     }
+
+    /// <summary>
+    /// A metade que só vale com o orbe FORA da tela: dizer onde o resultado aparece, já que
+    /// não haverá pulso. Sem esta frase, desligar o orbe parecia desligar a triagem junto.
+    /// </summary>
+    public const string TextoDaTriagemSemOrbe =
+        "Com o Shadow fora do desktop ela continua rodando: o resultado aparece na aba E-mail da conversa e num aviso da bandeja.";
 
     /// <summary>
     /// O que a triagem faz HOJE (<see cref="AgendaDoVigia"/>): a sondagem de 20 em 20 minutos é só
@@ -1959,29 +1969,55 @@ public partial class SettingsWindow : Window
     private void WipeData_Click(object sender, RoutedEventArgs e)
     {
         // Ação destrutiva: confirmação obrigatória ANTES de executar. O8.
+        //
+        // O texto lista o que some E o que fica. A versão anterior mostrava a pasta memory
+        // como alvo e não encostava nela: quem lia o diálogo acreditava ter apagado a memória
+        // e ela continuava lá. Agora some de verdade — então o que sobra tem de estar escrito.
         bool permitido = ConfirmDialog.Perguntar(
             this,
             "Restaurar o AIB para as configurações de fábrica?",
-            "Apaga o histórico de chat, a chave da API guardada no cofre e todas as "
-                + "preferências. Não é possível desfazer. O AIB será encerrado em seguida.",
+            "SOME: todas as preferências; a chave da API e as senhas de e-mail guardadas no "
+                + "cofre; o histórico de chat; a memória das conversas (capítulos, atos, turno "
+                + "aberto e diário da compactação); e os arquivos de e-mail (diário, vigias, "
+                + "ponteiros das caixas, conversas e regras).\n\n"
+                + "FICA: o cru das conversas é preservado como raw.<data>.jsonl.bak, e os seus "
+                + "fatos como facts.<data>.md.bak, dentro da pasta memory. Nada é tocado no "
+                + "servidor de e-mail, e a pasta logs continua onde está.\n\n"
+                + "Não é possível desfazer. O AIB será encerrado em seguida.",
             ferramenta: "factory_reset",
-            alvo: DirectoryService.MemoryDir,
+            alvo: DirectoryService.DataDir,
             dica: "irreversível");
 
         if (!permitido) return;
 
         CredentialService.WipeAllCredentials();
         ChatHistoryService.ClearHistory();
+
+        // A limpeza de memory/ e email/ mora num serviço: é a parte com regra (o cru vira
+        // .bak) e por isso precisa de ensaio com raiz temporária. A tela só chama.
+        var limpeza = ResetDeFabrica.Limpar();
+
         _settingsService.SaveSettings(new UserAppSettings());
 
         _ = AuditLogService.AppendAsync(new
         {
             ts = DateTime.UtcNow.ToString("o"),
-            outcome = "factory_reset"
+            outcome = "factory_reset",
+            apagados = limpeza.Apagados,
+            preservados = limpeza.Preservados,
+            falhas = limpeza.Falhas
         });
 
         System.Windows.MessageBox.Show(
-            "O AIB foi resetado e será encerrado. Inicie-o novamente.",
+            "O AIB foi resetado e será encerrado. Inicie-o novamente."
+                + (limpeza.Preservados > 0
+                    ? $"\n\n{limpeza.Preservados} arquivo(s) do seu histórico bruto e dos seus "
+                      + "fatos foram preservados como .bak na pasta memory."
+                    : "")
+                + (limpeza.Falhas > 0
+                    ? $"\n\n{limpeza.Falhas} arquivo(s) não puderam ser removidos (em uso?). "
+                      + "Veja o console."
+                    : ""),
             "Reset concluído",
             MessageBoxButton.OK,
             MessageBoxImage.Information);

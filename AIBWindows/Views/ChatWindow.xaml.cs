@@ -240,6 +240,52 @@ public partial class ChatWindow : Window
     }
 
     /// <summary>
+    /// Turno terminado: o texto inteiro da resposta. Existe para o orbe poder mostrar a
+    /// resposta no balao dele sem reimplementar o laco de stream, as ferramentas, o portao de
+    /// confirmacao e a gravacao de historico — tudo isso ja acontece aqui, mesmo com a janela
+    /// escondida, e as bolhas ficam prontas para quando o usuario abrir a conversa.
+    /// </summary>
+    public event Action<string>? TurnoConcluido;
+
+    /// <summary>
+    /// O passo em que o turno está AGORA, em uma linha: "Pensando", "Lendo arquivo",
+    /// "Esperando você autorizar". Vazio quando o turno acabou.
+    /// <para>
+    /// O orbe é a janela do que a AIB está fazendo, e até aqui ele só sabia do FIM: durante os
+    /// minutos em que o modelo trabalha ele ficava parado, como se nada estivesse acontecendo.
+    /// Este evento é o que acende o anel dele no passo certo.
+    /// </para>
+    /// <para>
+    /// UM evento, e uma FRASE em vez de um enum, porque quem consome é um tooltip. Um enum
+    /// obrigaria uma segunda tabela de frases do lado de lá, longe do único lugar que sabe o
+    /// nome da ferramenta que está rodando — e as duas divergiriam na primeira ferramenta
+    /// nova.
+    /// </para>
+    /// </summary>
+    public event Action<string>? PassoDoTurnoMudou;
+
+    /// <summary>
+    /// Se o turno corrente (ou o último) foi pedido pela barra do orbe, e não digitado aqui.
+    /// <para>
+    /// É o que decide se o orbe REPETE a resposta ou só mostra estado — ver
+    /// <see cref="ShadowAssistantWindow.OrbeDeveFalar"/>. Quem perguntou pela barra está
+    /// olhando para ela e tem de receber a resposta ali; quem digitou na conversa já a vê em
+    /// balão, e um segundo balão sobre o desktop diria duas vezes a mesma coisa.
+    /// </para>
+    /// </summary>
+    public bool TurnoVeioDoOrbe { get; private set; }
+
+    /// <summary>
+    /// Armado por <see cref="AbrirComMensagem"/> e consumido pelo envio.
+    /// <para>
+    /// Separado de <see cref="TurnoVeioDoOrbe"/> porque o envio tem várias saídas antecipadas
+    /// (/skills, /compact, turno em andamento) e a marca não pode sobreviver a elas para
+    /// carimbar o PRÓXIMO turno, que pode ter sido digitado na conversa.
+    /// </para>
+    /// </summary>
+    private bool _pedidoPeloOrbe;
+
+    /// <summary>
     /// Abre a conversa com uma mensagem ja enviada — e a porta que a barra do orbe usa (§5.3
     /// da spec do Shadow Assistant).
     /// <para>
@@ -248,17 +294,13 @@ public partial class ChatWindow : Window
     /// dispara compactacao.
     /// </para>
     /// </summary>
-    /// <summary>
-    /// Turno terminado: o texto inteiro da resposta. Existe para o orbe poder mostrar a
-    /// resposta no balao dele sem reimplementar o laco de stream, as ferramentas, o portao de
-    /// confirmacao e a gravacao de historico — tudo isso ja acontece aqui, mesmo com a janela
-    /// escondida, e as bolhas ficam prontas para quando o usuario abrir a conversa.
-    /// </summary>
-    public event Action<string>? TurnoConcluido;
-
     public void AbrirComMensagem(string texto, bool mostrarJanela = true)
     {
         if (string.IsNullOrWhiteSpace(texto)) return;
+
+        // Sem mostrar a janela é o caminho da BARRA do orbe: o turno roda escondido e a
+        // resposta tem de voltar para onde a pergunta foi feita.
+        _pedidoPeloOrbe = !mostrarJanela;
 
         if (mostrarJanela && Visibility != Visibility.Visible) ToggleWindow();
 
@@ -588,6 +630,11 @@ public partial class ChatWindow : Window
             _confirmacaoPendente = novo;
             _cadeiaAtual?.Aguardar();
 
+            // O único passo do turno em que a máquina não está trabalhando: está esperando
+            // uma pessoa. O orbe tem de dizer isso, e não continuar anunciando a ferramenta
+            // que está parada no portão.
+            PassoDoTurnoMudou?.Invoke("Esperando você autorizar");
+
             MessagesPanel.Children.Add(novo);
             AtualizarEstadoVazio();
             ChatScrollViewer.ScrollToEnd();
@@ -610,6 +657,10 @@ public partial class ChatWindow : Window
             await Dispatcher.InvokeAsync(() =>
             {
                 if (ReferenceEquals(_confirmacaoPendente, card)) _confirmacaoPendente = null;
+
+                // Respondido, o turno volta ao trabalho — e o passo volta a ser a ferramenta
+                // que estava parada no portão, que é a que segue daqui.
+                PassoDoTurnoMudou?.Invoke(Ferramentas.Rotulo(contexto.Tool));
 
                 // Decidido, o card SAI da conversa. Ele é uma pergunta, não uma mensagem: uma
                 // pergunta já respondida ocupando espaço permanente empurra o que veio depois
@@ -1018,8 +1069,17 @@ public partial class ChatWindow : Window
         _isSending = true;
         InputBox.Clear();
         InputBox.IsEnabled = false;
-        SendButton.Content = "■"; // Ícone de Stop
-        SendButton.Foreground = new SolidCB(WColor.FromRgb(0xFF, 0x55, 0x55));
+        AplicarIconeDeParar("Parar a resposta");
+
+        // A ORIGEM do turno, fixada aqui e não antes: acima deste ponto o envio tem saídas
+        // antecipadas (/skills, /memoria, turno em andamento), e a marca do orbe sobrevivendo
+        // a uma delas carimbaria o turno seguinte, que pode ter sido digitado na conversa.
+        TurnoVeioDoOrbe = _pedidoPeloOrbe;
+        _pedidoPeloOrbe = false;
+
+        // O primeiro passo. Em modelo de raciocínio o silêncio até a primeira palavra são
+        // dezenas de segundos, e é justamente aí que o anel do orbe precisa já estar girando.
+        PassoDoTurnoMudou?.Invoke("Pensando");
 
         // §3.11: quando o turno nasce de um e-mail, quem representa a fala do usuário é o
         // CARTÃO do e-mail, e não uma bolha. O texto que o modelo recebe é o mesmo; o que muda
@@ -1084,6 +1144,10 @@ public partial class ChatWindow : Window
                     cadeia.RecolherFalhaPendente();
                     cadeia.Iniciar(iniciada.Id, iniciada.Tool, iniciada.Argument);
                     ChatScrollViewer.ScrollToEnd();
+
+                    // O MESMO rótulo do chip da cadeia. "read" é endereço; "Lendo arquivo" é
+                    // notícia, e é o que quem olha o orbe de longe quer saber.
+                    PassoDoTurnoMudou?.Invoke(Ferramentas.Rotulo(iniciada.Tool));
                     continue;
                 }
 
@@ -1095,6 +1159,10 @@ public partial class ChatWindow : Window
 
                     RegistrarAcao(terminada);
                     ChatScrollViewer.ScrollToEnd();
+
+                    // A ferramenta saiu de cena e o modelo volta a trabalhar. Sem esta volta, o
+                    // orbe ficaria anunciando "Executando comando" pelo resto do turno.
+                    PassoDoTurnoMudou?.Invoke("Pensando");
                     continue;
                 }
 
@@ -1218,8 +1286,7 @@ public partial class ChatWindow : Window
             // Restaura a UI do InputBox
             StatusBar.Visibility = Visibility.Collapsed;
             InputBox.IsEnabled = true;
-            SendButton.Content = "➔"; // Ícone de Enviar
-            SendButton.Foreground = WBrushes.White;
+            RestaurarIconeDeEnviar();
             InputBox.Focus();
             _isSending = false;
 
@@ -1227,6 +1294,11 @@ public partial class ChatWindow : Window
             {
                 RefreshLevelUI(true);
             }
+
+            // O passo vazio ANTES do fim: quem escuta os dois eventos apaga o anel no primeiro
+            // e decide o que dizer no segundo, e não o contrário — o anel parando depois da
+            // fala aparecer deixaria o orbe um instante falando e trabalhando ao mesmo tempo.
+            PassoDoTurnoMudou?.Invoke("");
 
             string textoDoTurno = (allText + fullText).Trim();
             TurnoConcluido?.Invoke(errorText ?? textoDoTurno);
@@ -1353,31 +1425,53 @@ public partial class ChatWindow : Window
     {
         if (gravando)
         {
-            // Quadrado vermelho de 13px, r3 — o "parar" do §3.7(e).
-            SendButton.Content = new Border
-            {
-                Width = 13,
-                Height = 13,
-                CornerRadius = new CornerRadius(3),
-                Background = (System.Windows.Media.Brush)FindResource("DangerBrush")
-            };
-            SendButton.ToolTip = "Parar de gravar";
+            AplicarIconeDeParar("Parar de gravar");
             VoiceButton.Foreground = (System.Windows.Media.Brush)FindResource("DangerBrush");
             VoiceButton.ToolTip = "Ouvindo… clique para parar.";
             return;
         }
 
-        SendButton.Content = new System.Windows.Shapes.Path
-        {
-            Data = System.Windows.Media.Geometry.Parse("M2,9 L16,2.5 L10.4,15.5 L8.6,10.4 Z"),
-            Fill = WBrushes.White,
-            Width = 18,
-            Height = 18,
-            Stretch = System.Windows.Media.Stretch.None
-        };
-        SendButton.ToolTip = "Enviar";
+        RestaurarIconeDeEnviar();
         VoiceButton.Foreground = (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
         VoiceButton.ToolTip = "Falar com o AIB (Whisper)";
+    }
+
+    /// <summary>
+    /// Põe o "parar" do §3.7(e) no botão primário: quadrado vermelho de 13px, r3.
+    /// <para>
+    /// Dois momentos usam este mesmo desenho — a gravação e o turno em andamento —, e por um
+    /// tempo cada um tinha o seu: o turno escrevia o caractere "■" com um vermelho literal no
+    /// código, que não era nenhum dos vermelhos da paleta. A cor vem do token, o mesmo
+    /// <c>DangerBrush</c> que pinta toda ação destrutiva da interface.
+    /// </para>
+    /// </summary>
+    /// <param name="dica">O que parar significa aqui — a gravação ou a resposta.</param>
+    private void AplicarIconeDeParar(string dica)
+    {
+        SendButton.Content = new Border
+        {
+            Width = 13,
+            Height = 13,
+            CornerRadius = new CornerRadius(3),
+            Background = (System.Windows.Media.Brush)FindResource("DangerBrush")
+        };
+        SendButton.ToolTip = dica;
+    }
+
+    /// <summary>
+    /// Devolve ao botão primário o aviãozinho — o <c>SendIcon</c> desenhado no XAML, e não uma
+    /// cópia dele.
+    /// <para>
+    /// O fim do turno escrevia "➔" no botão: a partir do primeiro envio o aviãozinho sumia da
+    /// tela para sempre, trocado por uma seta de texto com outra forma e outro tamanho. Como o
+    /// desenho original continua vivo no campo gerado pelo <c>x:Name</c> mesmo depois de ser
+    /// tirado do botão, basta recolocá-lo para o botão voltar a ser o que o XAML descreve.
+    /// </para>
+    /// </summary>
+    private void RestaurarIconeDeEnviar()
+    {
+        SendButton.Content = SendIcon;
+        SendButton.ToolTip = "Enviar";
     }
 
     private void OnTranscriptionUpdated(object? sender, TranscriptionEventArgs e)
@@ -1523,7 +1617,10 @@ public partial class ChatWindow : Window
                 e.Handled = true;
             }
         }
-        if (e.Key == Key.Escape) this.Hide();
+        // Esc é uma saída, e sair é sair de tudo. Escondia só a conversa com Hide(): com o
+        // painel lateral aberto, ele ficava na tela sozinho — o mesmo defeito que o atalho e a
+        // perda de foco já resolvem por EsconderTudo.
+        if (e.Key == Key.Escape) EsconderTudo();
     }
 
     private void CommandsList_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -1723,12 +1820,16 @@ public partial class ChatWindow : Window
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        this.Deactivated -= Window_Deactivated; // Previne esconder o chat
-        var settingsWin = new SettingsWindow(_settingsService);
-        settingsWin.Owner = this;
-        settingsWin.SimularPrimeiroEnvio = () => _conversation.SimularPrimeiroEnvio();
-        settingsWin.ShowDialog();
-        this.Deactivated += Window_Deactivated; // Retorna o comportamento
+        // Desinscrever o Deactivated na unha era o padrão ANTIGO, o que fez o ModalGuard
+        // existir: a regra fica num lugar só, e quem abre modal apenas declara que abriu. Na
+        // unha, uma exceção dentro do ShowDialog deixaria o chat sem o handler para sempre.
+        using (ModalGuard.Enter())
+        {
+            var settingsWin = new SettingsWindow(_settingsService);
+            settingsWin.Owner = this;
+            settingsWin.SimularPrimeiroEnvio = () => _conversation.SimularPrimeiroEnvio();
+            settingsWin.ShowDialog();
+        }
 
         // Settings podem ter mudado a flag Shadow Assistant — atualiza o botão.
         // Se o usuário desligou o setting com o Shadow ativo, paramos o serviço.

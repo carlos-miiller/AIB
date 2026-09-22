@@ -59,10 +59,11 @@ são invioláveis; o mecanismo está em `documentação/tecnica/03-ferramentas-e
   com `FolderAccess.ReadOnly` (`EXAMINE`) e corpo com `BODY.PEEK`.
 - **O corpo nunca vai para disco nem log.** Todo caminho da conversa para o disco passa por
   `ConteudoDeTerceiros.Redigir` — hoje quatro: `raw.jsonl`, texto do resumidor, registro de execução,
-  `chat_history.json`. Um quinto caminho tem de passar por ele.
-- Exceções documentadas, mantidas até decisão do usuário: o enquadramento do e-mail aberto no chat
-  (veredito, nunca corpo) é gravado mesmo com `MailJournalDays = 0`; o registro de execução opt-in
-  pode conter o prompt da triagem.
+  `chat_history.json`. Um quinto caminho tem de passar por ele. Do outro lado, todo corpo que entra
+  num prompt passa por `Embrulhar` — `LerEmailTool.Formatar` e `TriadorDeEmail.Montar` —, inclusive o
+  da triagem: por isso o registro de execução opt-in grava assunto e remetente, e o corpo omitido.
+- Exceção documentada, mantida até decisão do usuário: o enquadramento do e-mail aberto no chat
+  (veredito, nunca corpo) é gravado mesmo com `MailJournalDays = 0`.
 
 ## 4. Segredos
 
@@ -74,6 +75,8 @@ são invioláveis; o mecanismo está em `documentação/tecnica/03-ferramentas-e
 ## 5. Dados e registros
 
 - Todo dado do usuário fica em `~/.AIB` (`DirectoryService.DataDir`).
-- **`raw.jsonl` nunca é apagado.** Os arquivos de e-mail são apagáveis e obedecem `MailJournalDays`.
+- **`raw.jsonl` nunca é apagado.** O reset de fábrica limpa `memory/` e `email/`, mas o `raw.jsonl` —
+  e o `facts.md`, que é texto do usuário — ele **renomeia** para `.bak` (`ResetDeFabrica`).
+- Os arquivos de e-mail são apagáveis e obedecem `MailJournalDays`, que corta por **dias**.
 - A auditoria (`~/.AIB/logs/audit-*.jsonl`) é append-only e grava **antes** da execução, em todo
   desfecho do portão de confirmação (cartão, sessão, dispensa, floor list, sem contexto, sem UI).

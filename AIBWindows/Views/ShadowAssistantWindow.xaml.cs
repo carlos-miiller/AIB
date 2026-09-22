@@ -108,6 +108,28 @@ public partial class ShadowAssistantWindow : Window
     public static bool DeveAparecer(bool ligado, bool conversaNaTela) => ligado && !conversaNaTela;
 
     /// <summary>
+    /// Se o orbe deve REPETIR a resposta de um turno, ou só mostrar o estado dele.
+    /// <para>
+    /// O orbe é a janela do que a AIB está fazendo, e não um segundo lugar onde ela fala. Com a
+    /// conversa na tela, quem mostra a resposta é ela: o orbe repetindo a mesma frase num balão
+    /// sobre o desktop diria duas vezes a mesma coisa, e a segunda vez apareceria escondida
+    /// atrás da janela que já tinha a primeira.
+    /// </para>
+    /// <para>
+    /// As DUAS exceções, que são o desenho inteiro: o turno pedido pela BARRA do orbe — quem
+    /// perguntou ali está olhando para ali —, e a conversa fora da tela, quando o balão do orbe
+    /// é o único lugar onde a resposta pode aparecer.
+    /// </para>
+    /// <para>
+    /// Função pura pelo mesmo motivo de <see cref="DeveAparecer"/>: a decisão vale para o fim
+    /// de todo turno, e uma cópia dela escrita à mão no meio de um handler é a que envelhece
+    /// errado.
+    /// </para>
+    /// </summary>
+    public static bool OrbeDeveFalar(bool turnoVeioDoOrbe, bool conversaNaTela) =>
+        turnoVeioDoOrbe || !conversaNaTela;
+
+    /// <summary>
     /// Texto enviado pela barra. §5.3: a conversa continua na janela de chat, não aqui — a
     /// barra é porta de entrada, não um segundo chat.
     /// </summary>
@@ -513,9 +535,27 @@ public partial class ShadowAssistantWindow : Window
     private IReadOnlyList<MailSummary>? _emailsPendentes;
 
     /// <summary>
-    /// Clique num item abre a mensagem. As duas caixas do usuário são webmail, então é uma URL
-    /// no navegador padrão — não há cliente de e-mail para invocar.
+    /// Um e-mail da pilha foi escolhido — §4.8.
+    /// <para>
+    /// O item já existia na fala do orbe e o clique nele não fazia NADA: a lista parecia um
+    /// desenho. Quem liga o evento a alguma coisa é o App, e o destino é o mesmo da lista da
+    /// área central — o e-mail entra na conversa. O orbe não conhece a janela de chat e não
+    /// precisa conhecer; ele avisa que foi clicado.
+    /// </para>
     /// </summary>
+    public event Action<MailSummary>? EmailEscolhido;
+
+    /// <summary>
+    /// O clique no item da pilha. No orbe o corpo do acordeão fica recolhido — não há
+    /// <c>Aberto</c> aqui —, então este é o ÚNICO gesto que o item oferece, e ele tem de levar
+    /// ao mesmo lugar que "Abrir com &lt;NOME&gt;" leva na lista da janela.
+    /// </summary>
+    private void EmailDaPilha_Click(object sender, EventArgs e)
+    {
+        if (sender is MailListItem item && item.DataContext is MailSummary email)
+            EmailEscolhido?.Invoke(email);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // §5.2  Pulso
     // ─────────────────────────────────────────────────────────────────────────
@@ -608,6 +648,43 @@ public partial class ShadowAssistantWindow : Window
         GiroDoAnelDoOrbe.BeginAnimation(RotateTransform.AngleProperty, giro);
 
         AtualizarAnelDeProgresso();
+    }
+
+    /// <summary>
+    /// O passo em que a AIB está AGORA, em uma linha. Vazio ou nulo: parou.
+    /// <para>
+    /// É o que o orbe mostra de um turno que não é dele — anel girando e o passo no tooltip,
+    /// sem balão. A fala é resposta e tem dono (ver <see cref="OrbeDeveFalar"/>); o estado é
+    /// notícia, e um balão por ferramenta usada encheria o desktop com a mesma conversa que a
+    /// janela já está mostrando.
+    /// </para>
+    /// <para>
+    /// Vale mesmo com o orbe ESCONDIDO, que é o caso comum: ele sai da tela enquanto a
+    /// conversa está aberta (<see cref="DeveAparecer"/>). Esconder a conversa no meio de um
+    /// turno traz o orbe de volta, e ele tem de voltar girando no passo certo — não parado,
+    /// como se nada estivesse acontecendo.
+    /// </para>
+    /// </summary>
+    public void MostrarEstado(string? passo)
+    {
+        if (string.IsNullOrWhiteSpace(passo))
+        {
+            // A varredura de e-mail tem o estado DELA — ícone de inbox e tooltip próprios — e
+            // roda em paralelo com o turno. Deixar o fim de um turno apagar o anel dela é o
+            // mesmo defeito que separou PararDeProcessarEmail de TerminarDeProcessarEmail: o
+            // anel apagado com a caixa ainda sendo lida.
+            if (ProcessandoEmail) return;
+
+            Casca.ToolTip = null;
+            PararDeTrabalhar();
+            return;
+        }
+
+        Casca.ToolTip = passo;
+
+        // Só quando ainda não está girando: ComecarATrabalhar recomeça a animação do zero, e
+        // religá-la a cada ferramenta faria o anel dar um salto visível a cada passo do turno.
+        if (!Trabalhando) ComecarATrabalhar();
     }
 
     private void PararDeTrabalhar()

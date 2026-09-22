@@ -50,8 +50,10 @@ e-mails"), lida **a cada batida** — ligar a chave vale sem reiniciar. Roda com
   (`MarcoDoVigia`), gravado **antes** de rodar: se falhar, espera o próximo horário, e reabrir o app
   não dispara outro digest.
 - **Sondagem**: a cada **20 min** (`IntervaloDaSondagem`), **só código** — lê, agrupa, conta, procura
-  rajada. Ela só acorda o modelo se `MailDigestService.Urgente` for verdadeiro: houve **rajada**, ou
-  chegou mensagem numa conversa vigiada com `Acorda9b = true`.
+  rajada. Ela só acorda o modelo se `MailDigestService.Urgente(rajadas)` for verdadeiro, e o único
+  motivo é a **rajada**. Resposta chegando numa conversa vigiada **não** acorda: espera o próximo
+  digest. (Havia um `Acorda9b` por vigia que prometia interromper na hora; ele era gravado sempre
+  falso e nunca teve interface — o campo saiu.)
 - `BaterAsync` registra no console **por que está parado**, uma linha por mudança de motivo.
 
 ### Uma passada (`ExecutarAsync` → `PassadaAsync`)
@@ -117,7 +119,13 @@ Toda queda vai para a lista de `Descartada` com o motivo — a triagem tem de se
   que pode ser diferente do da conversa — dá para conversar pela nuvem e manter os e-mails no Ollama.
   Raciocínio opcional (`MailTriageThinking`, triplica o teto de resposta).
 - Lote: as mais recentes, até `LimitesDoProvedor.LoteDaTriagem` (25 local, 60 OpenRouter).
-- O prompt leva, por mensagem, `[uid] de`, `assunto`, `recebida` e o corpo limpo. Resposta: array
+- O prompt leva, por mensagem, `[uid] de`, `assunto`, `recebida` e o corpo limpo. O corpo vai
+  **dentro de `ConteudoDeTerceiros.Embrulhar`** (`TriadorDeEmail.Montar`); remetente, assunto e data
+  ficam fora, como no `mail_read`. Não é para o modelo ver menos — ele lê o texto inteiro e a
+  qualidade da triagem é a mesma. É para o caminho até o disco ver menos: com `ExecutionLogging` e o
+  log detalhado ligados, a requisição inteira é impressa no console e o `RegistroDeExecucao` a
+  espelha num arquivo. O prompt de sistema diz que o que está entre os marcadores é texto de
+  terceiros, material a classificar e nunca instrução a seguir. Resposta: array
   JSON `{uid, urgencia, resumo}`. `Interpretar` é tolerante (cercas de código, sinônimos de campo,
   uid como texto); nível desconhecido vira **média**.
 - Mensagem sem veredito **não some**: ganha resumo de código ("o resumo não saiu desta vez") e
@@ -133,7 +141,7 @@ Toda queda vai para a lista de `Descartada` com o motivo — a triagem tem de se
 |---|---|---|---|
 | `estado.json` | `EstadoDasCaixas` | Ponteiros de UID e datas por endereço. | Permanente; sai com a conta. |
 | `ultimo-digest.txt` | `MarcoDoVigia` | Um instante. | — |
-| `vigias.json` | `VigiasDoEmail` | Id de thread, frase de motivo, datas, `Acorda9b`. | 7 dias por vigia. |
+| `vigias.json` | `VigiasDoEmail` | Id de thread, frase de motivo, duas datas. | 7 dias por vigia. |
 | `regras.md` | `RegrasDoVigia` | Escrito pelo usuário. | — |
 | `diario/diario-AAAA-MM-DD.json` | `DiarioDeTriagem` | Por passada: lidas, descartadas e cada triada (remetente, nome, assunto, resumo, urgência, conta, data). | `MailJournalDays` |
 | `conversas/<hash>/triagem.jsonl` + `chave.txt` | `ArquivoDeConversas` | Histórico por conversa (`EntradaDaConversa`). | `MailJournalDays` |
@@ -144,8 +152,14 @@ Toda queda vai para a lista de `Descartada` com o motivo — a triagem tem de se
 - **0 não é "pare de gravar", é "não quero isto em disco"**: `DiarioDeTriagem.Gravar` e
   `ArquivoDeConversas.Anotar`/`Limpar` **apagam** a pasta inteira. Com 0, `mail` responde que o
   registro está desligado e `Reconstituir` não restaura nada.
-- `DiarioDeTriagem.Limpar` mantém os N arquivos mais recentes (nomes por data **local**: "hoje" é o
-  calendário da parede).
+- `DiarioDeTriagem.Limpar` corta por **data**, não por contagem de arquivos: ficam hoje e os N−1 dias
+  anteriores. O dia sai do **nome** do arquivo (por data **local**: "hoje" é o calendário da parede),
+  e não do carimbo do sistema de arquivos, que uma cópia da pasta de dados atualizaria. Arquivo com
+  nome fora do padrão fica — apagar por não entender é a diferença entre uma poda e uma varredura.
+  Contar arquivos deixava quem abre o AIB dois dias por semana com um mês e meio de diário sob um
+  mostrador escrito "7".
+- `ArquivoDeConversas.Limpar` já cortava por data (a da **última entrada** do histórico, pelo mesmo
+  motivo). `EstadoDasCaixas` não tem retenção: os ponteiros saem com a conta.
 - O arquivo de conversas é **apagável**, ao contrário do `raw.jsonl`: aquele é a conversa do usuário;
   este é sobre terceiros.
 
@@ -230,6 +244,9 @@ abriu.
   escapado no log do provedor não casaria mais.
 - `Redigir(texto)` troca cada trecho embrulhado por `[corpo do e-mail omitido — não é gravado]`. Sem
   o marcador de fim, apaga até o fim do texto (log truncado não pode vazar a segunda metade).
+- **Quem embrulha**: `LerEmailTool.Formatar` (o corpo que a conversa pediu) e `TriadorDeEmail.Montar`
+  (o corpo que desce para o prompt da triagem). Todo corpo que sai do `MailDigestService` para
+  qualquer prompt passa por um dos dois.
 
 ### Os quatro pontos de saída para disco
 

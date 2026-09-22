@@ -357,7 +357,9 @@ A janela abre direto numa página pelo parâmetro do construtor (é o que o modo
 | Logs | Logs detalhados no console, registro de execução, diário da compactação, "Simular o primeiro envio", pasta dos logs. |
 
 Cada página tem "Restaurar padrões desta página". O rodapé tem "Reset de Fábrica" (apaga o cofre
-inteiro, o histórico de chat e as preferências, e encerra o app), "Cancelar" (pede confirmação se há
+inteiro, o histórico de chat, as preferências e o conteúdo de `memory/` e `email/` — preservando
+`raw.jsonl` e `facts.md` como `.bak`, ver [07](07-configuracoes-e-dados.md) —, e encerra o app),
+"Cancelar" (pede confirmação se há
 mudança) e "Salvar". Depois de salvar, a janela chama `ChatWindow.ApplyCharacterUI` e
 `App.AplicarEstadoDoOrbe`, para as mudanças valerem na hora.
 

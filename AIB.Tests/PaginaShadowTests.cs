@@ -55,6 +55,31 @@ namespace AIB.Tests
         private static T Achar<T>(SettingsWindow janela, string nome) where T : class
             => (T)janela.FindName(nome)!;
 
+        /// <summary>
+        /// A página com uma caixa DE VERDADE no cofre. A linha de ajuda tem três casos, e sem
+        /// caixa o primeiro deles engole os outros dois — é o que precisa ser resolvido antes.
+        /// </summary>
+        private static SettingsWindow ComCaixa(bool orbeLigado)
+        {
+            string pasta = PastaTemporaria();
+            string caminho = Path.Combine(pasta, "settings.json");
+            var servico = new SettingsService(caminho);
+            var cofre = new MailVault(pasta);
+
+            var s = servico.LoadSettings();
+            s.ShadowAssistantEnabled = orbeLigado;
+            s.MailAccounts = new System.Collections.Generic.List<MailAccountSettings>
+            {
+                new() { Address = "ana@gmail.com", ImapHost = "imap.gmail.com", ImapPort = 993, IsPrimary = true }
+            };
+            servico.SaveSettings(s);
+            cofre.Guardar("ana@gmail.com", "abcdefghijklmnop");
+
+            return new SettingsWindow(
+                servico, PaginaDeConfiguracoes.Shadow,
+                new MailServiceStub(), cofre, new EstadoDasCaixas(pasta));
+        }
+
         // ─────────────────────────────────────────────────────────────────
         // A página existe e é alcançável
         // ─────────────────────────────────────────────────────────────────
@@ -171,17 +196,25 @@ namespace AIB.Tests
         // ─────────────────────────────────────────────────────────────────
 
         [Fact]
-        public void SHADOW_DESLIGADO_DesabilitaATriagem_EDizPorQue()
+        public void SEM_ORBE_ATriagemCONTINUA_Habilitada_EDizOndeOResultadoAparece()
         {
-            // Uma chave ligável que não tem onde agir é a mesma armadilha do ponto âmbar sem
-            // saída: parece que funciona, não funciona, e nada na tela explica.
+            // A triagem é INDEPENDENTE do orbe: o orbe só MOSTRA o digest. A chave ficava
+            // desabilitada com ele desligado e continuava GRAVADA como ligada — a triagem
+            // rodava, lendo a caixa três vezes por dia, e a tela dizia que não. Desabilitar uma
+            // chave sem desmarcá-la é pior que não ter chave: esconde o que está acontecendo
+            // em vez de decidir.
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
-                var (janela, _, _) = Nova(s => s.ShadowAssistantEnabled = false);
+                var janela = ComCaixa(orbeLigado: false);
 
-                Achar<ToggleButton>(janela, "ShadowMailSwitch").IsEnabled.Should().BeFalse();
-                Achar<TextBlock>(janela, "ShadowMailAjuda").Text.Should().Contain("Ligue o Shadow");
+                Achar<ToggleButton>(janela, "ShadowMailSwitch").IsEnabled
+                    .Should().BeTrue("a triagem não depende do orbe para funcionar");
+
+                Achar<TextBlock>(janela, "ShadowMailAjuda").Text
+                    .Should().Contain(SettingsWindow.TextoDaTriagem)
+                    .And.Contain("aba E-mail da conversa")
+                    .And.Contain("bandeja", "sem pulso, o resultado precisa dizer onde aparece");
 
                 janela.Close();
             });
@@ -209,26 +242,13 @@ namespace AIB.Tests
         {
             // A triagem que resume e prioriza não existe: a varredura de hoje só conta
             // mensagens. Prometer resumo aqui venderia o que ainda não há.
+            //
+            // Com o orbe NA TELA a frase é só esta: o pulso dele é a superfície, e explicar as
+            // outras duas seria contar um caso que não é o do usuário agora.
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
-                string pasta = PastaTemporaria();
-                string caminho = Path.Combine(pasta, "settings.json");
-                var servico = new SettingsService(caminho);
-                var cofre = new MailVault(pasta);
-
-                var s = servico.LoadSettings();
-                s.ShadowAssistantEnabled = true;
-                s.MailAccounts = new System.Collections.Generic.List<MailAccountSettings>
-                {
-                    new() { Address = "ana@gmail.com", ImapHost = "imap.gmail.com", ImapPort = 993, IsPrimary = true }
-                };
-                servico.SaveSettings(s);
-                cofre.Guardar("ana@gmail.com", "abcdefghijklmnop");
-
-                var janela = new SettingsWindow(
-                    servico, PaginaDeConfiguracoes.Shadow,
-                    new MailServiceStub(), cofre, new EstadoDasCaixas(pasta));
+                var janela = ComCaixa(orbeLigado: true);
 
                 Achar<TextBlock>(janela, "ShadowMailAjuda").Text
                     .Should().Be(SettingsWindow.TextoDaTriagem);
@@ -240,17 +260,19 @@ namespace AIB.Tests
         [Fact]
         public void DesligarOShadow_ATUALIZA_AAjudaNaHora()
         {
-            // Sem isso a linha continuaria prometendo triagem depois de o usuário desligar o
-            // Shadow, e só se corrigiria ao reabrir a tela.
+            // Sem isso a linha continuaria descrevendo o caso do orbe na tela depois de o
+            // usuário desligá-lo, e só se corrigiria ao reabrir a tela.
             WpfHost.EmSta(() =>
             {
                 WpfHost.GarantirRecursos();
-                var (janela, _, _) = Nova(s => s.ShadowAssistantEnabled = true);
+                var janela = ComCaixa(orbeLigado: true);
 
                 Achar<ToggleButton>(janela, "ShadowAssistantSwitch").IsChecked = false;
 
-                Achar<TextBlock>(janela, "ShadowMailAjuda").Text.Should().Contain("Ligue o Shadow");
-                Achar<ToggleButton>(janela, "ShadowMailSwitch").IsEnabled.Should().BeFalse();
+                Achar<TextBlock>(janela, "ShadowMailAjuda").Text
+                    .Should().Contain("bandeja", "a triagem segue, e agora aparece em outro lugar");
+                Achar<ToggleButton>(janela, "ShadowMailSwitch").IsEnabled
+                    .Should().BeTrue("a chave nunca depende do orbe");
 
                 janela.Close();
             });

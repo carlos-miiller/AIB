@@ -497,6 +497,54 @@ public partial class ChatWindow
     }
 
     /// <summary>
+    /// Abre um e-mail vindo da pilha do orbe — §4.8 do Shadow Assistant.
+    /// <para>
+    /// MESMO caminho de "Abrir com &lt;NOME&gt;" da lista central, e não uma cópia dele: é a
+    /// mesma decisão (retomar a conversa que já existe, ou abrir uma nova com o veredito da
+    /// triagem), e uma segunda implementação divergiria na primeira correção feita só de um
+    /// lado — provavelmente no vínculo com a thread, que é o que faz o e-mail reencontrar a
+    /// própria conversa.
+    /// </para>
+    /// <para>
+    /// A janela vem à FRENTE antes de qualquer coisa: <see cref="AbrirEmailNoChat"/> manda um
+    /// turno ao modelo e desenha o cartão, e fazer isso atrás de uma janela escondida deixaria
+    /// o clique no orbe sem nenhuma resposta visível — o mesmo defeito que este item tinha
+    /// antes, quando não fazia nada.
+    /// </para>
+    /// </summary>
+    public void AbrirEmailDoOrbe(MailSummary alvo)
+    {
+        if (alvo == null) return;
+
+        if (Visibility != Visibility.Visible) ToggleWindow();
+        else Activate();
+
+        // O switch vai para E-MAIL porque a LEITURA é um estado do modo e-mail: sem isto,
+        // AplicarEstadoDoModo esconderia o cabeçalho do e-mail e o cartão apareceria solto no
+        // meio do chat.
+        ModoEmail.IsChecked = true;
+
+        AbrirEmailNoChat(alvo);
+    }
+
+    /// <summary>
+    /// Remonta a lista da caixa, se ela estiver na tela — o digest terminou.
+    /// <para>
+    /// A lista é montada ao ENTRAR no modo e-mail, e só. Com a janela aberta na caixa, uma
+    /// passada do vigia que trouxesse um e-mail novo não aparecia até o usuário sair e voltar
+    /// ao modo. É a superfície que sustenta a triagem quando o orbe está desligado, então ela
+    /// não pode mostrar uma caixa parada no tempo.
+    /// </para>
+    /// </summary>
+    public void AtualizarCaixaDeEntrada()
+    {
+        if (CaixaDeEntrada == null || ModoEmail.IsChecked != true) return;
+        if (_emailEmLeitura != null) return;   // na leitura não há lista na tela para remontar
+
+        MontarCaixaDeEntrada();
+    }
+
+    /// <summary>
     /// O texto que o modelo recebe ao abrir um e-mail. Só o que a triagem já apurou.
     /// <para>
     /// Diz em voz alta que o texto original não está aqui: sem isso o modelo responde como se

@@ -14,11 +14,12 @@ namespace AIB.Services;
 /// interessa costuma estar no pedaço que já saiu da tela.
 /// </para>
 /// <para>
-/// ATENÇÃO AO QUE ISSO GRAVA. O console já imprime o prompt inteiro que vai ao modelo, e o
-/// prompt da triagem carrega assunto, remetente e corpo dos e-mails. Ligar isto passa a
-/// GRAVAR esse conteúdo em disco — que é justamente o que a regra 3 do vigia evita no resto do
-/// programa. É opt-in, é diagnóstico, e o cabeçalho do arquivo avisa. O que NUNCA entra aqui é
-/// senha ou chave: elas não passam pelo console em lugar nenhum, e o
+/// ATENÇÃO AO QUE ISSO GRAVA. O console imprime o prompt inteiro que vai ao modelo, e o da
+/// triagem carrega assunto e remetente dos e-mails — o mesmo que o diário do vigia já grava.
+/// O CORPO não: ele desce para o prompt embrulhado por <see cref="Mail.ConteudoDeTerceiros"/>
+/// e <see cref="Redigir"/> o troca pelo aviso de omissão antes de a linha chegar ao arquivo.
+/// Era a última exceção documentada à regra 3 do vigia, e deixou de ser. O que também NUNCA
+/// entra aqui é senha ou chave: elas não passam pelo console em lugar nenhum, e o
 /// <see cref="Redigir"/> apara o que escapar.
 /// </para>
 /// </summary>
@@ -121,9 +122,9 @@ public sealed class RegistroDeExecucao : IDisposable
     /// </summary>
     public static string Redigir(string? linha)
     {
-        // O corpo de e-mail lido pela conversa passa pelo console duas vezes — no resultado da
-        // ferramenta e, com o log verboso, na requisição inteira ao provedor. Nenhuma das duas
-        // pode chegar ao arquivo.
+        // O corpo de e-mail passa pelo console por três caminhos — o resultado do mail_read, a
+        // requisição inteira ao provedor com o log verboso, e o prompt da triagem. Nenhum deles
+        // pode chegar ao arquivo, e os três chegam aqui embrulhados.
         string texto = Mail.ConteudoDeTerceiros.Redigir(linha);
 
         foreach (string campo in new[] { "\"api_key\"", "\"apiKey\"", "\"password\"", "\"senha\"", "Authorization:" })
@@ -148,8 +149,8 @@ public sealed class RegistroDeExecucao : IDisposable
         _arquivo.WriteLine("═══════════════════════════════════════════════════════════════════");
         _arquivo.WriteLine();
         _arquivo.WriteLine("ESTE ARQUIVO CONTÉM TUDO O QUE FOI PARA O CONSOLE, incluindo os prompts");
-        _arquivo.WriteLine("enviados ao modelo. O prompt da triagem carrega assunto, remetente e corpo");
-        _arquivo.WriteLine("dos seus e-mails. Confira antes de mandar para alguém.");
+        _arquivo.WriteLine("enviados ao modelo. O prompt da triagem carrega assunto e remetente dos seus");
+        _arquivo.WriteLine("e-mails; o corpo, não — ele sai omitido. Confira antes de mandar para alguém.");
         _arquivo.WriteLine();
         _arquivo.WriteLine($"máquina .......... {Environment.MachineName} · {Environment.OSVersion}");
         _arquivo.WriteLine($"processadores .... {Environment.ProcessorCount}");

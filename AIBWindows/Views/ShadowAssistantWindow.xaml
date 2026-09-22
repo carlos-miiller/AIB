@@ -321,8 +321,16 @@
                                             <!-- §6.6 E3: o MESMO controle da lista central. O
                                                  layout deste item ainda vai ser revisto, e
                                                  duas cópias divergiriam na primeira
-                                                 correção feita só de um lado. -->
-                                            <v:MailListItem Margin="0,0,0,6"/>
+                                                 correção feita só de um lado.
+
+                                                 PediuAlternar é o clique no item. Aqui ele não
+                                                 abre acordeão nenhum — Aberto nunca é ligado na
+                                                 pilha —, então é o único gesto que o item tem, e
+                                                 ele leva o e-mail para a conversa. Sem esta
+                                                 linha a lista era desenho: clicar não fazia
+                                                 nada. -->
+                                            <v:MailListItem Margin="0,0,0,6"
+                                                            PediuAlternar="EmailDaPilha_Click"/>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
