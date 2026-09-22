@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -327,6 +327,48 @@ namespace AIB.Tests
             decisao.Should().Be("barrada_pelo_piso");
             prompt.Perguntas.Should().Be(0, "o que o piso barra não vira pergunta");
             comPiso.Execucoes.Should().Be(0);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task NinguemRespondeu_NegaComoSemInterface_ENaoComoRecusaDoUsuario(bool apresentadorQueLanca)
+        {
+            // Sem apresentador (ou com o cartão falhando ao aparecer), a auditoria gravava
+            // deny_usuario e o modelo ouvia "Ação Rejeitada pelo Usuário." — uma decisão que
+            // ninguém tomou, e que muda o plano do modelo.
+            var portao = new ChatConfirmationPrompt();
+            if (apresentadorQueLanca) portao.Conectar(_ => throw new InvalidOperationException("janela fechando"));
+
+            var ferramenta = new FerramentaDeEnsaio
+            {
+                Contexto = () => new CommandConfirmationContext { Tool = "ensaio_portao", Command = "algo" }
+            };
+            var registry = new ToolRegistry(portao);
+            registry.Registrar(ferramenta);
+            string? decisao = null;
+
+            string r = await registry.ExecuteToolAsync(ferramenta.Name, "{}", 9, null, d => decisao = d);
+
+            r.Should().StartWith("ACESSO NEGADO").And.NotContain(ToolRegistry.RecusaDoUsuario);
+            decisao.Should().Be("negada_sem_interface");
+            ferramenta.Execucoes.Should().Be(0);
+        }
+
+        [Fact]
+        public void SkillQueSoLeOManual_NaoPassaPelaFloorList_EScriptPassa()
+        {
+            // "LER MANUAL <pasta>\SKILL.md" é caminho, não comando: uma pasta de skill com
+            // "shutdown" no nome era barrada como desligamento.
+            ITool skill = new AIB.Services.Tools.ExecuteSkillTool();
+
+            skill.PassaPelaFloorListCom(new CommandConfirmationContext
+            {
+                Command = AIB.Services.Tools.ExecuteSkillTool.PrefixoDoManual + @"C:\skills\shutdown-helper\SKILL.md"
+            }).Should().BeFalse();
+
+            skill.PassaPelaFloorListCom(new CommandConfirmationContext { Command = "powershell -File x.ps1" })
+                .Should().BeTrue();
         }
 
         [Fact]

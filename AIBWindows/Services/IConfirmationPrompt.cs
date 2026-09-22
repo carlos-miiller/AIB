@@ -27,4 +27,25 @@ public interface IConfirmationPrompt
     /// <c>AlwaysAllow</c> pede para não perguntar de novo por este mesmo comando na sessão.
     /// </summary>
     Task<(bool Allowed, bool AlwaysAllow)> AskAsync(CommandConfirmationContext context);
+
+    /// <summary>
+    /// A mesma pergunta, dizendo também quando NINGUÉM respondeu. É o que o registry usa: sem
+    /// isso, falta de interface e falha ao mostrar o cartão voltavam como recusa, a auditoria
+    /// gravava <c>deny_usuario</c> e o modelo ouvia que o usuário tinha dito não — e reagia a uma
+    /// decisão que ninguém tomou.
+    /// </summary>
+    async Task<RespostaDoPortao> PerguntarAsync(CommandConfirmationContext context)
+    {
+        var (permitido, sempre) = await AskAsync(context).ConfigureAwait(false);
+        return new RespostaDoPortao(permitido, sempre, null);
+    }
 }
+
+/// <summary>O que o portão humano devolveu.</summary>
+/// <param name="Allowed">Autorizado. Falso em toda resposta que não seja um "Permitir" explícito.</param>
+/// <param name="AlwaysAllow">Não perguntar de novo por este comando na sessão.</param>
+/// <param name="SemResposta">
+/// Preenchido quando ninguém respondeu — não havia interface, ou mostrar o cartão falhou. Nulo
+/// quando houve um clique, qualquer que tenha sido.
+/// </param>
+public readonly record struct RespostaDoPortao(bool Allowed, bool AlwaysAllow, string? SemResposta);

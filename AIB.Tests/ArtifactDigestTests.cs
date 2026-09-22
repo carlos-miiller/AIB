@@ -121,6 +121,35 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void Distill_ComandoQueApaga_ViraFatoSemALinhaDeComando()
+        {
+            // O fato vai ao prompt de toda conversa. Um Remove-Item recorrente virava "comando
+            // usado neste ambiente", pronto para o modelo copiar e apagar de novo.
+            const string apaga = @"Remove-Item ""C:\trabalho\saida"" -Recurse -Force";
+            var fatos = ArtifactDigest.Distill(new[]
+            {
+                Capitulo(0, Comando(apaga)), Capitulo(1, Comando(apaga)), Capitulo(2, Comando(apaga))
+            });
+
+            fatos.Should().ContainSingle().Which.Line
+                .Should().NotContain("Remove-Item").And.Contain(@"C:\trabalho\saida").And.Contain("não repetir");
+        }
+
+        [Fact]
+        public void ParaOPrompt_DescreveOFatoAntigoComComandoQueApaga_ENaoTocaOQueOUsuarioEscreveu()
+        {
+            // facts.md gravado antes da regra ainda tem a linha literal.
+            ArtifactDigest.ParaOPrompt(@"- comando usado neste ambiente: rm -rf C:\x (recorrente em 3 capítulos)")
+                .Should().NotContain("rm -rf");
+
+            ArtifactDigest.ParaOPrompt("- nunca rode rm -rf nesta máquina")
+                .Should().Be("- nunca rode rm -rf nesta máquina", "linha escrita à mão fica como está");
+
+            ArtifactDigest.ParaOPrompt("- comando usado neste ambiente: dotnet test")
+                .Should().Be("- comando usado neste ambiente: dotnet test");
+        }
+
+        [Fact]
         public void Distill_NaoPromoveOQueApareceuPouco()
         {
             var fatos = ArtifactDigest.Distill(new[]

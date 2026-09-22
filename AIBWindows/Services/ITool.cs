@@ -103,6 +103,16 @@ public interface ITool
     bool PassaPelaFloorList => false;
 
     /// <summary>
+    /// A mesma pergunta, para uma operação já descrita. É o que o registry consulta.
+    /// <para>
+    /// Existe porque uma ferramenta pode ter operações dos dois tipos. A <c>skill</c> que só
+    /// entrega o manual autoriza "LER MANUAL &lt;pasta&gt;\SKILL.md" — um caminho, não uma linha de
+    /// comando —, e uma pasta de skill com "shutdown" no nome era barrada como desligamento.
+    /// </para>
+    /// </summary>
+    bool PassaPelaFloorListCom(CommandConfirmationContext contexto) => PassaPelaFloorList;
+
+    /// <summary>
     /// Monta o que o cartão de confirmação mostra ao usuário. Fica na ferramenta porque só ela sabe interpretar
     /// o próprio JSON de argumentos — o registry não pode adivinhar qual campo é "o comando".
     /// Devolver null recusa a execução: se a ferramenta pede confirmação e não consegue

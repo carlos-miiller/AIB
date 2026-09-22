@@ -2234,6 +2234,22 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ConversaAbertaDeUmEmail_ContaComoConteudoDeTerceiros()
+        {
+            // Assunto, remetente e resumo da triagem abrem a conversa e são texto de terceiros:
+            // uma instrução plantada no e-mail chegava por ali sem passar por mail_read, e as
+            // pastas sem confirmação continuavam dispensando o cartão.
+            var conversa = NovaConversaDeEnsaio();
+            conversa.HaConteudoDeEmailNoContexto().Should().BeFalse();
+
+            conversa.VincularAEmail("eu@x.com|thr:1");
+            conversa.HaConteudoDeEmailNoContexto().Should().BeTrue();
+
+            conversa.ResetHistory();
+            conversa.HaConteudoDeEmailNoContexto().Should().BeFalse();
+        }
+
+        [Fact]
         public void ChaveDoEmail_SeApaga_MesmoSemTranscricao()
         {
             // Abrir um e-mail e desistir antes do primeiro turno deixa a conversa vazia. Se a

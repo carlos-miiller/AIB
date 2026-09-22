@@ -284,14 +284,24 @@ public sealed class ConversationService : IMessageStore
     public IReadOnlyList<TurnRecord> TurnosGravados() => _sessionMemory.ReadTurns();
 
     /// <summary>
-    /// Se o contexto vivo carrega texto original de e-mail, lido por <c>mail_read</c>.
+    /// Se o contexto carrega texto de terceiros vindo de e-mail: o original lido por
+    /// <c>mail_read</c>, ou — numa conversa aberta A PARTIR de um e-mail — o assunto e o resumo
+    /// da triagem que abrem a conversa.
     /// <para>
-    /// Olha o histórico VIVO, e não o gravado: no disco o corpo já está omitido, e é justamente
-    /// por isso que uma conversa reaberta volta sem ele — e sem o aviso.
+    /// O segundo caso contava como conversa comum. Assunto e remetente são escritos por quem
+    /// mandou, e o resumo é o modelo recontando o corpo: uma instrução plantada no e-mail chega
+    /// por ali sem nunca passar por <c>mail_read</c>, e as pastas sem confirmação continuavam
+    /// dispensando o cartão.
+    /// </para>
+    /// <para>
+    /// O original é procurado no histórico VIVO, e não no gravado: no disco o corpo já está
+    /// omitido. O vínculo com o e-mail sobrevive à reabertura, e com ele o aviso.
     /// </para>
     /// </summary>
     public bool HaConteudoDeEmailNoContexto()
     {
+        if (!string.IsNullOrEmpty(ChaveDoEmail)) return true;
+
         lock (_gate)
         {
             return _history.Any(m => m is ToolChatMessage t

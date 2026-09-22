@@ -189,8 +189,9 @@ public sealed class FactStore
         int gasto = cabecalho;
         int entraram = 0;
 
-        foreach (var fato in facts)
+        foreach (var gravado in facts)
         {
+            string fato = ArtifactDigest.ParaOPrompt(gravado);
             int custo = counter.CountText(fato + "\n");
             if (gasto + custo > quota.Facts) break;
 

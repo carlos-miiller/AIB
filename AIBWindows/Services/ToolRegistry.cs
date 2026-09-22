@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -184,7 +184,7 @@ public class ToolRegistry
 
         string comando = ctx.Command ?? "";
 
-        string? razao = BateNoPiso(tool, comando, userLevel);
+        string? razao = BateNoPiso(tool, ctx, userLevel);
         if (razao != null)
         {
             await AuditLogService.AppendAsync(new { evento = "deny_floor", ferramenta = tool.Name, comando, userLevel, razao });
@@ -227,7 +227,7 @@ public class ToolRegistry
 
         string comando = ctx.Command ?? "";
 
-        string? razao = BateNoPiso(tool, comando, userLevel);
+        string? razao = BateNoPiso(tool, ctx, userLevel);
         if (razao != null)
         {
             await AuditLogService.AppendAsync(new { evento = "deny_floor", ferramenta = tool.Name, comando, userLevel, razao });
@@ -261,9 +261,19 @@ public class ToolRegistry
             Console.WriteLine($"[REGISTRY] {tool.Name}: esperando você autorizar...");
 
             var cronometro = System.Diagnostics.Stopwatch.StartNew();
-            var (permitido, sempre) = await _confirmationPrompt.AskAsync(ctx);
+            var resposta = await _confirmationPrompt.PerguntarAsync(ctx);
             cronometro.Stop();
 
+            // Ninguém respondeu: nega como sem interface, e não como recusa do usuário. O modelo
+            // que ouve "o usuário recusou" muda de plano por uma decisão que não existiu.
+            if (resposta.SemResposta is string porque)
+            {
+                await AuditLogService.AppendAsync(new { evento = "deny_sem_ui", ferramenta = tool.Name, comando, userLevel, motivo = porque });
+                aoDecidir?.Invoke("negada_sem_interface");
+                return (false, $"ACESSO NEGADO: '{tool.Name}' exige confirmação do usuário, e {porque}. Nada foi executado.", null);
+            }
+
+            var (permitido, sempre) = (resposta.Allowed, resposta.AlwaysAllow);
             aoEsperarHumano?.Invoke(cronometro.ElapsedMilliseconds);
 
             Console.WriteLine($"[REGISTRY] {tool.Name}: {(permitido ? "autorizado" : "recusado")} " +
@@ -311,11 +321,12 @@ public class ToolRegistry
 
     /// <summary>
     /// O motivo da floor list, ou null quando ela não barra. Só para as ferramentas cujo comando
-    /// é linha de comando — ver <see cref="ITool.PassaPelaFloorList"/>.
+    /// é linha de comando — ver <see cref="ITool.PassaPelaFloorListCom"/>.
     /// </summary>
-    private string? BateNoPiso(ITool tool, string comando, int userLevel)
+    private string? BateNoPiso(ITool tool, CommandConfirmationContext ctx, int userLevel)
     {
-        if (!tool.PassaPelaFloorList) return null;
+        if (!tool.PassaPelaFloorListCom(ctx)) return null;
+        string comando = ctx.Command ?? "";
 
         bool floorLigado = _settingsService?.LoadSettings().ConfirmDangerousCommands ?? true;
         if (!floorLigado) return null;

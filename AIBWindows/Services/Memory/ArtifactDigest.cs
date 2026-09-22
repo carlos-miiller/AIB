@@ -134,26 +134,63 @@ public static class ArtifactDigest
         return fatos.OrderBy(f => f.Key, StringComparer.Ordinal).ToList();
     }
 
-    /// <summary>Linha em português que vai para o facts.md — o usuário lê e corrige à mão.</summary>
+    private const string PrefixoNegado = "- o usuário NEGOU esta ação: ";
+    private const string PrefixoFalhou = "- comando que já falhou aqui: ";
+    private const string PrefixoUsado = "- comando usado neste ambiente: ";
+
+    /// <summary>
+    /// Linha em português que vai para o facts.md — o usuário lê e corrige à mão.
+    /// <para>
+    /// Comando que APAGA nunca entra literal: o fato vai para o prompt em toda conversa, e um
+    /// <c>Remove-Item … -Recurse</c> recorrente virava "comando usado neste ambiente", pronto
+    /// para o modelo copiar — o incidente que o <see cref="ComandoQueApaga"/> existe para evitar,
+    /// e que o Estado e o Pendente já respeitavam.
+    /// </para>
+    /// </summary>
     private static string Describe(Artifact exemplo, int capitulos, bool falhou)
     {
         string vezes = capitulos == 1 ? "" : $" (recorrente em {capitulos} capítulos)";
 
+        if (exemplo.Kind is ArtifactKind.CommandRun or ArtifactKind.Denied && ComandoQueApaga.Eh(exemplo.Value))
+            return SemComandoQueApaga(exemplo.Kind == ArtifactKind.Denied ? PrefixoNegado : falhou ? PrefixoFalhou : PrefixoUsado,
+                                      exemplo.Value) + vezes;
+
         return exemplo.Kind switch
         {
-            ArtifactKind.Denied =>
-                $"- o usuário NEGOU esta ação: {exemplo.Value}",
-
-            ArtifactKind.CommandRun when falhou =>
-                $"- comando que já falhou aqui: {exemplo.Value}{vezes}",
-
-            ArtifactKind.CommandRun =>
-                $"- comando usado neste ambiente: {exemplo.Value}{vezes}",
-
-            _ =>
-                $"- arquivo relevante deste trabalho: {exemplo.Value}{vezes}"
+            ArtifactKind.Denied => PrefixoNegado + exemplo.Value,
+            ArtifactKind.CommandRun when falhou => PrefixoFalhou + exemplo.Value + vezes,
+            ArtifactKind.CommandRun => PrefixoUsado + exemplo.Value + vezes,
+            _ => $"- arquivo relevante deste trabalho: {exemplo.Value}{vezes}"
         };
     }
+
+    /// <summary>
+    /// A linha de fato como ela vai ao prompt. Fatos gravados antes da regra acima podem ter o
+    /// comando que apaga literal no facts.md; aqui eles saem descritos. Só as linhas que o
+    /// próprio AIB escreve (pelos prefixos) são tocadas — o que o usuário escreveu à mão, como
+    /// "- nunca rode rm -rf aqui", fica como está.
+    /// </summary>
+    public static string ParaOPrompt(string linha)
+    {
+        foreach (string prefixo in new[] { PrefixoNegado, PrefixoFalhou, PrefixoUsado })
+        {
+            if (!linha.StartsWith(prefixo, StringComparison.Ordinal)) continue;
+
+            string resto = linha[prefixo.Length..];
+            return ComandoQueApaga.Eh(resto) ? SemComandoQueApaga(prefixo, resto) : linha;
+        }
+
+        return linha;
+    }
+
+    private static string SemComandoQueApaga(string prefixo, string comando) =>
+        prefixo == PrefixoNegado
+            ? "- o usuário NEGOU um comando que apaga "
+              + (ComandoQueApaga.Alvo(comando) is string alvo ? alvo : "arquivos")
+              + " — não propor de novo sem ele pedir"
+            : prefixo == PrefixoFalhou
+                ? "- tentativa de apagar que já falhou aqui: " + ComandoQueApaga.Descrever(comando)
+                : "- " + ComandoQueApaga.Descrever(comando);
 }
 
 /// <summary>

@@ -32,24 +32,32 @@ public sealed class ChatConfirmationPrompt : IConfirmationPrompt
 
     public async Task<(bool Allowed, bool AlwaysAllow)> AskAsync(CommandConfirmationContext context)
     {
+        var resposta = await PerguntarAsync(context).ConfigureAwait(false);
+        return (resposta.Allowed, resposta.AlwaysAllow);
+    }
+
+    public async Task<RespostaDoPortao> PerguntarAsync(CommandConfirmationContext context)
+    {
         Func<CommandConfirmationContext, Task<(bool, bool)>>? apresentar;
         lock (_trava) apresentar = _apresentar;
 
         if (apresentar == null)
         {
             Console.WriteLine("[PORTAO] Sem interface para perguntar. Ação recusada por padrão.");
-            return (false, false);
+            return new RespostaDoPortao(false, false, "não há interface disponível para perguntar");
         }
 
         try
         {
-            return await apresentar(context).ConfigureAwait(false);
+            var (permitido, sempre) = await apresentar(context).ConfigureAwait(false);
+            return new RespostaDoPortao(permitido, sempre, null);
         }
         catch (Exception ex)
         {
-            // Falha ao MOSTRAR a pergunta não pode virar autorização silenciosa.
+            // Falha ao MOSTRAR a pergunta não pode virar autorização silenciosa — nem recusa do
+            // usuário, que não viu cartão nenhum.
             Console.WriteLine($"[PORTAO] Falha ao exibir a confirmação: {ex.Message}. Ação recusada.");
-            return (false, false);
+            return new RespostaDoPortao(false, false, "o cartão de confirmação não pôde ser mostrado");
         }
     }
 }

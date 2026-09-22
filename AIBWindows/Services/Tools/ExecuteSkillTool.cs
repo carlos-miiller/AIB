@@ -70,6 +70,14 @@ public class ExecuteSkillTool : ITool
     public bool PassaPelaFloorList => true;
 
     /// <summary>
+    /// Ler o manual não é linha de comando: o Command é um caminho, e a floor list o leria como
+    /// comando. Seguro porque o mesmo prefixo é o que <see cref="ExecutarAutorizadoAsync"/>
+    /// confere — autorizado como manual, só o manual é entregue, nunca um script.
+    /// </summary>
+    public bool PassaPelaFloorListCom(CommandConfirmationContext contexto) =>
+        !(contexto.Command ?? "").StartsWith(PrefixoDoManual, StringComparison.Ordinal);
+
+    /// <summary>
     /// Skill de documentação não executa nada: só entrega o manual ao modelo. Pedir autorização
     /// para LER um texto que o próprio usuário instalou treina o clique em "Permitir" sem ler,
     /// e esvazia o portão onde ele importa. Antes, ela nem chegava a ser lida: o card não sabia
