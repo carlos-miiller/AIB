@@ -14,7 +14,14 @@ namespace AIB.Tests
     /// Mesma licao do ColecaoDeSkills, e a segunda vez que ela aparece: estado estatico e teste
     /// paralelo so convivem com a colecao declarada.
     /// </para>
+    /// <para>
+    /// E POR ISSO SEM PARALELISMO COM AS OUTRAS COLECOES. Declarar a colecao serializa as classes
+    /// que chamam Configurar de proposito, mas nao as que chamam SEM SABER: todo
+    /// <c>SettingsService.LoadSettings</c> reconfigura a lista, e qualquer classe solta que leia
+    /// configuracoes derrubava a dispensa no meio de um ensaio daqui. Aparecia como falha
+    /// intermitente de "o portao nao devia ter perguntado", uma rodada em cada tres.
+    /// </para>
     /// </summary>
-    [CollectionDefinition("Escrita")]
+    [CollectionDefinition("Escrita", DisableParallelization = true)]
     public class ColecaoDeEscrita { }
 }
