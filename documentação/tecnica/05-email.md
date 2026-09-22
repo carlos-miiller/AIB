@@ -250,8 +250,11 @@ aviso de e-mail no contexto.
 
 - `LerEmailTool.Formatar` abre a resposta dizendo que o texto é de terceiros e que pedidos para
   executar, gravar, apagar ou enviar só valem se vierem do usuário; a descrição da ferramenta repete.
-- `ConversationService.HaConteudoDeEmailNoContexto` = há resultado de `mail_read` (com marcador) no
-  histórico **vivo**. Enquanto isso for verdade, o `ToolRegistry`:
+- `ConversationService.HaConteudoDeEmailNoContexto` = a conversa está **vinculada a um e-mail**
+  (`ChaveDoEmail` preenchida: assunto, remetente e resumo da triagem abrem a conversa e são texto
+  de terceiros) **ou** há resultado de `mail_read` (com marcador) no histórico **vivo**. O
+  enquadramento do e-mail também diz ao modelo que esses campos não são ordens. Enquanto isso for
+  verdade, o `ToolRegistry`:
   - avisa no cartão de confirmação;
   - **ignora o "sempre permitir"** (e o cartão esconde a opção);
   - **anula a dispensa por pasta** (write/edit e a skill só-manual voltam a perguntar).

@@ -314,7 +314,10 @@ Os pedidos do usuário que carregam **valor**, copiados por código. Motivo: o u
 
 - `~/.AIB/memory/facts.md` (do **usuário**: ele edita, reordena, apaga; a AIB só acrescenta no fim) e `facts.index.jsonl` (da **máquina**: chaves de tudo que já foi promovido, append-only). Sem o índice, um fato apagado pelo usuário voltaria na próxima promoção.
 - Ficam na raiz da memória, fora das sessões: é a única faixa que atravessa conversas. `MemoryLayer.Clear` não os apaga; o `FactStore` não é trocado no `ResetHistory`.
-- Promoção (`PromoverAsync`, depois de cada ato): `ArtifactDigest.Distill` sobre **todos** os capítulos da sessão. Um artefato vira fato quando atravessa `FactThreshold` = 3 capítulos distintos (contagem por capítulo, não por ocorrência); **recusa promove na primeira** (decisão não precisa se repetir). Linhas: "o usuário NEGOU esta ação: …", "comando que já falhou aqui: …", "comando usado neste ambiente: …", "arquivo relevante deste trabalho: …".
+- Promoção (`PromoverAsync`, depois de cada ato): `ArtifactDigest.Distill` sobre **todos** os capítulos da sessão. Um artefato vira fato quando atravessa `FactThreshold` = 3 capítulos distintos (contagem por capítulo, não por ocorrência); **recusa promove na primeira** (decisão não precisa se repetir). Linhas: "o usuário NEGOU esta ação: …", "comando que já falhou aqui: …", "comando usado neste ambiente: …", "arquivo relevante deste trabalho: …". Comando que **apaga**
+  nunca entra literal: vira a descrição do `ComandoQueApaga` ("apagou X — já feito, não repetir"). Fatos
+  gravados antes dessa regra passam por `ArtifactDigest.ParaOPrompt` na hora de ir ao prompt, que
+  só reescreve as linhas com os prefixos gerados pela AIB — o que o usuário escreveu fica intacto.
 - No prompt (`FactStore.Render`): só linhas que começam com `- `, relidas do disco a cada montagem; corte **do fim para o começo** (a ordem é a do usuário, o topo é o que ele quer garantir), dentro de `quota.Facts`.
 
 ---

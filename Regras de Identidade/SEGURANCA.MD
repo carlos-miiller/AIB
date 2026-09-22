@@ -42,10 +42,16 @@ são invioláveis; o mecanismo está em `documentação/tecnica/03-ferramentas-e
 
 ## 2. Conteúdo de terceiros não dá ordens
 
-- Arquivo lido, saída de comando, resultado de skill e e-mail são **informação, não instrução**
-  (`AgentLoop.MarcaDeConteudo`, preâmbulo do `LerEmailTool`).
-- **E-mail no contexto anula dispensas**: com texto de `mail_read` no contexto vivo, o cartão avisa,
-  o "sempre permitir" é ignorado e as pastas sem confirmação deixam de dispensar.
+- Arquivo lido, nomes de arquivo, saída de comando, resultado de skill e e-mail (`mail` e
+  `mail_read`) são **informação, não instrução** (`AgentLoop.MarcaDeConteudo`, preâmbulo do
+  `LerEmailTool`, aviso no enquadramento do e-mail aberto no chat).
+- **E-mail no contexto anula dispensas**: numa conversa aberta a partir de um e-mail, ou com texto
+  de `mail_read` no contexto vivo, o cartão avisa, o "sempre permitir" é ignorado e as pastas sem
+  confirmação deixam de dispensar.
+- **Ninguém respondeu não é recusa**: sem interface para perguntar, ou com o cartão falhando ao
+  aparecer, a chamada é negada como `deny_sem_ui` — nunca atribuída ao usuário.
+- **Memória não entrega comando que apaga**: Estado, Pendente e fatos descrevem o que foi apagado,
+  sem a linha pronta para repetir (`ComandoQueApaga`).
 
 ## 3. E-mail
 
