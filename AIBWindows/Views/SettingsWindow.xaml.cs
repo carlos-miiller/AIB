@@ -176,6 +176,7 @@ public partial class SettingsWindow : Window
 
             IntelligentToolsSwitch.IsChecked = _currentSettings.EnableIntelligentTools;
             ConfirmDangerousSwitch.IsChecked = _currentSettings.ConfirmDangerousCommands;
+            FiltrarSaidaSwitch.IsChecked = _currentSettings.FiltrarSaidaDeComandos;
             PastasSemConfirmacaoTextBox.Text = _currentSettings.PastasSemConfirmacao;
             AtualizarResumoDasPastas();
             AtualizarAutorizacoes();
@@ -1306,6 +1307,7 @@ public partial class SettingsWindow : Window
             case PaginaDeConfiguracoes.Ferramentas:
                 IntelligentToolsSwitch.IsChecked = padrao.EnableIntelligentTools;
                 ConfirmDangerousSwitch.IsChecked = padrao.ConfirmDangerousCommands;
+                FiltrarSaidaSwitch.IsChecked = padrao.FiltrarSaidaDeComandos;
                 MaxIterationsTextBox.Text = padrao.MaxTurnIterations.ToString();
                 // A lista de dispensa volta ao padrão, que é VAZIA — tudo volta a perguntar.
                 // Restaurar APERTA a segurança aqui, mas o texto abaixo do campo diz na hora o
@@ -1909,6 +1911,7 @@ public partial class SettingsWindow : Window
 
         _currentSettings.EnableIntelligentTools = IntelligentToolsSwitch.IsChecked ?? true;
         _currentSettings.ConfirmDangerousCommands = ConfirmDangerousSwitch.IsChecked ?? true;
+        _currentSettings.FiltrarSaidaDeComandos = FiltrarSaidaSwitch.IsChecked ?? true;
         _currentSettings.PastasSemConfirmacao = (PastasSemConfirmacaoTextBox.Text ?? "").Trim();
         _currentSettings.ExecutionLogging = ExecutionLogSwitch.IsChecked ?? false;
         _currentSettings.CompactionLogging = CompactionLogSwitch.IsChecked ?? false;

@@ -1392,6 +1392,24 @@
                                         </Grid>
                                     </Border>
 
+                                    <!-- Filtrar saída de comandos (FiltroDeSaida) -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Enxugar saída de comandos" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Linhas repetidas viram uma, e a saída longa guarda o começo, os erros e o fim. Menos tokens a cada turno." Style="{StaticResource FieldHelpText}"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="FiltrarSaidaSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
                                     <!-- Máximo de etapas por turno -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">

@@ -307,7 +307,18 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
     PHP que imprimia "HOOK chamado" chegava ao modelo como ERRO, e ele ia desfazer o que dera certo;
   - cabeça `ERRO (código de saída N): <primeira mensagem>` ou
     `ERRO: o comando continuou, mas houve erro: ...`, seguida de "Saída completa";
-  - sucesso sem saída → `RunCommandTool.SucessoSemSaida`; saída truncada em `TetoDaSaida` (8000).
+  - sucesso sem saída → `RunCommandTool.SucessoSemSaida`;
+  - a saída passa por `FiltroDeSaida` (ligado por padrão, `UserAppSettings.FiltrarSaidaDeComandos`):
+    linha repetida vira uma com `(×N)`, e acima de 4.000 caracteres o corte guarda o começo, as
+    linhas com marca de erro e o fim, com uma nota dizendo o que foi feito. A primeira linha nunca
+    muda de lugar. Desligado, volta o corte cego em `TetoDaSaida` (8.000). Vale também para a
+    `skill`, que passa pelo mesmo `Montar`. Medido nas sessões gravadas: 24% da saída de shell
+    (14% só da deduplicação). Não vale para o `read`, onde cortar seria tirar a faixa pedida.
+- **Guarda de releitura** (`AgentLoop.GuardaDeReleitura`): um `read` que devolveria, no MESMO
+  turno, texto idêntico a outro já entregue (e com 600 caracteres ou mais) vai ao modelo como
+  aviso de que o conteúdo já está mais acima. O escopo é o turno porque entre turnos resultados
+  antigos são escondidos e a compactação tira turnos do contexto. Caso medido: o mesmo HTML de
+  7.265 tokens lido três vezes num turno, 93 mil tokens×turnos.
   - `SemClixml`/`ErrosDoClixml` desmontam o CLIXML: descartam objetos de progresso, preservam
     mensagens de erro. A primeira versão jogava o bloco fora e o modelo via "sucesso" em cmdlets que
     falharam.

@@ -150,7 +150,8 @@ Alguns valores são lidos por código que não carrega configurações. `Setting
 
 - `ChatRequestOptions.JanelaAtual` (janela do provedor ativo, base dos orçamentos por nível);
 - `LimitesDoProvedor.Atual` (`Local` para Ollama, `Nuvem` para OpenRouter: linhas por leitura, itens por pasta, tetos do e-mail, alvo pós-compactação, capítulos por ato);
-- `ChatRequestOptions.JanelaDoOllama` e `ChatRequestOptions.KeepAliveAtual`, tirados do perfil **do Ollama** qualquer que seja o provedor da conversa, porque a triagem pode continuar no Ollama.
+- `ChatRequestOptions.JanelaDoOllama` e `ChatRequestOptions.KeepAliveAtual`, tirados do perfil **do Ollama** qualquer que seja o provedor da conversa, porque a triagem pode continuar no Ollama;
+- `FiltroDeSaida.Ligado`, de `FiltrarSaidaDeComandos` (padrão ligado; página Ferramentas, "Enxugar saída de comandos"). Desligado, a saída de comando volta ao corte cego antigo — existe para dar para comparar.
 
 Além disso, `LoadSettings` e `SaveSettings` chamam `PastasSemConfirmacao.Configurar`, para a lista de pastas dispensadas valer no instante em que o usuário salva.
 

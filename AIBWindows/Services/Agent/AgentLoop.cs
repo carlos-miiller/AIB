@@ -90,6 +90,9 @@ public sealed class AgentLoop
         // exatamente a mesma coisa na volta seguinte.
         var jaFalharam = new Dictionary<string, string>(StringComparer.Ordinal);
 
+        // Leituras que já foram ao modelo NESTE turno. Ver GuardaDeReleitura.
+        var jaLidas = new HashSet<string>(StringComparer.Ordinal);
+
         for (int iteration = 1; iteration <= teto; iteration++)
         {
             ct.ThrowIfCancellationRequested();
@@ -304,7 +307,10 @@ public sealed class AgentLoop
                         tc.ArgumentsOrEmpty(), duracaoMs, esperaMs, decisao);
 
                     // O modelo lê o erro com o recado no fim; a tela e o registro de ações, não.
-                    store.AppendToolResult(tc.Id, ParaOModelo(tc.Name, result));
+                    // Leitura repetida no turno vai como aviso, e não como o texto de novo.
+                    store.AppendToolResult(tc.Id,
+                        GuardaDeReleitura(tc.Name, tc.ArgumentsOrEmpty(), result, jaLidas)
+                        ?? ParaOModelo(tc.Name, result));
                     TrackRecentFile(tc, result);
 
                     // Um SKILL.md gravado agora passa a existir já no próximo pedido ao modelo.
@@ -470,6 +476,48 @@ public sealed class AgentLoop
     /// </summary>
     public const string RecadoDeFalha =
         "\n\n(Antes de tentar de novo, diga ao usuário em uma frase o que falhou e o que vai fazer.)";
+
+    /// <summary>
+    /// O aviso que substitui uma leitura IDÊNTICA a outra já entregue neste turno, ou
+    /// <c>null</c> quando a leitura tem de ir inteira.
+    /// <para>
+    /// MEDIDO: numa conversa real, o modelo leu o mesmo HTML de 7.265 tokens três vezes no mesmo
+    /// turno. Cada cópia fica no contexto e volta em toda requisição seguinte — as três somaram
+    /// 93 mil tokens×turnos, a maior perda isolada das 49 sessões gravadas.
+    /// </para>
+    /// <para>
+    /// O ESCOPO É O TURNO, e é isso que torna a guarda segura. Entre turnos, resultados antigos
+    /// são escondidos da cópia que vai ao modelo e a compactação tira turnos do contexto: um
+    /// "você já leu isto" dito ali poderia apontar para um texto que o modelo não tem mais.
+    /// Dentro do turno nada disso acontece, então o texto anterior está garantidamente à vista.
+    /// </para>
+    /// <para>
+    /// O critério é o TEXTO devolvido, e não o caminho: se a leitura de agora devolveria
+    /// exatamente o que já foi entregue, não há o que perder. Arquivo que mudou, ou outra faixa,
+    /// devolve outro texto — e vai inteiro.
+    /// </para>
+    /// </summary>
+    public static string? GuardaDeReleitura(string ferramenta, string argumentos, string resultado,
+                                           HashSet<string> jaLidas)
+    {
+        if (ferramenta != Ferramentas.Ler || Memory.ArtifactExtractor.Falhou(resultado)) return null;
+
+        // Resultado curto não compensa: o aviso custaria quase o mesmo que o texto.
+        if (resultado.Length < TetoParaNaoGuardar) return null;
+
+        string impressao = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(resultado)));
+
+        if (jaLidas.Add(impressao)) return null;
+
+        string alvo = Memory.ArtifactExtractor.ResumirArgumento(ferramenta, argumentos);
+        return $"[já lido neste turno] O conteúdo de '{alvo}' é idêntico ao que '{Ferramentas.Ler}' "
+               + "já devolveu mais acima, neste mesmo turno, e continua no contexto. Use aquele "
+               + "resultado. Para outra parte do arquivo, peça outra faixa com offset/limit.";
+    }
+
+    /// <summary>Abaixo disto a releitura vai inteira: o aviso não economizaria nada.</summary>
+    private const int TetoParaNaoGuardar = 600;
 
     /// <summary>
     /// A chamada bloqueada por repetição, com o erro anterior junto. Pública porque é ela que o

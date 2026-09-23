@@ -217,6 +217,13 @@ public sealed class UserAppSettings
     public bool ConfirmDangerousCommands { get; set; } = true;
 
     /// <summary>
+    /// Enxuga a saída de comando e de habilidade antes de ela ir ao modelo: repetição colapsada e
+    /// corte que guarda começo, erros e fim. Ligado por padrão; desligado volta o corte cego
+    /// antigo, para dar para comparar. Ver <see cref="Tools.FiltroDeSaida"/>.
+    /// </summary>
+    public bool FiltrarSaidaDeComandos { get; set; } = true;
+
+    /// <summary>
     /// Pastas onde <c>write</c> e <c>edit</c> executam sem pedir confirmação — uma por linha,
     /// caminho absoluto.
     /// <para>
@@ -738,6 +745,8 @@ public sealed class SettingsService
         var ollama = settings.PerfilDe(ProvedoresDeIa.Ollama);
         Ai.ChatRequestOptions.JanelaDoOllama = ollama.JanelaDeContexto;
         Ai.ChatRequestOptions.KeepAliveAtual = Ai.ChatRequestOptions.SegundosDeKeepAlive(ollama.KeepAlive);
+
+        Tools.FiltroDeSaida.Ligado = settings.FiltrarSaidaDeComandos;
     }
 
     public async Task<List<string>> GetOllamaModelsAsync(string baseUrl)

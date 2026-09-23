@@ -267,8 +267,9 @@ public class RunCommandTool : ITool
         if (codigoDeSaida == 0 && erros.Any(e => e.Contains("NativeCommandError", StringComparison.Ordinal)))
             erros = Array.Empty<string>();
 
-        if (saida.Length > TetoDaSaida)
-            saida = saida.Substring(0, TetoDaSaida) + "\n...[Saída truncada devido ao tamanho máximo].";
+        // Repetição colapsada e corte que guarda começo, erros e fim — ou, com o filtro desligado,
+        // o corte cego antigo em TetoDaSaida. Ver FiltroDeSaida.
+        saida = FiltroDeSaida.Aplicar(saida, TetoDaSaida);
 
         // Só o PowerShell falando, e o programa não disse nada que pareça erro: não é falha.
         //
