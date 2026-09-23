@@ -428,7 +428,9 @@ public class ToolRegistry
             new FsTool(),
 
             // O Edge só abre na primeira chamada: construir aqui não toca disco nem processo.
-            new BrowserTool(Navegador.NavegadorService.Padrao, new Navegador.SitesLiberados(Navegador.SitesLiberados.ArquivoPadrao)),
+            new BrowserTool(Navegador.NavegadorService.Padrao,
+                new Navegador.SitesLiberados(Navegador.SitesLiberados.ArquivoPadrao),
+                new Navegador.AnotacoesDeSite(Navegador.AnotacoesDeSite.RaizPadrao)),
 
             // Registrada SEMPRE, e não só quando a triagem está ligada. Com ela fora, o modelo
             // não sabe que a pergunta tem resposta possível e chuta — e chutar sobre a caixa de

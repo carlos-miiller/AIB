@@ -532,11 +532,23 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
 | `click` em link que só navega (href http real, sem `#`, `javascript:` ou `onclick`) para site liberado | não — é o mesmo que `open` |
 | `click` | sim — `CLICAR [s3e2] botão "Filtrar" em <domínio>`; "sempre" vale para o site |
 | `type` | sim — `DIGITAR "texto" em [ref] <campo> [e apertar Enter] em <domínio>`; "sempre" vale para o site |
+| `note` | sim, **toda vez** — `ANOTAR na página /x/{n}/ de <domínio>: "texto"` (ou `no site inteiro`) |
 
 Pergunta **toda vez** (`SemSempre`): botão cujo nome decide algo (excluir, apagar, concluir,
 enviar, salvar, pagar, comprar, confirmar, aprovar, publicar, cancelar…), botão que envia
 formulário, e Enter em campo que não é busca/filtro. A frase do cartão leva a ref com a versão: se
 a página mudou entre o cartão e o clique, a execução recusa.
+
+**Anotações por site** (`AnotacoesDeSite`): o `facts.md` dos sites. Uma pasta por site em
+`~/.AIB/navegador/notas/<domínio>/`, um arquivo por **tipo** de página (os trechos numéricos do
+caminho viram `{n}`: toda tarefa é a mesma página) e `_site.md` para o site inteiro. Guardam o
+**como** ("para filtrar por responsável, use o campo Assignee da busca detalhada"), nunca o
+conteúdo. Chegam ao modelo **antes e fora** do embrulho da página, rotuladas como aprovadas pelo
+usuário: no `open` sempre, e depois só quando o site ou a página mudam. Gravar pede cartão **toda
+vez** com o texto exato (`SemSempre`): anotação é instrução para conversas futuras, e uma página
+que induzisse "sempre clique em Excluir" plantaria uma ordem duradoura. Tetos: 500 caracteres por
+anotação, 2000 por arquivo; texto com cara de segredo é recusado. Só acrescenta linhas; editar e
+apagar é à mão.
 
 **A página é de terceiros.** O resultado sai por `ConteudoDeTerceiros.EmbrulharPagina`
 (`[[INICIO_DA_PAGINA]]`…`[[FIM_DA_PAGINA]]`) e ganha a marca de conteúdo do `AgentLoop`. Todo

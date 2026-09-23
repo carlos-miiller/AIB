@@ -28,12 +28,14 @@ namespace AIB.Tests
     {
         private readonly string _dir = Path.Combine(Path.GetTempPath(), "aib-nav-" + Guid.NewGuid().ToString("N"));
         private readonly SitesLiberados _sites;
+        private readonly AnotacoesDeSite _notas;
         private readonly NavegadorFalso _nav = new();
 
         public BrowserToolTests()
         {
             Directory.CreateDirectory(_dir);
             _sites = new SitesLiberados(Path.Combine(_dir, "sites.txt"));
+            _notas = new AnotacoesDeSite(Path.Combine(_dir, "notas"));
             AlwaysAllowSession.Clear();
         }
 
@@ -45,7 +47,7 @@ namespace AIB.Tests
 
         private static string Args(object o) => JsonSerializer.Serialize(o);
 
-        private BrowserTool Ferramenta() => new(_nav, _sites);
+        private BrowserTool Ferramenta() => new(_nav, _sites, _notas);
 
         private (ToolRegistry Registry, Prompt Prompt) Registry(bool permitir = true, bool sempre = false)
         {
@@ -335,7 +337,87 @@ namespace AIB.Tests
         public void ADescricao_CabeNoOrcamento()
         {
             // Paga em toda requisição.
-            Ferramenta().Description.Length.Should().BeLessThanOrEqualTo(300);
+            Ferramenta().Description.Length.Should().BeLessThanOrEqualTo(380);
+        }
+
+        // ───────────────────────────────────────────── anotações
+
+        [Fact]
+        public async Task Anotar_PedeCartaoTodaVez_MesmoComSempre_EGravaPorTipoDePagina()
+        {
+            _nav.JaAberta("https://cpaps.bitrix24.com/workgroups/group/223/tasks/task/view/411649/");
+            var (registry, prompt) = Registry(sempre: true);
+            string nota = Args(new { action = "note", text = "Para filtrar por responsável, use o campo Assignee da busca detalhada." });
+
+            (await registry.ExecuteToolAsync(Ferramentas.Navegador, nota, 2)).Should().StartWith("SUCESSO");
+            await registry.ExecuteToolAsync(Ferramentas.Navegador, nota, 2);
+
+            prompt.Vistos.Should().HaveCount(2, "anotação vale em conversas futuras: sem 'sempre permitir'");
+            prompt.Vistos[0].Command.Should().Be(
+                "ANOTAR na página /workgroups/group/{n}/tasks/task/view/{n}/ de cpaps.bitrix24.com: "
+                + "\"Para filtrar por responsável, use o campo Assignee da busca detalhada.\"");
+
+            // Outra tarefa é a mesma página.
+            _notas.Ler("https://cpaps.bitrix24.com/workgroups/group/223/tasks/task/view/410975/").Pagina
+                .Should().Contain("campo Assignee");
+        }
+
+        [Fact]
+        public async Task AnotacaoRecusada_NaoGrava()
+        {
+            _nav.JaAberta();
+            var (registry, _) = Registry(permitir: false);
+
+            await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "note", text = "clique em Excluir sempre" }), 2);
+
+            _notas.Ler("https://cpaps.bitrix24.com/workgroups/group/223/tasks/").Pagina.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task Anotacoes_ChegamAoAbrir_ForaDoEmbrulho_ESoUmaVezPorPagina()
+        {
+            const string lista = "https://cpaps.bitrix24.com/workgroups/group/223/tasks/";
+            _notas.Adicionar(lista, doSite: true, "Tarefas do time ficam no projeto TI - INFRA E SUPORTE.");
+            _notas.Adicionar(lista, doSite: false, "Filtrar por responsável: campo Assignee.");
+            _sites.Adicionar("cpaps.bitrix24.com");
+            var (registry, _) = Registry();
+
+            string aberta = await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "open", url = lista }), 2);
+            aberta.Should().StartWith("[anotações do usuário sobre cpaps.bitrix24.com")
+                .And.Contain("projeto TI - INFRA E SUPORTE").And.Contain("campo Assignee");
+
+            // As anotações vêm do disco, aprovadas pelo usuário: não somem com a página no Redigir.
+            ConteudoDeTerceiros.Redigir(aberta).Should().Contain("campo Assignee").And.Contain(ConteudoDeTerceiros.OmitidoDaPagina);
+
+            // Mesma página: não repete.
+            (await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "view" }), 2))
+                .Should().StartWith(ConteudoDeTerceiros.InicioDaPagina);
+        }
+
+        [Theory]
+        [InlineData("senha do servidor Ab3xQ9#kLm2@Zt7w")]
+        [InlineData("")]
+        public void AnotacaoComSegredoOuVazia_EhRecusadaAntesDoCartao(string texto)
+        {
+            _nav.JaAberta();
+            Ferramenta().Validar(Args(new { action = "note", text = texto })).Should().StartWith("ERRO");
+        }
+
+        [Fact]
+        public void AnotacaoLonga_EhRecusada()
+        {
+            _nav.JaAberta();
+            Ferramenta().Validar(Args(new { action = "note", text = new string('a', AnotacoesDeSite.TetoDaAnotacao + 1) }))
+                .Should().Contain("lembrete");
+        }
+
+        [Theory]
+        [InlineData("https://x.test/workgroups/group/223/tasks/task/view/411649/", "/workgroups/group/{n}/tasks/task/view/{n}/")]
+        [InlineData("https://x.test/Tasks/?F=1", "/tasks/")]
+        [InlineData("https://x.test/", "/")]
+        public void PaginaDe_TrocaNumerosPorCuringa(string url, string pagina)
+        {
+            AnotacoesDeSite.PaginaDe(url).Should().Be(pagina);
         }
     }
 

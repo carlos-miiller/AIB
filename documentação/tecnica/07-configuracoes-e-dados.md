@@ -63,7 +63,8 @@ O AIB não usa pasta temporária.
 │   └── conversas/<hash>/            triagem.jsonl e chave.txt, por conversa de e-mail
 ├── navegador/
 │   ├── perfil/                      perfil do Edge da ferramenta browser (cookies do login)
-│   └── sites-liberados.txt          um domínio por linha, editável à mão
+│   ├── sites-liberados.txt          um domínio por linha, editável à mão
+│   └── notas/<domínio>/             anotações: _site.md e um .md por tipo de página
 └── logs/
     ├── audit-AAAA-MM-DD.jsonl       auditoria (UTC)
     ├── execucao-AAAA-MM-DD-HHmmss.log   espelho do console (opt-in)

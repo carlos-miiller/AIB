@@ -58,6 +58,7 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Arquivos => "Mexer nestes arquivos?",
             Ferramentas.Navegador when alvo.StartsWith("ABRIR SITE NOVO ", StringComparison.Ordinal) => "Abrir este site?",
             Ferramentas.Navegador when alvo.StartsWith("DIGITAR ", StringComparison.Ordinal) => "Digitar nesta página?",
+            Ferramentas.Navegador when alvo.StartsWith("ANOTAR ", StringComparison.Ordinal) => "Guardar esta anotação?",
             Ferramentas.Navegador => "Clicar nesta página?",
             _ => "Autorizar esta ação?"
         };
@@ -85,6 +86,9 @@ public partial class ConfirmCardView : UserControl
                 "Nada existente é sobrescrito: se o destino já existir, a ação é recusada.",
             Ferramentas.Navegador when alvo.StartsWith("ABRIR SITE NOVO ", StringComparison.Ordinal) =>
                 "O Edge do AIB abre este endereço, com o login que você tiver feito nele.",
+            Ferramentas.Navegador when alvo.StartsWith("ANOTAR ", StringComparison.Ordinal) =>
+                "A AIB vai ler isto sempre que abrir esta página, em qualquer conversa. Fica em "
+                + "~/.AIB/navegador/notas, e dá para editar ou apagar à mão.",
             Ferramentas.Navegador =>
                 "A ação acontece no site, com o seu login. O AIB não desfaz o que o site fizer.",
             _ => "Esta ação altera o seu sistema e não pode ser desfeita pelo AIB."
