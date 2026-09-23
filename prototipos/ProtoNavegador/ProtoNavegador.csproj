@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <None Update="Snapshot.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Cobertura.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

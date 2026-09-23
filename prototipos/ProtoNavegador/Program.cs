@@ -93,6 +93,7 @@ internal static class Program
                     ocultos             o texto que existe na página mas não aparece
                     ocr                 texto da tela pelo OCR do Windows
                     medir               compara árvore, vista, ocultos e OCR em tokens
+                    cobertura           diagnóstico: o que a vista julgou coberto, e por quem (sem texto da página)
                     achar <texto>       procura na página inteira (sem acento, sem caixa)
                     tabela [ref|n]      lista as tabelas, ou mostra uma em texto compacto
                     clicar <ref>        clica e lê de novo (ref sem versão, ex.: e84, vale para a leitura atual)
@@ -136,6 +137,10 @@ internal static class Program
 
             case "medir":
                 if (await Precisa()) await Medir();
+                break;
+
+            case "cobertura":
+                await Cobertura();
                 break;
 
             case "achar":
@@ -418,6 +423,32 @@ internal static class Program
         Console.WriteLine($"leitura do DOM: {s.Tempo.TotalMilliseconds:0} ms · quadros lidos: {s.Quadros.Count}, por cima: {s.QuadrosPorCima.Count(b => b)}");
         Console.WriteLine($"segredos mascarados: {s.Segredos}");
         Console.WriteLine("tokens estimados por caracteres/4.");
+    }
+
+    /// <summary>
+    /// Diagnóstico da vista: em cada quadro, quantos elementos com texto dentro da tela foram
+    /// dados como cobertos, e POR QUEM. Só estrutura, nenhum texto da página: dá para colar.
+    /// </summary>
+    private static async Task Cobertura()
+    {
+        string js = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Cobertura.js"));
+        var page = Pagina;
+        int q = 0;
+        foreach (var frame in page.Frames)
+        {
+            string nome = frame == page.MainFrame ? "principal" : $"quadro {q}";
+            q++;
+            JsonElement r;
+            try { r = await frame.EvaluateAsync<JsonElement>(js); }
+            catch (Exception ex) { Console.WriteLine($"[{nome}] ilegível: {Primeira(ex.Message)}"); continue; }
+
+            string url;
+            try { var u = new Uri(frame.Url); url = u.Host + u.AbsolutePath; } catch { url = "?"; }
+            Console.WriteLine($"[{nome}] {url} · janela {r.GetProperty("janela").GetString()} · "
+                              + $"com texto na tela: {r.GetProperty("comTexto").GetInt32()}, cobertos: {r.GetProperty("cobertos").GetInt32()}");
+            foreach (var c in r.GetProperty("capas").EnumerateArray()) Console.WriteLine("   capa: " + c.GetString());
+            foreach (var f in r.GetProperty("quadros").EnumerateArray()) Console.WriteLine("   iframe: " + f.GetString());
+        }
     }
 
     // ---------------------------------------------------------------- pesquisa
