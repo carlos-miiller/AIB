@@ -61,6 +61,9 @@ O AIB não usa pasta temporária.
 │   ├── ignoradas.json               conversas que o usuário mandou ignorar
 │   ├── diario/diario-AAAA-MM-DD.json   o que a triagem decidiu, por dia
 │   └── conversas/<hash>/            triagem.jsonl e chave.txt, por conversa de e-mail
+├── navegador/
+│   ├── perfil/                      perfil do Edge da ferramenta browser (cookies do login)
+│   └── sites-liberados.txt          um domínio por linha, editável à mão
 └── logs/
     ├── audit-AAAA-MM-DD.jsonl       auditoria (UTC)
     ├── execucao-AAAA-MM-DD-HHmmss.log   espelho do console (opt-in)
@@ -75,6 +78,7 @@ Detalhes que importam:
 - **`facts.md`** é do usuário: a AIB só acrescenta linhas no fim, nunca reescreve nem apaga — nem no reset de fábrica, que o renomeia para `facts.<carimbo>.md.bak`. `facts.index.jsonl` é append-only e impede que um fato apagado pelo usuário volte na próxima promoção; ele, sim, é apagado no reset, porque é da máquina.
 - **`chat_history.json`** (`ChatHistoryService`) é regravado a cada turno, com a conversa viva por cima da própria entrada. Guarda até 50 conversas do usuário e, num teto à parte, até 50 conversas nascidas de e-mail — com um teto só, uma caixa movimentada expulsava as conversas que o usuário começou. Cada `ChatSession` guarda `MemorySessionId`, que liga a entrada à pasta da sessão, e `MailThreadKey` quando nasceu de um e-mail.
 - **`email/`**: o corpo de uma mensagem **nunca** é gravado. O diário guarda remetente, assunto e o resumo de uma frase; `MailJournalDays` controla a retenção e em zero desliga o diário. A pasta de cada conversa de e-mail tem nome de hash, para o assunto não vazar em listagens. Ver [05-email.md](05-email.md).
+- **`navegador/`** (`NavegadorService`, `SitesLiberados`): o perfil é do Edge, e guarda o que um navegador guarda — cookies e sessão dos sites em que o usuário logou pela janela. **Nada das páginas** é gravado pelo AIB: a leitura fica na RAM e sai para o modelo embrulhada por `ConteudoDeTerceiros` (ver [03](03-ferramentas-e-portao.md)). Apagar `sites-liberados.txt` faz o primeiro acesso a cada site voltar a perguntar; apagar `perfil/` desloga de tudo. O driver do Playwright vive em `.playwright/`, **ao lado do `AIB.exe`** (a publicação em arquivo único não o embute): mover o exe sem essa pasta desliga o navegador.
 - **`logs/audit-*.jsonl`** (`AuditLogService`): append-only, um arquivo por dia (data UTC), sem BOM, gravado **antes** da execução da ação auditada. Falha ao auditar vai para o console e não derruba a conversa. Nos testes, `AuditLogService.LogDirectoryOverride` desvia tudo para uma pasta temporária.
 - **`logs/execucao-*.log`** (`RegistroDeExecucao`): só com `ExecutionLogging` ligado. Espelha o console, que inclui os prompts inteiros — e o da triagem leva assunto e remetente dos e-mails. O **corpo, não**: ele desce para o prompt embrulhado por `ConteudoDeTerceiros` e `RegistroDeExecucao.Redigir` o troca pelo aviso de omissão antes de a linha chegar ao arquivo (era a última exceção documentada à regra 3, e deixou de ser). Ainda assim nasce desligado, e o cabeçalho do arquivo diz o que ele contém. Guarda os 20 mais recentes e só apaga arquivos com o próprio prefixo, porque a pasta também guarda a auditoria.
 - **`logs/prompt-*.txt`** (`RetratoDoEnvio.Gravar`): prefixo diferente de propósito, para a poda do registro de execução não apagá-lo.

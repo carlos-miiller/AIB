@@ -37,6 +37,8 @@ public static class ToolIcons
     // Lupa sobre linhas de texto: acha DENTRO do conteúdo, e não pelo nome.
     private const string Buscar = "M3.5,5 H9 M3.5,8.5 H7 M3.5,12 H7 M13,7.5 A3.8,3.8 0 1 1 13,15.1 A3.8,3.8 0 1 1 13,7.5 Z M15.8,14.2 L18.5,16.9";
     private const string Email = "M3.5,5.5 H18.5 V16.5 H3.5 Z M3.5,5.8 L11,11.6 L18.5,5.8";
+    // Globo: círculo, meridiano e dois paralelos.
+    private const string Navegador = "M11,3.6 A7.4,7.4 0 1 1 11,18.4 A7.4,7.4 0 1 1 11,3.6 Z M11,3.6 C7.8,7 7.8,15 11,18.4 M11,3.6 C14.2,7 14.2,15 11,18.4 M3.8,9 H18.2 M3.8,13 H18.2";
 
     private static readonly Dictionary<string, Geometry> Cache = new(StringComparer.Ordinal);
 
@@ -80,6 +82,7 @@ public static class ToolIcons
         Ferramentas.Procurar => Procurar,
         Ferramentas.Buscar => Buscar,
         Ferramentas.Email or Ferramentas.LerEmail => Email,
+        Ferramentas.Navegador => Navegador,
         Ferramentas.Shell => Terminal,
         Ferramentas.Habilidade => Terminal,
         _ => null

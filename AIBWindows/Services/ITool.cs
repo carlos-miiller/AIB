@@ -59,6 +59,17 @@ public interface ITool
     bool RequiresConfirmation => false;
 
     /// <summary>
+    /// Se ESTA chamada passa pelo portão. Default: <see cref="RequiresConfirmation"/>, a mesma
+    /// resposta para toda chamada.
+    /// <para>
+    /// Existe para a ferramenta que mistura ler e agir. No navegador, ver, procurar, rolar e ler
+    /// a tabela não mudam nada e não perguntam; clicar e digitar perguntam. Quem responde false
+    /// aqui tem de recusar na execução se receber sem autorização algo que pediria cartão.
+    /// </para>
+    /// </summary>
+    bool PedeConfirmacao(string argumentsJson) => RequiresConfirmation;
+
+    /// <summary>
     /// Confere os argumentos ANTES de qualquer coisa acontecer. Devolver texto RECUSA a
     /// execução, e o texto vai ao modelo como resultado.
     /// <para>

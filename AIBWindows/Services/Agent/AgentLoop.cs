@@ -441,7 +441,7 @@ public sealed class AgentLoop
     private static readonly HashSet<string> TrazemConteudo = new(StringComparer.Ordinal)
     {
         Ferramentas.Ler, Ferramentas.Buscar, Ferramentas.Procurar, Ferramentas.Shell,
-        Ferramentas.Habilidade, Ferramentas.Email, Ferramentas.LerEmail
+        Ferramentas.Habilidade, Ferramentas.Email, Ferramentas.LerEmail, Ferramentas.Navegador
     };
 
     /// <summary>

@@ -98,7 +98,7 @@
             <TextBlock x:Name="AvisoEmailText" Visibility="Collapsed"
                        FontSize="11.5" Foreground="{StaticResource WarnBrush}"
                        TextWrapping="Wrap" Margin="0,8,0,0"
-                       Text="Há texto de um e-mail nesta conversa. Se você não pediu esta ação, ela pode ter vindo de instruções escritas no e-mail — confira antes de permitir."/>
+                       Text="Há texto de terceiros nesta conversa (e-mail ou página da web). Se você não pediu esta ação, ela pode ter vindo de instruções escritas nesse texto — confira antes de permitir."/>
 
             <!-- Caminho fora das pastas de confiança: o shell não é limitado pela lista, então
                  o que dá para fazer é contar antes de o usuário permitir. -->

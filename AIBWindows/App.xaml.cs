@@ -502,6 +502,11 @@ public partial class App : System.Windows.Application
     {
         _notifyIcon?.Dispose();
         _httpClient.Dispose();
+
+        // O Edge do navegador é filho do AIB: fecha junto. Com prazo, para o app não travar ao
+        // sair se o Edge não responder.
+        try { Services.Navegador.NavegadorService.Padrao.DisposeAsync().AsTask().Wait(3000); } catch { }
+
         base.OnExit(e);
     }
 }

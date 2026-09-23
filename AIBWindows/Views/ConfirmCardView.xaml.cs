@@ -56,6 +56,9 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Habilidade => manual ? "Ler o manual desta habilidade?" : "Executar esta habilidade?",
             Ferramentas.Arquivos when alvo.StartsWith("APAGAR ", StringComparison.Ordinal) => "Mandar para a Lixeira?",
             Ferramentas.Arquivos => "Mexer nestes arquivos?",
+            Ferramentas.Navegador when alvo.StartsWith("ABRIR SITE NOVO ", StringComparison.Ordinal) => "Abrir este site?",
+            Ferramentas.Navegador when alvo.StartsWith("DIGITAR ", StringComparison.Ordinal) => "Digitar nesta página?",
+            Ferramentas.Navegador => "Clicar nesta página?",
             _ => "Autorizar esta ação?"
         };
 
@@ -80,6 +83,10 @@ public partial class ConfirmCardView : UserControl
                 "Vai para a Lixeira do Windows: dá para restaurar de lá.",
             Ferramentas.Arquivos =>
                 "Nada existente é sobrescrito: se o destino já existir, a ação é recusada.",
+            Ferramentas.Navegador when alvo.StartsWith("ABRIR SITE NOVO ", StringComparison.Ordinal) =>
+                "O Edge do AIB abre este endereço, com o login que você tiver feito nele.",
+            Ferramentas.Navegador =>
+                "A ação acontece no site, com o seu login. O AIB não desfaz o que o site fizer.",
             _ => "Esta ação altera o seu sistema e não pode ser desfeita pelo AIB."
         };
 
@@ -112,12 +119,21 @@ public partial class ConfirmCardView : UserControl
             AvisoPastaText.Visibility = Visibility.Visible;
         }
 
-        // "Sempre permitir" só faz sentido para comando: ele é casado pelo texto exato do
-        // comando na sessão. Para as demais ferramentas seria uma autorização vaga. Com e-mail
-        // no contexto some também: o portão não o respeita enquanto houver texto de terceiros.
-        SempreCheck.Visibility = ferramenta == Ferramentas.Shell && !contexto.ConteudoDeEmailNoContexto
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        // "Sempre permitir" só faz sentido para comando (casado pelo texto exato na sessão) e para
+        // o navegador (casado pelo site). Para as demais ferramentas seria uma autorização vaga.
+        // Some quando o portão não o respeitaria: texto de terceiros no contexto, ou operação que
+        // pergunta toda vez (SemSempre).
+        bool shell = ferramenta == Ferramentas.Shell && !contexto.ConteudoDeEmailNoContexto;
+        bool navegador = ferramenta == Ferramentas.Navegador && !contexto.SemSempre
+                         && (!contexto.ConteudoDeEmailNoContexto
+                             || (contexto.SempreApesarDeTerceiros && !contexto.EmailNoContexto));
+        SempreCheck.Visibility = shell || navegador ? Visibility.Visible : Visibility.Collapsed;
+        if (navegador) SempreCheck.Content = "Sempre permitir neste site (até fechar o AIB)";
+
+        // No navegador, o texto de terceiros é quase sempre a própria página: o aviso só entra se
+        // houver e-mail. Repetir em todo clique ensinaria a não ler o aviso.
+        if (ferramenta == Ferramentas.Navegador && !contexto.EmailNoContexto)
+            AvisoEmailText.Visibility = Visibility.Collapsed;
 
         // O foco nasce em "Recusar". Enter sem ler o card não pode executar nada.
         Loaded += (_, _) => RecusarButton.Focus();

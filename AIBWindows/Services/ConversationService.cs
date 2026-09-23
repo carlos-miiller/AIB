@@ -310,6 +310,22 @@ public sealed class ConversationService : IMessageStore
     }
 
     /// <summary>
+    /// Se o texto de terceiros no contexto inclui E-MAIL, e não só páginas do navegador. O
+    /// "sempre permitir por site" do navegador vale com a página no contexto — é a página que o
+    /// usuário liberou —, mas não com e-mail: quem escreveu o e-mail poderia mandar clicar.
+    /// </summary>
+    public bool HaEmailNoContexto()
+    {
+        if (!string.IsNullOrEmpty(ChaveDoEmail)) return true;
+
+        lock (_gate)
+        {
+            return _history.Any(m => m is ToolChatMessage t
+                                     && AIB.Services.Mail.ConteudoDeTerceiros.ContemEmail(Memory.Turn.TextOf(t)));
+        }
+    }
+
+    /// <summary>
     /// O histórico arquivado mudou: entrada nova, conteúdo novo ou nome novo.
     /// <para>
     /// Dispara fora da thread de interface. Existe porque o painel lê o arquivo uma vez ao
@@ -369,6 +385,7 @@ public sealed class ConversationService : IMessageStore
         // desta conversa. O registry é de todo o app; quem sabe das duas coisas é esta classe.
         _toolRegistry.ChaveDaConversaDeEmail = () => ChaveDoEmail;
         _toolRegistry.ConteudoDeEmailNoContexto = HaConteudoDeEmailNoContexto;
+        _toolRegistry.EmailNoContexto = HaEmailNoContexto;
         _agentLoop = agentLoop ?? throw new ArgumentNullException(nameof(agentLoop));
         _tokenCounter = tokenCounter ?? throw new ArgumentNullException(nameof(tokenCounter));
         _providerFactory = providerFactory ?? throw new ArgumentNullException(nameof(providerFactory));

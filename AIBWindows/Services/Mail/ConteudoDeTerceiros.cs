@@ -34,6 +34,21 @@ public static class ConteudoDeTerceiros
     /// <summary>O que fica no lugar do corpo em tudo o que é gravado.</summary>
     public const string Omitido = "[corpo do e-mail omitido — não é gravado]";
 
+    /// <summary>
+    /// Os mesmos marcadores para o texto de uma PÁGINA lida pela ferramenta <c>browser</c>. A
+    /// página é de terceiros como o e-mail — no Bitrix a vista trouxe chat de colegas com
+    /// credencial colada — e segue a mesma regra: fica na memória RAM, nunca no disco.
+    /// </summary>
+    public const string InicioDaPagina = "[[INICIO_DA_PAGINA]]";
+    public const string FimDaPagina = "[[FIM_DA_PAGINA]]";
+    public const string OmitidoDaPagina = "[conteúdo da página omitido — não é gravado]";
+
+    private static readonly Regex TrechoDaPagina = new(
+        @"\[\[INICIO_DA_PAGINA\]\].*?(?:\[\[FIM_DA_PAGINA\]\]|$)",
+        RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+    private static readonly string[] Marcadores = { Inicio, Fim, InicioDaPagina, FimDaPagina };
+
     // Sem o marcador de fim, apaga até o fim do texto: um corte no meio (log truncado, resultado
     // aparado) não pode deixar a segunda metade do corpo escapar.
     private static readonly Regex Trecho = new(
@@ -49,30 +64,45 @@ public static class ConteudoDeTerceiros
     /// marcador pode juntar as duas metades de outro.
     /// </para>
     /// </summary>
-    public static string Embrulhar(string? corpo)
+    public static string Embrulhar(string? corpo) => Inicio + "\n" + SemMarcadores(corpo) + "\n" + Fim;
+
+    /// <summary>O texto de uma página entre os marcadores dela. Mesma limpeza do e-mail.</summary>
+    public static string EmbrulharPagina(string? texto) =>
+        InicioDaPagina + "\n" + SemMarcadores(texto) + "\n" + FimDaPagina;
+
+    // Tira os marcadores (dos dois tipos) que venham DENTRO do texto de terceiros, até
+    // estabilizar: uma página que escrevesse [[FIM_DO_EMAIL]] não pode fechar um embrulho alheio.
+    private static string SemMarcadores(string? texto)
     {
-        string limpo = corpo ?? "";
+        string limpo = texto ?? "";
         string anterior;
 
         do
         {
             anterior = limpo;
-            limpo = limpo.Replace(Inicio, "", StringComparison.Ordinal)
-                         .Replace(Fim, "", StringComparison.Ordinal);
+            foreach (string m in Marcadores) limpo = limpo.Replace(m, "", StringComparison.Ordinal);
         }
         while (limpo.Length != anterior.Length);
 
-        return Inicio + "\n" + limpo + "\n" + Fim;
+        return limpo;
     }
 
-    /// <summary>Se há corpo de e-mail neste texto.</summary>
+    /// <summary>
+    /// Se há texto de terceiros embrulhado: corpo de e-mail ou página. É o que suspende o
+    /// "sempre permitir" e a dispensa por pasta — o pedido pode ter vindo desse texto.
+    /// </summary>
     public static bool Contem(string? texto) =>
+        texto != null && (texto.Contains(Inicio, StringComparison.Ordinal)
+                          || texto.Contains(InicioDaPagina, StringComparison.Ordinal));
+
+    /// <summary>Se há corpo de E-MAIL neste texto (página não conta).</summary>
+    public static bool ContemEmail(string? texto) =>
         texto != null && texto.Contains(Inicio, StringComparison.Ordinal);
 
-    /// <summary>Troca cada corpo embrulhado por <see cref="Omitido"/>. Texto sem corpo volta intacto.</summary>
+    /// <summary>Troca cada trecho embrulhado pelo aviso de omitido. Texto sem trecho volta intacto.</summary>
     public static string Redigir(string? texto)
     {
         if (string.IsNullOrEmpty(texto) || !Contem(texto)) return texto ?? "";
-        return Trecho.Replace(texto, Omitido);
+        return TrechoDaPagina.Replace(Trecho.Replace(texto, Omitido), OmitidoDaPagina);
     }
 }

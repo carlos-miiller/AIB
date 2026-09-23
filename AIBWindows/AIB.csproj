@@ -15,6 +15,7 @@
   <ItemGroup>
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
     <PackageReference Include="MailKit" Version="4.17.0" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.49.0" />
     <PackageReference Include="Markdig.Wpf" Version="0.5.0.1" />
     <PackageReference Include="Microsoft.ML.Tokenizers" Version="2.0.0" />
     <PackageReference Include="Microsoft.ML.Tokenizers.Data.O200kBase" Version="2.0.0" />
@@ -23,6 +24,10 @@
     <PackageReference Include="OpenAI" Version="2.10.0" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.5" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Services\Navegador\Snapshot.js" LogicalName="AIB.Navegador.Snapshot.js" />
   </ItemGroup>
 
   <ItemGroup>

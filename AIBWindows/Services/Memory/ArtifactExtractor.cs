@@ -146,6 +146,11 @@ public static class ArtifactExtractor
             Ferramentas.Buscar => BuscaDe(argumentosJson, comFiltro: true),
             Ferramentas.Email => ConsultaDeEmail(argumentosJson),
             Ferramentas.LerEmail => "e-mail desta conversa",
+            Ferramentas.Navegador => string.Join(" ", new[]
+            {
+                StringDe(argumentosJson, "action"), StringDe(argumentosJson, "url"),
+                StringDe(argumentosJson, "ref"), StringDe(argumentosJson, "text")
+            }.Where(s => s.Length > 0)),
             _ => ""
         };
 

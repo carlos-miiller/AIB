@@ -159,7 +159,7 @@ namespace AIB.Tests
             // mail entra mesmo com a triagem desligada, ao contrário da skill: sem ela o modelo
             // não sabe que "tem algo urgente?" tem resposta possível e responde de memória.
             // Desligada, ela responde exatamente isso.
-            names.Should().Equal("edit", "fs", "glob", "grep", "mail", "read", "shell", "write");
+            names.Should().Equal("browser", "edit", "fs", "glob", "grep", "mail", "read", "shell", "write");
         }
 
         [Fact]
@@ -223,7 +223,7 @@ namespace AIB.Tests
 
             var (natives, dynamics) = registry.GetCategorizedTools();
 
-            natives.Should().HaveCount(9, "mail_read é registrada sempre, e só oferecida na conversa de um e-mail");
+            natives.Should().HaveCount(10, "mail_read é registrada sempre, e só oferecida na conversa de um e-mail");
             dynamics.Should().BeEmpty("no lazy loading as skills não entram no registry");
         }
 

@@ -36,6 +36,7 @@ Renomear uma ferramenta é mudar só a constante.
 | `shell` (`Shell`) | `RunCommandTool` | 2 | sim — nunca dispensado; passa pela floor list | Roda um comando PowerShell (30 s). |
 | `skill` (`Habilidade`) | `ExecuteSkillTool` | 2 | sim — a skill só-manual é dispensada; passa pela floor list | Roda uma habilidade instalada, ou entrega o manual dela. |
 | `fs` (`Arquivos`) | `FsTool` | 2 | sim — só `mkdir` é dispensável por pasta; apagar pasta com conteúdo tem piso tipado (Nível 7) | Cria pasta, copia, move, renomeia e apaga (para a **Lixeira**). Nunca sobrescreve. |
+| `browser` (`Navegador`) | `BrowserTool` | 2 | **por ação** (`PedeConfirmacao`) — ler não pergunta; clicar e digitar perguntam, com "sempre" por site; site novo pergunta uma vez | Navegador (Edge, perfil próprio, logado pelo usuário): abre, lê a vista, procura, lê tabela, clica, digita (§7). |
 | `mail` (`Email`) | `ConsultarEmailsTool` | 1 | não | Consulta o diário da triagem de e-mail (disco, não o servidor). |
 | `mail_read` (`LerEmail`) | `LerEmailTool` | 1 | não | Relê no servidor o e-mail da conversa aberta (somente leitura). |
 
@@ -49,7 +50,7 @@ Detalhes de registro:
 - **`mail_read` é registrada sempre, mas só é oferecida** (`GetActiveTools`) quando a conversa está
   ligada a um e-mail (`ChaveDaConversaDeEmail` não vazia).
 - `GetActiveTools(userLevel)` corta do schema as ferramentas acima do nível do usuário.
-- **A `Description` é paga em TODA requisição.** As nove somam 1.951 caracteres (eram 2.056). A
+- **A `Description` é paga em TODA requisição.** As nove de antes somavam 1.951 caracteres (eram 2.056); o `browser` acrescenta cerca de 290. A
   regra de redação: cada uma diz uma capacidade que o modelo não adivinharia (o `write` cria
   pasta), uma fronteira com a ferramenta vizinha (o `shell` não é para arquivo; o `edit` não cria
   arquivo) e o teto que muda a decisão antes de chamar (100 no `glob`, 60 no `grep`, 30 s no
@@ -72,6 +73,7 @@ Todo membro opcional tem default seguro. Quem não sobrescreve herda o comportam
 | `Name`, `Description`, `ChatToolDefinition`, `RequiredLevel` | — | Identidade, schema e nível mínimo. |
 | `ExecuteAsync(args, userLevel)` | — | A execução "crua". O registry **não** a chama direto. |
 | `RequiresConfirmation` | `false` | Só quem altera a máquina responde `true` (`write`, `edit`, `shell`, `skill`). |
+| `PedeConfirmacao(args)` | `RequiresConfirmation` | Se *esta* chamada passa pelo portão. Só o `browser` sobrescreve: ler não pergunta, agir pergunta. Exceção ao decidir = pergunta. Quem responde `false` recusa na execução, sem autorizado, o que pediria cartão. |
 | `Validar(args)` → `string?` | `null` | **Pré-voo.** Texto não nulo recusa a chamada antes do portão; o texto vai ao modelo. |
 | `DispensaConfirmacao(args)` | `false` | Se *esta* chamada pode pular o cartão. Dispensar é sempre escolha escrita da ferramenta. |
 | `PassaPelaFloorList` | `false` | Se o `Command` do contexto é linha de comando que a floor list sabe ler. Só `shell` e `skill`. |
@@ -101,7 +103,7 @@ Por quê:
 ferramenta existe? ──não──> "ERRO: Ferramenta 'x' não encontrada..."        [ferramenta_desconhecida]
 nível >= RequiredLevel? ──não──> "ACESSO NEGADO: ... exige Nível N..."      [nivel_insuficiente]
 Validar(args) ──texto──> devolve o texto (em geral "ERRO: ...")             [recusada_no_pre_voo]
-RequiresConfirmation?
+PedeConfirmacao(args)?   (default: RequiresConfirmation; exceção = sim)
  ├─ não ──────────────────────────────────────────────────────────────────> [automatica]
  └─ sim
      ├─ DispensaPelaPasta? (e-mail no contexto => não; exceção => não)
@@ -234,17 +236,23 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
 | "Motivo do bloqueio" | `DenylistHit`/`DenylistReason` (só `shell`). |
 | Aviso de e-mail | `ctx.ConteudoDeEmailNoContexto`. |
 | Aviso de pasta | `ctx.Aviso` — do `EscritaNoComando` (só `shell`). |
-| "Sempre permitir" | Só para `shell`, e some com e-mail no contexto. |
+| "Sempre permitir" | Para `shell` (comando exato) e `browser` (o site, "até fechar o AIB"). Some com texto de terceiros no contexto — no `browser`, só com e-mail — e quando `ctx.SemSempre`. |
 
 O foco nasce em **Recusar**: Enter sem ler não executa nada. Os botões travam depois do clique.
 
 ### "Sempre permitir" (`AlwaysAllowSession`)
 
 - Em memória, só nesta sessão do processo; não persiste.
-- Chave `(Tool, Cmd, ContentHash)` com igualdade ordinal: casa o **comando exato**, byte a byte.
+- Chave `(Tool, Cmd, ContentHash)` com igualdade ordinal: casa o **comando exato**, byte a byte —
+  ou `ctx.ChaveDeSempre`, quando a ferramenta dá outra. O `browser` dá `site:<domínio>`.
 - `ContentHash` está reservado e é sempre `null`.
-- Ignorado enquanto houver conteúdo de e-mail no contexto: uma autorização dada com outro contexto
-  não cobre o que o e-mail pode ter pedido.
+- Ignorado enquanto houver texto de terceiros no contexto (e-mail ou página — `ConteudoDeTerceiros.Contem`):
+  uma autorização dada com outro contexto não cobre o que esse texto pode ter pedido. Exceção:
+  `ctx.SempreApesarDeTerceiros` (só o `browser`), que vale com a página no contexto — é a página que
+  o usuário liberou — mas **não com e-mail** (`ToolRegistry.EmailNoContexto`).
+- `ctx.SemSempre`: nunca entra nem é consultado. O `browser` marca botão que decide (apagar,
+  concluir, enviar, pagar…, e botão que envia formulário), Enter fora de caixa de busca e abrir
+  site novo.
 - `Listar()`/`Quantos` existem para a tela mostrar o que está autorizado.
 
 ---
@@ -478,6 +486,59 @@ Os dois varrem com `GlobTool.Opcoes` (`EnumerationOptions`), e não com a sobrec
 Somente leitura. `mail` lê o diário da triagem em disco; `mail_read` relê a thread da conversa
 aberta no servidor (EXAMINE/`BODY.PEEK`), sem argumentos, e devolve o corpo embrulhado por
 `ConteudoDeTerceiros`. Detalhes em `05-email.md`.
+
+### `browser` — `BrowserTool`, `NavegadorService`, `LeituraDaPagina`
+
+Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
+(`prototipos/ProtoNavegador`) testado no Bitrix: abrir o projeto, achar o filtro, digitar
+"Fernando", ler a tabela e abrir a tarefa, só com as ações abaixo.
+
+- **O Edge instalado** (Playwright, canal `msedge`), num **perfil próprio** em
+  `~/.AIB/navegador/perfil`, com **janela visível**. O usuário loga pela janela; a IA nunca vê nem
+  digita senha. Nasce na primeira chamada (quem não usa não paga) e fecha com o app. Um semáforo
+  põe as ações em fila: as ferramentas de um turno rodam em paralelo.
+- **Ações** (`action`): `open`, `view`, `find`, `table`, `click`, `type` (com `enter`), `scroll`
+  (`up`), `back`.
+- **A vista** (`LeituraDaPagina.Vista`): só o que está na tela **e por cima** — o `Snapshot.js`
+  confere `elementFromPoint`, e o quadro (iframe) coberto por outro painel não conta. Texto
+  escondido por CSS fica de fora (é onde mora a injeção escondida). Cada elemento acionável leva
+  uma ref com a versão da leitura: `[s3e40]`. No Bitrix: vista ≈900 tokens, árvore inteira ≈7 mil.
+  O OCR da tela foi medido e descartado (pouco texto, sem estrutura, sem como clicar).
+- **`find` e `table`** pesquisam na leitura guardada em vez de entregar a página: `find` sem acento
+  e sem caixa, com uma linha de contexto; `table` lista as tabelas (fichas de uma linha contadas à
+  parte) ou devolve uma, uma linha por linha, células com ` | `. Tetos: vista 8000 caracteres,
+  20 achados, 80 linhas.
+- **Ref antiga é recusada.** Depois de qualquer leitura nova, `s2e40` não vale mais; a forma curta
+  `e40` vale para a atual.
+- **Antes de ler, espera assentar**: rede calma (até 6 s) e animações finitas terminadas (até 2 s).
+  No Bitrix a tarefa abre num painel que desliza, e lida no meio a vista vinha vazia.
+- **Campo sem rótulo** ganha o nome do texto curto logo antes dele ("Assignee"), sem atravessar
+  para o grupo de outro campo.
+
+**O portão, por ação** (`PedeConfirmacao`):
+
+| Ação | Pergunta? |
+|---|---|
+| `view`, `find`, `table`, `scroll`, `back` | não |
+| `open` em site liberado | não |
+| `open` em site novo | sim — `ABRIR SITE NOVO <domínio> — <url>`; aprovar **libera o site** (`SitesLiberados`, `~/.AIB/navegador/sites-liberados.txt`, um domínio por linha) |
+| `click` em link que só navega (href http real, sem `#`, `javascript:` ou `onclick`) para site liberado | não — é o mesmo que `open` |
+| `click` | sim — `CLICAR [s3e2] botão "Filtrar" em <domínio>`; "sempre" vale para o site |
+| `type` | sim — `DIGITAR "texto" em [ref] <campo> [e apertar Enter] em <domínio>`; "sempre" vale para o site |
+
+Pergunta **toda vez** (`SemSempre`): botão cujo nome decide algo (excluir, apagar, concluir,
+enviar, salvar, pagar, comprar, confirmar, aprovar, publicar, cancelar…), botão que envia
+formulário, e Enter em campo que não é busca/filtro. A frase do cartão leva a ref com a versão: se
+a página mudou entre o cartão e o clique, a execução recusa.
+
+**A página é de terceiros.** O resultado sai por `ConteudoDeTerceiros.EmbrulharPagina`
+(`[[INICIO_DA_PAGINA]]`…`[[FIM_DA_PAGINA]]`) e ganha a marca de conteúdo do `AgentLoop`. Todo
+caminho para o disco passa pelo `Redigir`, que troca o trecho por "[conteúdo da página omitido —
+não é gravado]". Com página no contexto, a dispensa por pasta e o "sempre" das outras ferramentas
+ficam suspensos, como com e-mail. **Segredo visível** (`SegredosNaPagina`) chega mascarado:
+palavra de 12+ caracteres com maiúscula, minúscula e 2+ números, ou 16 minúsculas quase sem vogal
+(senha de app do Google). Nome de máquina (`CPAPS-NB0123`), endereço e e-mail passam — no primeiro
+teste no Bitrix a vista trouxe duas credenciais coladas num chat.
 
 ---
 

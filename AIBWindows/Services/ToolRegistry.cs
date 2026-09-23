@@ -51,6 +51,12 @@ public class ToolRegistry
     /// </summary>
     public Func<bool>? ConteudoDeEmailNoContexto { get; set; }
 
+    /// <summary>
+    /// Se, do texto de terceiros no contexto, algum é E-MAIL (e não só página do navegador).
+    /// Sem ligação, vale o mesmo que <see cref="ConteudoDeEmailNoContexto"/>: na dúvida, é e-mail.
+    /// </summary>
+    public Func<bool>? EmailNoContexto { get; set; }
+
     private bool EmConversaDeEmail => !string.IsNullOrWhiteSpace(ChaveDaConversaDeEmail?.Invoke());
 
     /// <remarks>
@@ -108,7 +114,12 @@ public class ToolRegistry
             // Ver ITool.ExecutarAutorizadoAsync.
             CommandConfirmationContext? autorizado = null;
 
-            if (tool.RequiresConfirmation)
+            // Na dúvida, pergunta: exceção ao decidir é pedir confirmação, nunca pular.
+            bool pede;
+            try { pede = tool.PedeConfirmacao(argumentsJson); }
+            catch { pede = true; }
+
+            if (pede)
             {
                 if (DispensaPelaPasta(tool, argumentsJson))
                 {
@@ -235,16 +246,21 @@ public class ToolRegistry
             return (false, razao, null);
         }
 
-        var chave = (tool.Name, comando, (string?)null);
+        // A chave é o comando exato, a menos que a ferramenta diga outra (o navegador usa o site).
+        var chave = (tool.Name, ctx.ChaveDeSempre ?? comando, (string?)null);
 
-        // Texto de e-mail no contexto: o pedido desta ação pode ter vindo de instruções escritas
-        // por terceiros. O card avisa, e o "sempre permitir" deixa de pular a pergunta — uma
-        // autorização dada antes, com outro contexto, não cobre o que o e-mail pode ter pedido.
+        // Texto de terceiros no contexto (e-mail, página): o pedido desta ação pode ter vindo de
+        // instruções escritas por eles. O card avisa, e o "sempre permitir" deixa de pular a
+        // pergunta — uma autorização dada antes, com outro contexto, não cobre o que o texto pode
+        // ter pedido. Exceção declarada: SempreApesarDeTerceiros (ver o contexto).
         bool comEmail = ConteudoDeEmailNoContexto?.Invoke() == true;
+        bool soEmail = comEmail && (EmailNoContexto?.Invoke() ?? true);
         ctx.ConteudoDeEmailNoContexto = comEmail;
+        ctx.EmailNoContexto = soEmail;
+        bool sempreSuspenso = ctx.SemSempre || (comEmail && !(ctx.SempreApesarDeTerceiros && !soEmail));
 
-        // "Sempre permitir" vale só nesta sessão e casa byte a byte no comando exato.
-        if (AlwaysAllowSession.Contains(chave) && !comEmail)
+        // "Sempre permitir" vale só nesta sessão e casa byte a byte na chave.
+        if (!sempreSuspenso && AlwaysAllowSession.Contains(chave))
         {
             await AuditLogService.AppendAsync(new { evento = "allow_sessao", ferramenta = tool.Name, comando, userLevel });
             aoDecidir?.Invoke("sempre_na_sessao");
@@ -292,7 +308,7 @@ public class ToolRegistry
             aoDecidir?.Invoke(!permitido ? "recusada" : sempre ? "permitida_sempre" : "permitida");
 
             if (!permitido) return (false, RecusaDoUsuario, null);
-            if (sempre) AlwaysAllowSession.Add(chave);
+            if (sempre && !sempreSuspenso) AlwaysAllowSession.Add(chave);
         }
 
         return (true, null, ctx);
@@ -410,6 +426,9 @@ public class ToolRegistry
             new RunCommandTool(),
             new WriteFileTool(),
             new FsTool(),
+
+            // O Edge só abre na primeira chamada: construir aqui não toca disco nem processo.
+            new BrowserTool(Navegador.NavegadorService.Padrao, new Navegador.SitesLiberados(Navegador.SitesLiberados.ArquivoPadrao)),
 
             // Registrada SEMPRE, e não só quando a triagem está ligada. Com ela fora, o modelo
             // não sabe que a pergunta tem resposta possível e chuta — e chutar sobre a caixa de
