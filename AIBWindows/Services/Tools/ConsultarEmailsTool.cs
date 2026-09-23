@@ -53,11 +53,15 @@ public sealed class ConsultarEmailsTool : ITool
 
     public string Name => Ferramentas.Email;
 
+    /// <summary>
+    /// Encurtada em 112 caracteres para pagar o que o <c>write</c> e o <c>shell</c> cresceram:
+    /// descrição custa tokens em TODA requisição, e esta ferramenta foi chamada 3 vezes em 49
+    /// sessões. O que não podia sair é o que ela NÃO faz — não abre a caixa agora.
+    /// </summary>
     public string Description =>
-        "Consulta o que a triagem automática de e-mail já leu e classificou. Use para perguntas " +
-        "como 'quantos e-mails foram tratados hoje', 'tem algo urgente', 'chegou algo do fulano'. " +
-        "Lê o registro das triagens que já rodaram — NÃO acessa a caixa agora, então não sabe de " +
-        "mensagens chegadas depois da última passada.";
+        "Consulta o diário da triagem de e-mail: o que ela já leu e classificou ('quantos hoje', " +
+        "'algo urgente', 'algo do fulano'). NÃO abre a caixa agora — não sabe do que chegou depois " +
+        "da última passada.";
 
     public int RequiredLevel => 1;
 

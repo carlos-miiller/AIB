@@ -55,9 +55,9 @@ public class ExecuteSkillTool : ITool
     public string Name => Ferramentas.Habilidade;
 
     public string Description =>
-        "Executa uma habilidade instalada pelo nome. Use quando a tarefa corresponder a uma das "
-        + "habilidades listadas no prompt de sistema. Passe o nome exato em 'skill_name' e os "
-        + "argumentos da habilidade em 'arguments'.";
+        "Executa uma habilidade instalada, pelo nome exato da lista do prompt de sistema; "
+        + "'arguments' na forma que o SKILL.md dela documenta. Nome fora daquela lista não "
+        + "existe.";
 
     public int RequiredLevel => 2;
 
@@ -179,14 +179,18 @@ public class ExecuteSkillTool : ITool
     /// saber que o nome estava errado nem qual era o certo.
     /// </para>
     /// <para>
-    /// JSON ilegível passa daqui sem recusa: o <see cref="BuildConfirmationContext"/> não o
-    /// descreve, e o registry nega sem contexto. Não executa de um jeito nem de outro.
+    /// JSON ilegível também é recusado AQUI. Antes ele passava, o
+    /// <see cref="BuildConfirmationContext"/> não o descrevia e o registry negava sem contexto —
+    /// e o modelo lia "ACESSO NEGADO" para um erro de sintaxe, concluía que o problema era
+    /// permissão, e trocava de caminho e de nível em vez de consertar o JSON.
     /// </para>
     /// </summary>
     public string? Validar(string argumentsJson)
     {
         var a = Argumentos(argumentsJson);
-        if (a == null) return null;
+        if (a == null)
+            return "ERRO: argumentos ilegíveis. Envie um objeto JSON com 'skill_name' e, se a "
+                   + "habilidade pedir, 'arguments'.";
 
         if (string.IsNullOrWhiteSpace(a.Value.Nome))
             return "ERRO: O parâmetro 'skill_name' é obrigatório.";
@@ -344,6 +348,22 @@ public class ExecuteSkillTool : ITool
             RedirectStandardOutput = true,
             RedirectStandardError = true,
 
+            // Lido em UTF-8, como no shell. Sem isto a saída das habilidades voltava com
+            // "Recep��o S�o Jos�" e "conclu��do" — e esse texto ia para o contexto do modelo,
+            // para a memória e para a tela.
+            //
+            // LIMITE CONHECIDO, medido: aqui só dá para acertar o lado da LEITURA. O shell diz
+            // ao filho como escrever porque monta o comando (-EncodedCommand com
+            // [Console]::OutputEncoding na frente); uma skill roda com -File, e o script é do
+            // usuário. Um .ps1 que não fixe a própria saída escreve na página de código padrão
+            // do PowerShell 5.1 e continua chegando torto. Trocar o -File por -Command para
+            // injetar a codificação foi medido e RECUSADO: os argumentos deixam de ser literais
+            // (passam a ser expandidos pelo PowerShell) e o parâmetro obrigatório ausente, que
+            // hoje falha na hora nomeando o que faltou, passa a terminar em silêncio com código
+            // 0 — os dois nasceram de casos reais e valem mais que o acento.
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+
             // Entrada redirecionada e FECHADA logo apos o Start. Sem isto o filho herda o
             // console do app, e um script com parametro obrigatorio ausente abre o prompt
             // "Supply values for the following parameters" e fica parado ate o teto de 60s.
@@ -359,6 +379,11 @@ public class ExecuteSkillTool : ITool
             // caminho relativo.
             WorkingDirectory = skill.Folder
         };
+
+        // O Python decide a codificação da saída pela variável de ambiente. Sem ela, escreve na
+        // página de código do console e o UTF-8 lido do outro lado não bate — foi assim que
+        // "Recepção São José" voltou de uma skill de planilha como "Recep��o S�o Jos�".
+        inicio.Environment["PYTHONIOENCODING"] = "utf-8";
 
         Console.WriteLine($"[SKILL] Executando '{skill.Name}': {inicio.FileName} {inicio.Arguments}");
 

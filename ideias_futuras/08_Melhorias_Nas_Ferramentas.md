@@ -661,3 +661,56 @@ Três mensagens do projeto já seguem a regra inteira, e a redação nova deve i
   com o aviso do `EscritaNoComando`.
 - **A floor list e o portão.** Nada nesta proposta afrouxa autorização: tudo o que hoje pergunta
   continua perguntando, e caminho de dúvida continua negando.
+
+---
+
+## 7. O que foi feito (fase 0, 23/09/2026)
+
+Uma linha por item; o estudo acima fica como estava. Onde a redação executada difere da proposta,
+a diferença está dita.
+
+- **Prioridade 1 — descrições.** As nove reescritas conforme §4, com duas ausências deliberadas: o
+  `grep` não anuncia `modo=contar` (o campo é da prioridade 8 e não existe), e o `read` não ganhou
+  `filtro`/`detalhes` pelo mesmo motivo — descrição não promete o que o app não cumpre. `mail` e
+  `mail_read` encurtadas para pagar o que `write` e `shell` cresceram: as nove somam **1.951
+  caracteres contra os 2.056 de antes**, e há ensaio que trava o orçamento
+  (`ToolRegistryTests.OOrcamentoDasDescricoes_NaoCRESCE`).
+- **Prioridade 1 — schema.** `read.path`, `write.path`, `edit.old_string` e `glob.pattern` com o
+  texto de §4; `shell.command` agora traz o `Cwd` interpolado (com as barras escapadas, ou o schema
+  seria JSON inválido), no lugar da instrução "use 'pwd'".
+- **Prioridade 2 — `edit` com fim de linha diferente.** `EditFileTool.Casar`, com as duas guardas de
+  §3.1 e uma extensão: vale nos DOIS sentidos (trecho LF em arquivo CRLF e trecho CRLF em arquivo
+  LF), pela mesma regra. Arquivo de fim de linha misto não entra; o ajuste só acontece quando casa
+  exatamente uma vez, e nesse caso a troca é de uma ocorrência mesmo com `replace_all`. As duas
+  invariantes ficam de pé, e o resultado diz o que foi ajustado.
+- **Prioridade 3 — JSON ilegível no pré-voo.** `edit`, `shell` (com `Validar` novo) e também
+  `skill`, que tinha o mesmo defeito. Os três devolvem `ERRO:` nomeando o campo que faltou, nunca
+  "ACESSO NEGADO". O `ConfirmationGateTests` que exigia "ACESSO NEGADO" foi atualizado: o que ele
+  guarda — nada autorizado, nada executado — continua valendo.
+- **Prioridade 4 — `glob`/`grep`.** `GlobTool.Opcoes` com `IgnoreInaccessible = true` e
+  `AttributesToSkip = 0`, usado pelos dois. `ReparsePoint` NÃO é pulado, ao contrário do que §3.4
+  sugeria: no Windows 11 a Área de Trabalho e os Documentos costumam ser junções para o OneDrive, e
+  pular reparse esconderia as pastas mais usadas — contra os laços quem defende é o prazo. Prazo de
+  10 s nos dois, com a parada rotulada e a palavra "incompleta" obrigatória. Os tetos (100, 60,
+  2.000) passam a ser ditos no resultado.
+- **Prioridade 5 — codificação.** `shell` corrigido dos dois lados (prefixo que manda o filho
+  escrever em UTF-8, dentro de `try` porque sem console a atribuição pode falhar, e
+  `StandardOutputEncoding`/`StandardErrorEncoding` lendo UTF-8); há ensaio que roda `powershell.exe`
+  de verdade e confere acento no stdout e no stderr. Na `skill` só deu para acertar a LEITURA: ela
+  roda `-File` um script do usuário, e um `.ps1` que não fixe a própria saída continua chegando
+  torto. Trocar `-File` por `-Command`/`-EncodedCommand` para injetar a codificação foi **medido e
+  recusado**: os argumentos deixariam de ser literais e o parâmetro obrigatório ausente, que hoje
+  falha na hora nomeando o que faltou, passaria a terminar em silêncio com código 0. `python` ganhou
+  `PYTHONIOENCODING=utf-8`.
+- **Prioridade 9 (parcial) — mensagens.** Reescritas as das ferramentas tocadas: o timeout do
+  `shell` (o que pode ter mudado, e qual escopo reduzir), o "(+N não listado(s))" do `read` de
+  pasta (com o teto e o `glob` nomeados), os tetos do `grep` e do `glob`, e a recusa do `edit` no
+  caso ambíguo de fim de linha.
+
+Não entrou, e por quê: **6** (cópia `.bak`) e **12** (`modo=acrescentar`), **8** (campos novos de
+schema) e **10** (bloqueio de repetição) são de outra fase; **11** (floor list nomeando o trecho)
+não é de ferramenta; e o `ERRO: Ferramenta 'x' não encontrada no registry` de §5 ficou como está —
+é texto do registry, não de uma ferramenta tocada aqui.
+
+Não medido: o efeito das descrições novas no comportamento do modelo pequeno. O `AIB.Avaliacao` é
+quem responde isso, e a linha de base tem de ser rodada com `--repeticoes 3` antes e depois.

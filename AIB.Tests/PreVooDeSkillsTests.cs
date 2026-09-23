@@ -190,7 +190,12 @@ namespace AIB.Tests
             });
 
             tool.Validar(args).Should().BeNull();
-            tool.Validar("{ isto nao e json").Should().BeNull("argumento ilegível é problema do executor");
+
+            // Argumento ilegível é recusado AQUI, e não deixado para o portão: sem contexto, o
+            // registry responderia "ACESSO NEGADO … não foi possível descrever a operação", e o
+            // modelo entenderia falta de permissão onde há erro de sintaxe.
+            tool.Validar("{ isto nao e json").Should().StartWith("ERRO")
+                .And.NotContain("ACESSO NEGADO");
 
         }
 

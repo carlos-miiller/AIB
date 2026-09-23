@@ -192,6 +192,34 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task ASaidaEmUTF8_CHEGA_InteiraAoModelo()
+        {
+            // "Recep��o S�o Jos�" e "Processamento conclu��do." são de sessões reais: a saída
+            // da habilidade ia assim para o contexto do modelo, para a memória e para a tela —
+            // e um nome de arquivo acentuado que volte assim e seja reenviado numa chamada
+            // seguinte é um caminho que não existe.
+            //
+            // O lado que esta ferramenta controla é a LEITURA: agora ela lê UTF-8, e não mais a
+            // página de código que o .NET escolher. Quem escreve em UTF-8 — Python com
+            // PYTHONIOENCODING, ou um script que fixa a própria saída, como o daqui — chega
+            // inteiro. Ver o limite anotado em RodarAsync para o .ps1 que não fixa nada.
+            Instalar("planilha", "powershell", script: "x");
+
+            // O script é regravado COM BOM: sem ele o PowerShell 5.1 lê um .ps1 como ANSI, e o
+            // acento se perderia na LEITURA do arquivo — antes de a saída existir.
+            File.WriteAllText(
+                Path.Combine(_raiz, "planilha", "s.ps1"),
+                "[Console]::OutputEncoding = [Text.Encoding]::UTF8\n"
+                + "Write-Output 'Recepção São José: processamento concluído.'",
+                new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+            string saida = await _tool.ExecuteAsync("{\"skill_name\":\"planilha\"}");
+
+            saida.Should().Contain("Recepção São José: processamento concluído.");
+            saida.Should().NotContain("�", "o caractere de substituição é o sintoma");
+        }
+
+        [Fact]
         public async Task ScriptSemSaida_DizQueAHabilidadeRodou()
         {
             Instalar("muda", "powershell", script: "$x = 1");

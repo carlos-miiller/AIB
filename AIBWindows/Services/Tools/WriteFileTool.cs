@@ -12,7 +12,18 @@ public class WriteFileTool : ITool
     private const int TetoDaPrevia = 400;
 
     public string Name => Ferramentas.Gravar;
-    public string Description => "Cria ou sobrescreve um arquivo com o texto fornecido. Sempre use caminhos absolutos.";
+
+    /// <summary>
+    /// A capacidade que o modelo não adivinharia vem primeiro: esta ferramenta CRIA as pastas
+    /// que faltam no caminho, e a descrição antiga não dizia. Em cinco sessões reais isso custou
+    /// dez <c>New-Item -ItemType Directory</c> pelo shell, cada um com seu cartão de
+    /// confirmação — e numa delas a pasta criada já existia havia um mês, enquanto dois turnos
+    /// depois o próprio <c>write</c> criou outra sozinho, sem que ninguém percebesse.
+    /// </summary>
+    public string Description =>
+        "Cria um arquivo, ou substitui TODO o conteúdo de um que já existe. Cria sozinho as "
+        + "pastas que faltarem no caminho — não use o shell para isso. Para mudar um pedaço de "
+        + "arquivo existente use 'edit': aqui o resto do texto se perde. Caminho absoluto.";
     public int RequiredLevel => 2;
 
     public bool RequiresConfirmation => true;
@@ -89,7 +100,7 @@ public class WriteFileTool : ITool
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "O caminho completo e absoluto do arquivo a ser criado."
+                    "description": "Caminho absoluto. As pastas que faltarem são criadas."
                 },
                 "content": {
                     "type": "string",

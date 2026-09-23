@@ -29,10 +29,10 @@ Renomear uma ferramenta é mudar só a constante.
 | Nome (`Ferramentas.*`) | Classe | `RequiredLevel` | Pede confirmação? | O que faz |
 |---|---|---|---|---|
 | `read` (`Ler`) | `ReadFileTool` | 1 | não | Lê arquivo por faixa (`offset`/`limit`) com número de linha; se o caminho é pasta, lista a pasta. |
-| `glob` (`Procurar`) | `GlobTool` | 1 | não | Acha arquivos por padrão de nome (`**` entra em subpastas), mais recente primeiro, teto de 100. |
-| `grep` (`Buscar`) | `GrepTool` | 1 | não | Regex dentro dos arquivos; devolve `arquivo:linha: trecho`. |
-| `write` (`Gravar`) | `WriteFileTool` | 2 | sim — dispensável por pasta | Cria ou sobrescreve um arquivo. |
-| `edit` (`Editar`) | `EditFileTool` | 2 | sim — dispensável por pasta | Troca um trecho exato de um arquivo. |
+| `glob` (`Procurar`) | `GlobTool` | 1 | não | Acha arquivos por padrão de nome (`**` entra em subpastas), mais recente primeiro, teto de 100 e prazo de 10 s. |
+| `grep` (`Buscar`) | `GrepTool` | 1 | não | Regex dentro dos arquivos; devolve `arquivo:linha: trecho`. Tetos de 60 linhas, 2000 arquivos e 10 s. |
+| `write` (`Gravar`) | `WriteFileTool` | 2 | sim — dispensável por pasta | Cria ou substitui todo o conteúdo de um arquivo, **criando as pastas que faltarem**. |
+| `edit` (`Editar`) | `EditFileTool` | 2 | sim — dispensável por pasta | Troca um trecho de um arquivo; o fim de linha do trecho não precisa bater com o do arquivo (§7). |
 | `shell` (`Shell`) | `RunCommandTool` | 2 | sim — nunca dispensado; passa pela floor list | Roda um comando PowerShell (30 s). |
 | `skill` (`Habilidade`) | `ExecuteSkillTool` | 2 | sim — a skill só-manual é dispensada; passa pela floor list | Roda uma habilidade instalada, ou entrega o manual dela. |
 | `mail` (`Email`) | `ConsultarEmailsTool` | 1 | não | Consulta o diário da triagem de e-mail (disco, não o servidor). |
@@ -48,6 +48,14 @@ Detalhes de registro:
 - **`mail_read` é registrada sempre, mas só é oferecida** (`GetActiveTools`) quando a conversa está
   ligada a um e-mail (`ChaveDaConversaDeEmail` não vazia).
 - `GetActiveTools(userLevel)` corta do schema as ferramentas acima do nível do usuário.
+- **A `Description` é paga em TODA requisição.** As nove somam 1.951 caracteres (eram 2.056). A
+  regra de redação: cada uma diz uma capacidade que o modelo não adivinharia (o `write` cria
+  pasta), uma fronteira com a ferramenta vizinha (o `shell` não é para arquivo; o `edit` não cria
+  arquivo) e o teto que muda a decisão antes de chamar (100 no `glob`, 60 no `grep`, 30 s no
+  `shell`). O que o `write` e o `shell` cresceram foi pago encurtando `mail` e `mail_read` — 3
+  chamadas em 49 sessões, 30% do orçamento. O `command` do `shell` traz o `Cwd` interpolado (com
+  as barras escapadas, ou o schema seria JSON inválido), no lugar da instrução "use 'pwd' se
+  precisar saber o diretório atual", que custava um turno inteiro.
 - Com `EnableIntelligentTools = false`, o `AgentLoop` manda a lista de ferramentas vazia.
 - `ToolRegistry.Registrar` existe para os testes do portão registrarem ferramentas falsas; elas
   passam pelo mesmo portão.
@@ -149,7 +157,16 @@ Todo caminho de dúvida nega ou pergunta; nenhum autoriza.
 | Cartão descartado sem decisão (turno cancelado, conversa limpa, app fechando) — `ConfirmCardView.Descartar` | recusa |
 | `DispensaConfirmacao` lança | não dispensa → cartão |
 | Qualquer erro em `PastasSemConfirmacao.Dispensa` | `false` → cartão |
-| JSON ilegível em `shell`/`skill` | contexto `null` → nega |
+| JSON ilegível em `write`, `edit`, `shell` e `skill` | recusado no **pré-voo**, com `ERRO: argumentos ilegíveis…` |
+
+**JSON ilegível é erro de sintaxe, não de permissão.** Até então, `edit`, `shell` e `skill`
+devolviam `null` no pré-voo, o `BuildConfirmationContext` também, e o registry respondia
+*"ACESSO NEGADO: 'x' exige confirmação, mas não foi possível descrever a operação para
+autorizar."* Quem lê "ACESSO NEGADO" conclui que o problema é permissão: troca de caminho, de
+ferramenta e de nível — nunca de sintaxe. Agora os quatro recusam no `Validar`, com texto que
+começa por `ERRO` (a tela e o `ArtifactExtractor` leem a primeira palavra) e nomeia o campo que
+faltou. A frase do registry fica só para o caso verdadeiro: contexto que não se consegue
+descrever com argumentos legíveis.
 
 Mensagens e contagem de falha:
 
@@ -270,7 +287,15 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
 - **stdin redirecionado e fechado**: um prompt (`Read-Host`, parâmetro obrigatório) lê EOF e falha na
   hora, em vez de esperar o timeout.
 - stdout e stderr lidos **em paralelo** (ler um depois do outro trava quando o buffer enche).
-- **Timeout de 30 s**; estourou, mata a árvore inteira (`Kill(entireProcessTree: true)`).
+- **Codificação fixada dos dois lados**: `RunCommandTool.Prefixo` manda o filho escrever em UTF-8
+  (`[Console]::OutputEncoding`, dentro de `try` — sem console anexado a atribuição pode falhar, e
+  uma falha ali derrubaria todo comando), e `StandardOutputEncoding`/`StandardErrorEncoding` leem
+  UTF-8. Sem isso, 56 linhas do histórico voltaram com `Diret�rio` e `conclu��do` — texto que vai
+  para o contexto do modelo, para a memória e para a tela, e que reenviado como caminho não existe.
+- **Timeout de 30 s** (`RunCommandTool.Prazo`, o mesmo número na descrição e na mensagem);
+  estourou, mata a árvore inteira (`Kill(entireProcessTree: true)`) e devolve um `ERRO` que diz
+  que o comando pode ter mudado algo antes de morrer e qual escopo reduzir.
+- **`Validar`**: `command` ausente, vazio ou JSON ilegível é recusado no pré-voo, com `ERRO`.
 - Diretório de trabalho: `Environment.CurrentDirectory`.
 - `Montar(stdout, stderr, codigo)` decide sucesso ou falha, com a falha na **primeira palavra**:
   - falha = código de saída ≠ 0 **ou** registro de erro no CLIXML (erro que não encerra o script sai
@@ -306,7 +331,8 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
   `description`, `interpreter` (`powershell`, `python` ou `markdown`), `script_file` e `accepts`
   (extensões aceitas), seguido do manual. Só nome e descrição entram no prompt de sistema.
 - **`Validar`**: `skill_name` obrigatório; skill inexistente → `ERRO` com a lista das que existem;
-  argumentos com caminho → `PreVooDeCaminho.Conferir(args, skill.Accepts)`.
+  argumentos com caminho → `PreVooDeCaminho.Conferir(args, skill.Accepts)`; JSON ilegível → `ERRO`
+  (antes devolvia `null` e virava "ACESSO NEGADO").
 - **Só manual** (`SoManual`): interpretador `markdown` ou sem script em disco. `DispensaConfirmacao`
   devolve `true` — pedir autorização para ler um texto que o próprio usuário instalou treina o
   clique sem leitura. Com e-mail no contexto a dispensa é anulada e o cartão mostra
@@ -324,6 +350,14 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
 - Execução (`RodarAsync`): `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<script>" <args>`
   ou `python "<script>" <args>`; diretório de trabalho = pasta da skill; stdin fechado; **timeout
   60 s**; resultado pelo mesmo `RunCommandTool.Montar`.
+- **Codificação**: `StandardOutputEncoding`/`StandardErrorEncoding` em UTF-8 e
+  `PYTHONIOENCODING=utf-8` no ambiente do filho. Aqui só dá para acertar o lado da LEITURA: o
+  shell diz ao filho como escrever porque monta o comando, e uma skill roda com `-File` um script
+  do usuário. Um `.ps1` que não fixe a própria saída escreve na página de código padrão do
+  PowerShell 5.1 e continua chegando torto. Trocar `-File` por `-Command` para injetar a
+  codificação foi medido e **recusado**: os argumentos deixariam de ser literais (passariam a ser
+  expandidos pelo PowerShell) e o parâmetro obrigatório ausente, que hoje falha na hora nomeando
+  o que faltou, terminaria em silêncio com código 0.
 - O manual (`SKILL.md`) é anexado ao resultado **só na primeira falha** de cada skill
   (`_manualEnviado`); volta a valer depois de um sucesso. Caso real: o manual foi anexado a quatro
   falhas seguidas e empurrou o contexto para o ponto em que o modelo começou a errar sintaxe.
@@ -351,7 +385,8 @@ Vale **só para caminho** — nunca para conteúdo de arquivo nem comando. Usado
 - Faixa por `offset`/`limit` (padrão `LimitesDoProvedor.Atual.LinhasDeLeitura`), linhas numeradas,
   linha cortada em 2000 caracteres.
 - Pasta → lista subpastas e arquivos com tamanho (teto `LimitesDoProvedor.Atual.ItensDaPasta`). Antes
-  respondia "não encontrado" para pasta, e o modelo ia listar pelo shell.
+  respondia "não encontrado" para pasta, e o modelo ia listar pelo shell. Cortou no teto, o aviso
+  diz o teto **e** o próximo passo (`glob` com um padrão): "(+N não listado(s))" sozinho é um beco.
 
 ### `write` — `WriteFileTool`
 
@@ -360,7 +395,9 @@ Vale **só para caminho** — nunca para conteúdo de arquivo nem comando. Usado
 - `Validar`: objeto JSON, `path` não vazio, `content` presente (vazio é válido), caminho resolvível.
 - Cartão: caminho **absoluto resolvido** (`Path.GetFullPath`), `CRIAR` ou `SOBRESCREVER` conforme o
   arquivo existe, prévia de 400 caracteres.
-- Executa criando a pasta se preciso (`File.WriteAllTextAsync`, UTF-8 sem BOM).
+- Executa criando a pasta se preciso (`File.WriteAllTextAsync`, UTF-8 sem BOM) — e **a descrição
+  diz isso**, que é o conserto mais barato do conjunto: a capacidade existia, custava zero e
+  estava escondida, e o modelo pagava dois cartões criando pasta pelo `New-Item`.
 
 ### `edit` — `EditFileTool`
 
@@ -369,9 +406,18 @@ Vale **só para caminho** — nunca para conteúdo de arquivo nem comando. Usado
 - `Validar` confere arquivo existente, `old_string` não vazio, diferente de `new_string`, contagem
   de ocorrências. `ExecuteAsync` **repete** as guardas (o arquivo pode ter mudado com o cartão aberto).
 - O casamento é **`StringComparison.Ordinal`** (`Contar`, `Substituir`): byte a byte, sem cultura.
-  Consequência prática: **arquivo com fim de linha CRLF e trecho multilinha com LF não casa**. O
-  `read` mostra as linhas sem o `\r`, então um `old_string` de várias linhas copiado dali falha num
-  arquivo CRLF com "o trecho não existe".
+- **Fim de linha que não bate** (`Casar`): se o trecho não casa como veio, há uma segunda
+  tentativa, com duas guardas. O arquivo tem de ser **uniforme** (todo CRLF ou todo LF — misto não
+  entra, porque ali adivinhar é uniformizar sem pedir) e o trecho convertido tem de casar
+  **exatamente uma vez**. Só então o `old_string` **e** o `new_string` são convertidos, e a troca é
+  local: o resto do arquivo não é tocado. O resultado diz o que houve (`…(o arquivo usa CRLF; o
+  trecho foi ajustado)`), e o caso ambíguo vira recusa que nomeia o motivo. As duas invariantes
+  ficam de pé; com ajuste, a troca é sempre de uma ocorrência, mesmo com `replace_all`.
+  Normalizar o arquivo inteiro antes de comparar seria mudar todas as linhas por uma edição de
+  três — é o conserto que não se deve fazer.
+  Caso real: um `docker-compose.yml` em CRLF; o `read` entrega as linhas sem `\r`, o modelo copiou
+  dali, ouviu "o trecho não existe" duas vezes, foi ao shell fazer `Format-Hex` e acabou regerando
+  o arquivo inteiro com `write` — perdendo um comentário e sem cópia do que havia antes.
 - Grava com `File.WriteAllText` (UTF-8 sem BOM).
 - Nível 2, igual ao `write`: com nível 1, quem não podia gravar podia editar.
 
@@ -380,6 +426,25 @@ Vale **só para caminho** — nunca para conteúdo de arquivo nem comando. Usado
 Somente leitura, sem cartão. Raiz padrão: a pasta do usuário. `grep` usa regex com timeout de 2 s,
 examina no máximo 2000 arquivos, pula arquivos > 2 MB e ilegíveis, devolve até 60 linhas; regex
 inválida volta com o motivo. `glob` sem resultado lista o que existe na pasta.
+
+Os dois varrem com `GlobTool.Opcoes` (`EnumerationOptions`), e não com a sobrecarga de
+`SearchOption`:
+
+- **`IgnoreInaccessible = true`**. A sobrecarga antiga usa `EnumerationOptions.Compatible`, que
+  traz `false`: com a raiz padrão sendo a pasta do usuário, a primeira junção protegida
+  (`AppData\Local\Application Data`, `Cookies`, `Meus Documentos`) lançava
+  `UnauthorizedAccessException` e a busca inteira morria por causa de uma pasta.
+- **`AttributesToSkip = 0`**, como antes: arquivo oculto ou de sistema continua aparecendo. Ponto
+  de arquivo (`ReparsePoint`) **não** é pulado de propósito — no Windows 11 a Área de Trabalho, os
+  Documentos e as Imagens costumam ser redirecionados para o OneDrive por junção, e pular reparse
+  esconderia justamente as pastas mais usadas. Contra os laços de junção quem defende é o prazo.
+- **Prazo de 10 s** (`GlobTool.Prazo`, que o `grep` reusa), com a parada **rotulada**: o resultado
+  diz que parou, quantos itens tinha e que a resposta pode estar **incompleta**, e nomeia o passo
+  seguinte (apontar `path` para uma pasta mais específica). Sem o rótulo, o conserto seria pior que
+  o defeito: um resultado parcial que parece completo vira a conclusão falsa de que o arquivo não
+  existe no disco.
+- O teto atingido também é dito no resultado — o do `glob` (100), o das linhas do `grep` (60) e o
+  dos 2000 arquivos examinados, que antes não aparecia em lugar nenhum.
 
 ### E-mail (`mail`, `mail_read`)
 

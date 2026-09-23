@@ -36,10 +36,16 @@ public sealed class GrepTool : ITool
 
     public string Name => Ferramentas.Buscar;
 
+    /// <summary>
+    /// Teto de tempo da varredura, o mesmo do <see cref="GlobTool.Prazo"/>. Ler o conteúdo de
+    /// milhares de arquivos é mais caro que listá-los, e não havia parada nenhuma.
+    /// </summary>
+    public static readonly TimeSpan Prazo = GlobTool.Prazo;
+
     public string Description =>
-        "Procura um texto ou expressão regular DENTRO dos arquivos e devolve arquivo, número da "
-        + "linha e o trecho encontrado. Use para 'onde está X' em vez de abrir arquivos um a um: "
-        + "traz só as linhas que casam, não o conteúdo inteiro.";
+        "Procura texto ou expressão regular DENTRO dos arquivos; devolve arquivo:linha: trecho, "
+        + $"até {TetoDeLinhas} linhas. Use no lugar de Select-String/findstr. 'glob' filtra por "
+        + "nome.";
 
     public int RequiredLevel => 1;
 
@@ -112,7 +118,8 @@ public sealed class GrepTool : ITool
     /// A busca. Pública e pura o bastante para os ensaios: o que importa aqui é o formato da
     /// resposta, e ele é o que o modelo vai ler para decidir o passo seguinte.
     /// </summary>
-    public static string Buscar(string raiz, string padrao, string mascara = "*", bool ignorarCaixa = false)
+    public static string Buscar(string raiz, string padrao, string mascara = "*",
+                                bool ignorarCaixa = false, TimeSpan? prazo = null)
     {
         Regex regex;
 
@@ -133,12 +140,20 @@ public sealed class GrepTool : ITool
 
         var linhas = new List<string>();
         int arquivosLidos = 0, arquivosComAcerto = 0, acertos = 0;
+        bool parouNoTeto = false, parouNoPrazo = false;
+
+        var relogio = System.Diagnostics.Stopwatch.StartNew();
+        TimeSpan teto = prazo ?? Prazo;
 
         try
         {
-            foreach (string caminho in Directory.EnumerateFiles(raiz, mascara, SearchOption.AllDirectories))
+            // As mesmas opções do glob, e pelo mesmo motivo: com IgnoreInaccessible = false a
+            // primeira pasta protegida do perfil do usuário derrubava a busca inteira.
+            foreach (string caminho in Directory.EnumerateFiles(raiz, mascara, GlobTool.Opcoes(recursivo: true)))
             {
-                if (arquivosLidos++ >= TetoDeArquivos) break;
+                if (arquivosLidos >= TetoDeArquivos) { parouNoTeto = true; break; }
+                if (relogio.Elapsed >= teto) { parouNoPrazo = true; break; }
+                arquivosLidos++;
 
                 FileInfo info;
                 try { info = new FileInfo(caminho); } catch { continue; }
@@ -165,9 +180,20 @@ public sealed class GrepTool : ITool
             return $"ERRO ao buscar: {ex.Message}";
         }
 
+        // Onde a varredura parou é parte da resposta: sem isso, um resultado parcial parece
+        // completo, e "não achei" vira uma conclusão falsa sobre o disco.
+        string ondeParou =
+            parouNoPrazo
+                ? $" Parei em {teto.TotalSeconds:0} s — a resposta pode estar incompleta; "
+                  + "aponte 'path' para uma pasta mais específica."
+                : parouNoTeto
+                    ? $" Parei no teto de {TetoDeArquivos} arquivos — a resposta pode estar "
+                      + "incompleta; aponte 'path' para uma pasta mais específica ou use 'glob'."
+                    : "";
+
         if (acertos == 0)
             return $"Nada casa com '{padrao}' em '{raiz}' (arquivos: {mascara}). "
-                   + $"{arquivosLidos} arquivo(s) examinado(s).";
+                   + $"{arquivosLidos} arquivo(s) examinado(s).{ondeParou}";
 
         var saida = new List<string>
         {
@@ -177,7 +203,10 @@ public sealed class GrepTool : ITool
         saida.AddRange(linhas);
 
         if (acertos > linhas.Count)
-            saida.Add($"(+{acertos - linhas.Count} não listado(s); refine o padrão ou o glob)");
+            saida.Add($"(+{acertos - linhas.Count} não listado(s); teto de {TetoDeLinhas} linhas — "
+                      + "refine o padrão ou o glob)");
+
+        if (ondeParou.Length > 0) saida.Add("(" + ondeParou.Trim() + ")");
 
         return string.Join("\n", saida);
     }

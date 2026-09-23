@@ -43,9 +43,8 @@ public class ReadFileTool : ITool
     public string Name => Ferramentas.Ler;
 
     public string Description =>
-        "Lê um arquivo de texto, com número de linha, ou lista o conteúdo de uma pasta. "
-        + "Use 'offset' e 'limit' para ler só um pedaço de arquivo grande em vez do todo. "
-        + "Sempre use caminhos absolutos.";
+        "Lê um arquivo de texto com número de linha, ou LISTA uma pasta (basta apontar o caminho "
+        + "dela). Use 'offset'/'limit' para um pedaço de arquivo grande. Caminho absoluto.";
 
     public int RequiredLevel => 1;
 
@@ -58,7 +57,7 @@ public class ReadFileTool : ITool
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "O caminho completo e absoluto do arquivo ou da pasta."
+                    "description": "Caminho absoluto do arquivo, ou de uma pasta para listá-la."
                 },
                 "offset": {
                     "type": "integer",
@@ -186,7 +185,10 @@ public class ReadFileTool : ITool
 
             int total = subpastas.Count + arquivos.Count;
             if (total > tetoDaPasta)
-                sb.AppendLine($"  (+{total - tetoDaPasta} não listado(s))");
+                // Dizer quantos ficaram de fora sem dizer como vê-los é um beco: quem lê não
+                // tem próximo passo, e o próximo passo vira um Get-ChildItem pelo shell.
+                sb.AppendLine($"  (+{total - tetoDaPasta} não listado(s) — teto de {tetoDaPasta}; "
+                              + $"use '{Ferramentas.Procurar}' com um padrão para achar o que procura)");
 
             return sb.ToString().TrimEnd();
         }

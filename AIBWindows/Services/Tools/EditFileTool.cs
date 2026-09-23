@@ -28,6 +28,11 @@ namespace AIB.Services.Tools;
 /// cinco ocorrências é o erro que ninguém percebe até o arquivo estar errado.</item>
 /// </list>
 /// </para>
+/// <para>
+/// O que NÃO é invariante é o fim de linha: o <c>read</c> entrega as linhas sem o <c>\r</c>, e
+/// exigir que o trecho volte com ele tornava a ferramenta impossível de usar num arquivo CRLF.
+/// Ver <see cref="Casar"/>.
+/// </para>
 /// </summary>
 public sealed class EditFileTool : ITool
 {
@@ -37,10 +42,10 @@ public sealed class EditFileTool : ITool
     public string Name => Ferramentas.Editar;
 
     public string Description =>
-        "Troca um trecho EXATO de um arquivo, preservando todo o resto. Prefira sempre esta "
-        + "ferramenta a reescrever o arquivo inteiro. O trecho em 'old_string' precisa existir e "
-        + "ser único no arquivo — inclua as linhas em volta se precisar desambiguar, ou passe "
-        + "'replace_all' para trocar todas as ocorrências.";
+        "Troca um trecho dentro de um arquivo, preservando o resto. É a forma certa de mexer em "
+        + "arquivo que já existe. 'old_string' precisa existir e ser único — inclua as linhas em "
+        + "volta para desambiguar, ou 'replace_all' para trocar todas. Não cria arquivo (use "
+        + "'write'). O fim de linha não precisa bater.";
 
     /// <summary>
     /// O mesmo nível do <c>write</c>: os dois mudam arquivo e passam pelo mesmo portão. Era 1, e
@@ -70,7 +75,7 @@ public sealed class EditFileTool : ITool
                 },
                 "old_string": {
                     "type": "string",
-                    "description": "O texto exato a substituir, como está no arquivo."
+                    "description": "O trecho como o 'read' mostrou. Espaços e indentação contam; fim de linha não."
                 },
                 "new_string": {
                     "type": "string",
@@ -87,15 +92,24 @@ public sealed class EditFileTool : ITool
     );
 
     /// <summary>
-    /// Recusa antes do portão humano o que não pode dar certo: arquivo que não existe, trecho
-    /// ausente, ou trecho repetido sem <c>replace_all</c>. Ver <see cref="ITool.Validar"/>.
+    /// Recusa antes do portão humano o que não pode dar certo: argumentos ilegíveis, arquivo que
+    /// não existe, trecho ausente, ou trecho repetido sem <c>replace_all</c>. Ver
+    /// <see cref="ITool.Validar"/>.
     /// </summary>
     public string? Validar(string argumentsJson)
     {
         try
         {
+            // JSON ilegível não pode virar "ACESSO NEGADO: não foi possível descrever a
+            // operação" lá na frente: quem lê isso conclui que o problema é permissão e vai
+            // trocar de caminho, de ferramenta e de nível — nunca de sintaxe. Aconteceu.
+            if (!ObjetoJson(argumentsJson))
+                return "ERRO: argumentos ilegíveis. Envie um objeto JSON com 'path', "
+                       + "'old_string' e 'new_string'.";
+
             var a = Ler(argumentsJson);
-            if (a == null) return null;
+            if (a == null)
+                return "ERRO: o parâmetro 'path' é obrigatório e não pode estar vazio.";
 
             if (!File.Exists(a.Caminho))
                 return PreVooDeCaminho.Conferir($"\"{a.Caminho}\"")
@@ -109,24 +123,41 @@ public sealed class EditFileTool : ITool
                 return "ERRO: 'old_string' e 'new_string' são iguais. Nada a fazer.";
 
             string texto = File.ReadAllText(a.Caminho);
-            int quantas = Contar(texto, a.De);
 
-            if (quantas == 0)
-                return $"ERRO: o trecho não existe em '{a.Caminho}'. Leia o arquivo com "
-                       + $"'{Ferramentas.Ler}' e copie o texto exato, com a indentação. "
-                       + $"Procurado: {Previa(a.De)}";
-
-            if (quantas > 1 && !a.Todas)
-                return $"ERRO: o trecho aparece {quantas} vezes em '{a.Caminho}'. Editar a "
-                       + "primeira seria mexer no lugar errado sem avisar. Inclua as linhas em "
-                       + "volta para deixá-lo único, ou passe replace_all=true para trocar todas.";
-
-            return null;
+            return Recusa(Casar(texto, a.De, a.Para), a);
         }
         catch (JsonException)
         {
-            return null;
+            return "ERRO: argumentos ilegíveis. Envie um objeto JSON com 'path', 'old_string' "
+                   + "e 'new_string'.";
         }
+    }
+
+    /// <summary>
+    /// A recusa que corresponde ao casamento, ou <c>null</c> quando a troca pode acontecer.
+    /// Usada pelo pré-voo e repetida na execução — o arquivo pode mudar entre uma e outra.
+    /// </summary>
+    private static string? Recusa(Casamento c, Argumentos a)
+    {
+        if (c.Quantas == 0)
+            return $"ERRO: o trecho não existe em '{a.Caminho}'. Leia o arquivo com "
+                   + $"'{Ferramentas.Ler}' e copie o texto exato, com a indentação. "
+                   + $"Procurado: {Previa(a.De)}";
+
+        // Trecho com LF num arquivo CRLF (ou o contrário): o ajuste só vale para trecho único,
+        // porque uniformizar fim de linha em vários lugares de uma vez é estrago silencioso.
+        if (c.Ajuste != null && c.Quantas > 1)
+            return $"ERRO: o trecho aparece {c.Quantas} vezes em '{a.Caminho}', e o arquivo usa "
+                   + $"{c.Ajuste} enquanto o trecho veio com o outro fim de linha. O ajuste "
+                   + "automático só vale para trecho único: inclua as linhas em volta para "
+                   + "deixá-lo único, ou edite uma linha por vez.";
+
+        if (c.Quantas > 1 && !a.Todas)
+            return $"ERRO: o trecho aparece {c.Quantas} vezes em '{a.Caminho}'. Editar a "
+                   + "primeira seria mexer no lugar errado sem avisar. Inclua as linhas em "
+                   + "volta para deixá-lo único, ou passe replace_all=true para trocar todas.";
+
+        return null;
     }
 
     public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel)
@@ -160,27 +191,33 @@ public sealed class EditFileTool : ITool
         try
         {
             string texto = File.ReadAllText(a.Caminho);
-            int quantas = Contar(texto, a.De);
+            var c = Casar(texto, a.De, a.Para);
 
             // As mesmas guardas do pré-voo, de novo. O arquivo pode ter mudado entre a
             // validação e o clique de autorizar — e são segundos ou horas de intervalo.
-            if (quantas == 0)
+            if (c.Quantas == 0)
                 return Task.FromResult($"ERRO: o trecho não existe mais em '{a.Caminho}'. "
                                        + "O arquivo mudou desde a leitura.");
 
-            if (quantas > 1 && !a.Todas)
-                return Task.FromResult($"ERRO: o trecho aparece {quantas} vezes em '{a.Caminho}'.");
+            string? recusa = Recusa(c, a);
+            if (recusa != null) return Task.FromResult(recusa);
 
-            string novo = a.Todas
-                ? texto.Replace(a.De, a.Para, StringComparison.Ordinal)
-                : Substituir(texto, a.De, a.Para);
+            // Com fim de linha ajustado a troca é sempre a de um trecho único: é a guarda que
+            // torna o ajuste seguro, e ela vale mesmo com replace_all.
+            string novo = a.Todas && c.Ajuste == null
+                ? texto.Replace(c.De, c.Para, StringComparison.Ordinal)
+                : Substituir(texto, c.De, c.Para);
 
-            Console.WriteLine($"[TOOL: {Name}] {a.Caminho} — {quantas} troca(s).");
+            Console.WriteLine($"[TOOL: {Name}] {a.Caminho} — {c.Quantas} troca(s).");
 
             File.WriteAllText(a.Caminho, novo);
 
-            return Task.FromResult(
-                $"SUCESSO: {(a.Todas ? quantas : 1)} troca(s) em '{a.Caminho}'.");
+            int trocas = a.Todas && c.Ajuste == null ? c.Quantas : 1;
+            string nota = c.Ajuste == null
+                ? ""
+                : $" (o arquivo usa {c.Ajuste}; o trecho foi ajustado)";
+
+            return Task.FromResult($"SUCESSO: {trocas} troca(s) em '{a.Caminho}'.{nota}");
         }
         catch (Exception ex)
         {
@@ -214,6 +251,91 @@ public sealed class EditFileTool : ITool
             return null;
         }
     }
+
+    private static bool ObjetoJson(string argumentsJson)
+    {
+        try { return JsonSerializer.Deserialize<JsonElement>(argumentsJson).ValueKind == JsonValueKind.Object; }
+        catch (JsonException) { return false; }
+    }
+
+    /// <summary>
+    /// O resultado do casamento do trecho com o arquivo: quantas vezes ele aparece e com que
+    /// texto a troca será feita.
+    /// </summary>
+    /// <param name="Ajuste">
+    /// <c>null</c> quando o trecho casou como veio. "CRLF" ou "LF" quando foi preciso ajustar o
+    /// fim de linha do trecho ao do arquivo — e então a troca é sempre de uma ocorrência só.
+    /// </param>
+    public readonly record struct Casamento(int Quantas, string De, string Para, string? Ajuste);
+
+    /// <summary>
+    /// Casa o trecho com o arquivo, tolerando fim de linha diferente.
+    /// <para>
+    /// O caso real: um <c>docker-compose.yml</c> do repositório do GLPI, em CRLF. O
+    /// <c>read</c> entrega as linhas SEM o <c>\r</c>, o modelo copiou dali um trecho de seis
+    /// linhas, e o <c>edit</c> respondeu duas vezes "o trecho não existe" — para um trecho que
+    /// estava lá. Ele foi ao shell fazer <c>Format-Hex</c>, desistiu e regerou o arquivo inteiro
+    /// com <c>write</c>, perdendo um comentário no caminho. A promessa "prefira sempre esta
+    /// ferramenta a reescrever o arquivo" era impossível de cumprir.
+    /// </para>
+    /// <para>
+    /// DUAS GUARDAS, e as duas existem para que o ajuste nunca corrompa nada:
+    /// <list type="bullet">
+    /// <item>o arquivo é UNIFORME — ou todo CRLF, ou todo LF. Arquivo de fim de linha misto não
+    /// entra: ali adivinhar é uniformizar sem pedir;</item>
+    /// <item>o trecho convertido casa EXATAMENTE uma vez. Mais de uma, e a troca vira recusa com
+    /// o motivo dito — o ajuste é local, nunca uma varredura pelo arquivo.</item>
+    /// </list>
+    /// O resto do arquivo não é tocado: a conversão é do trecho procurado e do que entra no
+    /// lugar, jamais do texto em volta. Normalizar o arquivo inteiro antes de comparar mudaria
+    /// todas as linhas por uma edição de três — é o conserto que não se deve fazer.
+    /// </para>
+    /// </summary>
+    public static Casamento Casar(string texto, string de, string para)
+    {
+        int quantas = Contar(texto, de);
+        if (quantas > 0 || de.Length == 0) return new Casamento(quantas, de, para, null);
+
+        // Primeira guarda: o arquivo tem de ser uniforme, e o trecho tem de mudar na conversão.
+        string? ajuste = FimDeLinha(texto);
+        if (ajuste == null) return new Casamento(0, de, para, null);
+
+        string deAjustado = ajuste == "CRLF" ? ParaCrlf(de) : ParaLf(de);
+        if (string.Equals(deAjustado, de, StringComparison.Ordinal))
+            return new Casamento(0, de, para, null);
+
+        int comAjuste = Contar(texto, deAjustado);
+        if (comAjuste == 0) return new Casamento(0, de, para, null);
+
+        // Segunda guarda fica com quem decide (Recusa): aqui o número é devolvido como é, para
+        // que a mensagem possa dizer quantas vezes o trecho aparece de verdade.
+        string paraAjustado = ajuste == "CRLF" ? ParaCrlf(para) : ParaLf(para);
+
+        return new Casamento(comAjuste, deAjustado, paraAjustado, ajuste);
+    }
+
+    /// <summary>
+    /// "CRLF" se o texto usa só <c>\r\n</c>, "LF" se usa só <c>\n</c>, <c>null</c> se mistura os
+    /// dois (ou não tem quebra de linha nenhuma).
+    /// </summary>
+    private static string? FimDeLinha(string texto)
+    {
+        int enes = 0, pares = 0;
+
+        for (int i = 0; i < texto.Length; i++)
+        {
+            if (texto[i] != '\n') continue;
+            enes++;
+            if (i > 0 && texto[i - 1] == '\r') pares++;
+        }
+
+        if (enes == 0) return null;
+        return pares == enes ? "CRLF" : pares == 0 ? "LF" : null;
+    }
+
+    private static string ParaLf(string t) => t.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+    private static string ParaCrlf(string t) => ParaLf(t).Replace("\n", "\r\n", StringComparison.Ordinal);
 
     private static string? Texto(JsonElement args, string nome) =>
         args.TryGetProperty(nome, out var campo) && campo.ValueKind == JsonValueKind.String

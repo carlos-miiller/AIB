@@ -13,7 +13,21 @@ namespace AIB.Services.Tools;
 public class RunCommandTool : ITool
 {
     public string Name => Ferramentas.Shell;
-    public string Description => "Executa um comando no PowerShell do Windows do usuário. Use para investigar o sistema, rodar scripts ou compilar código. Use 'pwd' ou Get-Location se precisar saber o diretório atual.";
+
+    /// <summary>
+    /// "Investigar o sistema", que era o que a descrição antiga oferecia, cobre listar uma
+    /// pasta, ver se um arquivo existe, procurar texto e criar pasta — e foi o que aconteceu:
+    /// 35 de 167 comandos de shell em 49 sessões só tocavam arquivo, com um cartão de
+    /// confirmação cada. Por isso a descrição agora diz o que NÃO fazer aqui, e nomeia o que
+    /// faz no lugar. "Não é Bash" está escrito porque um <c>ls -la ~/GLPI/ | head -20</c> chegou
+    /// a ser proposto ao usuário.
+    /// </summary>
+    public string Description =>
+        "Executa um comando no PowerShell do usuário (não é Bash). Use para docker, git, rede, "
+        + "processos, instalação e scripts. NÃO use para arquivo: ler, listar, procurar e gravar "
+        + "têm ferramenta própria, e 'write' já cria a pasta que falta. Nada de comando que "
+        + $"pergunte algo. Teto de {Prazo.TotalSeconds:0} s.";
+
     public int RequiredLevel => 2;
 
     public bool RequiresConfirmation => true;
@@ -54,22 +68,71 @@ public class RunCommandTool : ITool
         }
     }
 
+    /// <summary>
+    /// Teto de tempo do comando. Constante porque a descrição, a mensagem de interrupção e o
+    /// relógio têm de dizer o mesmo número.
+    /// </summary>
+    public static readonly TimeSpan Prazo = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// A pasta onde o comando roda, dita no schema. A instrução antiga era "use 'pwd' ou
+    /// Get-Location se precisar saber o diretório atual" — um turno inteiro gasto para
+    /// responder algo que o programa já sabe e que o cartão já mostra.
+    /// </summary>
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         functionName: Name,
         functionDescription: Description,
-        functionParameters: BinaryData.FromString("""
+        functionParameters: BinaryData.FromString($$"""
         {
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "O comando PowerShell exato a ser executado."
+                    "description": "O comando PowerShell exato. Roda em {{EmJson(Environment.CurrentDirectory)}} e não pode pedir nada ao usuário."
                 }
             },
             "required": ["command"]
         }
         """)
     );
+
+    /// <summary>
+    /// O caminho com as barras invertidas escapadas. Sem isto, <c>C:\Users\Carlo</c> dentro do
+    /// schema seria JSON inválido (<c>\U</c> não é escape), e a ferramenta inteira não chegaria
+    /// ao modelo.
+    /// </summary>
+    private static string EmJson(string texto) =>
+        texto.Replace("\\", "\\\\", StringComparison.Ordinal)
+             .Replace("\"", "\\\"", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Recusa antes do portão o que não tem comando nenhum. Ver <see cref="ITool.Validar"/>.
+    /// <para>
+    /// Sem isto, <c>command</c> ausente ou vazio chegava ao
+    /// <see cref="BuildConfirmationContext"/>, que devolvia <c>null</c>, e o modelo recebia
+    /// "ACESSO NEGADO: … não foi possível descrever a operação para autorizar" — uma mensagem de
+    /// permissão para um erro de sintaxe. Quem lê "ACESSO NEGADO" troca de caminho, de
+    /// ferramenta e de nível; nunca de sintaxe.
+    /// </para>
+    /// </summary>
+    public string? Validar(string argumentsJson)
+    {
+        const string Ilegivel =
+            "ERRO: argumentos ilegíveis. Envie um objeto JSON com 'command'.";
+
+        JsonElement args;
+        try { args = JsonSerializer.Deserialize<JsonElement>(argumentsJson); }
+        catch (JsonException) { return Ilegivel; }
+
+        if (args.ValueKind != JsonValueKind.Object) return Ilegivel;
+
+        if (!args.TryGetProperty("command", out var cmd)
+            || cmd.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(cmd.GetString()))
+            return "ERRO: o parâmetro 'command' é obrigatório e não pode estar vazio.";
+
+        return null;
+    }
 
     /// <summary>
     /// Converte o bloco CLIXML do stderr em texto legivel, preservando o que houver de erro.
@@ -148,6 +211,27 @@ public class RunCommandTool : ITool
 
     /// <summary>Teto do texto devolvido ao modelo. Vale também para a saída das skills.</summary>
     public const int TetoDaSaida = 8000;
+
+    /// <summary>
+    /// O que vai na frente de todo comando.
+    /// <para>
+    /// A barra de progresso é calada porque, com os fluxos redirecionados, o PowerShell
+    /// serializa em CLIXML tudo o que não é texto: um <c>Get-ChildItem -Recurse</c> devolvia
+    /// meio kilobyte de <c>&lt;Obj S="progress"&gt;</c> junto de três linhas úteis, e isso ia
+    /// inteiro para o histórico e para o resumo.
+    /// </para>
+    /// <para>
+    /// A codificação é fixada para o filho ESCREVER em UTF-8, já que o outro lado
+    /// (<c>StandardOutputEncoding</c>) o lê assim. Vai dentro de <c>try</c> de propósito: sem
+    /// console anexado, atribuir <c>[Console]::OutputEncoding</c> pode falhar, e uma falha aqui
+    /// derrubaria TODO comando — o preço de não conseguir é a acentuação como era antes, que é
+    /// o que já havia.
+    /// </para>
+    /// </summary>
+    public const string Prefixo =
+        "$ProgressPreference = 'SilentlyContinue'; "
+        + "try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }; "
+        + "$OutputEncoding = [Text.Encoding]::UTF8; ";
 
     /// <summary>
     /// O que <see cref="Montar"/> devolve quando deu certo e não houve saída. Constante porque a
@@ -301,11 +385,11 @@ public class RunCommandTool : ITool
         {
             var args = JsonSerializer.Deserialize<JsonElement>(argumentsJson);
             if (!args.TryGetProperty("command", out var cmdElement))
-                return "ERRO: O parâmetro 'command' é obrigatório.";
+                return "ERRO: o parâmetro 'command' é obrigatório e não pode estar vazio.";
 
             string command = cmdElement.GetString() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(command))
-                return "ERRO: O comando não pode estar vazio.";
+                return "ERRO: o parâmetro 'command' é obrigatório e não pode estar vazio.";
 
             Console.WriteLine($"[TOOL: shell] Executando: {command}");
 
@@ -320,7 +404,7 @@ public class RunCommandTool : ITool
             // inteiro para o histórico e para o resumo — contexto pago para dizer
             // "Preparando módulos para primeiro uso".
             string encoded = Convert.ToBase64String(
-                Encoding.Unicode.GetBytes("$ProgressPreference = 'SilentlyContinue'; " + command));
+                Encoding.Unicode.GetBytes(Prefixo + command));
 
             var startInfo = new ProcessStartInfo
             {
@@ -328,6 +412,14 @@ public class RunCommandTool : ITool
                 Arguments = $"-NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+
+                // Os dois lados combinados em UTF-8. Sem isto o filho escreve na página de
+                // código do console e o .NET decodifica como outra coisa: 56 linhas do
+                // histórico voltaram com "Diret�rio" e "conclu��do". Isso entra no contexto do
+                // modelo, na memória e na tela — e um nome de arquivo acentuado que volte assim
+                // e seja reenviado numa chamada seguinte é um caminho que não existe.
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
 
                 // Entrada redirecionada e fechada logo apos o Start: sem isto o powershell
                 // herda o console do app, e qualquer coisa que pergunte algo (Read-Host, um
@@ -352,7 +444,7 @@ public class RunCommandTool : ITool
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
 
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var timeoutCts = new CancellationTokenSource(Prazo);
             bool timedOut = false;
             try
             {
@@ -370,7 +462,13 @@ public class RunCommandTool : ITool
                 try { process.Kill(entireProcessTree: true); } catch { }
                 try { await process.WaitForExitAsync(); } catch { }
                 await Task.WhenAny(Task.WhenAll(stdoutTask, stderrTask), Task.Delay(2000));
-                return "ERRO: O comando demorou mais de 30 segundos e foi interrompido (Timeout).";
+                // Dizer só "Timeout" deixa o modelo sem próximo passo, e ele repete o comando.
+                // As duas coisas que ele precisa saber: que o mundo pode ter mudado mesmo
+                // assim, e qual é o escopo a reduzir.
+                return $"ERRO: o comando passou de {Prazo.TotalSeconds:0} s e foi interrompido. "
+                       + "Nada garante que ele não mudou nada antes disso. Reduza o escopo (uma "
+                       + $"pasta em vez do disco) ou use '{Ferramentas.Procurar}'/"
+                       + $"'{Ferramentas.Buscar}', que já são a busca.";
             }
 
             return Montar(await stdoutTask, await stderrTask, process.ExitCode);

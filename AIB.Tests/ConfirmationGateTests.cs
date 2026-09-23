@@ -174,7 +174,14 @@ namespace AIB.Tests
             string r = await registry.ExecuteToolAsync("shell", "{isso nao e json", userLevel: 9);
 
             prompt.Perguntas.Should().BeEmpty("não dá para autorizar o que não se consegue descrever");
-            r.Should().StartWith("ACESSO NEGADO");
+
+            // E a recusa diz a verdade. Antes o pré-voo não existia, o card não descrevia a
+            // operação e o registry respondia "ACESSO NEGADO: … não foi possível descrever a
+            // operação para autorizar" — permissão, para um erro de sintaxe. Quem lê isso troca
+            // de caminho, de ferramenta e de nível; nunca de sintaxe.
+            r.Should().StartWith("ERRO");
+            r.Should().NotContain("ACESSO NEGADO");
+            r.Should().Contain("command");
         }
 
         [Fact]

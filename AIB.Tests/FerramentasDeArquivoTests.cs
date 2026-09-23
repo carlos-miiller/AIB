@@ -189,6 +189,140 @@ namespace AIB.Tests
             ctx.ScriptBody.Should().Contain("- velho").And.Contain("+ novo");
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // edit: fim de linha
+        //
+        // O caso real: um docker-compose.yml em CRLF, vindo do repositório do GLPI. O 'read'
+        // entrega as linhas sem o \r, o modelo copiou dali um trecho de seis linhas, e o 'edit'
+        // respondeu duas vezes "o trecho não existe" — para um trecho que estava lá. Ele foi ao
+        // shell fazer Format-Hex, desistiu, e regerou o arquivo inteiro com 'write', perdendo um
+        // comentário no caminho.
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task TrechoComLF_CASA_NoArquivoCRLF()
+        {
+            string arquivo = Criar("docker-compose.yml",
+                "services:\r\n  glpi:\r\n    image: \"glpi/glpi:latest\"\r\n"
+                + "    env_file: .env # comentário que não pode sumir\r\n");
+
+            var tool = new EditFileTool();
+            string args = JsonSerializer.Serialize(new
+            {
+                path = arquivo,
+                old_string = "  glpi:\n    image: \"glpi/glpi:latest\"",   // como o 'read' mostrou
+                new_string = "  glpi:\n    image: \"glpi/glpi:10.0.15\""
+            });
+
+            tool.Validar(args).Should().BeNull("o trecho ESTÁ no arquivo");
+
+            string r = await tool.ExecuteAsync(args, 9);
+            r.Should().StartWith("SUCESSO");
+            r.Should().Contain("CRLF", "o resultado diz o que foi ajustado, e não finge que casou");
+
+            string depois = File.ReadAllText(arquivo);
+            depois.Should().Contain("image: \"glpi/glpi:10.0.15\"\r\n");
+            depois.Should().Contain("# comentário que não pode sumir",
+                "o que o 'write' do caso real perdeu ao regerar o arquivo inteiro");
+            depois.Replace("\r\n", "").Should().NotContain("\n", "o resto do arquivo continua CRLF");
+        }
+
+        [Fact]
+        public async Task TrechoComCRLF_CASA_NoArquivoLF()
+        {
+            // O outro sentido: o trecho veio com \r\n e o arquivo é todo LF. Mesma guarda, mesmo
+            // ajuste — e o arquivo não vira CRLF por causa de uma edição de duas linhas.
+            string arquivo = Criar("script.sh", "#!/bin/sh\necho um\necho dois\n");
+
+            var tool = new EditFileTool();
+            string args = JsonSerializer.Serialize(new
+            {
+                path = arquivo,
+                old_string = "echo um\r\necho dois",
+                new_string = "echo tres\r\necho quatro"
+            });
+
+            tool.Validar(args).Should().BeNull();
+            (await tool.ExecuteAsync(args, 9)).Should().Contain("LF");
+
+            File.ReadAllText(arquivo).Should().Be("#!/bin/sh\necho tres\necho quatro\n");
+        }
+
+        [Fact]
+        public void ArquivoDeFimDeLinhaMISTO_NaoAdivinha()
+        {
+            // Adivinhar aqui seria uniformizar fim de linha sem pedir. A falha é preferível.
+            string arquivo = Criar("misto.txt", "um\r\ndois\ntres\r\n");
+
+            new EditFileTool().Validar(JsonSerializer.Serialize(new
+            {
+                path = arquivo,
+                old_string = "um\ndois",
+                new_string = "um\nDOIS"
+            })).Should().Contain("não existe");
+        }
+
+        [Fact]
+        public async Task TrechoAjustadoQueAparece_VARIAS_Vezes_EhRecusado()
+        {
+            // A segunda guarda: o ajuste de fim de linha só vale quando casa UMA vez. Trocar o
+            // primeiro de três é o erro que ninguém percebe até o arquivo estar errado.
+            string arquivo = Criar("repetido.yml", "chave:\r\n  x: 1\r\nchave:\r\n  x: 1\r\n");
+            string antes = File.ReadAllText(arquivo);
+
+            var tool = new EditFileTool();
+            string args = JsonSerializer.Serialize(new
+            {
+                path = arquivo,
+                old_string = "chave:\n  x: 1",
+                new_string = "chave:\n  x: 2"
+            });
+
+            string? recusa = tool.Validar(args);
+            recusa.Should().StartWith("ERRO").And.Contain("CRLF");
+            recusa.Should().Contain("2 vezes");
+
+            (await tool.ExecuteAsync(args, 9)).Should().StartWith("ERRO");
+            File.ReadAllText(arquivo).Should().Be(antes, "nada foi tocado");
+        }
+
+        [Fact]
+        public void OCasamento_SoAjusta_OQuePrecisa()
+        {
+            // Casou como veio: nada de ajuste, e 'replace_all' continua contando todas.
+            var direto = EditFileTool.Casar("a\r\nb\r\na\r\nb\r\n", "a", "z");
+            direto.Quantas.Should().Be(2);
+            direto.Ajuste.Should().BeNull();
+
+            var ajustado = EditFileTool.Casar("um\r\ndois\r\n", "um\ndois", "um\nDOIS");
+            ajustado.Quantas.Should().Be(1);
+            ajustado.Ajuste.Should().Be("CRLF");
+            ajustado.De.Should().Be("um\r\ndois");
+            ajustado.Para.Should().Be("um\r\nDOIS", "o que entra no lugar é convertido junto");
+
+            EditFileTool.Casar("nada disso", "ausente", "x").Quantas.Should().Be(0);
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // edit: pré-voo
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Theory]
+        [InlineData("{ isto nao e json")]
+        [InlineData("[]")]
+        [InlineData("{\"old_string\":\"a\",\"new_string\":\"b\"}")]
+        public void ArgumentosIlegiveis_VoltamComoERRO_NuncaComoAcessoNegado(string args)
+        {
+            // JSON ilegível devolvia null aqui, o card não descrevia a operação e o registry
+            // respondia "ACESSO NEGADO: não foi possível descrever a operação para autorizar".
+            // Quem lê "ACESSO NEGADO" troca de caminho, de ferramenta e de nível — nunca de
+            // sintaxe.
+            string? recusa = ((ITool)new EditFileTool()).Validar(args);
+
+            recusa.Should().StartWith("ERRO");
+            recusa.Should().NotContain("ACESSO NEGADO");
+        }
+
         [Theory]
         [InlineData("aaa", "a", 3)]
         [InlineData("abcabc", "abc", 2)]
@@ -333,6 +467,74 @@ namespace AIB.Tests
 
             GrepTool.Buscar(_dir, "contrato").Should().Contain("Nada casa");
             GrepTool.Buscar(_dir, "contrato", "*", ignorarCaixa: true).Should().Contain("a.txt");
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // glob e grep: o que os fazia morrer no meio do caminho
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void AVarredura_IGNORA_OQueNaoPodeAbrir()
+        {
+            // Directory.EnumerateFiles com SearchOption usa IgnoreInaccessible = false. Com a
+            // raiz padrão sendo a pasta do usuário, a primeira junção protegida (Cookies, Meus
+            // Documentos) lança e a busca INTEIRA morre por causa de uma pasta — justo na raiz
+            // onde o modelo chamaria estas ferramentas.
+            var opcoes = GlobTool.Opcoes(recursivo: true);
+
+            opcoes.IgnoreInaccessible.Should().BeTrue();
+            opcoes.RecurseSubdirectories.Should().BeTrue();
+            opcoes.MatchType.Should().Be(System.IO.MatchType.Win32);
+            opcoes.AttributesToSkip.Should().Be(0,
+                "arquivo oculto ou de sistema continua aparecendo, como antes");
+
+            GlobTool.Opcoes(recursivo: false).RecurseSubdirectories.Should().BeFalse();
+        }
+
+        [Fact]
+        public void OGlob_QueParaNoPRAZO_DizQueAResposta_PodeEstarIncompleta()
+        {
+            // Resultado parcial que pareça completo é pior que a busca lenta: sem o rótulo, o
+            // modelo conclui que o arquivo não existe no disco.
+            Criar("a.txt", "x");
+            Criar("b.txt", "x");
+
+            string saida = GlobTool.Procurar(_dir, "*.txt", TimeSpan.Zero);
+
+            saida.Should().Contain("incompleta");
+            saida.Should().Contain("path", "e o próximo passo é nomeado");
+        }
+
+        [Fact]
+        public void OGlob_QueTERMINA_NaoInventaAviso()
+        {
+            Criar("a.txt", "x");
+
+            GlobTool.Procurar(_dir, "*.txt").Should().NotContain("incompleta");
+        }
+
+        [Fact]
+        public void OGrep_QueParaNoPRAZO_DizQueParou()
+        {
+            Criar("a.txt", "agulha");
+
+            string saida = GrepTool.Buscar(_dir, "agulha", "*", false, TimeSpan.Zero);
+
+            saida.Should().Contain("incompleta");
+            saida.Should().Contain("Parei");
+        }
+
+        [Fact]
+        public void OGrep_DIZ_OTetoQuandoCorta()
+        {
+            // O teto já existia e não aparecia em lugar nenhum que o modelo lesse.
+            Criar("muitas.txt", string.Join("\n",
+                Enumerable.Range(1, GrepTool.TetoDeLinhas + 10).Select(i => $"agulha {i}")));
+
+            string saida = GrepTool.Buscar(_dir, "agulha");
+
+            saida.Should().Contain("não listado(s)");
+            saida.Should().Contain($"teto de {GrepTool.TetoDeLinhas} linhas");
         }
     }
 }

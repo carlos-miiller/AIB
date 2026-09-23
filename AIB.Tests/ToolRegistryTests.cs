@@ -45,6 +45,36 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void OOrcamentoDasDescricoes_NaoCRESCE()
+        {
+            // A Description de TODA ferramenta registrada é reenviada ao modelo em CADA
+            // requisição, e é paga em prefill — o custo dominante nesta máquina. Por isso a
+            // redação das nove tem orçamento fechado: o que o 'write' e o 'shell' cresceram
+            // para dizer o que fazem sozinhos e o que NÃO é com eles foi pago encurtando
+            // 'mail' e 'mail_read', que somavam 30% do total para 3 chamadas em 49 sessões.
+            const int OrcamentoAnterior = 2056;
+
+            var nove = new ITool[]
+            {
+                new AIB.Services.Tools.ReadFileTool(),
+                new AIB.Services.Tools.WriteFileTool(),
+                new AIB.Services.Tools.EditFileTool(),
+                new AIB.Services.Tools.GlobTool(),
+                new AIB.Services.Tools.GrepTool(),
+                new AIB.Services.Tools.RunCommandTool(),
+                new AIB.Services.Tools.ExecuteSkillTool(),
+                new AIB.Services.Tools.ConsultarEmailsTool(),
+                new AIB.Services.Tools.LerEmailTool(
+                    () => "",
+                    () => new System.Collections.Generic.List<MailAccountSettings>(),
+                    _ => null,
+                    () => null!)
+            };
+
+            nove.Sum(t => t.Description.Length).Should().BeLessThanOrEqualTo(OrcamentoAnterior);
+        }
+
+        [Fact]
         public async Task FerramentaDesconhecida_NaoLanca_EDevolveErroDescritivo()
         {
             var registry = new ToolRegistry();
