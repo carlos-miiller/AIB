@@ -506,7 +506,10 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
   O OCR da tela foi medido e descartado (pouco texto, sem estrutura, sem como clicar).
 - **`find` e `table`** pesquisam na leitura guardada em vez de entregar a página: `find` sem acento
   e sem caixa, com uma linha de contexto; `table` lista as tabelas (fichas de uma linha contadas à
-  parte) ou devolve uma, uma linha por linha, células com ` | `. Tetos: vista 8000 caracteres,
+  parte) ou devolve uma, uma linha por linha, células com ` | `; se a página tem "mostrar mais" ou
+  "próxima", a tabela avisa que pode haver mais itens. **Tabela cortada pela tela** ganha, colado na
+  última linha visível, "só 4 de 25 linhas estão na tela — table 1 traz todas": no Bitrix, com o
+  aviso só no rodapé, o modelo respondeu "a busca retornou 4 tarefas". Tetos: vista 8000 caracteres,
   20 achados, 80 linhas.
 - **Ref antiga é recusada.** Depois de qualquer leitura nova, `s2e40` não vale mais; a forma curta
   `e40` vale para a atual.

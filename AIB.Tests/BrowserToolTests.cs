@@ -358,6 +358,36 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void TabelaCortadaPelaTela_AvisaColadoNaUltimaLinhaVisivel()
+        {
+            // Visto no Bitrix: depois de filtrar, a vista mostrou 4 linhas e o modelo respondeu
+            // "a busca retornou 4 tarefas". O aviso só no rodapé não foi lido.
+            var p = Pagina(
+                new NoDaPagina("s3e1", "tabela", "", 0, true, true, 0),
+                new NoDaPagina("s3e2", "linha", "Nome | Responsável", 1, true, true, 0),
+                new NoDaPagina("s3e3", "linha", "Tarefa A | Fernando", 1, true, true, 0),
+                new NoDaPagina("s3e4", "linha", "Tarefa B | Fernando", 1, true, false, 0),
+                new NoDaPagina("s3e5", "linha", "Tarefa C | Fernando", 1, true, false, 0),
+                new NoDaPagina("s3e6", "botão", "Depois da tabela", 0, true, true, 0));
+
+            var linhas = p.Vista().Split('\n').ToList();
+            int a = linhas.FindIndex(l => l.Contains("Tarefa A"));
+            linhas[a + 1].Should().Contain("só 2 de 4 linhas estão na tela").And.Contain("table 1 traz todas");
+        }
+
+        [Fact]
+        public void TabelaDePaginaComMostrarMais_AvisaQuePodeHaverMais()
+        {
+            var p = Pagina(
+                new NoDaPagina("s3e1", "tabela", "", 0, true, true, 0),
+                new NoDaPagina("s3e2", "linha", "Nome | Prazo", 1, true, true, 0),
+                new NoDaPagina("s3e3", "linha", "Tarefa | 28/09", 1, true, true, 0),
+                new NoDaPagina("s3e4", "botão", "Show more", 0, true, false, 0));
+
+            p.Tabela("1").Should().Contain("[s3e4] botão \"Show more\"").And.Contain("pode haver mais itens");
+        }
+
+        [Fact]
         public void AchaSemAcentoESemCaixa_AteForaDaVista_MasNaoOEscondido()
         {
             var p = Pagina(

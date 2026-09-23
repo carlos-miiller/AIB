@@ -82,10 +82,26 @@ public sealed class LeituraDaPagina
     /// </summary>
     public string Vista()
     {
+        // Tabela cortada pela tela ganha o aviso colado na última linha visível. Visto no Bitrix:
+        // depois de filtrar, a vista mostrou 4 linhas, e o modelo respondeu "a busca retornou 4
+        // tarefas" — o aviso no rodapé ("tabelas: 1 (25 linhas)") ficava longe demais para ser lido.
+        var avisos = new Dictionary<int, string>();
+        foreach (var t in Tabelas())
+        {
+            var indices = IndicesDasLinhas(t.Indice).ToList();
+            int naTela = indices.Count(i => Nos[i].NaTela);
+            if (naTela > 0 && naTela < indices.Count)
+                avisos[indices.Last(i => Nos[i].NaTela)] =
+                    $"  … tabela {t.Ordem}: só {naTela} de {indices.Count} linhas estão na tela; "
+                    + $"as outras existem fora dela — table {t.Ordem} traz todas";
+        }
+
         var sb = new StringBuilder(Cabecalho).Append('\n');
         int escritos = 0;
-        foreach (var n in Nos.Where(n => n.Visivel && n.NaTela))
+        for (int i = 0; i < Nos.Count; i++)
         {
+            var n = Nos[i];
+            if (!n.Visivel || !n.NaTela) continue;
             string linha = Linha(n);
             if (sb.Length + linha.Length > TetoDaVista)
             {
@@ -93,6 +109,7 @@ public sealed class LeituraDaPagina
                 break;
             }
             sb.AppendLine(linha);
+            if (avisos.TryGetValue(i, out var aviso)) sb.AppendLine(aviso);
             escritos++;
         }
         if (escritos == 0) sb.AppendLine("(nada visível na tela — a página pode estar carregando; tente view de novo)");
@@ -156,12 +173,22 @@ public sealed class LeituraDaPagina
         return lista;
     }
 
-    private IEnumerable<NoDaPagina> LinhasDe(int indice)
+    private IEnumerable<NoDaPagina> LinhasDe(int indice) => IndicesDasLinhas(indice).Select(j => Nos[j]);
+
+    private IEnumerable<int> IndicesDasLinhas(int indice)
     {
         var t = Nos[indice];
         for (int j = indice + 1; j < Nos.Count && Nos[j].Prof > t.Prof && Nos[j].Quadro == t.Quadro; j++)
-            if (Nos[j].Papel == "linha" && Nos[j].Visivel) yield return Nos[j];
+            if (Nos[j].Papel == "linha" && Nos[j].Visivel) yield return j;
     }
+
+    // "Mostrar mais", "próxima página": a lista na página pode ser só o primeiro pedaço.
+    private static readonly Regex MaisItens = new(
+        @"^(próxima|proxima|next|seguinte|mostrar mais|show more|carregar mais|load more|ver mais|mais resultados|more)\b|^[›»>]$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private NoDaPagina? ControleDeMaisItens() =>
+        Nos.FirstOrDefault(n => n.Visivel && n.Papel is "link" or "botão" && MaisItens.IsMatch(n.Texto.Trim()));
 
     /// <summary>
     /// Uma tabela em texto compacto (uma linha por linha, células separadas por " | "), escolhida
@@ -202,6 +229,8 @@ public sealed class LeituraDaPagina
         foreach (var l in linhas.Take(TetoDeLinhasDaTabela)) saida.AppendLine(l.Texto);
         if (linhas.Count > TetoDeLinhasDaTabela)
             saida.AppendLine($"… mais {linhas.Count - TetoDeLinhasDaTabela} linha(s); filtre na própria página ou use find.");
+        if (ControleDeMaisItens() is { } mais)
+            saida.AppendLine($"(estas são as linhas carregadas; a página tem [{mais.Ref}] {mais.Papel} \"{mais.Texto}\" — pode haver mais itens)");
         return saida.ToString().TrimEnd();
     }
 
