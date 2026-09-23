@@ -112,9 +112,19 @@ public sealed class LeituraDaPagina
             if (avisos.TryGetValue(i, out var aviso)) sb.AppendLine(aviso);
             escritos++;
         }
-        if (escritos == 0) sb.AppendLine("(nada visível na tela — a página pode estar carregando; tente view de novo)");
-
         int fora = Nos.Count(n => n.Visivel && !n.NaTela && n.Texto.Length > 0);
+
+        // A vista pode errar: no Bitrix, a tarefa aberta saiu inteira como "coberta" e o modelo
+        // tentou 44 chamadas. Quase nada na tela com muito texto "coberto" é sinal de leitura
+        // errada, e o modelo precisa saber que há saída.
+        int conteudo = Nos.Count(n => n.Visivel && n.NaTela && n.Texto.Length > 0);
+        if (conteudo < 8 && fora >= 20)
+            sb.AppendLine($"(atenção: quase nada saiu como visível, mas {fora} textos da página foram julgados cobertos "
+                          + "ou fora da tela — a vista pode estar errada. view com all=true lê todo o texto visível, "
+                          + "ignorando camadas.)");
+        else if (escritos == 0)
+            sb.AppendLine("(nada visível na tela — a página pode estar carregando; tente view de novo)");
+
         var tabelas = Tabelas().Where(t => t.Linhas > 1).ToList();
         var rodape = new List<string>();
         if (fora > 0) rodape.Add($"{fora} elemento(s) fora da tela ou cobertos (scroll, find)");
@@ -123,6 +133,30 @@ public sealed class LeituraDaPagina
         if (SegredosMascarados > 0) rodape.Add($"{SegredosMascarados} possível(is) segredo(s) mascarado(s)");
         if (rodape.Count > 0) sb.Append("— ").AppendLine(string.Join(" · ", rodape));
 
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Todo o texto visível, ignorando se está coberto ou fora da tela — a saída quando a vista
+    /// erra. Os quadros (iframes) vêm primeiro: painéis que se abrem por cima, como a tarefa do
+    /// Bitrix, costumam ser quadros, e a página de trás (a lista) viria antes deles e gastaria o
+    /// teto. <paramref name="aPartir"/> pula linhas, para ler o resto quando o teto corta.
+    /// </summary>
+    public string Tudo(int aPartir = 0)
+    {
+        var linhas = Nos.Where(n => n.Visivel && (n.Texto.Length > 0 || n.Ref.Length > 0))
+            .OrderBy(n => n.Quadro == 0 ? 1 : 0).ThenBy(n => n.Quadro)
+            .Select(n => (n.Quadro > 0 ? $"(quadro {n.Quadro}) " : "") + Linha(n).TrimStart())
+            .ToList();
+
+        var sb = new StringBuilder(Cabecalho).Append('\n');
+        int i = Math.Max(0, aPartir);
+        for (; i < linhas.Count; i++)
+        {
+            if (sb.Length + linhas[i].Length > TetoDaVista) break;
+            sb.AppendLine(linhas[i]);
+        }
+        if (i < linhas.Count) sb.AppendLine($"… linhas {aPartir}–{i - 1} de {linhas.Count}; para o resto, view com all=true e from={i}.");
         return sb.ToString().TrimEnd();
     }
 

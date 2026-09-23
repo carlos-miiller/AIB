@@ -501,7 +501,11 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
   (`up`), `back`.
 - **A vista** (`LeituraDaPagina.Vista`): só o que está na tela **e por cima** — o `Snapshot.js`
   confere `elementFromPoint`, e o quadro (iframe) coberto por outro painel não conta. Texto
-  escondido por CSS fica de fora (é onde mora a injeção escondida). Cada elemento acionável leva
+  escondido por CSS fica de fora (é onde mora a injeção escondida) — mas só `display:none`,
+  opacidade 0 e `aria-hidden` escondem os filhos; tamanho zero esconde só o próprio elemento (no
+  Bitrix a tarefa aberta mora num painel fixo dentro de um `div` 0x0, e herdar o "sem tamanho"
+  escondia o cartão inteiro). Quase nada na tela com muito texto coberto faz a vista avisar que pode
+  estar errada, e `view` com `all=true` (e `from`) lê todo o texto visível, quadros primeiro. Cada elemento acionável leva
   uma ref com a versão da leitura: `[s3e40]`. No Bitrix: vista ≈900 tokens, árvore inteira ≈7 mil.
   O OCR da tela foi medido e descartado (pouco texto, sem estrutura, sem como clicar).
 - **`find` e `table`** pesquisam na leitura guardada em vez de entregar a página: `find` sem acento

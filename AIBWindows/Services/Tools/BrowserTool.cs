@@ -68,7 +68,9 @@ public sealed class BrowserTool : ITool
                 "ref": { "type": "string", "description": "click/type: a ref da vista (ex.: s3e40). table: número da tabela." },
                 "text": { "type": "string", "description": "find: o que procurar. type: o que digitar." },
                 "enter": { "type": "boolean", "description": "type: apertar Enter depois (buscar, filtrar)." },
-                "up": { "type": "boolean", "description": "scroll: true rola para cima." }
+                "up": { "type": "boolean", "description": "scroll: true rola para cima." },
+                "all": { "type": "boolean", "description": "view: todo o texto visível, ignorando camadas (se a vista vier vazia)." },
+                "from": { "type": "integer", "description": "view all: pula as primeiras N linhas." }
             },
             "required": ["action"]
         }
@@ -77,7 +79,7 @@ public sealed class BrowserTool : ITool
 
     // ─────────────────────────────────────────────────────────────── argumentos
 
-    private sealed record Pedido(string Acao, string Url, string Ref, string Texto, bool Enter, bool Cima);
+    private sealed record Pedido(string Acao, string Url, string Ref, string Texto, bool Enter, bool Cima, bool Tudo, int De);
 
     private static (Pedido? Pedido, string? Recusa) Ler(string argumentsJson)
     {
@@ -91,7 +93,8 @@ public sealed class BrowserTool : ITool
             return (null, "ERRO: 'action' tem de ser open, view, find, table, click, type, scroll ou back.");
 
         return (new Pedido(acao, Texto(a, "url").Trim(), Texto(a, "ref").Trim(), Texto(a, "text"),
-            Bool(a, "enter"), Bool(a, "up")), null);
+            Bool(a, "enter"), Bool(a, "up"), Bool(a, "all"),
+            a.TryGetProperty("from", out var de) && de.ValueKind == JsonValueKind.Number && de.TryGetInt32(out int n) ? n : 0), null);
     }
 
     private const string Ilegivel = "ERRO: argumentos ilegíveis. Envie um objeto JSON com 'action'.";
@@ -304,7 +307,10 @@ public sealed class BrowserTool : ITool
                 }
 
                 case "view":
-                    return Embrulhar((await _navegador.LerAsync()).Vista());
+                {
+                    var lida = await _navegador.LerAsync();
+                    return Embrulhar(p.Tudo ? lida.Tudo(p.De) : lida.Vista());
+                }
 
                 case "find":
                     return Embrulhar((await _navegador.LerAsync()).Achar(p.Texto));

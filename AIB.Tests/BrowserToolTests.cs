@@ -376,6 +376,33 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void VistaQuaseVaziaComMuitoTextoCoberto_AvisaQuePodeEstarErrada()
+        {
+            // No Bitrix a tarefa saiu inteira como coberta, e o modelo tentou 44 chamadas.
+            var nos = Enumerable.Range(1, 25)
+                .Select(i => new NoDaPagina("", "texto", $"campo {i}", 0, true, false, 0))
+                .Append(new NoDaPagina("s3e1", "botão", "Perfil", 0, true, true, 0))
+                .ToArray();
+
+            Pagina(nos).Vista().Should().Contain("a vista pode estar errada").And.Contain("all=true");
+        }
+
+        [Fact]
+        public void Tudo_TrazOsQuadrosAntesDaPaginaDeTras_EPagina()
+        {
+            var nos = new List<NoDaPagina> { new("", "texto", "lista de trás", 0, true, false, 0) };
+            nos.Add(new NoDaPagina("", "texto", "detalhe da tarefa", 0, true, false, 1));
+
+            string t = new LeituraDaPagina(3, "https://site.test/p", "T", nos).Tudo();
+            t.IndexOf("detalhe da tarefa", StringComparison.Ordinal)
+                .Should().BeLessThan(t.IndexOf("lista de trás", StringComparison.Ordinal));
+
+            var muitos = Enumerable.Range(0, 400).Select(i => new NoDaPagina("", "texto", $"linha número {i:000} " + new string('x', 40), 0, true, true, 0));
+            string primeira = new LeituraDaPagina(3, "https://site.test/p", "T", muitos).Tudo();
+            primeira.Should().Contain("view com all=true e from=");
+        }
+
+        [Fact]
         public void TabelaDePaginaComMostrarMais_AvisaQuePodeHaverMais()
         {
             var p = Pagina(

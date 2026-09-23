@@ -42,8 +42,9 @@ internal static class Program
         {
             Channel = "msedge",
             Headless = false,
-            ViewportSize = new() { Width = 1366, Height = 768 },
-            DeviceScaleFactor = 1,
+            // --janela: o tamanho real da janela, como o AIB (NoViewport). Sem ela, 1366x768 fixo.
+            ViewportSize = args.Contains("--janela") ? ViewportSize.NoViewport : new() { Width = 1366, Height = 768 },
+            DeviceScaleFactor = args.Contains("--janela") ? null : 1,
             Locale = "pt-BR",
         });
 
@@ -304,7 +305,7 @@ internal static class Program
                 try
                 {
                     var el = await frame.FrameElementAsync();
-                    if (await el.BoundingBoxAsync() is null) continue;
+                    if (await el.BoundingBoxAsync() is null) { Pulado(frame, "sem tamanho (escondido)"); continue; }
                     // Cinco pontos, não só o centro: painel que cobre só parte do quadro não o
                     // tira da vista.
                     quadroPorCima = await el.EvaluateAsync<bool>(@"e => {
@@ -323,13 +324,14 @@ internal static class Program
                         if (ip >= 0 && !snap.QuadrosPorCima[ip]) quadroPorCima = false;
                     }
                 }
-                catch { continue; }
+                catch (Exception ex) { Pulado(frame, "erro ao medir: " + Primeira(ex.Message)); continue; }
             }
 
             string prefixo = q == 0 ? $"s{snap.Versao}" : $"s{snap.Versao}f{q}";
             JsonElement nos;
             try { nos = await frame.EvaluateAsync<JsonElement>(_script, prefixo); }
-            catch { continue; }
+            catch (Exception ex) { Pulado(frame, "erro ao ler: " + Primeira(ex.Message)); continue; }
+            if (frame != page.MainFrame) Console.WriteLine($"[quadro {q} lido: {Endereco(frame)} · por cima: {quadroPorCima} · {nos.GetArrayLength()} nós]");
 
             foreach (var n in nos.EnumerateArray())
             {
@@ -571,4 +573,15 @@ internal static class Program
     }
 
     private static string Primeira(string s) => s.Split('\n')[0];
+
+    // Quadro que a leitura descarta tem de aparecer: descartado em silêncio, o conteúdo dele some
+    // e a vista parece "presa" sem ninguém saber por quê.
+    private static void Pulado(IFrame frame, string motivo) =>
+        Console.WriteLine($"[quadro pulado: {Endereco(frame)} · {motivo}]");
+
+    private static string Endereco(IFrame frame)
+    {
+        try { var u = new Uri(frame.Url); return u.Host + u.AbsolutePath; }
+        catch { return frame.Url.Length > 60 ? frame.Url[..60] : frame.Url; }
+    }
 }

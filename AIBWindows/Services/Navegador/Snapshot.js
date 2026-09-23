@@ -86,6 +86,13 @@
     const r = el.getBoundingClientRect();
     return r.width > 1 && r.height > 1;
   };
+  // O que esconde os FILHOS junto: display:none, opacidade 0, aria-hidden. Tamanho zero não: no
+  // Bitrix a tarefa aberta mora num painel fixo dentro de um div 0x0 (#a11y-slider-container), e
+  // herdar o "sem tamanho" escondia o cartão inteiro — a vista saía com 86 tokens.
+  const escondeFilhos = el => {
+    const cs = getComputedStyle(el);
+    return cs.display === 'none' || parseFloat(cs.opacity) === 0 || el.getAttribute('aria-hidden') === 'true';
+  };
   // Na tela = dentro da janela E por cima. Sistemas como o Bitrix empilham painéis (chat, perfil,
   // tarefas); o que está coberto não é o que a pessoa vê. Confere o ponto do meio da parte
   // visível, como o clique do mouse faria.
@@ -108,7 +115,8 @@
   const andar = (el, prof, oculto) => {
     if (!(el instanceof Element)) return;
     if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'svg'].includes(el.tagName)) return;
-    const esconde = oculto || el.getAttribute('aria-hidden') === 'true' || !visivel(el);
+    const herdado = oculto || escondeFilhos(el);
+    const esconde = herdado || !visivel(el);
     const p = papel(el);
 
     if (p === 'linha') {
@@ -122,7 +130,7 @@
       }
       el.querySelectorAll('a[href],button,input,select,[role=button],[role=link],[role=checkbox]').forEach(i => {
         const pi = papel(i);
-        if (pi) emitirNo(i, pi, prof + 1, esconde);
+        if (pi) emitirNo(i, pi, prof + 1, herdado || !visivel(i));
       });
       return;
     }
@@ -145,7 +153,7 @@
       }
       el.querySelectorAll('a[href],button,input,[role=button],[role=link]').forEach(i => {
         const pi = papel(i);
-        if (pi) emitirNo(i, pi, prof + 1, esconde || !visivel(i));
+        if (pi) emitirNo(i, pi, prof + 1, herdado || !visivel(i));
       });
       return;
     }
@@ -154,8 +162,8 @@
         visivel: !esconde, naTela: !esconde && naTela(el), y: Math.round(el.getBoundingClientRect().top) });
     }
 
-    for (const c of el.children) andar(c, p ? prof + 1 : prof, esconde);
-    if (el.shadowRoot) for (const c of el.shadowRoot.children) andar(c, prof, esconde);
+    for (const c of el.children) andar(c, p ? prof + 1 : prof, herdado);
+    if (el.shadowRoot) for (const c of el.shadowRoot.children) andar(c, prof, herdado);
   };
 
   const emitirNo = (el, p, prof, esconde) => {
