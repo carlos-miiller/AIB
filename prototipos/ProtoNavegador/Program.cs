@@ -245,7 +245,9 @@ internal static class Program
             if (w.Contains("://") || w.StartsWith("www.") || Regex.IsMatch(w, @"^[\w.+-]+@[\w-]+\.[\w.]+$")) return m.Value;
             int tipos = (w.Any(char.IsLower) ? 1 : 0) + (w.Any(char.IsUpper) ? 1 : 0)
                       + (w.Any(char.IsDigit) ? 1 : 0) + (w.Any(c => !char.IsLetterOrDigit(c)) ? 1 : 0);
-            bool misturado = w.Length >= 12 && tipos >= 3 && w.Count(char.IsDigit) >= 2;
+            // Maiúscula E minúscula: nome de máquina e patrimônio (CPAPS-NB0123) é tudo maiúsculo.
+            bool misturado = w.Length >= 12 && tipos >= 3 && w.Count(char.IsDigit) >= 2
+                             && w.Any(char.IsLower) && w.Any(char.IsUpper);
             bool senhaDeApp = Regex.IsMatch(w, "^[a-z]{16}$") && w.Count(c => "aeiou".Contains(c)) <= 3;
             if (!misturado && !senhaDeApp) return m.Value;
             n++;
