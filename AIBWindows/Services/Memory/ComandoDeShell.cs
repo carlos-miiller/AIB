@@ -48,6 +48,21 @@ public static class ComandoDeShell
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
+    /// Consulta de banco que só lê. O cliente (<c>mariadb</c>, <c>mysql</c>, <c>psql</c>) grava
+    /// tanto quanto lê, então quem decide é a CONSULTA: só passa quando o <c>-e</c>/<c>-c</c>
+    /// começa com SELECT, SHOW, DESCRIBE ou EXPLAIN.
+    /// <para>
+    /// Uma consulta destas ia para o Pendente como "falhou e não deu certo depois", com a linha
+    /// inteira pronta para repetir — e ela só tinha falhado porque o PowerShell tratou a saída da
+    /// tabela como erro. Ponto e vírgula dentro do <c>-e</c> é separador de consultas, e não
+    /// corrente de shell: várias consultas de leitura continuam leitura.
+    /// </para>
+    /// </summary>
+    private static readonly Regex ConsultaDeLeitura = new(
+        @"^\s*(mariadb|mysql|psql)\b[^""']*[-/](?:e|c)\s*[""']\s*(select|show|describe|desc|explain)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
     /// Passos que não são o trabalho: entrar na pasta, esperar, limpar a tela. Numa corrente
     /// <c>A; B; C</c> eles são preparo, e o trabalho é o primeiro passo que sobra.
     /// </summary>
@@ -167,7 +182,9 @@ public static class ComandoDeShell
         string nucleo = Nucleo(comando);
         if (nucleo.Length == 0) return false;
 
-        return LeituraComSubcomando.IsMatch(nucleo) || Leitura.IsMatch(nucleo);
+        return LeituraComSubcomando.IsMatch(nucleo)
+               || ConsultaDeLeitura.IsMatch(nucleo)
+               || Leitura.IsMatch(nucleo);
     }
 
     /// <summary>

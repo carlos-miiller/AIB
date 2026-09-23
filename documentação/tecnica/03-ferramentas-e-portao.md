@@ -276,6 +276,10 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
   - falha = código de saída ≠ 0 **ou** registro de erro no CLIXML (erro que não encerra o script sai
     com código 0 e só aparece ali). Stderr em texto puro não conta — git e npm escrevem progresso lá;
   - `NativeCommandError` com código 0 é ignorado (progresso de programa nativo);
+  - `NativeCommandError` com código ≠ 0 **e sem marca de erro** no texto (`RunCommandTool.TemMarcaDeErro`:
+    `cannot open`, `not found`, `não é reconhecido`, `exception`, `error:`…) também não é falha: é o
+    programa escrevendo no stderr, e o resultado vai com um aviso dizendo o código de saída. Um teste
+    PHP que imprimia "HOOK chamado" chegava ao modelo como ERRO, e ele ia desfazer o que dera certo;
   - cabeça `ERRO (código de saída N): <primeira mensagem>` ou
     `ERRO: o comando continuou, mas houve erro: ...`, seguida de "Saída completa";
   - sucesso sem saída → `RunCommandTool.SucessoSemSaida`; saída truncada em `TetoDaSaida` (8000).

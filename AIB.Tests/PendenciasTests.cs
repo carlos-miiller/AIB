@@ -203,6 +203,9 @@ namespace AIB.Tests
         [InlineData(@"cd C:\Users\Carlo\GLPI; git status")]
         [InlineData(@"Get-Content .\docker-compose.yml | Select-Object -First 5")]
         [InlineData(@"docker compose logs --tail=25 glpi")]
+        [InlineData(@"docker exec glpi-db sh -c ""mariadb -uglpi -pglpi glpi -e 'SHOW COLUMNS FROM glpi_changes;'""")]
+        [InlineData(@"docker exec glpi-db sh -c ""mariadb -uglpi -pglpi glpi -e 'SHOW COLUMNS FROM a; SELECT id,name FROM b;'""")]
+        [InlineData(@"psql -U postgres -c ""SELECT 1""")]
         public void ComandosQueSoOLHAM_SaoReconhecidos(string comando)
         {
             ComandoDeShell.SoLeitura(comando).Should().BeTrue();
@@ -213,6 +216,9 @@ namespace AIB.Tests
         [InlineData(@"New-Item -ItemType Directory -Path C:\temp\x")]
         [InlineData(@"docker compose up -d glpi")]
         [InlineData(@"git push origin main")]
+        [InlineData(@"docker exec glpi-db sh -c ""mariadb -uglpi -pglpi glpi -e 'DROP TABLE glpi_changes;'""")]
+        [InlineData(@"mysql -uroot -e ""UPDATE users SET nome='x'""")]
+        [InlineData(@"mariadb -uglpi glpi < dump.sql")]
         public void ComandosQueMUDAM_NaoPassamPorLeitura(string comando)
         {
             ComandoDeShell.SoLeitura(comando).Should().BeFalse();

@@ -117,6 +117,43 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void SaidaDoProgramaNoStderr_ComCodigoUm_NAO_EhFalha_MasAvisa()
+        {
+            // O caso da conversa do GLPI: o teste PHP imprimia "HOOK chamado" no stderr do
+            // container, o PowerShell devolvia código 1, e o modelo leu ERRO num teste que
+            // passou — foi consertar o que não estava quebrado.
+            string stderr = Cabeca
+                + "<S S=\"Error\">docker : HOOK chamado: Change status=6_x000D__x000A_</S>"
+                + "<S S=\"Error\">    + FullyQualifiedErrorId : NativeCommandError_x000D__x000A_</S>"
+                + "</Objs>";
+
+            string r = RunCommandTool.Montar("LocA=9 LocB=10", stderr, 1);
+
+            r.Should().NotStartWith("ERRO");
+            r.Should().Contain("LocA=9 LocB=10").And.Contain("código 1");
+        }
+
+        [Fact]
+        public void ErroDeVerdadeNoStderr_ComCodigoUm_CONTINUA_Falha()
+        {
+            // A marca é o que separa: "cannot open" é erro; a saída comum do programa, não.
+            string stderr = Cabeca
+                + "<S S=\"Error\">docker : head: cannot open '/var/www/glpi/index.php' for reading_x000D__x000A_</S>"
+                + "<S S=\"Error\">    + FullyQualifiedErrorId : NativeCommandError_x000D__x000A_</S>"
+                + "</Objs>";
+
+            RunCommandTool.Montar("", stderr, 1).Should().StartWith("ERRO (código de saída 1)");
+        }
+
+        [Fact]
+        public void CodigoDeSaidaSemRegistroDeErro_CONTINUA_Falha()
+        {
+            // Sem NativeCommandError não há ruído de embrulho a descontar: o código de saída é o
+            // único sinal que sobrou, e ele diz que falhou.
+            RunCommandTool.Montar("nada feito", "", 2).Should().StartWith("ERRO (código de saída 2)");
+        }
+
+        [Fact]
         public void StderrEmTextoPuro_ComCodigoZero_NaoEhFalha()
         {
             RunCommandTool.Montar("ok", "npm WARN deprecated algo", 0).Should().NotStartWith("ERRO");

@@ -186,6 +186,26 @@ public class RunCommandTool : ITool
         if (saida.Length > TetoDaSaida)
             saida = saida.Substring(0, TetoDaSaida) + "\n...[Saída truncada devido ao tamanho máximo].";
 
+        // Só o PowerShell falando, e o programa não disse nada que pareça erro: não é falha.
+        //
+        // Visto numa conversa inteira: `docker exec glpi php teste.php` imprimia "HOOK chamado:
+        // Change status=6" no stderr do container. O PowerShell virava isso num
+        // NativeCommandError e devolvia código 1. O teste tinha PASSADO, e o modelo leu "ERRO",
+        // foi consertar o que não estava quebrado e a pendência sobreviveu à conversa toda.
+        // O corte é pela MARCA: "cannot open", "não é reconhecido" e afins continuam falha;
+        // saída comum do programa, não.
+        bool soRuidoDoPowerShell =
+            codigoDeSaida != 0
+            && erros.Count > 0
+            && erros.All(e => e.Contains("NativeCommandError", StringComparison.Ordinal) && !TemMarcaDeErro(e));
+
+        if (soRuidoDoPowerShell)
+        {
+            string aviso = $"(o programa escreveu no stderr e saiu com código {codigoDeSaida}; "
+                           + "nada na saída indica erro — se o resultado importa, confira nela)";
+            return saida.Length == 0 ? SucessoSemSaida + "\n" + aviso : saida + "\n\n" + aviso;
+        }
+
         bool falhou = codigoDeSaida != 0 || erros.Count > 0;
 
         if (!falhou)
@@ -206,6 +226,26 @@ public class RunCommandTool : ITool
             ? cabeca
             : cabeca + "\n\nSaída completa:\n" + saida;
     }
+
+    /// <summary>
+    /// Marcas que aparecem em erro DE VERDADE, e não na saída comum de um programa.
+    /// <para>
+    /// Deliberadamente estreita. "invalid" sozinho ficou de fora: um <c>grep</c> por "Invalid
+    /// plugin directory" devolve a linha encontrada, que é sucesso. O custo de não reconhecer um
+    /// erro aqui é o modelo ler a saída e perceber; o custo de reconhecer demais é ele desfazer
+    /// trabalho que deu certo — foi o que aconteceu.
+    /// </para>
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex MarcaDeErro = new(
+        @"(?:^|\W)(erro:|error:|exception|traceback|fatal|panic:|segmentation fault"
+        + @"|not found|no such file|cannot open|cannot find|unable to|denied"
+        + @"|is not recognized|não é reconhecido|nao e reconhecido"
+        + @"|não foi possível|nao foi possivel)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase
+        | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    internal static bool TemMarcaDeErro(string? texto) =>
+        !string.IsNullOrEmpty(texto) && MarcaDeErro.IsMatch(texto);
 
     /// <summary>
     /// As mensagens de erro serializadas no CLIXML, uma por registro. O PowerShell quebra cada
