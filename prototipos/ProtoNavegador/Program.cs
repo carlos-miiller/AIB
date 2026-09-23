@@ -224,7 +224,35 @@ internal static class Program
         public string Titulo { get; init; } = "";
         public List<No> Nos { get; } = new();
         public List<IFrame> Quadros { get; } = new();
+        public List<bool> QuadrosPorCima { get; } = new();
+        public int Segredos { get; set; }
         public TimeSpan Tempo { get; set; }
+    }
+
+    // Senha colada em chat, token, chave: tudo que está na tela iria para o provedor do modelo.
+    // Mascara na entrada, antes de qualquer saída. Heurística da v1: palavra longa que mistura
+    // pelo menos três tipos de caractere, ou 16 letras minúsculas quase sem vogal (o formato da
+    // senha de app do Google). Endereço (http, e-mail) não entra.
+    private static readonly Regex Palavra = new(@"\S{10,}", RegexOptions.Compiled);
+
+    private static string Mascarar(string texto, out int segredos)
+    {
+        int n = 0;
+        string r = Palavra.Replace(texto, m =>
+        {
+            // Citação grudada na palavra ("União.[3][4]") não é segredo.
+            string w = Regex.Replace(m.Value, @"\[\w{0,4}\]", "").Trim('.', ',', ';', ':', '(', ')', '"', '\'');
+            if (w.Contains("://") || w.StartsWith("www.") || Regex.IsMatch(w, @"^[\w.+-]+@[\w-]+\.[\w.]+$")) return m.Value;
+            int tipos = (w.Any(char.IsLower) ? 1 : 0) + (w.Any(char.IsUpper) ? 1 : 0)
+                      + (w.Any(char.IsDigit) ? 1 : 0) + (w.Any(c => !char.IsLetterOrDigit(c)) ? 1 : 0);
+            bool misturado = w.Length >= 12 && tipos >= 3 && w.Count(char.IsDigit) >= 2;
+            bool senhaDeApp = Regex.IsMatch(w, "^[a-z]{16}$") && w.Count(c => "aeiou".Contains(c)) <= 3;
+            if (!misturado && !senhaDeApp) return m.Value;
+            n++;
+            return "[segredo mascarado]";
+        });
+        segredos = n;
+        return r;
     }
 
     private static async Task Ler()
@@ -236,13 +264,27 @@ internal static class Program
         int q = 0;
         foreach (var frame in page.Frames)
         {
+            bool quadroPorCima = true;
             if (frame != page.MainFrame)
             {
-                // Quadro escondido (iframe sem tamanho) fica de fora: nem a pessoa vê.
+                // Quadro escondido (iframe sem tamanho) fica de fora: nem a pessoa vê. Quadro
+                // coberto por outro painel entra, mas nada dele conta como "na tela".
                 try
                 {
                     var el = await frame.FrameElementAsync();
                     if (await el.BoundingBoxAsync() is null) continue;
+                    quadroPorCima = await el.EvaluateAsync<bool>(@"e => {
+                        const r = e.getBoundingClientRect();
+                        const x = (Math.max(r.left, 0) + Math.min(r.right, innerWidth)) / 2;
+                        const y = (Math.max(r.top, 0) + Math.min(r.bottom, innerHeight)) / 2;
+                        const h = document.elementFromPoint(x, y);
+                        return !!h && (h === e || e.contains(h));
+                    }");
+                    if (frame.ParentFrame is { } pai && pai != page.MainFrame)
+                    {
+                        int ip = snap.Quadros.IndexOf(pai);
+                        if (ip >= 0 && !snap.QuadrosPorCima[ip]) quadroPorCima = false;
+                    }
                 }
                 catch { continue; }
             }
@@ -254,16 +296,19 @@ internal static class Program
 
             foreach (var n in nos.EnumerateArray())
             {
+                string texto = Mascarar(n.GetProperty("texto").GetString() ?? "", out int segredos);
+                snap.Segredos += segredos;
                 snap.Nos.Add(new No(
                     n.GetProperty("ref").GetString() ?? "",
                     n.GetProperty("papel").GetString() ?? "",
-                    n.GetProperty("texto").GetString() ?? "",
+                    texto,
                     n.GetProperty("prof").GetInt32(),
                     n.GetProperty("visivel").GetBoolean(),
-                    n.GetProperty("naTela").GetBoolean(),
+                    quadroPorCima && n.GetProperty("naTela").GetBoolean(),
                     q));
             }
             snap.Quadros.Add(frame);
+            snap.QuadrosPorCima.Add(quadroPorCima);
             q++;
         }
 
@@ -338,7 +383,8 @@ internal static class Program
         Console.WriteLine($"{"vista (só a tela)",-28}{vista.Length,12}{Tokens(vista),10}   {interativosNaTela} elementos com ref");
         Console.WriteLine($"{"ocr (só a tela)",-28}{ocr.Length,12}{Tokens(ocr),10}   sem ref, sem papel · {tempoOcr.TotalMilliseconds:0} ms");
         Console.WriteLine($"{"ocultos (fora da vista)",-28}{ocultos.Length,12}{Tokens(ocultos),10}   texto que existe mas não aparece");
-        Console.WriteLine($"leitura do DOM: {s.Tempo.TotalMilliseconds:0} ms · quadros lidos: {s.Quadros.Count}");
+        Console.WriteLine($"leitura do DOM: {s.Tempo.TotalMilliseconds:0} ms · quadros lidos: {s.Quadros.Count}, por cima: {s.QuadrosPorCima.Count(b => b)}");
+        Console.WriteLine($"segredos mascarados: {s.Segredos}");
         Console.WriteLine("tokens estimados por caracteres/4.");
     }
 
@@ -371,7 +417,7 @@ internal static class Program
                 if (j <= ultimo) continue;
                 if (j > ultimo + 1 && sb.Length > 0) sb.AppendLine("  ⋯");
                 string marca = j == i ? "» " : "  ";
-                string tela = nos[j].NaTela ? "" : "  (fora da tela)";
+                string tela = nos[j].NaTela ? "" : "  (fora da vista)";
                 sb.AppendLine(marca + Linha(nos[j]).TrimStart() + tela);
                 ultimo = j;
             }
@@ -393,16 +439,18 @@ internal static class Program
         {
             // Sem ref (ou ref errada): lista as tabelas com a primeira linha de cada, para escolher.
             if (refe.Length > 0) Console.WriteLine("ref não encontrada.");
-            int k = 0;
-            for (int x = 0; x < nos.Count; x++)
+            // Tabela de uma linha só é ficha ("Status: | Pending"), não lista: conta, não lista.
+            int k = 0, fichas = 0;
+            foreach (int x in indices)
             {
-                if (nos[x].Papel != "tabela" || !nos[x].Visivel) continue;
+                k++;
                 var primeira = nos.Skip(x + 1).TakeWhile(n => n.Prof > nos[x].Prof).FirstOrDefault(n => n.Papel == "linha");
                 int total = nos.Skip(x + 1).TakeWhile(n => n.Prof > nos[x].Prof).Count(n => n.Papel == "linha");
-                Console.WriteLine($"{k + 1}. [{nos[x].Ref}] {total} linha(s){(nos[x].NaTela ? "" : " (fora da tela)")}: {primeira?.Texto ?? "—"}");
-                k++;
+                if (total <= 1) { fichas++; continue; }
+                Console.WriteLine($"{k}. [{nos[x].Ref}] {total} linha(s){(nos[x].NaTela ? "" : " (fora da vista)")}: {primeira?.Texto ?? "—"}");
             }
-            if (k == 0) Console.WriteLine("nenhuma tabela nesta página");
+            if (fichas > 0) Console.WriteLine($"(+ {fichas} tabela(s) de uma linha só — fichas, não listas)");
+            if (indices.Count == 0) Console.WriteLine("nenhuma tabela nesta página");
             return;
         }
 

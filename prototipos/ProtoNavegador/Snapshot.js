@@ -73,9 +73,17 @@
     const r = el.getBoundingClientRect();
     return r.width > 1 && r.height > 1;
   };
+  // Na tela = dentro da janela E por cima. Sistemas como o Bitrix empilham painéis (chat, perfil,
+  // tarefas); o que está coberto não é o que a pessoa vê. Confere o ponto do meio da parte
+  // visível, como o clique do mouse faria.
   const naTela = el => {
     const r = el.getBoundingClientRect();
-    return r.bottom > 0 && r.right > 0 && r.top < vh && r.left < vw;
+    if (!(r.bottom > 0 && r.right > 0 && r.top < vh && r.left < vw)) return false;
+    const x = (Math.max(r.left, 0) + Math.min(r.right, vw)) / 2;
+    const y = (Math.max(r.top, 0) + Math.min(r.bottom, vh)) / 2;
+    const h = document.elementFromPoint(x, y);
+    if (!h) return false;
+    return h === el || el.contains(h) || h.contains(el);
   };
 
   const ref = el => {
