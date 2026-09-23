@@ -59,8 +59,20 @@
         const l = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
         if (l && limpar(l.innerText)) return limpar(l.innerText);
       }
-      const t = limpar(el.getAttribute('placeholder')) || limpar(el.getAttribute('title')) || limpar(el.getAttribute('name'));
+      const t = limpar(el.getAttribute('placeholder')) || limpar(el.getAttribute('title'));
       if (t) return t;
+      // Sem rótulo ligado: o texto curto que vem logo antes do campo ("Assignee" acima da
+      // caixa). Sobe até três níveis procurando um irmão anterior com texto.
+      for (let a = el, nivel = 0; a && nivel < 3; a = a.parentElement, nivel++) {
+        for (let s = a.previousElementSibling; s; s = s.previousElementSibling) {
+          // Irmão que já tem campo é o grupo de outro campo: o rótulo dele não é deste.
+          if (s.matches('input,select,textarea') || s.querySelector('input,select,textarea')) break;
+          const txt = limpar(s.innerText);
+          if (txt && txt.length <= 40) return txt;
+          if (txt) break;
+        }
+      }
+      if (limpar(el.getAttribute('name'))) return limpar(el.getAttribute('name'));
     }
     return limpar(el.innerText) || limpar(el.getAttribute('title')) || limpar(el.value);
   };

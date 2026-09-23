@@ -24,6 +24,7 @@ internal static class Program
     private static Snapshot? _atual;
     private static int _versao;
     private static string _script = "";
+    private static IElementHandle? _ultimoCampo;
 
     private static async Task<int> Main(string[] args)
     {
@@ -94,9 +95,9 @@ internal static class Program
                     medir               compara árvore, vista, ocultos e OCR em tokens
                     achar <texto>       procura na página inteira (sem acento, sem caixa)
                     tabela [ref|n]      lista as tabelas, ou mostra uma em texto compacto
-                    clicar <ref>        clica e lê de novo
+                    clicar <ref>        clica e lê de novo (ref sem versão, ex.: e84, vale para a leitura atual)
                     digitar <ref> <txt> preenche um campo e lê de novo
-                    enter <ref>         aperta Enter num campo
+                    enter [ref]         aperta Enter (sem ref: no último campo digitado)
                     rolar [cima]        rola uma tela e mostra a vista
                     voltar              volta uma página
                     sair
@@ -162,6 +163,7 @@ internal static class Program
                 var loc = Localizar(partes[0]);
                 if (loc is null) return;
                 await loc.FillAsync(partes.Length > 1 ? partes[1] : "", new() { Timeout = 8000 });
+                _ultimoCampo = await loc.ElementHandleAsync();
                 await Assentar();
                 await Ler();
                 MostrarVista();
@@ -170,9 +172,18 @@ internal static class Program
 
             case "enter":
             {
-                var loc = Localizar(resto);
-                if (loc is null) return;
-                await loc.PressAsync("Enter", new() { Timeout = 8000 });
+                // Sem ref: o último campo digitado (a ref dele já mudou com a leitura nova).
+                if (resto.Length == 0)
+                {
+                    if (_ultimoCampo is null) { Console.WriteLine("nenhum campo digitado ainda; use enter <ref>"); return; }
+                    await _ultimoCampo.PressAsync("Enter");
+                }
+                else
+                {
+                    var loc = Localizar(resto);
+                    if (loc is null) return;
+                    await loc.PressAsync("Enter", new() { Timeout = 8000 });
+                }
                 await Assentar();
                 await Ler();
                 MostrarVista();
@@ -205,6 +216,20 @@ internal static class Program
         try { await Pagina.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 6000 }); }
         catch (TimeoutException) { }
         await Task.Delay(300);
+
+        // Painel que desliza (a tarefa do Bitrix abre assim): ler no meio da animação pega o
+        // painel ainda fora do lugar. Espera as animações de todos os quadros acabarem, até 2 s.
+        for (int i = 0; i < 10; i++)
+        {
+            int rodando = 0;
+            foreach (var f in Pagina.Frames)
+            {
+                try { rodando += await f.EvaluateAsync<int>("() => document.getAnimations().filter(a => a.playState === 'running' && isFinite(a.effect?.getComputedTiming().endTime ?? Infinity)).length"); }
+                catch { }
+            }
+            if (rodando == 0) break;
+            await Task.Delay(200);
+        }
     }
 
     private static async Task<bool> Precisa()
@@ -275,12 +300,17 @@ internal static class Program
                 {
                     var el = await frame.FrameElementAsync();
                     if (await el.BoundingBoxAsync() is null) continue;
+                    // Cinco pontos, não só o centro: painel que cobre só parte do quadro não o
+                    // tira da vista.
                     quadroPorCima = await el.EvaluateAsync<bool>(@"e => {
                         const r = e.getBoundingClientRect();
-                        const x = (Math.max(r.left, 0) + Math.min(r.right, innerWidth)) / 2;
-                        const y = (Math.max(r.top, 0) + Math.min(r.bottom, innerHeight)) / 2;
-                        const h = document.elementFromPoint(x, y);
-                        return !!h && (h === e || e.contains(h));
+                        const l = Math.max(r.left, 0), t = Math.max(r.top, 0);
+                        const w = Math.min(r.right, innerWidth) - l, h = Math.min(r.bottom, innerHeight) - t;
+                        if (w <= 0 || h <= 0) return false;
+                        return [[.5,.5],[.25,.25],[.75,.25],[.25,.75],[.75,.75]].some(([fx, fy]) => {
+                            const p = document.elementFromPoint(l + w * fx, t + h * fy);
+                            return !!p && (p === e || e.contains(p));
+                        });
                     }");
                     if (frame.ParentFrame is { } pai && pai != page.MainFrame)
                     {
@@ -475,6 +505,8 @@ internal static class Program
     private static ILocator? Localizar(string refe)
     {
         if (_atual is null) { Console.WriteLine("leia a página antes ('ler')"); return null; }
+        // Sem a versão ("e84") vale como da leitura atual — atalho para quem digita à mão.
+        if (Regex.IsMatch(refe, @"^(?:f\d+)?e\d+$", RegexOptions.IgnoreCase)) refe = $"s{_atual.Versao}{refe}";
         var m = Regex.Match(refe, @"^s(\d+)(?:f(\d+))?e\d+$", RegexOptions.IgnoreCase);
         if (!m.Success) { Console.WriteLine("ref inválida (ex.: s3e40)"); return null; }
         if (int.Parse(m.Groups[1].Value) != _atual.Versao)
