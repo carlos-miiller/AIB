@@ -26,6 +26,7 @@ public static class Ferramentas
     public const string Habilidade = "skill";
     public const string Email = "mail";
     public const string LerEmail = "mail_read";
+    public const string Arquivos = "fs";
 
     /// <summary>
     /// O que aparece na trilha de ações enquanto a ferramenta roda.
@@ -49,6 +50,7 @@ public static class Ferramentas
         Habilidade => "Executando habilidade",
         Email => "Consultando e-mails",
         LerEmail => "Lendo o e-mail",
+        Arquivos => "Mexendo em arquivos",
         _ => nome ?? ""
     };
 }

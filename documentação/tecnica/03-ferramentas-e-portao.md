@@ -35,6 +35,7 @@ Renomear uma ferramenta é mudar só a constante.
 | `edit` (`Editar`) | `EditFileTool` | 2 | sim — dispensável por pasta | Troca um trecho de um arquivo; o fim de linha do trecho não precisa bater com o do arquivo (§7). |
 | `shell` (`Shell`) | `RunCommandTool` | 2 | sim — nunca dispensado; passa pela floor list | Roda um comando PowerShell (30 s). |
 | `skill` (`Habilidade`) | `ExecuteSkillTool` | 2 | sim — a skill só-manual é dispensada; passa pela floor list | Roda uma habilidade instalada, ou entrega o manual dela. |
+| `fs` (`Arquivos`) | `FsTool` | 2 | sim — só `mkdir` é dispensável por pasta; apagar pasta com conteúdo tem piso tipado (Nível 7) | Cria pasta, copia, move, renomeia e apaga (para a **Lixeira**). Nunca sobrescreve. |
 | `mail` (`Email`) | `ConsultarEmailsTool` | 1 | não | Consulta o diário da triagem de e-mail (disco, não o servidor). |
 | `mail_read` (`LerEmail`) | `LerEmailTool` | 1 | não | Relê no servidor o e-mail da conversa aberta (somente leitura). |
 
@@ -314,6 +315,21 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
     muda de lugar. Desligado, volta o corte cego em `TetoDaSaida` (8.000). Vale também para a
     `skill`, que passa pelo mesmo `Montar`. Medido nas sessões gravadas: 24% da saída de shell
     (14% só da deduplicação). Não vale para o `read`, onde cortar seria tirar a faixa pedida.
+- **`fs` (`FsTool`)**: uma ferramenta com `action` (`mkdir`, `copy`, `move`, `rename`, `delete`),
+  e não cinco, porque cada uma seria schema pago em toda requisição. O cartão diz o que só o app
+  sabe conferir antes: `APAGAR PASTA X (14 arquivo(s), 320 KB)`. Regras:
+  - **nunca sobrescreve** (destino existente é recusado no pré-voo), e não põe pasta dentro de si;
+  - **apagar vai para a Lixeira** (`Microsoft.VisualBasic.FileIO.FileSystem`, `SendToRecycleBin`);
+  - não apaga raiz de unidade, a pasta do usuário, a do Windows nem nada dentro de `~/.AIB`;
+  - **piso tipado** (`ITool.PisoTipado`, chamado por `BateNoPiso` antes da regex): apagar pasta com
+    conteúdo exige Nível 7, como `Remove-Item -Recurse` no shell — sem isso a ferramenta nova seria
+    o caminho por baixo do piso. Respeita `ConfirmDangerousCommands`;
+  - **só `mkdir` é dispensado** nas pastas sem confirmação: copiar, mover, renomear e apagar
+    sempre perguntam;
+  - o autorizado viaja até a execução: se a descrição (com contagem e tamanho) mudou entre o
+    cartão e o clique, não executa;
+  - no Estado da memória a operação entra tipada (`criado`, `movido`, `APAGADO … (foi para a
+    Lixeira)`), nunca como linha pronta para repetir.
 - **Guarda de releitura** (`AgentLoop.GuardaDeReleitura`): um `read` que devolveria, no MESMO
   turno, texto idêntico a outro já entregue (e com 600 caracteres ou mais) vai ao modelo como
   aviso de que o conteúdo já está mais acima. O escopo é o turno porque entre turnos resultados

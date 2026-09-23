@@ -54,6 +54,8 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Editar => "Editar este arquivo?",
             Ferramentas.Shell => "Executar este comando?",
             Ferramentas.Habilidade => manual ? "Ler o manual desta habilidade?" : "Executar esta habilidade?",
+            Ferramentas.Arquivos when alvo.StartsWith("APAGAR ", StringComparison.Ordinal) => "Mandar para a Lixeira?",
+            Ferramentas.Arquivos => "Mexer nestes arquivos?",
             _ => "Autorizar esta ação?"
         };
 
@@ -74,6 +76,10 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Habilidade =>
                 "O script da habilidade roda na sua máquina, com as suas permissões. O AIB não "
                 + "desfaz o que ele fizer.",
+            Ferramentas.Arquivos when alvo.StartsWith("APAGAR ", StringComparison.Ordinal) =>
+                "Vai para a Lixeira do Windows: dá para restaurar de lá.",
+            Ferramentas.Arquivos =>
+                "Nada existente é sobrescrito: se o destino já existir, a ação é recusada.",
             _ => "Esta ação altera o seu sistema e não pode ser desfeita pelo AIB."
         };
 

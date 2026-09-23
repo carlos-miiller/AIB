@@ -320,16 +320,19 @@ public class ToolRegistry
     }
 
     /// <summary>
-    /// O motivo da floor list, ou null quando ela não barra. Só para as ferramentas cujo comando
-    /// é linha de comando — ver <see cref="ITool.PassaPelaFloorListCom"/>.
+    /// O motivo da floor list, ou null quando ela não barra. Primeiro a regra TIPADA da própria
+    /// ferramenta (<see cref="ITool.PisoTipado"/>); depois, para quem manda linha de comando, a
+    /// regex — ver <see cref="ITool.PassaPelaFloorListCom"/>.
     /// </summary>
     private string? BateNoPiso(ITool tool, CommandConfirmationContext ctx, int userLevel)
     {
-        if (!tool.PassaPelaFloorListCom(ctx)) return null;
-        string comando = ctx.Command ?? "";
-
         bool floorLigado = _settingsService?.LoadSettings().ConfirmDangerousCommands ?? true;
         if (!floorLigado) return null;
+
+        if (tool.PisoTipado(ctx, userLevel) is string tipado) return tipado;
+
+        if (!tool.PassaPelaFloorListCom(ctx)) return null;
+        string comando = ctx.Command ?? "";
 
         var (bateu, razao) = CommandFloorList.Match(comando, userLevel);
         return bateu ? razao ?? "ACESSO NEGADO (FLOOR): comando destrutivo — requer Nível 7." : null;
@@ -406,6 +409,7 @@ public class ToolRegistry
             new GrepTool(),
             new RunCommandTool(),
             new WriteFileTool(),
+            new FsTool(),
 
             // Registrada SEMPRE, e não só quando a triagem está ligada. Com ela fora, o modelo
             // não sabe que a pergunta tem resposta possível e chuta — e chutar sobre a caixa de

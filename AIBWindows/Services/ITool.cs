@@ -113,6 +113,18 @@ public interface ITool
     bool PassaPelaFloorListCom(CommandConfirmationContext contexto) => PassaPelaFloorList;
 
     /// <summary>
+    /// A floor list pela OPERAÇÃO, para ferramenta que sabe o que vai fazer sem precisar de regex
+    /// sobre uma linha de comando. Devolve o motivo da recusa, ou <c>null</c>.
+    /// <para>
+    /// Existe para a ferramenta tipada não virar o caminho por baixo do piso: o shell barra
+    /// <c>Remove-Item -Recurse</c> abaixo do Nível 7 pela regex, e uma ferramenta que apaga pasta
+    /// sem passar por regra nenhuma faria o mesmo no nível 2. O registry chama isto nos dois
+    /// caminhos (com e sem dispensa), respeitando <c>ConfirmDangerousCommands</c>.
+    /// </para>
+    /// </summary>
+    string? PisoTipado(CommandConfirmationContext contexto, int userLevel) => null;
+
+    /// <summary>
     /// Monta o que o cartão de confirmação mostra ao usuário. Fica na ferramenta porque só ela sabe interpretar
     /// o próprio JSON de argumentos — o registry não pode adivinhar qual campo é "o comando".
     /// Devolver null recusa a execução: se a ferramenta pede confirmação e não consegue

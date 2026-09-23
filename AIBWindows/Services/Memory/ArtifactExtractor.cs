@@ -139,6 +139,7 @@ public static class ArtifactExtractor
         ferramenta switch
         {
             Ferramentas.Gravar or Ferramentas.Ler or Ferramentas.Editar => CaminhoDe(argumentosJson),
+            Ferramentas.Arquivos => (StringDe(argumentosJson, "action") + " " + CaminhoDe(argumentosJson)).Trim(),
             Ferramentas.Shell => StringDe(argumentosJson, "command"),
             Ferramentas.Habilidade => ChamadaDeSkill(argumentosJson),
             Ferramentas.Procurar => BuscaDe(argumentosJson, comFiltro: false),
@@ -432,7 +433,7 @@ public static class ArtifactExtractor
         return conteudo.Length == 0 ? null : $"{conteudo.Length} caracteres";
     }
 
-    private static string StringDe(string argumentosJson, string propriedade)
+    internal static string StringDe(string argumentosJson, string propriedade)
     {
         if (string.IsNullOrWhiteSpace(argumentosJson)) return "";
         try

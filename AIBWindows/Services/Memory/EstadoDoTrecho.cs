@@ -168,6 +168,57 @@ public sealed record EstadoDoTrecho(
                         break;
                     }
 
+                    case Ferramentas.Arquivos:
+                    {
+                        // A operação é tipada: o Estado sabe o que aconteceu sem decifrar linha de
+                        // comando, e o apagamento entra como fato, nunca como algo pronto a repetir.
+                        string acao = ArtifactExtractor.StringDe(args, "action").ToLowerInvariant();
+                        string alvo = ArtifactExtractor.StringDe(args, "path").TrimEnd('\\', '/');
+                        string destino = ArtifactExtractor.StringDe(args, "destination").TrimEnd('\\', '/');
+                        if (alvo.Length == 0) break;
+
+                        if (recusado)
+                        {
+                            Guardar(new ItemDeEstado(alvo, ItemDeEstado.TipoPasta, $"{acao} recusado pelo usuário", null, turno.Index));
+                            break;
+                        }
+
+                        if (falhou)
+                        {
+                            itens.TryGetValue(alvo, out var visto);
+                            Guardar((visto ?? new ItemDeEstado(alvo, ItemDeEstado.TipoPasta, "não tocado", null, turno.Index))
+                                with { Detalhe = $"{acao} falhou: " + Primeira(resultado), Turno = turno.Index });
+                            break;
+                        }
+
+                        itens.TryGetValue(alvo, out var anterior);
+                        string tipo = anterior?.Tipo ?? (Path.HasExtension(alvo) ? ItemDeEstado.TipoArquivo : ItemDeEstado.TipoPasta);
+
+                        switch (acao)
+                        {
+                            case "mkdir":
+                                Guardar(new ItemDeEstado(alvo, ItemDeEstado.TipoPasta, "criado pelo agente", null, turno.Index));
+                                break;
+                            case "delete":
+                                Guardar(new ItemDeEstado(alvo, tipo,
+                                    "APAGADO pelo agente (foi para a Lixeira) — já feito, não repetir sem o usuário pedir",
+                                    null, turno.Index));
+                                break;
+                            case "copy" when destino.Length > 0:
+                                Guardar(new ItemDeEstado(destino, tipo, $"criado pelo agente (cópia de {alvo})", null, turno.Index));
+                                break;
+                            case "move" when destino.Length > 0:
+                                Guardar(new ItemDeEstado(alvo, tipo, $"movido pelo agente para {destino}", null, turno.Index));
+                                Guardar(new ItemDeEstado(destino, tipo, $"criado pelo agente (movido de {alvo})", null, turno.Index));
+                                break;
+                            case "rename":
+                                string novo = ArtifactExtractor.StringDe(args, "new_name");
+                                Guardar(new ItemDeEstado(alvo, tipo, $"renomeado pelo agente para {novo}", null, turno.Index));
+                                break;
+                        }
+                        break;
+                    }
+
                     case Ferramentas.Shell:
                     {
                         string comando = ArtifactExtractor.ResumirArgumento(nome, args).Trim();
