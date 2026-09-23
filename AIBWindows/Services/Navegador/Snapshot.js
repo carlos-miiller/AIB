@@ -36,11 +36,23 @@
   const INTERATIVO = new Set(['botão', 'link', 'caixa de texto', 'busca', 'lista', 'caixa de seleção',
     'opção', 'aba', 'item de menu', 'chave']);
 
+  // Controle feito de div: focável (tabindex >= 0), sem nada clicável dentro e com texto curto. No
+  // Bitrix o seletor de data do filtro ("Any date") é assim, e saía como texto solto, sem ref.
+  const CLICAVEL = 'a[href],button,input,select,textarea,[role=button],[role=link],[tabindex]:not([tabindex="-1"])';
+  const controleDeDiv = el => {
+    if (!el.hasAttribute('tabindex') || el.tabIndex < 0) return null;
+    if (el.querySelector(CLICAVEL)) return null;
+    const t = (el.innerText || '').trim();
+    if (!t || t.length > 80) return null;
+    const cls = typeof el.className === 'string' ? el.className : '';
+    return el.hasAttribute('aria-haspopup') || /select|dropdown|combo|picker/i.test(cls) ? 'lista' : 'botão';
+  };
+
   const papel = el => {
     const r = (el.getAttribute('role') || '').split(' ')[0];
     if (r && ARIA[r]) return ARIA[r];
     const f = IMPLICITO[el.tagName];
-    return f ? f(el) : null;
+    return f ? f(el) : controleDeDiv(el);
   };
 
   const limpar = s => (s || '').replace(/\s+/g, ' ').trim();
@@ -62,20 +74,34 @@
       }
       const t = limpar(el.getAttribute('placeholder')) || limpar(el.getAttribute('title'));
       if (t) return t;
-      // Sem rótulo ligado: o texto curto que vem logo antes do campo ("Assignee" acima da
-      // caixa). Sobe até três níveis procurando um irmão anterior com texto.
-      for (let a = el, nivel = 0; a && nivel < 3; a = a.parentElement, nivel++) {
-        for (let s = a.previousElementSibling; s; s = s.previousElementSibling) {
-          // Irmão que já tem campo é o grupo de outro campo: o rótulo dele não é deste.
-          if (s.matches('input,select,textarea') || s.querySelector('input,select,textarea')) break;
-          const txt = limpar(s.innerText);
-          if (txt && txt.length <= 40) return txt;
-          if (txt) break;
-        }
-      }
+      const r = rotuloAntes(el);
+      if (r) return r;
       if (limpar(el.getAttribute('name'))) return limpar(el.getAttribute('name'));
     }
     return limpar(el.innerText) || limpar(el.getAttribute('title')) || limpar(el.value);
+  };
+
+  // O texto curto que vem logo antes do campo ("Assignee" acima da caixa). Sobe até três níveis
+  // procurando um irmão anterior com texto; irmão que já tem campo é o grupo de OUTRO campo, e o
+  // rótulo dele não é deste.
+  const CAMPO = 'input,select,textarea,[role=combobox],[role=listbox],[aria-haspopup],[tabindex="0"]';
+  const rotuloAntes = el => {
+    for (let a = el, nivel = 0; a && nivel < 3; a = a.parentElement, nivel++) {
+      for (let s = a.previousElementSibling; s; s = s.previousElementSibling) {
+        if (s.matches(CAMPO) || s.querySelector(CAMPO)) return '';
+        const txt = limpar(s.innerText);
+        if (txt && txt.length <= 40) return txt;
+        if (txt) return '';
+      }
+    }
+    return '';
+  };
+
+  // Seletor mostra o VALOR ("Any date"), não o que ele é. Dois seletores com o mesmo valor
+  // ficavam iguais ("Created on" e "Completed on"): o rótulo de cima entra no nome.
+  const nomeDeSeletor = (el, t) => {
+    const r = rotuloAntes(el);
+    return r && r !== t ? `${r}: ${t}` : t;
   };
 
   // Invisível conta como escondido: display, visibility, opacidade, tamanho zero, ou texto da
@@ -137,7 +163,9 @@
 
     if (p) {
       emitirNo(el, p, prof, esconde);
-      if (INTERATIVO.has(p) && p !== 'lista') return; // o nome já leva o texto de dentro
+      // O nome já leva o texto de dentro. <select> e combobox de verdade seguem descendo; o
+      // seletor feito de div, não (o valor dele sairia de novo como texto solto).
+      if (INTERATIVO.has(p) && (p !== 'lista' || controleDeDiv(el))) return;
     }
 
     // Parágrafo com link ou negrito no meio: sai inteiro, senão a frase vira pedaços. Os links de
@@ -168,6 +196,7 @@
 
   const emitirNo = (el, p, prof, esconde) => {
     let t = curto(nome(el), 120);
+    if (p === 'lista' && el.tagName !== 'SELECT') t = curto(nomeDeSeletor(el, t), 120);
     if (p === 'caixa de texto' || p === 'busca') {
       const v = limpar(el.value);
       if (v) t += ` = "${curto(v, 60)}"`;

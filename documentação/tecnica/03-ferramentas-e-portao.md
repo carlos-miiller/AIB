@@ -520,7 +520,10 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
 - **Antes de ler, espera assentar**: rede calma (até 6 s) e animações finitas terminadas (até 2 s).
   No Bitrix a tarefa abre num painel que desliza, e lida no meio a vista vinha vazia.
 - **Campo sem rótulo** ganha o nome do texto curto logo antes dele ("Assignee"), sem atravessar
-  para o grupo de outro campo.
+  para o grupo de outro campo. **Controle feito de `div`** (focável, sem nada clicável dentro, texto
+  curto) vira `botão`, ou `lista` se parecer seletor (classe select/dropdown ou `aria-haspopup`); o
+  seletor mostra o VALOR, então o rótulo de cima entra no nome — no filtro do Bitrix, dois
+  "Any date" viraram `lista "Created on: Any date"` e `lista "Completed on: Any date"`.
 
 **O portão, por ação** (`PedeConfirmacao`):
 
