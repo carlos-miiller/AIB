@@ -262,7 +262,7 @@ public partial class ChatWindow : Window
     /// nova.
     /// </para>
     /// </summary>
-    public event Action<string>? PassoDoTurnoMudou;
+    public event Action<string, string?>? PassoDoTurnoMudou;
 
     /// <summary>
     /// Se o turno corrente (ou o último) foi pedido pela barra do orbe, e não digitado aqui.
@@ -633,7 +633,7 @@ public partial class ChatWindow : Window
             // O único passo do turno em que a máquina não está trabalhando: está esperando
             // uma pessoa. O orbe tem de dizer isso, e não continuar anunciando a ferramenta
             // que está parada no portão.
-            PassoDoTurnoMudou?.Invoke("Esperando você autorizar");
+            PassoDoTurnoMudou?.Invoke("Esperando você autorizar", contexto.Tool);
 
             MessagesPanel.Children.Add(novo);
             AtualizarEstadoVazio();
@@ -660,7 +660,7 @@ public partial class ChatWindow : Window
 
                 // Respondido, o turno volta ao trabalho — e o passo volta a ser a ferramenta
                 // que estava parada no portão, que é a que segue daqui.
-                PassoDoTurnoMudou?.Invoke(Ferramentas.Rotulo(contexto.Tool));
+                PassoDoTurnoMudou?.Invoke(Ferramentas.Rotulo(contexto.Tool), contexto.Tool);
 
                 // Decidido, o card SAI da conversa. Ele é uma pergunta, não uma mensagem: uma
                 // pergunta já respondida ocupando espaço permanente empurra o que veio depois
@@ -1079,7 +1079,7 @@ public partial class ChatWindow : Window
 
         // O primeiro passo. Em modelo de raciocínio o silêncio até a primeira palavra são
         // dezenas de segundos, e é justamente aí que o anel do orbe precisa já estar girando.
-        PassoDoTurnoMudou?.Invoke("Pensando");
+        PassoDoTurnoMudou?.Invoke("Pensando", null);
 
         // §3.11: quando o turno nasce de um e-mail, quem representa a fala do usuário é o
         // CARTÃO do e-mail, e não uma bolha. O texto que o modelo recebe é o mesmo; o que muda
@@ -1147,7 +1147,7 @@ public partial class ChatWindow : Window
 
                     // O MESMO rótulo do chip da cadeia. "read" é endereço; "Lendo arquivo" é
                     // notícia, e é o que quem olha o orbe de longe quer saber.
-                    PassoDoTurnoMudou?.Invoke(Ferramentas.Rotulo(iniciada.Tool));
+                    PassoDoTurnoMudou?.Invoke(Ferramentas.Rotulo(iniciada.Tool), iniciada.Tool);
                     continue;
                 }
 
@@ -1162,7 +1162,7 @@ public partial class ChatWindow : Window
 
                     // A ferramenta saiu de cena e o modelo volta a trabalhar. Sem esta volta, o
                     // orbe ficaria anunciando "Executando comando" pelo resto do turno.
-                    PassoDoTurnoMudou?.Invoke("Pensando");
+                    PassoDoTurnoMudou?.Invoke("Pensando", null);
                     continue;
                 }
 
@@ -1298,7 +1298,7 @@ public partial class ChatWindow : Window
             // O passo vazio ANTES do fim: quem escuta os dois eventos apaga o anel no primeiro
             // e decide o que dizer no segundo, e não o contrário — o anel parando depois da
             // fala aparecer deixaria o orbe um instante falando e trabalhando ao mesmo tempo.
-            PassoDoTurnoMudou?.Invoke("");
+            PassoDoTurnoMudou?.Invoke("", null);
 
             string textoDoTurno = (allText + fullText).Trim();
             TurnoConcluido?.Invoke(errorText ?? textoDoTurno);

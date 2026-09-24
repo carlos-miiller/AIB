@@ -303,6 +303,13 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   entra na pilha de falas (`Ui/FalaDoOrbe`); fechada, ela é enfileirada e o orbe pulsa.
 - **Pulso** (`Pulsar`): anel lilás, ou vermelho quando urgente. Não expira sozinho e não abre
   balão: o texto só aparece quando o usuário clica.
+- **Passo do turno** (`ChatWindow.PassoDoTurnoMudou` → `MostrarEstado(passo, ferramenta)`): o
+  anel gira enquanto o turno anda, e o rótulo do passo vai para o tooltip. Com uma ferramenta
+  rodando (ou esperando no cartão), o **ícone dela** (`ToolIcons`, o mesmo do chip da cadeia) entra
+  no lugar do ✦; pensando, volta o ✦. Um símbolo só na célula, por prioridade: caixa de entrada da
+  varredura, depois a ferramenta, depois o ✦ (`MostrarSimbolo`). Antes o orbe só girava o anel, e
+  com a janela oculta não dava para saber o que ela estava fazendo. O fim da varredura não apaga o
+  anel de um turno em curso.
 - **E-mail**: o vigia chama `ComecarAProcessarEmail` (ícone de caixa de entrada no lugar do ✦),
   `TerminarDeProcessarEmail` (frase do digest e itens) e `PararDeProcessarEmail`. A fala do digest
   leva até `TetoDeEmails` itens (`ShadowMailPreviewCount`); o excedente vira uma linha de texto.

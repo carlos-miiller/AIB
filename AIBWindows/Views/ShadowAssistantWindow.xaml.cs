@@ -442,7 +442,9 @@ public partial class ShadowAssistantWindow : Window
 
     /// <summary>Largura do que está ocupando a célula agora: o ícone de inbox ou o símbolo.</summary>
     private double LarguraDaCelula() =>
-        IconeDeInbox.Visibility == Visibility.Visible ? IconeDeInbox.Width : MedirGlyph(20);
+        IconeDeInbox.Visibility == Visibility.Visible ? IconeDeInbox.Width
+        : IconeDaAcao.Visibility == Visibility.Visible ? IconeDaAcao.Width
+        : MedirGlyph(20);
 
     private void AnimarMargemDaCelula(double para, TimeSpan duracao, EasingMode modo)
     {
@@ -487,9 +489,7 @@ public partial class ShadowAssistantWindow : Window
     public void ComecarAProcessarEmail()
     {
         ProcessandoEmail = true;
-        Glyph.Visibility = Visibility.Collapsed;
-        IconeDeInbox.Visibility = Visibility.Visible;
-        AjustarCelulaAoConteudo();
+        MostrarSimbolo();
         Casca.ToolTip = "Processando e-mails";
         ComecarATrabalhar();
     }
@@ -525,9 +525,16 @@ public partial class ShadowAssistantWindow : Window
     public void PararDeProcessarEmail()
     {
         ProcessandoEmail = false;
-        Glyph.Visibility = Visibility.Visible;
-        IconeDeInbox.Visibility = Visibility.Collapsed;
-        AjustarCelulaAoConteudo();
+        MostrarSimbolo();
+
+        // A varredura roda em paralelo com o turno: o fim dela não apaga o anel de um turno que
+        // continua. É o espelho do cuidado que o MostrarEstado já tinha com a varredura.
+        if (_passoAtual != null)
+        {
+            Casca.ToolTip = _passoAtual;
+            return;
+        }
+
         Casca.ToolTip = null;
         PararDeTrabalhar();
     }
@@ -665,10 +672,20 @@ public partial class ShadowAssistantWindow : Window
     /// como se nada estivesse acontecendo.
     /// </para>
     /// </summary>
-    public void MostrarEstado(string? passo)
+    /// <param name="ferramenta">
+    /// A ferramenta que está rodando (<see cref="Ferramentas"/>), ou null quando ela só pensa ou
+    /// espera. Com ferramenta, o ícone dela entra no lugar do glyph: antes o orbe só girava o
+    /// anel, e quem olhava de longe não sabia se ela lia um arquivo, rodava um comando ou
+    /// navegava — o texto do passo ficava escondido no tooltip.
+    /// </param>
+    public void MostrarEstado(string? passo, string? ferramenta = null)
     {
         if (string.IsNullOrWhiteSpace(passo))
         {
+            _passoAtual = null;
+            _ferramentaAtual = null;
+            MostrarSimbolo();
+
             // A varredura de e-mail tem o estado DELA — ícone de inbox e tooltip próprios — e
             // roda em paralelo com o turno. Deixar o fim de um turno apagar o anel dela é o
             // mesmo defeito que separou PararDeProcessarEmail de TerminarDeProcessarEmail: o
@@ -680,11 +697,40 @@ public partial class ShadowAssistantWindow : Window
             return;
         }
 
-        Casca.ToolTip = passo;
+        _passoAtual = passo;
+        _ferramentaAtual = string.IsNullOrWhiteSpace(ferramenta) ? null : ferramenta;
+        MostrarSimbolo();
+
+        // Durante a varredura o tooltip é dela; o do turno volta quando ela acabar.
+        if (!ProcessandoEmail) Casca.ToolTip = passo;
 
         // Só quando ainda não está girando: ComecarATrabalhar recomeça a animação do zero, e
         // religá-la a cada ferramenta faria o anel dar um salto visível a cada passo do turno.
         if (!Trabalhando) ComecarATrabalhar();
+    }
+
+    private string? _passoAtual;
+    private string? _ferramentaAtual;
+
+    /// <summary>A ferramenta cujo ícone o orbe mostra agora, ou null. Diagnóstico e ensaio.</summary>
+    public string? FerramentaMostrada =>
+        IconeDaAcao.Visibility == Visibility.Visible ? _ferramentaAtual : null;
+
+    /// <summary>
+    /// Um símbolo só na célula do glyph, por prioridade: a varredura de e-mail (inbox), depois a
+    /// ferramenta do turno (o ícone dela), e o glyph quando ela só pensa ou está parada.
+    /// </summary>
+    private void MostrarSimbolo()
+    {
+        bool inbox = ProcessandoEmail;
+        bool acao = !inbox && _ferramentaAtual != null;
+
+        if (acao) IconeDaAcao.Data = ToolIcons.De(_ferramentaAtual);
+
+        IconeDeInbox.Visibility = inbox ? Visibility.Visible : Visibility.Collapsed;
+        IconeDaAcao.Visibility = acao ? Visibility.Visible : Visibility.Collapsed;
+        Glyph.Visibility = inbox || acao ? Visibility.Collapsed : Visibility.Visible;
+        AjustarCelulaAoConteudo();
     }
 
     private void PararDeTrabalhar()

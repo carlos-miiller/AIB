@@ -467,6 +467,21 @@
                                   VerticalAlignment="Center"
                                   Visibility="Collapsed"/>
 
+                            <!-- No lugar do glyph enquanto uma ferramenta roda: o MESMO
+                                 desenho do chip da cadeia de ações (ToolIcons). Com a janela
+                                 oculta, é por aqui que se sabe o que ela está fazendo. -->
+                            <Path x:Name="IconeDaAcao"
+                                  Stroke="{StaticResource AccentLilacBrush}"
+                                  StrokeThickness="1.5"
+                                  StrokeLineJoin="Round"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Width="23" Height="23"
+                                  Stretch="Uniform"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Visibility="Collapsed"/>
+
                             <TextBlock x:Name="Glyph"
                                        Text="✦"
                                        FontSize="20"

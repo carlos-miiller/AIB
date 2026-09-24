@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Windows;
 using System.Windows.Controls;
 using AIB.Services;
 using AIB.Views;
@@ -132,6 +133,57 @@ namespace AIB.Tests
 
                 orbe.Trabalhando.Should().BeTrue("o turno não parou entre um passo e o outro");
                 casca.ToolTip.Should().Be("Executando comando");
+
+                orbe.Close();
+            });
+        }
+
+        [Fact]
+        public void AFerramenta_MOSTRA_OIconeDela_EPensarVoltaAoGlyph()
+        {
+            // Antes o orbe só girava o anel: com a janela oculta, não dava para saber se ela
+            // lia um arquivo, rodava um comando ou navegava.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var orbe = new ShadowAssistantWindow();
+                var glyph = (FrameworkElement)orbe.FindName("Glyph")!;
+
+                orbe.MostrarEstado("Navegando", Ferramentas.Navegador);
+                orbe.FerramentaMostrada.Should().Be(Ferramentas.Navegador);
+                glyph.Visibility.Should().Be(Visibility.Collapsed);
+
+                orbe.MostrarEstado("Pensando");
+                orbe.FerramentaMostrada.Should().BeNull("pensando não é ferramenta");
+                glyph.Visibility.Should().Be(Visibility.Visible);
+                orbe.Trabalhando.Should().BeTrue();
+
+                orbe.MostrarEstado("Executando comando", Ferramentas.Shell);
+                orbe.MostrarEstado("");
+                orbe.FerramentaMostrada.Should().BeNull();
+                glyph.Visibility.Should().Be(Visibility.Visible);
+
+                orbe.Close();
+            });
+        }
+
+        [Fact]
+        public void AVarreduraDeEmail_TEM_PRIORIDADE_ESeuFim_NaoApagaOTurno()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var orbe = new ShadowAssistantWindow();
+                var casca = (Border)orbe.FindName("Casca")!;
+
+                orbe.MostrarEstado("Lendo arquivo", Ferramentas.Ler);
+                orbe.ComecarAProcessarEmail();
+                orbe.FerramentaMostrada.Should().BeNull("durante a varredura o símbolo é o da caixa de entrada");
+
+                orbe.PararDeProcessarEmail();
+                orbe.Trabalhando.Should().BeTrue("o turno continua");
+                orbe.FerramentaMostrada.Should().Be(Ferramentas.Ler);
+                casca.ToolTip.Should().Be("Lendo arquivo");
 
                 orbe.Close();
             });

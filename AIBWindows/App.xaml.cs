@@ -163,7 +163,7 @@ public partial class App : System.Windows.Application
         // não fazia nada.
         void EscolheuEmail(MailSummary item) => conversa.AbrirEmailDoOrbe(item);
 
-        void Andou(string passo) => orbe.MostrarEstado(passo);
+        void Andou(string passo, string? ferramenta) => orbe.MostrarEstado(passo, ferramenta);
 
         void Concluiu(string texto)
         {
