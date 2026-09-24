@@ -1223,7 +1223,6 @@ public partial class ChatWindow : Window
                 string chunk = textItem.Value;
 
                 fullText += chunk;
-                GibberishVoiceService.SpeakChunk(chunk);
 
                 // Os três pontos, quando o modelo não raciocina — aí a primeira palavra é
                 // mesmo o primeiro sinal. Repõe também o indicador retirado pelos 3 segundos

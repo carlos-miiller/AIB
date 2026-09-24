@@ -260,7 +260,6 @@ public partial class App : System.Windows.Application
 
         try
         {
-            GibberishVoiceService.Initialize();
             DirectoryService.EnsureDirectories();
             _settingsService = new SettingsService();
 

@@ -117,7 +117,7 @@ O que aparece durante o turno:
 | Item do stream | Efeito na tela |
 |---|---|
 | `Thinking` | Mostra os três pontos (`AddTypingIndicator`). É o primeiro sinal real de que há token saindo. |
-| `Text` | Acumula em `fullText`; mostra os três pontos se ainda não estiverem; toca o som curto de `GibberishVoiceService.SpeakChunk`. |
+| `Text` | Acumula em `fullText`; mostra os três pontos se ainda não estiverem. |
 | `ToolStarted` / `ToolFinished` | Alimenta a `ToolChainView` e o registro de ações (`RegistrarAcao`). |
 | `SegmentBreak` | A IA terminou uma fala e vai usar ferramenta: a fala acumulada vira balão e a cadeia seguinte começa abaixo dela. |
 

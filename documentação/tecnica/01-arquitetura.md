@@ -25,13 +25,13 @@ Não há arquivo `.sln`: cada projeto é construído pelo seu `.csproj`.
 | `AIB.Tests` | `AIB.Tests/AIB.Tests.csproj` | Suíte xUnit + FluentAssertions (+ Moq). Referencia o projeto do app. Ver [08-testes-e-avaliacao.md](08-testes-e-avaliacao.md). |
 | `AIB.Avaliacao` | `AIB.Avaliacao/AIB.Avaliacao.csproj` | Console que mede o prompt contra o modelo de verdade, caso a caso, sem executar ferramentas. Ver [08-testes-e-avaliacao.md](08-testes-e-avaliacao.md). |
 
-Dependências relevantes do app: `Hardcodet.NotifyIcon.Wpf` (bandeja), `NHotkey.Wpf` (atalho global), `MailKit` (IMAP), `Markdig.Wpf` (Markdown nas bolhas), `Microsoft.ML.Tokenizers` com `O200kBase` (contagem de tokens), `NAudio` (a "voz" de balbucio do `GibberishVoiceService`), `System.Security.Cryptography.ProtectedData` (DPAPI) e `OpenAI`. Do pacote `OpenAI` o código usa só os **tipos** (`ChatMessage`, `ChatTool`, `ChatToolCall`); as requisições aos dois provedores são HTTP direto, feitas pelos providers do AIB.
+Dependências relevantes do app: `Hardcodet.NotifyIcon.Wpf` (bandeja), `NHotkey.Wpf` (atalho global), `MailKit` (IMAP), `Markdig.Wpf` (Markdown nas bolhas), `Microsoft.ML.Tokenizers` com `O200kBase` (contagem de tokens), `System.Security.Cryptography.ProtectedData` (DPAPI) e `OpenAI`. Do pacote `OpenAI` o código usa só os **tipos** (`ChatMessage`, `ChatTool`, `ChatToolCall`); as requisições aos dois provedores são HTTP direto, feitas pelos providers do AIB.
 
 ## Composition root: `App.xaml.cs`
 
 O AIB não usa container de injeção de dependência. Todos os serviços de vida longa são construídos **uma vez**, com `new`, em `App.OnStartup` (`AIBWindows/App.xaml.cs`), e passados pelo construtor a quem precisa. A ordem importa:
 
-1. `GibberishVoiceService.Initialize()` e `DirectoryService.EnsureDirectories()` — as pastas de `~/.AIB` existem antes de qualquer leitura.
+1. `DirectoryService.EnsureDirectories()` — as pastas de `~/.AIB` existem antes de qualquer leitura.
 2. `SettingsService` — nasce **depois** de `EnsureDirectories`, para enxergar o caminho certo das configurações.
 3. `RegistroDeExecucao.Iniciar` — o espelho do console em arquivo (opt-in) liga o mais cedo possível, porque o que se precisa depurar costuma acontecer no arranque.
 4. `DirectoryService.ApplyFromSettings` e `SettingsService.InvalidateCache` — se as configurações apontam outra pasta de dados, o cache antigo deixa de valer.
