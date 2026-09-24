@@ -96,7 +96,8 @@ namespace AIB.Tests
             public Task<LeituraDaPagina> LerAsync() { Acoes.Add("ler"); return Task.FromResult(Nova(Atual?.Url ?? "https://x/")); }
             public Task<LeituraDaPagina> ClicarAsync(string r) { Acoes.Add("clicar " + r); return Task.FromResult(Nova(Atual!.Url)); }
             public Task<LeituraDaPagina> DigitarAsync(string r, string t, bool e) { Acoes.Add($"digitar {r} {t} {e}"); return Task.FromResult(Nova(Atual!.Url)); }
-            public Task<LeituraDaPagina> RolarAsync(bool c) { Acoes.Add("rolar"); return Task.FromResult(Nova(Atual!.Url)); }
+            public bool Rola { get; set; } = true;
+            public Task<(LeituraDaPagina, bool)> RolarAsync(bool c, string? r) { Acoes.Add("rolar " + r); return Task.FromResult((Nova(Atual!.Url), Rola)); }
             public Task<LeituraDaPagina> VoltarAsync() { Acoes.Add("voltar"); return Task.FromResult(Nova(Atual?.Url ?? "https://x/")); }
 
             public void JaAberta(string url = "https://cpaps.bitrix24.com/workgroups/group/223/tasks/") => Nova(url);
@@ -338,6 +339,33 @@ namespace AIB.Tests
         {
             // Paga em toda requisição.
             Ferramenta().Description.Length.Should().BeLessThanOrEqualTo(380);
+        }
+
+        // ───────────────────────────────────────────── rolagem
+
+        [Fact]
+        public async Task RolagemQueNaoMexeu_Avisa_ERefRolaAAreaDoElemento()
+        {
+            // Visto no Bitrix: 40 scroll num quadro cujas colunas rolam sozinhas. Nada se mexia, e
+            // nada dizia isso ao modelo.
+            _nav.JaAberta();
+            _nav.Rola = false;
+            var tool = Ferramenta();
+
+            (await tool.ExecuteAsync(Args(new { action = "scroll" }), 2))
+                .Should().Contain("a rolagem não mexeu em nada").And.Contain("passe 'ref'");
+
+            _nav.Rola = true;
+            (await tool.ExecuteAsync(Args(new { action = "scroll", @ref = "e8" }), 2))
+                .Should().NotContain("não mexeu");
+            _nav.Acoes.Should().Contain("rolar s2e8");
+        }
+
+        [Fact]
+        public void RolarComRefQueNaoExiste_EhRecusado()
+        {
+            _nav.JaAberta();
+            Ferramenta().Validar(Args(new { action = "scroll", @ref = "e99" })).Should().Contain("não existe");
         }
 
         // ───────────────────────────────────────────── anotações

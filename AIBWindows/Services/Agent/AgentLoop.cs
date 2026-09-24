@@ -93,6 +93,9 @@ public sealed class AgentLoop
         // Leituras que já foram ao modelo NESTE turno. Ver GuardaDeReleitura.
         var jaLidas = new HashSet<string>(StringComparer.Ordinal);
 
+        // Quantas vezes cada chamada exata foi feita NESTE turno. Ver ContarRepeticao.
+        var repeticoes = new Dictionary<string, int>(StringComparer.Ordinal);
+
         for (int iteration = 1; iteration <= teto; iteration++)
         {
             ct.ThrowIfCancellationRequested();
@@ -287,7 +290,7 @@ public sealed class AgentLoop
                 // EXECUÇÃO PARALELA: dispara todas e espera o conjunto. Em CPU lenta, três
                 // leituras de arquivo independentes rodam concorrentes em vez de seriadas.
                 var results = await Task.WhenAll(
-                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel, pulso, jaFalharam)))
+                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel, pulso, jaFalharam, repeticoes)))
                     .ConfigureAwait(false);
 
                 // Resultados na ordem original, mesmo que tenham terminado fora de ordem.
@@ -529,9 +532,43 @@ public sealed class AgentLoop
         + "Não repita. Mude os argumentos, use outra ferramenta, ou explique ao usuário o que "
         + "está faltando.";
 
+    /// <summary>A partir de quantas chamadas idênticas no turno o resultado ganha aviso, e em quantas para.</summary>
+    public const int AvisoDeRepeticao = 4;
+    public const int TetoDeRepeticao = 8;
+
+    /// <summary>
+    /// Conta mais uma chamada exata e diz o que fazer com ela: seguir, seguir com aviso, ou parar.
+    /// <para>
+    /// O bloqueio de repetição só pegava a chamada que FALHOU. Visto no navegador: 40
+    /// <c>scroll</c> idênticos num quadro do Bitrix, cada um "dando certo" sem mexer em nada, com o
+    /// mesmo raciocínio palavra por palavra, até o usuário cancelar. Rolar quatro ou cinco vezes
+    /// para chegar ao fim de uma lista é legítimo, por isso o aviso vem antes e o teto é folgado.
+    /// </para>
+    /// </summary>
+    public static (bool Bloquear, string? Aviso) ContarRepeticao(Dictionary<string, int> contagem, string assinatura)
+    {
+        int vezes;
+        lock (contagem)
+        {
+            contagem.TryGetValue(assinatura, out vezes);
+            contagem[assinatura] = ++vezes;
+        }
+
+        if (vezes >= TetoDeRepeticao) return (true, null);
+        if (vezes >= AvisoDeRepeticao)
+            return (false, $"\n(aviso do AIB: esta é a {vezes}ª chamada idêntica neste turno. Se o resultado não está "
+                           + "mudando, mude de abordagem ou responda ao usuário com o que já tem; na "
+                           + $"{TetoDeRepeticao}ª ela é bloqueada.)");
+        return (false, null);
+    }
+
+    public static string RecadoDeTetoDeRepeticao(string ferramenta, int vezes) =>
+        $"ERRO: a mesma chamada a '{ferramenta}' já foi feita {vezes - 1} vezes neste turno, sem mudar de rumo. "
+        + "Nada foi executado. Pare e responda ao usuário com o que já sabe, ou peça orientação.";
+
     private async Task<(ToolCallAccumulator Tc, string Result, string? Decisao, long DuracaoMs, long EsperaMs)> ExecuteToolPairedAsync(
         ToolCallAccumulator tc, int userLevel, PulsoDoTurno pulso,
-        Dictionary<string, string> jaFalharam)
+        Dictionary<string, string> jaFalharam, Dictionary<string, int> repeticoes)
     {
         var relogio = System.Diagnostics.Stopwatch.StartNew();
         // REPETIÇÃO. Visto em produção: quatro chamadas idênticas a ler-planilha com o mesmo
@@ -549,6 +586,15 @@ public sealed class AgentLoop
             return (tc, RecadoDeRepeticao(tc.Name, antes), "repeticao_bloqueada", relogio.ElapsedMilliseconds, 0);
         }
 
+        var (bloquear, aviso) = ContarRepeticao(repeticoes, assinatura);
+        if (bloquear)
+        {
+            Console.WriteLine($"[REGISTRY] {tc.Name}: teto de repetição no turno.");
+            string recado = RecadoDeTetoDeRepeticao(tc.Name, TetoDeRepeticao);
+            jaFalharam[assinatura] = Resumir(recado);
+            return (tc, recado, "repeticao_bloqueada", relogio.ElapsedMilliseconds, 0);
+        }
+
         string? decisao = null;
         long esperaMs = 0;
 
@@ -561,6 +607,7 @@ public sealed class AgentLoop
             .ConfigureAwait(false);
 
         if (Memory.ArtifactExtractor.Falhou(result)) jaFalharam[assinatura] = Resumir(result);
+        else if (aviso != null) result += aviso;
 
         return (tc, result, decisao, relogio.ElapsedMilliseconds, esperaMs);
     }

@@ -67,7 +67,7 @@ public sealed class BrowserTool : ITool
             "properties": {
                 "action": { "type": "string", "enum": ["open", "view", "find", "table", "click", "type", "scroll", "back", "note"] },
                 "url": { "type": "string", "description": "open: endereço completo (https://...)." },
-                "ref": { "type": "string", "description": "click/type: a ref da vista (ex.: s3e40). table: número da tabela." },
+                "ref": { "type": "string", "description": "click/type: a ref da vista (ex.: s3e40). scroll: rola a área desse elemento (uma coluna, uma lista). table: número da tabela." },
                 "text": { "type": "string", "description": "find: o que procurar. type: o que digitar. note: a anotação." },
                 "enter": { "type": "boolean", "description": "type: apertar Enter depois (buscar, filtrar)." },
                 "up": { "type": "boolean", "description": "scroll: true rola para cima." },
@@ -155,7 +155,7 @@ public sealed class BrowserTool : ITool
 
         if (p.Acao == "note") return _notas.Conferir(_navegador.Atual!.Url, p.DoSite, p.Texto);
 
-        if (p.Acao is "click" or "type")
+        if (p.Acao is "click" or "type" || (p.Acao == "scroll" && p.Ref.Length > 0))
         {
             var (no, recusaRef) = _navegador.Atual!.Resolver(p.Ref);
             if (no == null) return recusaRef;
@@ -341,7 +341,16 @@ public sealed class BrowserTool : ITool
                 }
 
                 case "scroll":
-                    return EntregarVista(await _navegador.RolarAsync(p.Cima));
+                {
+                    string? alvo = p.Ref.Length > 0 ? _navegador.Atual!.Resolver(p.Ref).No!.Ref : null;
+                    var (lida, moveu) = await _navegador.RolarAsync(p.Cima, alvo);
+                    string vista = EntregarVista(lida);
+                    // Dizer que nada se mexeu é o que tira o modelo do laço: sem isto ele rolou
+                    // 40 vezes um quadro do Bitrix que não rolava.
+                    return moveu ? vista : vista + "\n(a rolagem não mexeu em nada: fim da área, ou ela não rola "
+                        + (alvo == null ? "a partir do centro da tela. Para rolar uma coluna ou lista, passe 'ref' de um item dela"
+                                        : "a partir desse elemento") + ". Não repita; use table, find ou view all=true.)";
+                }
 
                 case "back":
                     return EntregarVista(await _navegador.VoltarAsync());

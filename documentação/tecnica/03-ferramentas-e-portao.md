@@ -517,6 +517,10 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
   20 achados, 80 linhas.
 - **Ref antiga é recusada.** Depois de qualquer leitura nova, `s2e40` não vale mais; a forma curta
   `e40` vale para a atual.
+- **`scroll`** põe o mouse sobre o elemento da `ref` (uma coluna, uma lista) ou no centro da tela e
+  gira a roda; compara a rolagem de tudo antes e depois e, se nada mexeu, diz isso e aponta a saída.
+  Antes a roda girava no canto (0,0): num quadro do Bitrix, onde cada coluna rola sozinha, nada se
+  mexia, e o modelo rolou 40 vezes.
 - **Antes de ler, espera assentar**: rede calma (até 6 s) e animações finitas terminadas (até 2 s).
   No Bitrix a tarefa abre num painel que desliza, e lida no meio a vista vinha vazia.
 - **Campo sem rótulo** ganha o nome do texto curto logo antes dele ("Assignee"), sem atravessar
@@ -595,6 +599,12 @@ no dicionário que as outras chamadas estão lendo. Falha aqui não vira erro da
 ---
 
 ## 10. O que acontece com o resultado (`AgentLoop`)
+
+**Repetição no turno** (`AgentLoop.ContarRepeticao`): a chamada que falhou já era bloqueada ao ser
+repetida (`RecadoDeRepeticao`). A que "dá certo" sem mudar nada também trava: a partir da 4ª
+chamada idêntica no turno (`AvisoDeRepeticao`) o resultado ganha um aviso, e a 8ª
+(`TetoDeRepeticao`) é bloqueada sem executar. Visto no navegador: 40 `scroll` idênticos, com o mesmo
+raciocínio palavra por palavra, até o usuário cancelar.
 
 - As chamadas de um turno rodam **em paralelo** (`Task.WhenAll`); os resultados voltam na ordem
   original.

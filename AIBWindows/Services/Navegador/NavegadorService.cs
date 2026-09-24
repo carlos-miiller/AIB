@@ -22,7 +22,8 @@ public interface INavegador
     Task<LeituraDaPagina> LerAsync();
     Task<LeituraDaPagina> ClicarAsync(string refCompleta);
     Task<LeituraDaPagina> DigitarAsync(string refCompleta, string texto, bool enter);
-    Task<LeituraDaPagina> RolarAsync(bool paraCima);
+    /// <summary>Rola a área do elemento (ou a página, a partir do centro) e diz se algo se mexeu.</summary>
+    Task<(LeituraDaPagina Leitura, bool Moveu)> RolarAsync(bool paraCima, string? refCompleta);
     Task<LeituraDaPagina> VoltarAsync();
 }
 
@@ -133,13 +134,47 @@ public sealed class NavegadorService : INavegador, IAsyncDisposable
         return await LerInternoAsync(await PaginaAsync());
     });
 
-    public Task<LeituraDaPagina> RolarAsync(bool paraCima) => NaVez(async () =>
+    /// <summary>
+    /// A roda do mouse gira onde o mouse ESTÁ. Antes ele ficava no canto (0,0), e num quadro do
+    /// Bitrix, onde cada coluna rola sozinha, nada se mexia — e o modelo rolou 40 vezes. Agora o
+    /// mouse vai para cima do elemento (a coluna) ou para o centro da tela, e a posição de rolagem
+    /// de tudo é comparada antes e depois: quem pediu fica sabendo se algo mudou.
+    /// </summary>
+    public Task<(LeituraDaPagina Leitura, bool Moveu)> RolarAsync(bool paraCima, string? refCompleta) => NaVez(async () =>
     {
         var page = await PaginaAsync();
+        double antes = await PosicaoDeRolagemAsync(page);
+
+        if (!string.IsNullOrEmpty(refCompleta))
+            await Localizar(refCompleta).HoverAsync(new() { Timeout = 8000 });
+        else
+        {
+            var tela = await page.EvaluateAsync<double[]>("() => [innerWidth, innerHeight]");
+            await page.Mouse.MoveAsync((float)(tela[0] / 2), (float)(tela[1] / 2));
+        }
+
         await page.Mouse.WheelAsync(0, paraCima ? -600 : 600);
-        await Task.Delay(400);
-        return await LerInternoAsync(page);
+        await Task.Delay(500);
+        bool moveu = Math.Abs(await PosicaoDeRolagemAsync(page) - antes) > 0.5;
+        return (await LerInternoAsync(page), moveu);
     });
+
+    // Uma assinatura da rolagem de tudo (janela e cada área que rola), em todos os quadros.
+    private static async Task<double> PosicaoDeRolagemAsync(IPage page)
+    {
+        double soma = 0;
+        foreach (var f in page.Frames)
+        {
+            try
+            {
+                soma += await f.EvaluateAsync<double>(
+                    "() => { const d = document.scrollingElement || document.documentElement; let s = d.scrollTop * 3 + d.scrollLeft * 7; "
+                    + "for (const e of document.querySelectorAll('*')) if (e.scrollTop || e.scrollLeft) s += e.scrollTop * 3 + e.scrollLeft * 7; return s; }");
+            }
+            catch { }
+        }
+        return soma;
+    }
 
     public Task<LeituraDaPagina> VoltarAsync() => NaVez(async () =>
     {
