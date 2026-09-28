@@ -108,6 +108,23 @@ public partial class ShadowAssistantWindow : Window
     public static bool DeveAparecer(bool ligado, bool conversaNaTela) => ligado && !conversaNaTela;
 
     /// <summary>
+    /// Onde a casca do orbe está na tela, em DIPs, ou null se ele não está visível. É a âncora
+    /// das janelas de pergunta (ver <see cref="PertoDoOrbe"/>). A casca, e não a janela: a
+    /// janela é bem maior que o orbe, por causa da sombra, do pulso e dos balões.
+    /// </summary>
+    public Rect? RetanguloDoOrbe()
+    {
+        if (!IsVisible || Casca.ActualWidth <= 0) return null;
+
+        var fonte = PresentationSource.FromVisual(Casca);
+        if (fonte?.CompositionTarget is null) return null;
+
+        var paraDip = fonte.CompositionTarget.TransformFromDevice;
+        var canto = paraDip.Transform(Casca.PointToScreen(new System.Windows.Point(0, 0)));
+        return new Rect(canto, new System.Windows.Size(Casca.ActualWidth, Casca.ActualHeight));
+    }
+
+    /// <summary>
     /// Se o orbe deve REPETIR a resposta de um turno, ou só mostrar o estado dele.
     /// <para>
     /// O orbe é a janela do que a AIB está fazendo, e não um segundo lugar onde ela fala. Com a

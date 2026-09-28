@@ -622,7 +622,7 @@ public partial class ChatWindow : Window
     /// </summary>
     public async Task<(bool, bool)> PerguntarConfirmacaoAsync(CommandConfirmationContext contexto)
     {
-        var card = await Dispatcher.InvokeAsync(() =>
+        var (card, janelaDoOrbe) = await Dispatcher.InvokeAsync(() =>
         {
             var novo = new ConfirmCardView { Margin = new Thickness(0, 0, 0, 14) };
             novo.Preencher(contexto);
@@ -634,6 +634,16 @@ public partial class ChatWindow : Window
             // uma pessoa. O orbe tem de dizer isso, e não continuar anunciando a ferramenta
             // que está parada no portão.
             PassoDoTurnoMudou?.Invoke("Esperando você autorizar", contexto.Tool);
+
+            // No modo orbe — conversa fora da tela, orbe visível — a pergunta aparece numa
+            // janela pequena logo acima dele. Abrir a conversa inteira para mostrar um card
+            // tomava a tela de quem só pediu uma coisa rápida ao orbe.
+            if (DeveUsarJanelaDoOrbe(IsVisible, PertoDoOrbe.Ativo))
+            {
+                var janela = new ConfirmacaoDoOrbeWindow(novo);
+                janela.Show();
+                return (novo, (ConfirmacaoDoOrbeWindow?)janela);
+            }
 
             MessagesPanel.Children.Add(novo);
             AtualizarEstadoVazio();
@@ -647,7 +657,7 @@ public partial class ChatWindow : Window
                 Activate();
             }
 
-            return novo;
+            return (novo, (ConfirmacaoDoOrbeWindow?)null);
         });
 
         using (ModalGuard.Enter())
@@ -670,6 +680,12 @@ public partial class ChatWindow : Window
                 // Nada se perde: o que foi autorizado vira ícone na cadeia de ações, e o
                 // histórico de ações do painel guarda a linha inteira, com o comando exato no
                 // tooltip. Uma recusa vira ícone vermelho, com o mesmo registro.
+                if (janelaDoOrbe is not null)
+                {
+                    janelaDoOrbe.Close();
+                    return;
+                }
+
                 MessagesPanel.Children.Remove(card);
                 AtualizarEstadoVazio();
             });
@@ -677,6 +693,14 @@ public partial class ChatWindow : Window
             return resposta;
         }
     }
+
+    /// <summary>
+    /// Se a confirmação vai para a janela do orbe em vez de para a conversa: só quando a
+    /// conversa está fora da tela e há orbe onde ancorar. Com o orbe desligado, abrir a
+    /// conversa continua sendo o único lugar onde perguntar.
+    /// </summary>
+    public static bool DeveUsarJanelaDoOrbe(bool conversaNaTela, bool orbeNaTela) =>
+        !conversaNaTela && orbeNaTela;
 
     /// <summary>
     /// Descarta uma confirmação pendente, devolvendo recusa a quem espera.

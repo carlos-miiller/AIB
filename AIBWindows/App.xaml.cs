@@ -293,6 +293,10 @@ public partial class App : System.Windows.Application
 
             // Prompt de senha dos comandos do shell (ssh, scp, git): abre a janela do AIB, e o
             // que o usuário digita vai direto para o programa, sem passar pelo modelo.
+            // As janelas de pergunta (confirmação, senha) aparecem logo acima do orbe quando ele
+            // está na tela. Lido na hora: o orbe é recriado quando a chave é religada.
+            PertoDoOrbe.Ancora = () => _orbe?.RetanguloDoOrbe();
+
             Services.Terminal.AskpassServidor.Padrao = new Services.Terminal.AskpassServidor(
                 pedido => Dispatcher.InvokeAsync(() => SenhaDoTerminalDialog.Perguntar(pedido)).Task);
             _toolRegistry = new ToolRegistry(_confirmationPrompt, _settingsService);

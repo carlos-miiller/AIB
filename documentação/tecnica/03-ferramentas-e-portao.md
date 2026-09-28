@@ -219,6 +219,12 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
 - `ChatConfirmationPrompt` implementa `IConfirmationPrompt`. A `ChatWindow` se conecta com
   `Conectar(PerguntarConfirmacaoAsync)` quando nasce (em `App.xaml.cs`); antes disso, ou se
   desconectada, a resposta é recusa.
+- **No modo orbe** (conversa fora da tela, orbe visível — `ChatWindow.DeveUsarJanelaDoOrbe`), o
+  MESMO `ConfirmCardView` vai para uma `ConfirmacaoDoOrbeWindow` logo acima do orbe, em vez de
+  abrir a conversa. Fechar a janela ou Esc é recusa. A posição vem de `PertoDoOrbe` (centrada na
+  casca do orbe, `ShadowAssistantWindow.RetanguloDoOrbe`; sem espaço acima, abaixo; sempre dentro
+  da área de trabalho), que também posiciona a janela de senha do terminal. Sem orbe, as duas
+  ficam como antes: card na conversa, senha no centro da tela.
 - A interface existe para o `ToolRegistry` não depender de WPF e o portão poder ser testado. A antiga
   janela modal foi **removida**, não abandonada: uma segunda porta de confirmação sem chamador parece
   proteção e não é.
