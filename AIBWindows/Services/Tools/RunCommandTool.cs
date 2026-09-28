@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using AIB.Services.Terminal;
 using OpenAI.Chat;
 
 namespace AIB.Services.Tools;
@@ -25,8 +26,9 @@ public class RunCommandTool : ITool
     public string Description =>
         "Executa um comando no PowerShell do usuário (não é Bash). Use para docker, git, rede, "
         + "processos, instalação e scripts. NÃO use para arquivo: ler, listar, procurar e gravar "
-        + "têm ferramenta própria, e 'write' já cria a pasta que falta. Nada de comando que "
-        + $"pergunte algo. Teto de {Prazo.TotalSeconds:0} s.";
+        + "têm ferramenta própria, e 'write' já cria a pasta que falta. Nada interativo; "
+        + "senha de ssh/git o usuário digita à parte (não peça no chat). "
+        + $"Teto de {Prazo.TotalSeconds:0} s.";
 
     public int RequiredLevel => 2;
 
@@ -74,6 +76,22 @@ public class RunCommandTool : ITool
     /// </summary>
     public static readonly TimeSpan Prazo = TimeSpan.FromSeconds(30);
 
+    private readonly Func<AskpassServidor?> _askpass;
+
+    /// <param name="askpass">Onde os prompts de senha vão parar. Por padrão, o do app; null
+    /// nos ensaios, e aí o comando roda como antes, sem ter onde perguntar.</param>
+    public RunCommandTool(Func<AskpassServidor?>? askpass = null)
+    {
+        _askpass = askpass ?? (() => AskpassServidor.Padrao);
+    }
+
+    /// <summary>
+    /// Se o comando passou do teto. O tempo em que ele esperou o usuário numa janela de senha
+    /// não conta.
+    /// </summary>
+    public static bool Estourou(TimeSpan decorrido, TimeSpan comUsuario) =>
+        decorrido - comUsuario > Prazo;
+
     /// <summary>
     /// A pasta onde o comando roda, dita no schema. A instrução antiga era "use 'pwd' ou
     /// Get-Location se precisar saber o diretório atual" — um turno inteiro gasto para
@@ -88,7 +106,7 @@ public class RunCommandTool : ITool
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "O comando PowerShell exato. Roda em {{EmJson(Environment.CurrentDirectory)}} e não pode pedir nada ao usuário."
+                    "description": "O comando PowerShell exato. Roda em {{EmJson(Environment.CurrentDirectory)}}, sem entrada interativa (senha de ssh/git o usuário digita à parte)."
                 }
             },
             "required": ["command"]
@@ -433,6 +451,12 @@ public class RunCommandTool : ITool
                 WorkingDirectory = Environment.CurrentDirectory
             };
 
+            // ssh, scp e git que pedirem senha perguntam ao usuário numa janela do AIB (ver
+            // AskpassServidor). O token vale só enquanto este comando roda.
+            var askpass = _askpass();
+            using var sessao = askpass?.AbrirSessao(command);
+            if (askpass is not null && sessao is not null) askpass.Preparar(startInfo, sessao);
+
             using var process = new Process { StartInfo = startInfo };
             process.Start();
 
@@ -445,15 +469,20 @@ public class RunCommandTool : ITool
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
 
-            using var timeoutCts = new CancellationTokenSource(Prazo);
+            // O teto conta o tempo do COMANDO: o que ele passou esperando o usuário digitar a
+            // senha não entra. Uma pessoa procurando a senha não é um comando travado.
+            var relogio = Stopwatch.StartNew();
+            var saiu = process.WaitForExitAsync();
             bool timedOut = false;
-            try
+            while (!saiu.IsCompleted)
             {
-                await process.WaitForExitAsync(timeoutCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                timedOut = true;
+                await Task.WhenAny(saiu, Task.Delay(200));
+                if (!saiu.IsCompleted
+                    && Estourou(relogio.Elapsed, sessao?.TempoComUsuario ?? TimeSpan.Zero))
+                {
+                    timedOut = true;
+                    break;
+                }
             }
 
             if (timedOut)

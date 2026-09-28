@@ -301,9 +301,31 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
   uma falha ali derrubaria todo comando), e `StandardOutputEncoding`/`StandardErrorEncoding` leem
   UTF-8. Sem isso, 56 linhas do histórico voltaram com `Diret�rio` e `conclu��do` — texto que vai
   para o contexto do modelo, para a memória e para a tela, e que reenviado como caminho não existe.
+- **Senha de ssh/scp/git: askpass** (`Services/Terminal/`). Com a entrada fechada o `ssh` não
+  teria onde pedir senha. Cada comando abre uma `AskpassServidor.Sessao` (token aleatório, válido
+  só enquanto o comando roda) e ganha no ambiente `SSH_ASKPASS` e `GIT_ASKPASS` = o próprio
+  AIB.exe, `SSH_ASKPASS_REQUIRE=force`, `AIB_ASKPASS_PIPE` e `AIB_ASKPASS_TOKEN`. O ssh chama o
+  AIB.exe com o prompt; o `App.OnStartup` reconhece o modo (`AskpassCliente.EstaNoModoAskpass`),
+  não sobe o app, leva o prompt pelo pipe nomeado (`CurrentUserOnly`) à instância que rodou o
+  comando e escreve a resposta na saída padrão, que o ssh lê. Na instância, a
+  `SenhaDoTerminalDialog` pergunta ao usuário:
+  - **A senha não passa pelo modelo, pelo histórico nem pelo disco**: vai da janela para o pipe e
+    do pipe para o ssh.
+  - Tipos (`Classificar`): senha (sem eco), texto (`Username for…` do git) e sim/não (fingerprint
+    de host novo; o foco nasce no "Recusar", e recusar responde `no`).
+  - **Quem pede**: o servidor pega o PID do askpass pelo pipe (`GetNamedPipeClientProcessId`) e o
+    executável do PAI dele. Só é confiável se mora em `System32\OpenSSH`, `Program Files\OpenSSH`
+    ou `Program Files\Git` (pastas de administrador). Fora disso a janela avisa que o digitado pode
+    voltar para a IA — o modelo pode rodar o AIB.exe direto com um prompt falso.
+  - **"Lembrar até fechar o AIB"**: só senha, só de solicitante confiável, na RAM, pela chave do
+    prompt exato (que traz `usuário@host`: a senha de um servidor nunca vai para outro). Se o mesmo
+    prompt volta no mesmo comando, a lembrada estava errada: é esquecida e a janela abre.
+  - Uma janela de cada vez (`SemaphoreSlim`).
+  - Não cobre sessão interativa nem `sudo` remoto: é para `ssh usuario@host "comando"`.
 - **Timeout de 30 s** (`RunCommandTool.Prazo`, o mesmo número na descrição e na mensagem);
   estourou, mata a árvore inteira (`Kill(entireProcessTree: true)`) e devolve um `ERRO` que diz
-  que o comando pode ter mudado algo antes de morrer e qual escopo reduzir.
+  que o comando pode ter mudado algo antes de morrer e qual escopo reduzir. O tempo que o comando
+  passou esperando o usuário na janela de senha não conta (`Estourou`, `Sessao.TempoComUsuario`).
 - **`Validar`**: `command` ausente, vazio ou JSON ilegível é recusado no pré-voo, com `ERRO`.
 - Diretório de trabalho: `Environment.CurrentDirectory`.
 - `Montar(stdout, stderr, codigo)` decide sucesso ou falha, com a falha na **primeira palavra**:

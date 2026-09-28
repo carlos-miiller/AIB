@@ -256,6 +256,15 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Chamado pelo ssh/git como askpass (ver AskpassServidor): não é o app subindo, é um
+        // mensageiro que leva o prompt à instância que rodou o comando e devolve a resposta.
+        // Antes de tudo — nada de diretório, registro ou janela para ele.
+        if (Services.Terminal.AskpassCliente.EstaNoModoAskpass(e.Args))
+        {
+            Environment.Exit(Services.Terminal.AskpassCliente.Rodar(e.Args));
+            return;
+        }
+
         base.OnStartup(e);
 
         try
@@ -281,6 +290,11 @@ public partial class App : System.Windows.Application
             // janela modal. Quem apresenta é a ChatWindow, que se conecta logo abaixo; até lá
             // — e se ela morrer — o prompt recusa por padrão.
             _confirmationPrompt = new ChatConfirmationPrompt();
+
+            // Prompt de senha dos comandos do shell (ssh, scp, git): abre a janela do AIB, e o
+            // que o usuário digita vai direto para o programa, sem passar pelo modelo.
+            Services.Terminal.AskpassServidor.Padrao = new Services.Terminal.AskpassServidor(
+                pedido => Dispatcher.InvokeAsync(() => SenhaDoTerminalDialog.Perguntar(pedido)).Task);
             _toolRegistry = new ToolRegistry(_confirmationPrompt, _settingsService);
             _tokenCounter = new TokenCounter();
             _healer = new RegexToolCallHealer();
@@ -505,6 +519,9 @@ public partial class App : System.Windows.Application
         // O Edge do navegador é filho do AIB: fecha junto. Com prazo, para o app não travar ao
         // sair se o Edge não responder.
         try { Services.Navegador.NavegadorService.Padrao.DisposeAsync().AsTask().Wait(3000); } catch { }
+
+        // Senhas lembradas "até fechar o AIB" morrem aqui.
+        Services.Terminal.AskpassServidor.Padrao?.Dispose();
 
         base.OnExit(e);
     }
