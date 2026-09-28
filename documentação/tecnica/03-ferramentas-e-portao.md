@@ -322,6 +322,9 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
     prompt volta no mesmo comando, a lembrada estava errada: é esquecida e a janela abre.
   - Uma janela de cada vez (`SemaphoreSlim`).
   - Não cobre sessão interativa nem `sudo` remoto: é para `ssh usuario@host "comando"`.
+  - **`BatchMode=yes` é recusado no pré-voo** (`Validar`, `RecadoDeBatchMode`): ele impede o ssh
+    de perguntar, inclusive pelo askpass. O modelo punha em toda chamada "para não travar", a janela
+    nunca abria e ele repetia o comando.
 - **Timeout de 30 s** (`RunCommandTool.Prazo`, o mesmo número na descrição e na mensagem);
   estourou, mata a árvore inteira (`Kill(entireProcessTree: true)`) e devolve um `ERRO` que diz
   que o comando pode ter mudado algo antes de morrer e qual escopo reduzir. O tempo que o comando

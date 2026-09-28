@@ -257,6 +257,31 @@ namespace AIB.Tests
             RunCommandTool.Estourou(prazo + TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(62)).Should().BeFalse();
         }
 
+        // ── BatchMode ───────────────────────────────────────────────────────
+
+        [Theory]
+        [InlineData("ssh -o BatchMode=yes -o ConnectTimeout=10 cpaps-adm@172.16.10.13 \"hostname\"")]
+        [InlineData("ssh -o batchmode=YES x@y uptime")]
+        [InlineData("ssh -o \"BatchMode yes\" x@y uptime")]
+        [InlineData("$env:GIT_SSH_COMMAND='ssh -o BatchMode=yes'; git pull")]
+        public void BatchMode_EhRecusadoNoPreVoo(string comando)
+        {
+            // Caso real: o modelo pôs BatchMode=yes em toda chamada, o ssh falhava sem perguntar,
+            // e a janela de senha nunca abria.
+            string args = System.Text.Json.JsonSerializer.Serialize(new { command = comando });
+            ((AIB.Services.ITool)new RunCommandTool()).Validar(args)
+                .Should().Be(RunCommandTool.RecadoDeBatchMode);
+        }
+
+        [Theory]
+        [InlineData("ssh -o ConnectTimeout=10 cpaps-adm@172.16.10.13 \"hostname\"")]
+        [InlineData("ssh -o BatchMode=no x@y uptime")]
+        public void SemBatchMode_Passa(string comando)
+        {
+            string args = System.Text.Json.JsonSerializer.Serialize(new { command = comando });
+            ((AIB.Services.ITool)new RunCommandTool()).Validar(args).Should().BeNull();
+        }
+
         // ── O ambiente e o pipe ─────────────────────────────────────────────
 
         [Fact]

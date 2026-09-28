@@ -149,8 +149,26 @@ public class RunCommandTool : ITool
             || string.IsNullOrWhiteSpace(cmd.GetString()))
             return "ERRO: o parâmetro 'command' é obrigatório e não pode estar vazio.";
 
+        if (BatchMode.IsMatch(cmd.GetString()!))
+            return RecadoDeBatchMode;
+
         return null;
     }
+
+    /// <summary>
+    /// <c>-o BatchMode=yes</c> proíbe o ssh de perguntar — inclusive pelo askpass. O modelo põe
+    /// por hábito, "para não travar", e foi exatamente o que cegou a janela de senha: o ssh
+    /// falhava sem perguntar e o modelo repetia o mesmo comando. Aqui não trava: a pergunta vai
+    /// para o usuário. Com chave que funciona, sem a opção, o ssh também não pergunta nada.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex BatchMode = new(
+        @"BatchMode\s*[=\s]\s*[""']?yes",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    public const string RecadoDeBatchMode =
+        "ERRO: tire o '-o BatchMode=yes'. Ele impede o ssh de pedir a senha, e aqui o pedido não "
+        + "trava: abre uma janela para o usuário digitar (você não vê). Com chave, o ssh entra "
+        + "sem perguntar. Rode o mesmo comando sem a opção.";
 
     /// <summary>
     /// Converte o bloco CLIXML do stderr em texto legivel, preservando o que houver de erro.
