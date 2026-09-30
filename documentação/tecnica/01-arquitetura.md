@@ -77,7 +77,7 @@ Outras decisões que moram no `App`:
 | `Views/` | As janelas e controles: `ChatWindow` (+ `ChatWindow.Email.cs`, o modo e-mail), `SidePanelWindow`, `ToolChainView`, `ConfirmCardView`, `ConfirmDialog`, `SettingsWindow`, `FirstRunWindow`, `ShadowAssistantWindow`, `MailListItem`. |
 | `Ui/` | Peças de interface sem regra de negócio: conversores, ícones desenhados (`ToolIcons`, `FileTypeIcons`), `MarkdownPipelines`, `ShrinkWrap`, `FlowDocumentMeasure`, `PincelDoTema`. |
 | `Themes/` | `Tokens.xaml` (cores, tamanhos, fontes) e `Controls.xaml` (estilos), que já mescla os tokens. `App.xaml` carrega só o `Controls.xaml`. |
-| `character/` | Os personagens que acompanham a instalação (`Ayano`, `Kai`, `Ren`, `Sora`), cada um com `SOUL.MD` e `info.json`. É a cópia de fábrica; a verdade fica em `~/.AIB/character`. Ver [07-configuracoes-e-dados.md](07-configuracoes-e-dados.md). |
+| `character/` | Os personagens que acompanham a instalação (`Ayano`, `Ellen`, `Kai`, `Sora`), cada um com `SOUL.MD` e `info.json`. É a cópia de fábrica; a verdade fica em `~/.AIB/character`. Ver [07-configuracoes-e-dados.md](07-configuracoes-e-dados.md). |
 
 Alguns arquivos em `Services/` são esqueletos sem comportamento, mantidos porque têm chamadores na interface: `MemoryService`, `OcrService`, `ShadowHistoryService`, `VoiceService`, `ShadowAssistantService`, `ReminderService` (este diz no comentário que quem for implementar lembretes começa apagando-o). `Views/ContextSidebar` está marcado como painel antigo, sem chamador.
 

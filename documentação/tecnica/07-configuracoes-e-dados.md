@@ -224,7 +224,7 @@ Cada personagem é uma pasta `character/<Nome>/` com:
 - `SOUL.MD` — a persona, em texto. O marcador `{{usuario}}` é trocado pelo nome de usuário do Windows ao carregar.
 - `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`).
 
-Os de fábrica estão em `AIBWindows/character/` (`Ayano`, `Kai`, `Ren`, `Sora`). O ativo é `UserAppSettings.ActiveCharacter` (padrão `Ayano`).
+Os de fábrica estão em `AIBWindows/character/` (`Ayano`, `Ellen`, `Kai`, `Sora`). O ativo é `UserAppSettings.ActiveCharacter` (padrão `Ayano`).
 
 De onde são lidos:
 
