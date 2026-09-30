@@ -107,11 +107,17 @@ namespace AIB.Tests
                 "ControlColumnWidth"   // O6: coluna de 210px
             };
 
-            string tokens = File.ReadAllText(
-                Path.Combine(RaizDoProjeto(), "AIBWindows", "Themes", "Tokens.xaml"));
+            // Cores num arquivo por tema, o resto no Tokens.xaml: toda chave obrigatória tem de
+            // existir em CADA tema (somado ao Tokens.xaml).
+            string temas = Path.Combine(RaizDoProjeto(), "AIBWindows", "Themes");
+            string formas = File.ReadAllText(Path.Combine(temas, "Tokens.xaml"));
 
-            foreach (string chave in obrigatorias)
-                tokens.Should().Contain($"x:Key=\"{chave}\"", $"a spec exige o token {chave}");
+            foreach (string arquivo in Directory.GetFiles(temas, "Cores.*.xaml"))
+            {
+                string tokens = formas + File.ReadAllText(arquivo);
+                foreach (string chave in obrigatorias)
+                    tokens.Should().Contain($"x:Key=\"{chave}\"", $"a spec exige o token {chave} ({Path.GetFileName(arquivo)})");
+            }
         }
 
         [Fact]
@@ -120,17 +126,21 @@ namespace AIB.Tests
             // §1 `neon`: roxo 0.00, azul 0.35, magenta 0.65, laranja 1.00. A ordem é
             // obrigatória (chat O2 / configurações O3) e já foi escrita errada antes, com
             // 0.33/0.66, na SettingsWindow.
-            string tokens = File.ReadAllText(
-                Path.Combine(RaizDoProjeto(), "AIBWindows", "Themes", "Tokens.xaml"));
+            // A moldura neon é a marca: igual nos dois temas.
+            foreach (string arquivo in Directory.GetFiles(
+                         Path.Combine(RaizDoProjeto(), "AIBWindows", "Themes"), "Cores.*.xaml"))
+            {
+                string tokens = File.ReadAllText(arquivo);
 
-            int inicio = tokens.IndexOf("x:Key=\"NeonBrush\"", StringComparison.Ordinal);
-            inicio.Should().BeGreaterThan(-1);
-            string bloco = tokens[inicio..tokens.IndexOf("</LinearGradientBrush>", inicio, StringComparison.Ordinal)];
+                int inicio = tokens.IndexOf("x:Key=\"NeonBrush\"", StringComparison.Ordinal);
+                inicio.Should().BeGreaterThan(-1);
+                string bloco = tokens[inicio..tokens.IndexOf("</LinearGradientBrush>", inicio, StringComparison.Ordinal)];
 
-            bloco.Should().Contain("#9B51E0").And.Contain("Offset=\"0.00\"");
-            bloco.Should().Contain("#3182CE").And.Contain("Offset=\"0.35\"");
-            bloco.Should().Contain("#D53F8C").And.Contain("Offset=\"0.65\"");
-            bloco.Should().Contain("#E28743").And.Contain("Offset=\"1.00\"");
+                bloco.Should().Contain("#9B51E0").And.Contain("Offset=\"0.00\"");
+                bloco.Should().Contain("#3182CE").And.Contain("Offset=\"0.35\"");
+                bloco.Should().Contain("#D53F8C").And.Contain("Offset=\"0.65\"");
+                bloco.Should().Contain("#E28743").And.Contain("Offset=\"1.00\"");
+            }
         }
     }
 }

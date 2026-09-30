@@ -391,10 +391,29 @@ envolve a chamada em `ModalGuard.Enter()`.
 
 ## Tema: tokens e estilos
 
-`App.xaml` mescla só `Themes/Controls.xaml`, que por sua vez mescla `Themes/Tokens.xaml`. Listar os
-dois no `App.xaml` criaria dois conjuntos de pincéis para as mesmas chaves.
+Há dois temas, **Escuro** (o original, o das specs) e **Claro**, mais a opção "Seguir o Windows"
+(`HKCU\…\Themes\Personalize\AppsUseLightTheme`). A escolha é `UserAppSettings.Tema`, na página
+Identidade das configurações, e **vale a partir do próximo arranque**: os recursos são
+`StaticResource`, resolvidos quando cada tela nasce. Trocar ao vivo exigiria converter centenas de
+referências e toda bolha desenhada por código, para uma escolha que se faz uma vez.
 
-**`Themes/Tokens.xaml`** é a conversão mecânica do `§1` das specs. Grupos:
+As cores moram num arquivo por tema, com as **mesmas chaves**: `Themes/Cores.Escuro.xaml` e
+`Themes/Cores.Claro.xaml`. O `App.xaml` nasce vazio; `App.OnStartup`, logo depois de ler as
+configurações e antes de qualquer janela, chama `Ui/Tema.Carregar`, que mescla o arquivo de cores
+do tema e, DEPOIS, `Themes/Controls.xaml` (que mescla `Themes/Tokens.xaml`, com o que não muda com o
+tema: raios, fontes, medidas). A ordem é o que faz os estilos acharem as cores. O orbe segue o tema
+como as outras janelas — mesclar as cores escuras só nele não funciona, porque os estilos do
+`Controls.xaml` resolvem as cores contra o App. `TemasTests` cobra as mesmas chaves nos dois
+arquivos e monta as janelas no claro; com `AIB_UI_TEMA=Claro` e `AIB_UI_PNG=1` a suíte salva as
+telas no claro.
+
+O claro é derivado do escuro: as camadas **brancas** translúcidas sobre o vidro escuro viram
+**pretas** translúcidas sobre o vidro claro, os textos escurecem, e lilás, verde, vermelho, azul e
+ouro usados como texto ficam um tom abaixo para ter contraste. Os degradês (`NeonBrush`, a marca;
+`PrimaryBrush`, a bolha do usuário com texto branco) e o vermelho de ação destrutiva são iguais nos
+dois.
+
+**`Themes/Cores.Escuro.xaml` + `Themes/Tokens.xaml`** são a conversão mecânica do `§1` das specs. Grupos:
 
 | Grupo | Exemplos |
 |---|---|
@@ -420,7 +439,7 @@ numérico ali estoura em tempo de execução, não de compilação.
 
 ### A regra: token, não hex
 
-Nenhuma cor literal nos arquivos de View. Antes de `Tokens.xaml`, `#9B51E0` estava escrito 27 vezes
+Nenhuma cor literal nos arquivos de View — além de sair de sincronia, ela não muda com o tema. Antes dos tokens, `#9B51E0` estava escrito 27 vezes
 em 6 XAMLs. Em XAML use `{StaticResource Chave}`. Em código, use `FindResource("Chave")` quando há
 elemento à mão, ou `Ui/PincelDoTema.De(chave, hexDeReserva)` em conversores e elementos montados
 fora do XAML. O hex passado a `PincelDoTema` é só reserva (ensaio sem `App`, outra thread,

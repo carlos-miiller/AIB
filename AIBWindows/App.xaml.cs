@@ -279,6 +279,11 @@ public partial class App : System.Windows.Application
             Exit += (_, _) => _registro?.Dispose();
 
             var settings = _settingsService.LoadSettings();
+
+            // O tema antes de qualquer janela: as cores são StaticResource, resolvidas quando
+            // cada tela é criada. Trocar o tema vale no próximo arranque.
+            AIB.Ui.Tema.Carregar(Resources, AIB.Ui.Tema.Efetivo(settings.Tema, AIB.Ui.Tema.WindowsUsaClaro()));
+
             DirectoryService.ApplyFromSettings(settings);
             // ApplyFromSettings pode ter movido o diretório de dados: o cache aponta para o caminho antigo.
             _settingsService.InvalidateCache();

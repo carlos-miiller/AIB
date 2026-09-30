@@ -104,13 +104,11 @@ namespace AIB.Tests
             var app = Application.Current;
             if (app == null) return;
 
+            // Como o App: as cores do tema e depois os estilos. O escuro é o original; AIB_UI_TEMA=Claro
+            // monta a suíte no claro, para conferir as telas com AIB_UI_PNG=1.
             if (app.Resources.MergedDictionaries.Count == 0)
-            {
-                app.Resources.MergedDictionaries.Add(new ResourceDictionary
-                {
-                    Source = new Uri("pack://application:,,,/AIB;component/Themes/Controls.xaml")
-                });
-            }
+                AIB.Ui.Tema.Carregar(app.Resources,
+                    AIB.Ui.Tema.Efetivo(Environment.GetEnvironmentVariable("AIB_UI_TEMA"), null));
         }
     }
 }

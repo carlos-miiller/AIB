@@ -155,6 +155,12 @@ public sealed class UserAppSettings
     public bool ShadowAssistantEnabled { get; set; } = false;
 
     /// <summary>
+    /// Tema de cores: "Escuro" (o original), "Claro" ou "Sistema" (segue o modo dos aplicativos
+    /// do Windows). Vale a partir do próximo arranque. Ver <see cref="AIB.Ui.Tema"/>.
+    /// </summary>
+    public string Tema { get; set; } = AIB.Ui.Tema.Escuro;
+
+    /// <summary>
     /// Se o orbe pode ler e triar a caixa de entrada.
     /// <para>
     /// Opt-in pelo mesmo motivo que o orbe: ninguém ganha um programa lendo o próprio e-mail

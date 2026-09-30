@@ -1914,7 +1914,7 @@ public partial class ChatWindow : Window
         if (!enabled && _isShadowModeEnabled)
         {
             _isShadowModeEnabled = false;
-            BtnToggleShadow.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#888899"));
+            BtnToggleShadow.Foreground = AIB.Ui.PincelDoTema.De("TextSecondaryBrush", "#FF8B8794");
             ManageShadowState();
         }
     }
@@ -2432,14 +2432,14 @@ public partial class ChatWindow : Window
             if (result == MessageBoxResult.Yes)
             {
                 _isShadowModeEnabled = true;
-                BtnToggleShadow.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#9B51E0"));
+                BtnToggleShadow.Foreground = AIB.Ui.PincelDoTema.De("AccentLilacBrush", "#FFC79EF0");
                 ManageShadowState();
             }
         }
         else
         {
             _isShadowModeEnabled = false;
-            BtnToggleShadow.Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#888899"));
+            BtnToggleShadow.Foreground = AIB.Ui.PincelDoTema.De("TextSecondaryBrush", "#FF8B8794");
             ManageShadowState();
         }
     }

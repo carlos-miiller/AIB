@@ -187,7 +187,7 @@
         <Style x:Key="AddAccountButton" TargetType="Button">
             <Setter Property="Height" Value="36"/>
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="#CBC8D1"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBodyBrush}"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -196,7 +196,7 @@
                             <Border x:Name="Fundo" Background="Transparent" CornerRadius="10"/>
                             <Rectangle x:Name="Tracejado"
                                        RadiusX="10" RadiusY="10"
-                                       Stroke="#2EFFFFFF"
+                                       Stroke="{StaticResource BorderOutlineBtnBrush}"
                                        StrokeThickness="1"
                                        StrokeDashArray="3 2"/>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -530,19 +530,38 @@
                             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled">
                                 <StackPanel Margin="40,0,24,20">
-                                    <!-- CAMPO 1 — último da página: sem divisória. -->
+                                    <!-- CAMPO 1 -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Personagem Ativo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="A Inteligência escolhida na tela de seleção."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="CharacterComboBox" Grid.Column="1"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- CAMPO 2 — último da página: sem divisória. -->
                                     <Grid Margin="0,13">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
-                                            <TextBlock Text="Personagem Ativo" Style="{StaticResource FieldLabelText}"/>
-                                            <TextBlock Text="A Inteligência escolhida na tela de seleção."
-                                                       Style="{StaticResource FieldHelpText}"/>
+                                            <TextBlock Text="Tema" Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock Text="Claro, escuro ou o mesmo do Windows. Vale ao reabrir o AIB."
+                                                       Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"/>
                                         </StackPanel>
-                                        <ComboBox x:Name="CharacterComboBox" Grid.Column="1"
+                                        <ComboBox x:Name="TemaComboBox" Grid.Column="1"
                                                   Style="{StaticResource ControlComboBox}"
+                                                  DisplayMemberPath="Rotulo" SelectedValuePath="Valor"
                                                   SelectionChanged="Campo_Mudou"/>
                                     </Grid>
 
@@ -949,7 +968,7 @@
                                                                         Visibility="{Binding IsPrimary, Converter={StaticResource VisibilidadeDoSelo}}">
                                                                     <TextBlock Text="PRINCIPAL"
                                                                                FontSize="9.5" FontWeight="SemiBold"
-                                                                               Foreground="#C79EF0"
+                                                                               Foreground="{StaticResource AccentLilacBrush}"
                                                                                ui:LetterSpacing.Em="0.08"/>
                                                                 </Border>
                                                             </StackPanel>

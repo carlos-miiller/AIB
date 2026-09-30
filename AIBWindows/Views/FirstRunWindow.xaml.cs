@@ -19,9 +19,11 @@ public class ValueToStarForegroundConverter : IValueConverter
     {
         if (value is int statValue && parameter is string starIndexStr && int.TryParse(starIndexStr, out int starIndex))
         {
-            // If stat >= starIndex, filled gold, else empty color (depends on selected state if we wanted, but let's just use gold vs gray)
-            return statValue >= starIndex ? new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#e8b84b")) 
-                                          : new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#3a3640"));
+            // Estrela cheia em ouro, vazia no tom de contorno — os dois do tema: o cinza escuro
+            // fixo de antes sumia sobre o fundo claro.
+            return statValue >= starIndex
+                ? AIB.Ui.PincelDoTema.De("GoldBrush", "#FFE8B84B")
+                : AIB.Ui.PincelDoTema.De("BorderOutlineBtnBrush", "#2EFFFFFF");
         }
         return new SolidColorBrush(Colors.Transparent);
     }

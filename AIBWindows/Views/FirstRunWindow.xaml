@@ -18,32 +18,25 @@
     <Window.Resources>
         <local:ValueToStarForegroundConverter x:Key="StarColorConverter"/>
         
-        <SolidColorBrush x:Key="FlyoutBg" Color="#EE121214" />
-        <SolidColorBrush x:Key="SystemBorder" Color="#3FFFFFFF" />
-        <SolidColorBrush x:Key="SystemText" Color="#F2F2F5" />
-        <SolidColorBrush x:Key="InputBg" Color="#15FFFFFF" />
-
-        <LinearGradientBrush x:Key="AiAccent" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#9B51E0" Offset="0"/>
-            <GradientStop Color="#3182CE" Offset="1"/>
-        </LinearGradientBrush>
+        <!-- Cores só dos tokens (Themes/Cores.*.xaml): esta tela segue o tema como as outras.
+             Antes ela tinha cópias locais dos hex, e no tema claro o texto branco sumia. -->
 
         <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource SystemText}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Margin" Value="0,12,0,4"/>
         </Style>
 
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="{StaticResource InputBg}"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#2A2A30"/>
+            <Setter Property="Background" Value="{StaticResource SurfaceControlBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderControlBrush}"/>
             <Setter Property="Padding" Value="8"/>
             <Setter Property="FontSize" Value="13"/>
         </Style>
 
         <Style TargetType="ComboBox">
-            <Setter Property="Background" Value="{StaticResource InputBg}"/>
+            <Setter Property="Background" Value="{StaticResource SurfaceControlBrush}"/>
             <Setter Property="Padding" Value="5"/>
         </Style>
     </Window.Resources>
@@ -51,25 +44,17 @@
     <!-- Floating panel filling the window with margin for drop shadow -->
     <Grid Margin="40">
         <!-- Floating shadow (Separated to prevent text blur) -->
-        <Border CornerRadius="24" Background="Black">
+        <Border CornerRadius="24" Background="{StaticResource SurfaceInputBarBrush}">
             <Border.Effect>
                 <DropShadowEffect BlurRadius="60" ShadowDepth="25" Direction="270" Color="Black" Opacity="0.55"/>
             </Border.Effect>
         </Border>
 
         <!-- Outer panel: Neon gradient border (NO EFFECTS) -->
-        <Border CornerRadius="24" Padding="1.5">
-            <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Color="#9B51E0" Offset="0"/>
-                    <GradientStop Color="#3182CE" Offset="0.35"/>
-                    <GradientStop Color="#D53F8C" Offset="0.65"/>
-                    <GradientStop Color="#E28743" Offset="1"/>
-                </LinearGradientBrush>
-            </Border.Background>
+        <Border CornerRadius="24" Padding="1.5" Background="{StaticResource NeonBrush}">
 
             <!-- Inner panel: Smoked glass solid fill -->
-            <Border CornerRadius="22.5" Background="#E6121216">
+            <Border CornerRadius="22.5" Background="{StaticResource GlassBrush}">
                 <Grid Margin="40,40,40,28">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>    <!-- Content Area -->
@@ -79,14 +64,14 @@
                     <!-- Passo 1: Boas Vindas -->
                     <Grid x:Name="Step1_Welcome" Visibility="Collapsed">
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock Text="Boas-vindas" FontSize="36" FontWeight="Bold" Margin="0,0,0,20" Foreground="White" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Boas-vindas" FontSize="36" FontWeight="Bold" Margin="0,0,0,20" Foreground="{StaticResource TextStrongBrush}" HorizontalAlignment="Center"/>
                             
-                            <TextBlock Text="Este é o seu novo assistente virtual inteligente." FontSize="16" Foreground="White" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,15"/>
+                            <TextBlock Text="Este é o seu novo assistente virtual inteligente." FontSize="16" Foreground="{StaticResource TextStrongBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,15"/>
                             
                             <TextBlock Text="Ele é capaz de ler e modificar documentos, executar comandos no terminal e automatizar tarefas do seu dia a dia diretamente no seu computador." 
                                        FontSize="14" Opacity="0.8" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,30" MaxWidth="500"/>
                                        
-                            <Border Background="#2A1B15" BorderBrush="#D27519" BorderThickness="1" CornerRadius="8" Padding="15" MaxWidth="450" HorizontalAlignment="Center">
+                            <Border Background="{StaticResource WarnFill10Brush}" BorderBrush="{StaticResource WarnBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="15" MaxWidth="450" HorizontalAlignment="Center">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
@@ -94,7 +79,7 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="⚠️" FontSize="20" Margin="0,0,10,0" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Column="1" Text="Esta ferramenta está em fase Beta. Ela tem autonomia para executar ações na sua máquina, portanto revise cuidadosamente os planos antes de aprovar comandos sensíveis." 
-                                               FontSize="13" Foreground="#E28743" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                               FontSize="13" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/>
                                 </Grid>
                             </Border>
                         </StackPanel>
@@ -104,8 +89,8 @@
                     <Grid x:Name="Step2_Profile" Visibility="Visible">
                         <StackPanel>
                             <StackPanel HorizontalAlignment="Center" Margin="0,0,0,24">
-                                <TextBlock Text="Escolha sua Inteligência" FontSize="26" FontWeight="Bold" Foreground="#F5F4F7" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                                <TextBlock Text="Selecione o agente que vai te acompanhar" FontSize="13" Foreground="#8B8794" HorizontalAlignment="Center" Margin="0"/>
+                                <TextBlock Text="Escolha sua Inteligência" FontSize="26" FontWeight="Bold" Foreground="{StaticResource TextStrongBrush}" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                <TextBlock Text="Selecione o agente que vai te acompanhar" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" Margin="0"/>
                             </StackPanel>
                             
                             <!-- Agents Carousel -->
@@ -130,7 +115,7 @@
                                                                 <Thumb>
                                                                     <Thumb.Template>
                                                                         <ControlTemplate TargetType="Thumb">
-                                                                            <Border Background="#26FFFFFF" CornerRadius="3" />
+                                                                            <Border Background="{StaticResource ScrollThumbBrush}" CornerRadius="3" />
                                                                         </ControlTemplate>
                                                                     </Thumb.Template>
                                                                 </Thumb>
@@ -157,7 +142,7 @@
                                                 <ControlTemplate TargetType="ListBoxItem">
                                                     <Grid Width="320" MinHeight="500">
                                                         <!-- Shadow Caster (Separated) -->
-                                                        <Border x:Name="ShadowBd" CornerRadius="18" Background="#1B1618">
+                                                        <Border x:Name="ShadowBd" CornerRadius="18" Background="{StaticResource SurfaceInputBarBrush}">
                                                             <Border.Effect>
                                                                 <DropShadowEffect BlurRadius="8" ShadowDepth="2" Direction="270" Color="Black" Opacity="0.20"/>
                                                             </Border.Effect>
@@ -165,23 +150,16 @@
                                                         <!-- Content Border -->
                                                         <Border x:Name="Bd" 
                                                                 CornerRadius="18" Padding="28,26" 
-                                                                Background="#0FE51212" 
-                                                                BorderBrush="#14FFFFFF" BorderThickness="1">
+                                                                Background="{StaticResource SurfaceCardBrush}" 
+                                                                BorderBrush="{StaticResource BorderCardBrush}" BorderThickness="1">
                                                             <ContentPresenter />
                                                         </Border>
                                                     </Grid>
                                                     <ControlTemplate.Triggers>
                                                         <Trigger Property="IsSelected" Value="True">
                                                             <!-- Background = linear-gradient(135deg, rgba(155,81,224,0.16), rgba(49,130,206,0.09)) -->
-                                                            <Setter TargetName="Bd" Property="Background">
-                                                                <Setter.Value>
-                                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                                        <GradientStop Color="#289B51E0" Offset="0"/>
-                                                                        <GradientStop Color="#163182CE" Offset="1"/>
-                                                                    </LinearGradientBrush>
-                                                                </Setter.Value>
-                                                            </Setter>
-                                                            <Setter TargetName="Bd" Property="BorderBrush" Value="#8C9B51E0"/>
+                                                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentFill14Brush}"/>
+                                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentFocusBrush}"/>
                                                             <Setter TargetName="ShadowBd" Property="Effect">
                                                                 <Setter.Value>
                                                                     <DropShadowEffect BlurRadius="20" ShadowDepth="6" Direction="270" Color="#9B51E0" Opacity="0.20"/>
@@ -204,22 +182,22 @@
                                             </Grid.RowDefinitions>
 
                                             <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,16">
-                                                <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" Foreground="#F5F4F7" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                                                <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource TextStrongBrush}" HorizontalAlignment="Center" Margin="0,0,0,6"/>
                                                 
-                                                <Border Background="#239B51E0" BorderBrush="#4C9B51E0" BorderThickness="1" CornerRadius="20" Padding="12,4" HorizontalAlignment="Center">
-                                                    <TextBlock Text="{Binding Personality}" FontSize="12" FontWeight="SemiBold" Foreground="#C79EF0" Margin="0"/>
+                                                <Border Background="{StaticResource AccentFill14Brush}" BorderBrush="{StaticResource AccentBorderBrush}" BorderThickness="1" CornerRadius="20" Padding="12,4" HorizontalAlignment="Center">
+                                                    <TextBlock Text="{Binding Personality}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource AccentLilacBrush}" Margin="0"/>
                                                 </Border>
                                             </StackPanel>
 
                                             <StackPanel Grid.Row="1" VerticalAlignment="Top">
-                                                <TextBlock x:Name="DescText" Text="{Binding Description}" FontSize="14" Foreground="#8B8794" TextWrapping="Wrap" LineHeight="21" Margin="0,0,0,12"/>
-                                                <TextBlock x:Name="SpeechText" Text="{Binding SampleSpeech}" FontSize="14" FontStyle="Italic" Foreground="#8B8794" TextWrapping="Wrap" LineHeight="21" Margin="0,0,0,18"/>
+                                                <TextBlock x:Name="DescText" Text="{Binding Description}" FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" LineHeight="21" Margin="0,0,0,12"/>
+                                                <TextBlock x:Name="SpeechText" Text="{Binding SampleSpeech}" FontSize="14" FontStyle="Italic" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" LineHeight="21" Margin="0,0,0,18"/>
                                             </StackPanel>
 
-                                            <Border Grid.Row="2" VerticalAlignment="Bottom" BorderBrush="#0FFFFFFF" BorderThickness="0,1,0,0" Padding="0,16,0,0">
+                                            <Border Grid.Row="2" VerticalAlignment="Bottom" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="0,16,0,0">
                                                 <StackPanel>
                                                     <Grid Margin="0,0,0,8">
-                                                        <TextBlock x:Name="StatL1" Text="Assertividade" FontSize="13" Foreground="#8B8794" VerticalAlignment="Center" Margin="0"/>
+                                                        <TextBlock x:Name="StatL1" Text="Assertividade" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0"/>
                                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                                             <TextBlock Text="★" FontSize="20" Foreground="{Binding Stats.Assertiveness, Converter={StaticResource StarColorConverter}, ConverterParameter=1}" Margin="0,-2,3,0"/>
                                                             <TextBlock Text="★" FontSize="20" Foreground="{Binding Stats.Assertiveness, Converter={StaticResource StarColorConverter}, ConverterParameter=2}" Margin="0,-2,3,0"/>
@@ -229,7 +207,7 @@
                                                         </StackPanel>
                                                     </Grid>
                                                     <Grid Margin="0,0,0,8">
-                                                        <TextBlock x:Name="StatL2" Text="Utilidade" FontSize="13" Foreground="#8B8794" VerticalAlignment="Center" Margin="0"/>
+                                                        <TextBlock x:Name="StatL2" Text="Utilidade" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0"/>
                                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                                             <TextBlock Text="★" FontSize="20" Foreground="{Binding Stats.Usefulness, Converter={StaticResource StarColorConverter}, ConverterParameter=1}" Margin="0,-2,3,0"/>
                                                             <TextBlock Text="★" FontSize="20" Foreground="{Binding Stats.Usefulness, Converter={StaticResource StarColorConverter}, ConverterParameter=2}" Margin="0,-2,3,0"/>
@@ -239,7 +217,7 @@
                                                         </StackPanel>
                                                     </Grid>
                                                     <Grid>
-                                                        <TextBlock x:Name="StatL3" Text="Humanidade" FontSize="13" Foreground="#8B8794" VerticalAlignment="Center" Margin="0"/>
+                                                        <TextBlock x:Name="StatL3" Text="Humanidade" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0"/>
                                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                                             <TextBlock Text="★" FontSize="20" Foreground="{Binding Stats.Humanity, Converter={StaticResource StarColorConverter}, ConverterParameter=1}" Margin="0,-2,3,0"/>
                                                             <TextBlock Text="★" FontSize="20" Foreground="{Binding Stats.Humanity, Converter={StaticResource StarColorConverter}, ConverterParameter=2}" Margin="0,-2,3,0"/>
@@ -253,11 +231,11 @@
                                         </Grid>
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
-                                                <Setter TargetName="DescText" Property="Foreground" Value="#CBC8D1"/>
-                                                <Setter TargetName="SpeechText" Property="Foreground" Value="#CBC8D1"/>
-                                                <Setter TargetName="StatL1" Property="Foreground" Value="#CBC8D1"/>
-                                                <Setter TargetName="StatL2" Property="Foreground" Value="#CBC8D1"/>
-                                                <Setter TargetName="StatL3" Property="Foreground" Value="#CBC8D1"/>
+                                                <Setter TargetName="DescText" Property="Foreground" Value="{StaticResource TextBodyBrush}"/>
+                                                <Setter TargetName="SpeechText" Property="Foreground" Value="{StaticResource TextBodyBrush}"/>
+                                                <Setter TargetName="StatL1" Property="Foreground" Value="{StaticResource TextBodyBrush}"/>
+                                                <Setter TargetName="StatL2" Property="Foreground" Value="{StaticResource TextBodyBrush}"/>
+                                                <Setter TargetName="StatL3" Property="Foreground" Value="{StaticResource TextBodyBrush}"/>
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>
@@ -275,23 +253,23 @@
                         </Grid.RowDefinitions>
 
                         <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,25">
-                            <TextBlock Text="Motor de Inteligência" FontSize="28" FontWeight="Bold" Margin="0,0,0,10" Foreground="#F5F4F7" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Escolha o provedor que dará inteligência ao seu agente." FontSize="15" Margin="0" Foreground="#8B8794" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+                            <TextBlock Text="Motor de Inteligência" FontSize="28" FontWeight="Bold" Margin="0,0,0,10" Foreground="{StaticResource TextStrongBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Escolha o provedor que dará inteligência ao seu agente." FontSize="15" Margin="0" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
                         </StackPanel>
 
                         <!-- Provider picker -->
                         <StackPanel Grid.Row="1" Margin="20,0,20,15">
                             <RadioButton x:Name="OllamaRadio" GroupName="ProviderGroup" IsChecked="True" Margin="0,0,0,20" Checked="OllamaRadio_Checked">
                                 <StackPanel Margin="10,-4,0,0">
-                                    <TextBlock Text="Ollama (Local)" FontSize="16" FontWeight="SemiBold" Foreground="#F5F4F7" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Roda os modelos na sua própria máquina. Total privacidade, sem custos por requisição." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Ollama (Local)" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextStrongBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Roda os modelos na sua própria máquina. Total privacidade, sem custos por requisição." Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </RadioButton>
                             
                             <RadioButton x:Name="OpenRouterRadio" GroupName="ProviderGroup" Margin="0,0,0,0" Checked="OpenRouterRadio_Checked">
                                 <StackPanel Margin="10,-4,0,0">
-                                    <TextBlock Text="OpenRouter (Nuvem)" FontSize="16" FontWeight="SemiBold" Foreground="#F5F4F7" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Acesso aos modelos de nuvem por uma API só. Requer sua chave do OpenRouter, e cada requisição é cobrada — o conteúdo da conversa sai desta máquina." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
+                                    <TextBlock Text="OpenRouter (Nuvem)" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextStrongBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Acesso aos modelos de nuvem por uma API só. Requer sua chave do OpenRouter, e cada requisição é cobrada — o conteúdo da conversa sai desta máquina." Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </RadioButton>
                         </StackPanel>
@@ -300,37 +278,37 @@
                         <Grid Grid.Row="2" Margin="20,5,20,10">
                             <!-- Ollama branch -->
                             <StackPanel x:Name="OllamaBranch" Visibility="Visible">
-                                <Border Background="#06FFFFFF" CornerRadius="8" Padding="20" BorderBrush="#1AFFFFFF" BorderThickness="1">
+                                <Border Background="{StaticResource SurfaceCardBrush}" CornerRadius="8" Padding="20" BorderBrush="{StaticResource BorderControlBrush}" BorderThickness="1">
                                     <StackPanel>
-                                        <TextBlock Text="Modelo de Linguagem" FontWeight="SemiBold" FontSize="14" Foreground="#F5F4F7" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Modelo de Linguagem" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TextStrongBrush}" Margin="0,0,0,8"/>
                                         <ComboBox x:Name="ModelComboBox" Height="42" FontSize="14" VerticalContentAlignment="Center" SelectionChanged="ModelComboBox_SelectionChanged"/>
                                         <ProgressBar x:Name="LoadingProgress" IsIndeterminate="True" Height="2" VerticalAlignment="Bottom" Margin="0,2,0,0"/>
 
                                         <StackPanel x:Name="OllamaErrorBlock" Visibility="Collapsed" Margin="0,15,0,0">
-                                            <TextBlock Text="Ollama não foi detectado em localhost:11434" Foreground="#D53F8C" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,4"/>
-                                            <TextBlock Text="Certifique-se de que o Ollama está rodando no seu computador." Foreground="#8B8794" FontSize="13" Margin="0,0,0,10"/>
-                                            <Button x:Name="RetryButton" Content="Tentar novamente" Click="RetryButton_Click" Width="140" Height="36" HorizontalAlignment="Left" Background="#06FFFFFF" Foreground="#F5F4F7" BorderThickness="1" BorderBrush="#1AFFFFFF" Cursor="Hand" Margin="0,0,0,10"/>
+                                            <TextBlock Text="Ollama não foi detectado em localhost:11434" Foreground="{StaticResource MagentaBrush}" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,4"/>
+                                            <TextBlock Text="Certifique-se de que o Ollama está rodando no seu computador." Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" Margin="0,0,0,10"/>
+                                            <Button x:Name="RetryButton" Content="Tentar novamente" Click="RetryButton_Click" Width="140" Height="36" HorizontalAlignment="Left" Background="{StaticResource SurfaceCardBrush}" Foreground="{StaticResource TextStrongBrush}" BorderThickness="1" BorderBrush="{StaticResource BorderControlBrush}" Cursor="Hand" Margin="0,0,0,10"/>
                                             <TextBlock Margin="0,0,0,4" FontSize="13">
-                                                <Hyperlink x:Name="FallbackLink" Foreground="#3182CE" NavigateUri="aib:fallback-model" RequestNavigate="FallbackLink_RequestNavigate">Pular e usar configuração padrão</Hyperlink>
+                                                <Hyperlink x:Name="FallbackLink" Foreground="{StaticResource AccentBlueBrush}" NavigateUri="aib:fallback-model" RequestNavigate="FallbackLink_RequestNavigate">Pular e usar configuração padrão</Hyperlink>
                                             </TextBlock>
                                         </StackPanel>
 
-                                        <TextBlock x:Name="FallbackModelDisplay" Text="Modelo padrão (qwen2.5:7b) selecionado temporariamente." Visibility="Collapsed" Foreground="#3182CE" Margin="0,10,0,0"/>
+                                        <TextBlock x:Name="FallbackModelDisplay" Text="Modelo padrão (qwen2.5:7b) selecionado temporariamente." Visibility="Collapsed" Foreground="{StaticResource AccentBlueBrush}" Margin="0,10,0,0"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
 
                             <!-- Ramo do OpenRouter -->
                             <StackPanel x:Name="OpenRouterBranch" Visibility="Collapsed">
-                                <Border Background="#06FFFFFF" CornerRadius="8" Padding="20" BorderBrush="#1AFFFFFF" BorderThickness="1">
+                                <Border Background="{StaticResource SurfaceCardBrush}" CornerRadius="8" Padding="20" BorderBrush="{StaticResource BorderControlBrush}" BorderThickness="1">
                                     <StackPanel>
-                                        <TextBlock Text="Sua Chave do OpenRouter" FontWeight="SemiBold" FontSize="14" Foreground="#F5F4F7" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Sua Chave do OpenRouter" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TextStrongBrush}" Margin="0,0,0,8"/>
                                         <PasswordBox x:Name="KeyTextBox" Height="42" FontSize="14" VerticalContentAlignment="Center" LostFocus="KeyTextBox_LostFocus" KeyDown="KeyTextBox_KeyDown" PasswordChanged="KeyTextBox_PasswordChanged"/>
-                                        <TextBlock Text="* Sua chave será protegida com criptografia DPAPI no cofre do Windows." Margin="0,8,0,0" Foreground="#8B8794" FontSize="12" TextWrapping="Wrap"/>
-                                        <TextBlock x:Name="ErrorLabel" Text="Formato de chave inválido (deve começar com sk-or-)" Foreground="#D53F8C" FontWeight="SemiBold" FontSize="13" Visibility="Collapsed" Margin="0,10,0,0"/>
-                                        <TextBlock Text="Modelo" FontWeight="SemiBold" FontSize="14" Foreground="#F5F4F7" Margin="0,18,0,8"/>
+                                        <TextBlock Text="* Sua chave será protegida com criptografia DPAPI no cofre do Windows." Margin="0,8,0,0" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="ErrorLabel" Text="Formato de chave inválido (deve começar com sk-or-)" Foreground="{StaticResource MagentaBrush}" FontWeight="SemiBold" FontSize="13" Visibility="Collapsed" Margin="0,10,0,0"/>
+                                        <TextBlock Text="Modelo" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TextStrongBrush}" Margin="0,18,0,8"/>
                                         <ComboBox x:Name="OpenRouterModelComboBox" Height="42" FontSize="14" IsEditable="True" VerticalContentAlignment="Center" SelectionChanged="ModelComboBox_SelectionChanged" LostFocus="OpenRouterModel_LostFocus"/>
-                                        <TextBlock x:Name="OpenRouterModelInfo" Text="Carregando o catálogo do OpenRouter… só aparecem modelos que aceitam ferramentas." Margin="0,8,0,0" Foreground="#8B8794" FontSize="12" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="OpenRouterModelInfo" Text="Carregando o catálogo do OpenRouter… só aparecem modelos que aceitam ferramentas." Margin="0,8,0,0" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -340,38 +318,38 @@
                     <!-- Passo 4: Sistema de Níveis -->
                     <Grid x:Name="Step4_Levels" Visibility="Collapsed">
                         <StackPanel VerticalAlignment="Center" MaxWidth="550">
-                            <TextBlock Text="Níveis de Permissão" FontSize="28" FontWeight="Bold" Margin="0,0,0,10" Foreground="#F5F4F7" HorizontalAlignment="Center"/>
-                            <TextBlock Text="O que a IA pode fazer no seu computador cresce com o nível. Em todos eles, gravar, editar ou rodar um comando passa pelo cartão de confirmação na conversa." FontSize="15" Foreground="#8B8794" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,30"/>
+                            <TextBlock Text="Níveis de Permissão" FontSize="28" FontWeight="Bold" Margin="0,0,0,10" Foreground="{StaticResource TextStrongBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="O que a IA pode fazer no seu computador cresce com o nível. Em todos eles, gravar, editar ou rodar um comando passa pelo cartão de confirmação na conversa." FontSize="15" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,30"/>
                             
-                            <Border Background="#06FFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,15">
+                            <Border Background="{StaticResource SurfaceCardBrush}" BorderBrush="{StaticResource BorderControlBrush}" BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,15">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="🟢" FontSize="24" Margin="0,0,15,0" VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Nível 1: Só leitura" FontWeight="SemiBold" FontSize="15" Foreground="#F5F4F7" Margin="0,0,0,4"/>
-                                        <TextBlock Text="A IA lê e procura arquivos e consulta seus e-mails. Não grava, não edita e não roda comandos." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Nível 1: Só leitura" FontWeight="SemiBold" FontSize="15" Foreground="{StaticResource TextStrongBrush}" Margin="0,0,0,4"/>
+                                        <TextBlock Text="A IA lê e procura arquivos e consulta seus e-mails. Não grava, não edita e não roda comandos." Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>
 
-                            <Border Background="#06FFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,15">
+                            <Border Background="{StaticResource SurfaceCardBrush}" BorderBrush="{StaticResource BorderControlBrush}" BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,15">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="🟡" FontSize="24" Margin="0,0,15,0" VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Nível 2 em diante: Age com a sua autorização" FontWeight="SemiBold" FontSize="15" Foreground="#F5F4F7" Margin="0,0,0,4"/>
-                                        <TextBlock Text="Pode criar e editar arquivos, rodar comandos e habilidades — cada ação depois de você permitir no cartão. Comandos que apagam em massa, formatam ou desligam o computador são bloqueados de saída." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Nível 2 em diante: Age com a sua autorização" FontWeight="SemiBold" FontSize="15" Foreground="{StaticResource TextStrongBrush}" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Pode criar e editar arquivos, rodar comandos e habilidades — cada ação depois de você permitir no cartão. Comandos que apagam em massa, formatam ou desligam o computador são bloqueados de saída." Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>
 
-                            <Border Background="#06FFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="8" Padding="15">
+                            <Border Background="{StaticResource SurfaceCardBrush}" BorderBrush="{StaticResource BorderControlBrush}" BorderThickness="1" CornerRadius="8" Padding="15">
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="🔴" FontSize="24" Margin="0,0,15,0" VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Nível 7 em diante: Comandos destrutivos" FontWeight="SemiBold" FontSize="15" Foreground="#F5F4F7" Margin="0,0,0,4"/>
-                                        <TextBlock Text="Esses comandos deixam de ser bloqueados de saída, mas continuam precisando da sua autorização no cartão. A IA nunca age sozinha." Foreground="#8B8794" FontSize="13" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Nível 7 em diante: Comandos destrutivos" FontWeight="SemiBold" FontSize="15" Foreground="{StaticResource TextStrongBrush}" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Esses comandos deixam de ser bloqueados de saída, mas continuam precisando da sua autorização no cartão. A IA nunca age sozinha." Foreground="{StaticResource TextSecondaryBrush}" FontSize="13" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>
@@ -381,44 +359,44 @@
                     <!-- Passo 5: Níveis de Usuário -->
                     <Grid x:Name="Step5_UserLevels" Visibility="Collapsed">
                         <StackPanel VerticalAlignment="Center" MaxWidth="550">
-                            <TextBlock Text="Seu Crescimento" FontSize="28" FontWeight="Bold" Margin="0,0,0,10" Foreground="#F5F4F7" HorizontalAlignment="Center"/>
-                            <TextBlock Text="O sistema possui uma progressão de níveis. À medida que você utiliza a IA, você ganha experiência e evolui do Nível 1 ao Nível 9." FontSize="15" Foreground="#8B8794" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,30"/>
+                            <TextBlock Text="Seu Crescimento" FontSize="28" FontWeight="Bold" Margin="0,0,0,10" Foreground="{StaticResource TextStrongBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="O sistema possui uma progressão de níveis. À medida que você utiliza a IA, você ganha experiência e evolui do Nível 1 ao Nível 9." FontSize="15" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,30"/>
                             
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                 
-                                <Border Grid.Column="0" Background="#06FFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="8" Padding="15" Margin="5">
+                                <Border Grid.Column="0" Background="{StaticResource SurfaceCardBrush}" BorderBrush="{StaticResource BorderControlBrush}" BorderThickness="1" CornerRadius="8" Padding="15" Margin="5">
                                     <StackPanel>
-                                        <TextBlock Text="🥉 Níveis 1 a 3" FontWeight="Bold" FontSize="14" Foreground="#F5F4F7" Margin="0,0,0,8" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="Iniciante" FontWeight="SemiBold" FontSize="13" Foreground="#E28743" Margin="0,0,0,4" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="Começa só lendo; no nível 2 passa a gravar e rodar comandos com o cartão." Foreground="#8B8794" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+                                        <TextBlock Text="🥉 Níveis 1 a 3" FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextStrongBrush}" Margin="0,0,0,8" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Iniciante" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource WarnBrush}" Margin="0,0,0,4" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Começa só lendo; no nível 2 passa a gravar e rodar comandos com o cartão." Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
 
-                                <Border Grid.Column="1" Background="#06FFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="8" Padding="15" Margin="5">
+                                <Border Grid.Column="1" Background="{StaticResource SurfaceCardBrush}" BorderBrush="{StaticResource BorderControlBrush}" BorderThickness="1" CornerRadius="8" Padding="15" Margin="5">
                                     <StackPanel>
-                                        <TextBlock Text="🥈 Níveis 4 a 6" FontWeight="Bold" FontSize="14" Foreground="#F5F4F7" Margin="0,0,0,8" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="Intermediário" FontWeight="SemiBold" FontSize="13" Foreground="#A0AEC0" Margin="0,0,0,4" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="As mesmas ações, com mais memória da conversa a cada nível." Foreground="#8B8794" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+                                        <TextBlock Text="🥈 Níveis 4 a 6" FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextStrongBrush}" Margin="0,0,0,8" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Intermediário" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="As mesmas ações, com mais memória da conversa a cada nível." Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
 
-                                <Border Grid.Column="2" Background="#06FFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1" CornerRadius="8" Padding="15" Margin="5">
+                                <Border Grid.Column="2" Background="{StaticResource SurfaceCardBrush}" BorderBrush="{StaticResource BorderControlBrush}" BorderThickness="1" CornerRadius="8" Padding="15" Margin="5">
                                     <StackPanel>
-                                        <TextBlock Text="🥇 Níveis 7 a 9" FontWeight="Bold" FontSize="14" Foreground="#F5F4F7" Margin="0,0,0,8" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="Avançado" FontWeight="SemiBold" FontSize="13" Foreground="#ECC94B" Margin="0,0,0,4" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="Comandos destrutivos liberados, sempre com o cartão." Foreground="#8B8794" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+                                        <TextBlock Text="🥇 Níveis 7 a 9" FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextStrongBrush}" Margin="0,0,0,8" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Avançado" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource GoldBrush}" Margin="0,0,0,4" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Comandos destrutivos liberados, sempre com o cartão." Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
                             </Grid>
                             
-                            <TextBlock Text="Ao subir de nível, a IA ganha mais espaço para lembrar da conversa e novas permissões. O cartão de confirmação vale em todos eles." FontSize="13" Foreground="#E28743" TextWrapping="Wrap" TextAlignment="Center" Margin="0,30,0,0"/>
+                            <TextBlock Text="Ao subir de nível, a IA ganha mais espaço para lembrar da conversa e novas permissões. O cartão de confirmação vale em todos eles." FontSize="13" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,30,0,0"/>
                         </StackPanel>
                     </Grid>
 
                     <!-- Footer buttons (HTML CSS match) -->
                     <Grid Grid.Row="1" Margin="0,20,0,0">
-                        <Border BorderBrush="#0FFFFFFF" BorderThickness="0,1,0,0" Padding="0,18,0,0">
+                        <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="0,18,0,0">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
@@ -429,11 +407,11 @@
 
                                 <Button x:Name="CancelButton" Grid.Column="0" Content="Sair" Click="Cancel_Click" IsCancel="True"
                                         Width="60" Height="40" FontSize="14" FontWeight="SemiBold"
-                                        Background="Transparent" Foreground="#A8A4B0" BorderThickness="0" Cursor="Hand"/>
+                                        Background="Transparent" Foreground="{StaticResource TextSecondaryBrush}" BorderThickness="0" Cursor="Hand"/>
                                         
                                 <Button x:Name="BackButton" Grid.Column="2" Content="Voltar" Click="Back_Click" Visibility="Collapsed"
                                         Width="90" Height="40" FontSize="14" FontWeight="SemiBold"
-                                        Background="Transparent" Foreground="#E8E6EC" BorderThickness="1" BorderBrush="#2EFFFFFF" Cursor="Hand" Margin="0,0,12,0">
+                                        Background="Transparent" Foreground="{StaticResource TextNormalBrush}" BorderThickness="1" BorderBrush="{StaticResource BorderOutlineBtnBrush}" Cursor="Hand" Margin="0,0,12,0">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
                                             <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10">
@@ -447,7 +425,7 @@
                                         Width="110" Height="40" FontSize="14" FontWeight="Bold" Foreground="White" Cursor="Hand">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
-                                            <Border Background="{StaticResource AiAccent}" CornerRadius="10">
+                                            <Border Background="{StaticResource PrimaryBrush}" CornerRadius="10">
                                                 <Border.Effect>
                                                     <DropShadowEffect BlurRadius="16" ShadowDepth="4" Color="#9B51E0" Opacity="0.35"/>
                                                 </Border.Effect>

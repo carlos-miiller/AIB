@@ -70,9 +70,12 @@ commit**. `Regras de Identidade/` (SEGURANCA, CODIGO_LIMPO, VISUAL) são regras,
 - **Shell e senhas** (`Services/Terminal/`): o PowerShell roda sem console e com a entrada
   fechada; ssh/scp/git pedem senha pelo askpass, que é o próprio `AIB.exe` (detectado no topo de
   `OnStartup`) falando por pipe nomeado com a instância que rodou o comando.
-- **Interface:** cores só de `Themes/Tokens.xaml` via `StaticResource` (em código, `FindResource`
-  ou `Ui/PincelDoTema`); hex literal em View é proibido. `App.xaml` carrega `Controls.xaml`, que
-  mescla os tokens.
+- **Interface e tema:** cores só dos tokens, via `StaticResource` (em código, `FindResource` ou
+  `Ui/PincelDoTema`); hex literal em View é proibido. As cores ficam em `Themes/Cores.Escuro.xaml`
+  e `Cores.Claro.xaml`, com as mesmas chaves (cor nova entra nos dois). No arranque,
+  `Ui/Tema.Carregar` põe no App as cores do tema escolhido (`UserAppSettings.Tema`) e depois
+  `Controls.xaml`, que mescla `Tokens.xaml` (raios, fontes, medidas). Trocar o tema vale no
+  próximo arranque.
 
 ## Regras que pegam quem chega
 

@@ -1,8 +1,9 @@
 # Regras de Identidade Visual (AIB)
 
 Leis de aparência do AIB. Valem para qualquer mudança em XAML ou em elemento montado por código.
-Fonte dos valores: `AIBWindows/Themes/Tokens.xaml` e `Themes/Controls.xaml`, que convertem o §1 das
-specs em `refactor-interface/` (`tela-chat-v3.html`, `tela-configuracoes.html`,
+Fonte dos valores: `AIBWindows/Themes/Cores.Escuro.xaml` (cores do tema escuro, o original),
+`Cores.Claro.xaml` (o par claro, mesmas chaves), `Tokens.xaml` (raios, fontes, medidas) e
+`Controls.xaml` (estilos), que convertem o §1 das specs em `refactor-interface/` (`tela-chat-v3.html`, `tela-configuracoes.html`,
 `shadow-assistant.html`). Detalhe de cada janela: `documentação/tecnica/06-interface.md`.
 
 ## 0. Mudar a interface não muda o padrão
@@ -11,11 +12,12 @@ specs em `refactor-interface/` (`tela-chat-v3.html`, `tela-configuracoes.html`,
 - O que for adicionado é conciso. Nada de enfeite, cor nova ou texto que não informe.
 - Cor, raio, sombra e tamanho saem dos tokens. Hex literal em View é proibido: em XAML use
   `{StaticResource Chave}`; em código, `FindResource` ou `Ui/PincelDoTema.De(chave, hex)`, com o hex
-  de reserva igual ao do token. Token que falta é criado em `Tokens.xaml`, não escrito na tela.
+  de reserva igual ao do token (o do escuro). Token que falta é criado nos arquivos de tema — cor
+  nos DOIS `Cores.*.xaml`, o resto em `Tokens.xaml` —, não escrito na tela. Hex na tela, além de sair de sincronia, não muda com o tema.
 
 ## 1. Janela
 - Sem barra de título nem botões do sistema: `WindowStyle="None"`, `AllowsTransparency="True"`.
-- Fundo é o "vidro fumê" `GlassBrush`: cor sólida quase preta a 90%. Blur nativo
+- Fundo é o "vidro" `GlassBrush`: cor sólida quase preta a 90% no tema escuro, quase branca no claro. Blur nativo
   (Gaussian/Acrylic/DWM) é proibido: dá falha de renderização e custa quadro.
 - Moldura com `NeonBrush` (roxo, azul, magenta, laranja). É a única cor saturada da janela.
 - `WindowShadow` na moldura externa é obrigatória: sem ela a janela não flutua sobre o desktop.

@@ -163,6 +163,8 @@ public partial class SettingsWindow : Window
         try
         {
             LoadCharacters();
+            TemaComboBox.ItemsSource = OpcoesDeTema;
+            TemaComboBox.SelectedValue = AIB.Ui.Tema.Normalizar(_currentSettings.Tema);
             LoadProviders();
 
             SendSystemPromptSwitch.IsChecked = _currentSettings.SendSystemPrompt;
@@ -240,6 +242,17 @@ public partial class SettingsWindow : Window
             ? _currentSettings.ActiveCharacter
             : personagens[0];
     }
+
+    /// <summary>As opções do seletor de tema: o valor gravado e o rótulo da tela.</summary>
+    private static readonly OpcaoDeTema[] OpcoesDeTema =
+    [
+        new(AIB.Ui.Tema.Escuro, "Escuro"),
+        new(AIB.Ui.Tema.Claro, "Claro"),
+        new(AIB.Ui.Tema.Sistema, "Seguir o Windows"),
+    ];
+
+    /// <summary>Record, e não tupla: o ComboBox liga por propriedade, e tupla só tem campo.</summary>
+    private sealed record OpcaoDeTema(string Valor, string Rotulo);
 
     private void LoadProviders()
     {
@@ -1262,6 +1275,7 @@ public partial class SettingsWindow : Window
                     foreach (var item in itens)
                         if (string.Equals(item?.ToString(), padrao.ActiveCharacter, StringComparison.Ordinal))
                             CharacterComboBox.SelectedItem = item;
+                TemaComboBox.SelectedValue = padrao.Tema;
                 break;
 
             case PaginaDeConfiguracoes.Conexao:
@@ -1888,6 +1902,7 @@ public partial class SettingsWindow : Window
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         _currentSettings.ActiveCharacter = CharacterComboBox.SelectedItem?.ToString() ?? "Ayano";
+        _currentSettings.Tema = TemaComboBox.SelectedValue as string ?? AIB.Ui.Tema.Escuro;
         // O perfil na tela, os guardados, e o escolhido vira o ativo. A chave NÃO passa por aqui:
         // foi guardada no cofre pelo "Guardar" da própria linha.
         // AplicarPerfis ativa ANTES de gravar os outros: na ordem inversa, trocar de provedor
