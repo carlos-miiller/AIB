@@ -12,14 +12,19 @@ são invioláveis; o mecanismo está em `documentação/tecnica/03-ferramentas-e
   sem resposta nega; erro ao decidir dispensa cai no cartão. Nenhum pode virar "permitir".
 - **Toda negação conta como falha.** As do portão começam com `ACESSO NEGADO`; a recusa do usuário é
   `ToolRegistry.RecusaDoUsuario`. Não mudar esses textos sem ajustar `ArtifactExtractor.Falhou`.
-- **O cartão no chat é a autoridade** (`ChatConfirmationPrompt` → `ConfirmCardView`). Não existe
-  outra porta de confirmação; não criar janela modal paralela. O cartão mostra o alvo real (caminho
-  absoluto resolvido, comando exato, linha do script) e a prévia do conteúdo. Foco inicial em
-  Recusar.
+- **O cartão é a autoridade** (`ChatConfirmationPrompt` → `ConfirmCardView`). Não existe outra
+  porta de confirmação: toda pergunta passa por esse caminho e por esse cartão. Ele aparece na
+  conversa ou, no modo orbe, dentro da `ConfirmacaoDoOrbeWindow` — o mesmo cartão, na mesma porta,
+  só hospedado em outro lugar. Não criar confirmação paralela (outro diálogo, outra decisão fora
+  do `ChatConfirmationPrompt`). O cartão mostra o alvo real (caminho absoluto resolvido, comando
+  exato, linha do script) e a prévia do conteúdo. Foco inicial em Recusar.
 - **Pré-voo antes do cartão** (`ITool.Validar`): chamada impossível é recusada sem virar pergunta.
 - Toda ferramenta que altera a máquina declara `RequiresConfirmation = true`. Hoje: `write`, `edit`,
-  `shell`, `skill`.
-- **"Sempre permitir"** vale só na sessão (em memória), só para `shell`, e casa o comando exato.
+  `fs`, `shell`, `skill`; o `browser` decide por ação (`ITool.PedeConfirmacao`): ler não pergunta,
+  clicar, digitar, abrir site novo e anotar perguntam.
+- **"Sempre permitir"** vale só na sessão (em memória), e só para `shell` (casa o comando exato) e
+  `browser` (vale para o site, e nunca para ação decisiva: envio de formulário, abrir site novo,
+  anotar).
 - **Nível**: ferramenta acima do nível do usuário some do schema (`GetActiveTools`) e é negada na
   execução. Ferramenta nova e perigosa pede `RequiredLevel` alto.
 
