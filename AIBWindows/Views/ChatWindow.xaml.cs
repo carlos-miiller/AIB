@@ -751,19 +751,56 @@ public partial class ChatWindow : Window
             // nascia sem fundo, sem padding e sem alinhamento — texto branco solto na tela. Sem
             // erro, sem excecao: um cast de null para Style e valido.
             Style = (Style)FindResource("UserBubble"),
-            Child = new TextBlock
-            {
-                Text = text,
-                Foreground = WBrushes.White,
-                TextWrapping = TextWrapping.Wrap,
-                FontSize = 14,
-                LineHeight = 21
-            }
+            Child = TextoSelecionavel(text)
         };
 
         var linha = NovaLinha(border, doUsuario: true);
         AnimateBubbleIn(linha);
         ChatScrollViewer.ScrollToEnd();
+    }
+
+    /// <summary>
+    /// O texto da bolha do usuário, selecionável para copiar um trecho. TextBox somente
+    /// leitura, sem moldura: o TextBlock de antes não seleciona nada, e o que se digitou numa
+    /// pergunta longa (um caminho, um comando) só voltava redigitando.
+    /// </summary>
+    public static System.Windows.Controls.TextBox TextoSelecionavel(string texto)
+    {
+        var caixa = new System.Windows.Controls.TextBox
+        {
+            Text = texto,
+            IsReadOnly = true,
+            IsReadOnlyCaretVisible = false,
+            IsTabStop = false,
+            Background = WBrushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            Foreground = WBrushes.White,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 14,
+            // A seleção padrão é azul — invisível sobre a bolha azul.
+            SelectionBrush = WBrushes.White,
+            SelectionOpacity = 0.35,
+            Cursor = System.Windows.Input.Cursors.IBeam,
+            FocusVisualStyle = null
+        };
+        TextBlock.SetLineHeight(caixa, 21);
+
+        // O TextBox tem rolagem própria e engole a roda do mouse: com o ponteiro sobre a bolha,
+        // a conversa parava de rolar. A roda segue para a lista, como na bolha da IA.
+        caixa.PreviewMouseWheel += (s, e) =>
+        {
+            if (e.Handled) return;
+            e.Handled = true;
+            var repasse = new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+            {
+                RoutedEvent = UIElement.MouseWheelEvent,
+                Source = s
+            };
+            ((UIElement)((FrameworkElement)s).Parent)?.RaiseEvent(repasse);
+        };
+
+        return caixa;
     }
 
     private MarkdownViewer AddAgentBubble(string? initialText = null)
