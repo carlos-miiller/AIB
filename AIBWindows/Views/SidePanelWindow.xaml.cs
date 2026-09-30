@@ -256,10 +256,11 @@ public partial class SidePanelWindow : Window
             }
             else
             {
-                // O clique esquerdo continua sendo o que sempre foi: recuperar o contexto
-                // dentro da conversa corrente. Mexer nisso quebraria a mão de quem já usa o
-                // painel.
-                card.MouseLeftButtonUp += (_, _) => _aoRecuperarChat?.Invoke(alvo);
+                // O clique esquerdo ABRE a conversa: é o que se espera de um item de histórico.
+                // Antes ele recuperava o contexto dentro da conversa corrente, e quem só queria
+                // reler uma conversa antiga acabava somando-a à atual. Recuperar continua no
+                // botão direito.
+                card.MouseLeftButtonUp += (_, _) => _aoAbrirChat?.Invoke(alvo);
                 card.ContextMenu = MenuDaConversa(alvo);
             }
 

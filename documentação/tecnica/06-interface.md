@@ -280,7 +280,7 @@ volte sozinho (`FechadoPeloUsuario`).
 
 | Aba | Conteúdo |
 |---|---|
-| Histórico de chats | Conversas arquivadas. Clique: recupera o contexto na atual. Botão direito: "Recuperar contexto na conversa atual", "Abrir conversa", "Excluir". A conversa em andamento aparece marcada e não responde. |
+| Histórico de chats | Conversas arquivadas. Clique: abre a conversa (substitui a da tela). Botão direito: "Recuperar contexto na conversa atual", "Abrir conversa", "Excluir". A conversa em andamento aparece marcada e não responde. |
 | Arquivos no contexto | Arquivos lidos ou criados pela IA e os anexados em "+ Adicionar" (`ContextService`). |
 | Histórico de ações | `ActionLogService.Entries`, com tooltip em bloco (resultado, saída bruta, antes e depois). |
 
