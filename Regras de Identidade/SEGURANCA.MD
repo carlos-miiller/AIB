@@ -76,10 +76,23 @@ são invioláveis; o mecanismo está em `documentação/tecnica/03-ferramentas-e
   (`CredentialService`, `MailVault`). Nunca em configurações, `.env`, log ou console.
 - A auditoria registra de uma chave **só `key_last4`**.
 - O registro de execução apara campos com cara de credencial (`RegistroDeExecucao.Redigir`).
+- **Segredo na saída de ferramenta não vai ao modelo.** Todo resultado passa por `Segredos.Redigir`
+  no `ToolRegistry`, antes de voltar ao agente: valor ao lado de nome suspeito (`*PASSWORD=`,
+  `"token": "…"`, string de conexão) e formatos conhecidos de chave viram `[SEGREDO OMITIDO]`, e o
+  resultado ganha um aviso. Como `raw.jsonl`, histórico e tela gravam o que o modelo recebeu, ficam
+  limpos juntos. É **best-effort** (padrão de texto): senha solta, sem nome ao lado, passa.
+  Ferramenta nova não devolve resultado por fora do registry.
+- `write` e `edit` recusam texto com a marca `[SEGREDO OMITIDO]`: gravá-la apagaria o valor de verdade.
 
 ## 5. Dados e registros
 
 - Todo dado do usuário fica em `~/.AIB` (`DirectoryService.DataDir`).
+- **Ler dentro de `~/.AIB` não é livre** (`DadosProtegidos`, valendo para `read`, `grep` e `glob`):
+  `credentials/`, `profile.dat` e `navegador/perfil/` são **negados**, sem cartão; `skills/`,
+  `character/` e `navegador/notas/` são livres; todo o resto (memória, logs, e-mail) **pede
+  cartão**, sem "sempre permitir". Uma busca que parte de cima (a pasta do usuário) pula esses
+  arquivos. Pasta nova em `~/.AIB` nasce pedindo cartão; para ser livre, entra na lista. O `shell`
+  alcança tudo isso, e por isso passa sempre pelo cartão.
 - **`raw.jsonl` nunca é apagado** no uso normal: nenhuma ferramenta, compactação ou troca de conversa
   o remove. A única exceção é o **reset de fábrica**, que é total por decisão do usuário: apaga tudo
   o que há em `~/.AIB` (`ResetDeFabrica`), sem `.bak`, depois de uma confirmação que diz isso. Só

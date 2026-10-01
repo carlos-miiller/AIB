@@ -67,7 +67,42 @@ public sealed class GlobTool : ITool
         """)
     );
 
-    public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
+    /// <summary>A pasta de dados do AIB. Nula em produção; os ensaios passam uma temporária.</summary>
+    private readonly string? _dados;
+
+    public GlobTool(string? raizDeDados = null) => _dados = raizDeDados;
+
+    private static string RaizPadrao => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    private Acesso AcessoDe(string argumentsJson) => DadosProtegidos.Leitura(DadosProtegidos.Caminho(argumentsJson, RaizPadrao), _dados);
+
+    /// <summary>Cofre, configurações e perfil do navegador não são lidos. Ver <see cref="DadosProtegidos"/>.</summary>
+    public string? Validar(string argumentsJson) =>
+        AcessoDe(argumentsJson) == Acesso.Negado ? DadosProtegidos.Recusa(DadosProtegidos.Caminho(argumentsJson, RaizPadrao)) : null;
+
+    /// <summary>Procurar não pergunta — a não ser dentro da pasta de dados do AIB.</summary>
+    public bool PedeConfirmacao(string argumentsJson) => AcessoDe(argumentsJson) == Acesso.Pergunta;
+
+    public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel) =>
+        DadosProtegidos.Cartao(Name, "LISTAR ARQUIVOS DE", DadosProtegidos.Caminho(argumentsJson, RaizPadrao), userLevel);
+
+    public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1) =>
+        ExecutarAutorizadoAsync(argumentsJson, userLevel, null);
+
+    /// <summary>Quem chega sem o cartão a uma leitura que pedia cartão é recusado aqui.</summary>
+    public Task<string> ExecutarAutorizadoAsync(string argumentsJson, int userLevel, CommandConfirmationContext? autorizado)
+    {
+        string caminho = DadosProtegidos.Caminho(argumentsJson, RaizPadrao);
+
+        return AcessoDe(argumentsJson) switch
+        {
+            Acesso.Negado => Task.FromResult(DadosProtegidos.Recusa(caminho)),
+            Acesso.Pergunta when autorizado == null => Task.FromResult(DadosProtegidos.SemCartao(caminho)),
+            _ => ProcurarAsync(argumentsJson)
+        };
+    }
+
+    private Task<string> ProcurarAsync(string argumentsJson)
     {
         string padrao, raiz;
 
@@ -96,14 +131,14 @@ public sealed class GlobTool : ITool
 
         Console.WriteLine($"[TOOL: {Name}] {padrao} em {raiz}");
 
-        return Task.FromResult(Procurar(raiz, padrao));
+        return Task.FromResult(Procurar(raiz, padrao, raizDeDados: _dados));
     }
 
     /// <summary>
     /// A busca em si. Separada e pública porque é ela que os ensaios cobrem, e porque o valor
     /// desta ferramenta está no TEXTO da resposta tanto quanto na lista.
     /// </summary>
-    public static string Procurar(string raiz, string padrao, TimeSpan? prazo = null)
+    public static string Procurar(string raiz, string padrao, TimeSpan? prazo = null, string? raizDeDados = null)
     {
         try
         {
@@ -122,6 +157,7 @@ public sealed class GlobTool : ITool
             foreach (string caminho in Directory.EnumerateFiles(raiz, mascara, Opcoes(recursivo)))
             {
                 if (relogio.Elapsed >= teto) { parouNoPrazo = true; break; }
+                if (!DadosProtegidos.NaVarredura(caminho, raiz, raizDeDados)) continue;
 
                 try { achados.Add(new FileInfo(caminho)); } catch { }
             }

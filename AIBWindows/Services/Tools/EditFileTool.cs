@@ -119,6 +119,8 @@ public sealed class EditFileTool : ITool
                 return "ERRO: 'old_string' vazio. Para criar um arquivo use a ferramenta "
                        + $"'{Ferramentas.Gravar}'.";
 
+            if (Segredos.TemMarca(a.De) || Segredos.TemMarca(a.Para)) return Segredos.RecadoDeGravacao;
+
             if (a.De == a.Para)
                 return "ERRO: 'old_string' e 'new_string' são iguais. Nada a fazer.";
 

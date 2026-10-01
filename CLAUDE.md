@@ -97,6 +97,9 @@ commit**. `Regras de Identidade/` (SEGURANCA, CODIGO_LIMPO, VISUAL) são regras,
 - Mudança no prompt de sistema se mede com `AIB.Avaliacao` antes de entrar.
 - WPF e WinForms estão ligados juntos: `Color`, `Brush`, `Point`, `Size`, `KeyEventArgs`,
   `MouseButtonEventArgs` etc. são ambíguos — use alias ou o nome completo.
+- Resultado de ferramenta só volta pelo `ToolRegistry`: é lá que `Segredos.Redigir` tira o que tem
+  cara de segredo antes de o texto ir ao modelo (e ao `raw.jsonl`). Ler dentro de `~/.AIB` passa por
+  `DadosProtegidos` (cofre negado, memória e logs com cartão); ferramenta nova que lê arquivo usa-o.
 - Chaves e senhas só nos cofres DPAPI (`CredentialService`, `MailVault`). E-mail é só leitura e o
   corpo nunca vai para disco. `raw.jsonl` nunca é apagado; a única exceção é
   o reset de fábrica, que é total: esvazia `~/.AIB` inteira, sem `.bak` (`ResetDeFabrica`).

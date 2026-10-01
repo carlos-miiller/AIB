@@ -55,6 +55,8 @@ public class WriteFileTool : ITool
         if (a.Conteudo == null)
             return "ERRO: O parâmetro 'content' é obrigatório (texto; vazio cria um arquivo vazio).";
 
+        if (Segredos.TemMarca(a.Conteudo)) return Segredos.RecadoDeGravacao;
+
         try { Path.GetFullPath(a.Caminho); }
         catch (Exception ex) { return $"ERRO: caminho inválido '{a.Caminho}': {ex.Message}"; }
 

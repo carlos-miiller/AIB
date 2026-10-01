@@ -140,6 +140,8 @@ Passo a passo:
    - recusa → devolve `ToolRegistry.RecusaDoUsuario` (`"Ação Rejeitada pelo Usuário."`).
 7. **Execução**: `tool.ExecutarAutorizadoAsync(args, level, autorizado)`. `autorizado` é o
    contexto do cartão ou da dispensa, ou `null` para ferramenta sem confirmação.
+8. **Segredos fora do resultado**: o texto devolvido passa por `Segredos.Redigir` antes de voltar
+   ao agente (ver §10).
 
 `aoDecidir` recebe, numa palavra, como a chamada passou: `automatica`, `pasta_dispensada`,
 `permitida`, `permitida_sempre`, `sempre_na_sessao`, `recusada`, `barrada_pelo_piso`,
@@ -446,6 +448,22 @@ de controle é ilegal em nome de arquivo no Windows, `Normalize` reverte cada um
 Vale **só para caminho** — nunca para conteúdo de arquivo nem comando. Usado por `read`, `write`,
 `edit`, `glob`, `grep` e `ReavaliarSkillsSeTocou`. O `write` avisa o modelo quando reparou.
 
+### Leitura dentro de `~/.AIB` (`DadosProtegidos`)
+
+`read`, `glob` e `grep` não pedem confirmação — menos na pasta de dados do AIB, onde o modelo lia
+conversas antigas, auditoria e e-mail sem ninguém ver. `DadosProtegidos.Leitura(caminho)` responde:
+
+| Acesso | Onde | Efeito |
+|---|---|---|
+| `Negado` | `credentials/`, `profile.dat`, `navegador/perfil/` | `Validar` recusa com `ACESSO NEGADO`, sem cartão |
+| `Livre` | `skills/`, `.default_skills/`, `character/`, `navegador/notas/` e tudo fora de `~/.AIB` | como antes |
+| `Pergunta` | o resto de `~/.AIB` (inclusive a raiz) | `PedeConfirmacao` devolve true: cartão "LER <caminho>", com aviso e `SemSempre` |
+
+O caminho é normalizado (`..`, barras, caixa) e, se for um link, o destino também é conferido. Nas
+varreduras (`NaVarredura`), arquivo negado nunca entra no resultado, e arquivo que pede cartão só
+entra quando a própria raiz da busca pedia cartão — uma busca a partir da pasta do usuário pula
+`~/.AIB`. `ExecutarAutorizadoAsync` recusa a leitura que pedia cartão e chegou sem ele.
+
 ### `read` — `ReadFileTool`
 
 - Faixa por `offset`/`limit` (padrão `LimitesDoProvedor.Atual.LinhasDeLeitura`), linhas numeradas,
@@ -630,6 +648,24 @@ no dicionário que as outras chamadas estão lendo. Falha aqui não vira erro da
 ---
 
 ## 10. O que acontece com o resultado (`AgentLoop`)
+
+**Segredos** (`Services/Segredos.cs`, aplicado no `ToolRegistry`): um `docker inspect` devolveu as
+variáveis de ambiente de um contêiner, com a senha do banco e o segredo do JWT; os dois foram ao
+provedor e ficaram no `raw.jsonl`. Agora o resultado de TODA ferramenta é filtrado antes de voltar:
+
+| Padrão | Exemplo | O que sai |
+|---|---|---|
+| `NOME=valor` colado, com o nome terminando em `password`, `pwd`, `senha`, `secret`, `token`, `api_key`, `credential`… ou começando por `ConnectionString` | `Auth__JwtSecret=abc`, `Password=x;` numa string de conexão, `?access_token=…` | o valor |
+| Nome + valor entre aspas | `"password": "x"`, `senha = 'x'` | o valor |
+| `nome: valor` sem aspas, se o valor mistura letra e número ou tem símbolo | `password: Tr0ub4dor&3` | o valor |
+| Formatos conhecidos | `sk-…`, `ghp_…`, `AKIA…`, `xox?-…`, JWT, bloco `PRIVATE KEY`, `Bearer …`, `://usuario:senha@` | o trecho |
+
+O nome fica e o valor vira `[SEGREDO OMITIDO]`; o resultado ganha um aviso no fim (sem ele o modelo
+acha que o comando falhou e tenta por outro caminho). Não redige o que é código: `password=self.password)`,
+`token=ct,`, `senha: string;`, `max_tokens=4096`. É **best-effort**: senha solta, sem nome ao lado,
+passa. Expressão que estoura o prazo de 2 s some com a saída inteira, em vez de deixá-la passar.
+`write` e `edit` recusam no pré-voo um texto com a marca, para ela não ser gravada por cima do valor.
+
 
 **Repetição no turno** (`AgentLoop.ContarRepeticao`): a chamada que falhou já era bloqueada ao ser
 repetida (`RecadoDeRepeticao`). A que "dá certo" sem mudar nada também trava: a partir da 4ª

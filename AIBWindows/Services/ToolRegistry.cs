@@ -142,7 +142,15 @@ public class ToolRegistry
             Console.WriteLine($"[REGISTRY] Executando: {toolName}({(argumentsJson.Length > 100 ? argumentsJson[..100] + "..." : argumentsJson)})");
             try
             {
-                return await tool.ExecutarAutorizadoAsync(argumentsJson, userLevel, autorizado);
+                string resultado = await tool.ExecutarAutorizadoAsync(argumentsJson, userLevel, autorizado);
+
+                // Segredo que veio de carona na saída (variável de ambiente, .env, string de
+                // conexão) não vai ao modelo, e por isso também não vai ao raw.jsonl. Ver Segredos.
+                string limpo = Segredos.Redigir(resultado, out int omitidos);
+                if (omitidos == 0) return resultado;
+
+                Console.WriteLine($"[REGISTRY] {toolName}: {omitidos} valor(es) com cara de segredo omitido(s).");
+                return limpo + Segredos.Aviso(omitidos);
             }
             catch (Exception ex)
             {

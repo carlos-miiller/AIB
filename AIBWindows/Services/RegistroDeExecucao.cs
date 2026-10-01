@@ -125,7 +125,7 @@ public sealed class RegistroDeExecucao : IDisposable
         // O corpo de e-mail passa pelo console por três caminhos — o resultado do mail_read, a
         // requisição inteira ao provedor com o log verboso, e o prompt da triagem. Nenhum deles
         // pode chegar ao arquivo, e os três chegam aqui embrulhados.
-        string texto = Mail.ConteudoDeTerceiros.Redigir(linha);
+        string texto = Segredos.Redigir(Mail.ConteudoDeTerceiros.Redigir(linha));
 
         foreach (string campo in new[] { "\"api_key\"", "\"apiKey\"", "\"password\"", "\"senha\"", "Authorization:" })
         {

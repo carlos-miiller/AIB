@@ -73,7 +73,40 @@ public class ReadFileTool : ITool
         """)
     );
 
-    public async Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
+    /// <summary>A pasta de dados do AIB. Nula em produção; os ensaios passam uma temporária.</summary>
+    private readonly string? _dados;
+
+    public ReadFileTool(string? raizDeDados = null) => _dados = raizDeDados;
+
+    private Acesso AcessoDe(string argumentsJson) => DadosProtegidos.Leitura(DadosProtegidos.Caminho(argumentsJson), _dados);
+
+    /// <summary>Cofre, configurações e perfil do navegador não são lidos. Ver <see cref="DadosProtegidos"/>.</summary>
+    public string? Validar(string argumentsJson) =>
+        AcessoDe(argumentsJson) == Acesso.Negado ? DadosProtegidos.Recusa(DadosProtegidos.Caminho(argumentsJson)) : null;
+
+    /// <summary>Ler não pergunta — a não ser dentro da pasta de dados do AIB.</summary>
+    public bool PedeConfirmacao(string argumentsJson) => AcessoDe(argumentsJson) == Acesso.Pergunta;
+
+    public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel) =>
+        DadosProtegidos.Cartao(Name, "LER", DadosProtegidos.Caminho(argumentsJson), userLevel);
+
+    public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1) =>
+        ExecutarAutorizadoAsync(argumentsJson, userLevel, null);
+
+    /// <summary>Quem chega sem o cartão a uma leitura que pedia cartão é recusado aqui.</summary>
+    public Task<string> ExecutarAutorizadoAsync(string argumentsJson, int userLevel, CommandConfirmationContext? autorizado)
+    {
+        string caminho = DadosProtegidos.Caminho(argumentsJson);
+
+        return AcessoDe(argumentsJson) switch
+        {
+            Acesso.Negado => Task.FromResult(DadosProtegidos.Recusa(caminho)),
+            Acesso.Pergunta when autorizado == null => Task.FromResult(DadosProtegidos.SemCartao(caminho)),
+            _ => LerAsync(argumentsJson)
+        };
+    }
+
+    private async Task<string> LerAsync(string argumentsJson)
     {
         string path;
         int offset, limit;

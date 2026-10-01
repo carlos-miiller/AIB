@@ -78,7 +78,42 @@ public sealed class GrepTool : ITool
         """)
     );
 
-    public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
+    /// <summary>A pasta de dados do AIB. Nula em produção; os ensaios passam uma temporária.</summary>
+    private readonly string? _dados;
+
+    public GrepTool(string? raizDeDados = null) => _dados = raizDeDados;
+
+    private static string RaizPadrao => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    private Acesso AcessoDe(string argumentsJson) => DadosProtegidos.Leitura(DadosProtegidos.Caminho(argumentsJson, RaizPadrao), _dados);
+
+    /// <summary>Cofre, configurações e perfil do navegador não são lidos. Ver <see cref="DadosProtegidos"/>.</summary>
+    public string? Validar(string argumentsJson) =>
+        AcessoDe(argumentsJson) == Acesso.Negado ? DadosProtegidos.Recusa(DadosProtegidos.Caminho(argumentsJson, RaizPadrao)) : null;
+
+    /// <summary>Buscar não pergunta — a não ser dentro da pasta de dados do AIB.</summary>
+    public bool PedeConfirmacao(string argumentsJson) => AcessoDe(argumentsJson) == Acesso.Pergunta;
+
+    public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel) =>
+        DadosProtegidos.Cartao(Name, "BUSCAR TEXTO EM", DadosProtegidos.Caminho(argumentsJson, RaizPadrao), userLevel);
+
+    public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1) =>
+        ExecutarAutorizadoAsync(argumentsJson, userLevel, null);
+
+    /// <summary>Quem chega sem o cartão a uma leitura que pedia cartão é recusado aqui.</summary>
+    public Task<string> ExecutarAutorizadoAsync(string argumentsJson, int userLevel, CommandConfirmationContext? autorizado)
+    {
+        string caminho = DadosProtegidos.Caminho(argumentsJson, RaizPadrao);
+
+        return AcessoDe(argumentsJson) switch
+        {
+            Acesso.Negado => Task.FromResult(DadosProtegidos.Recusa(caminho)),
+            Acesso.Pergunta when autorizado == null => Task.FromResult(DadosProtegidos.SemCartao(caminho)),
+            _ => BuscarAsync(argumentsJson)
+        };
+    }
+
+    private Task<string> BuscarAsync(string argumentsJson)
     {
         string padrao, raiz, mascara;
         bool ignorarCaixa;
@@ -111,7 +146,7 @@ public sealed class GrepTool : ITool
 
         Console.WriteLine($"[TOOL: {Name}] /{padrao}/ em {raiz} ({mascara})");
 
-        return Task.FromResult(Buscar(raiz, padrao, mascara, ignorarCaixa));
+        return Task.FromResult(Buscar(raiz, padrao, mascara, ignorarCaixa, raizDeDados: _dados));
     }
 
     /// <summary>
@@ -119,7 +154,8 @@ public sealed class GrepTool : ITool
     /// resposta, e ele é o que o modelo vai ler para decidir o passo seguinte.
     /// </summary>
     public static string Buscar(string raiz, string padrao, string mascara = "*",
-                                bool ignorarCaixa = false, TimeSpan? prazo = null)
+                                bool ignorarCaixa = false, TimeSpan? prazo = null,
+                                string? raizDeDados = null)
     {
         Regex regex;
 
@@ -153,6 +189,11 @@ public sealed class GrepTool : ITool
             {
                 if (arquivosLidos >= TetoDeArquivos) { parouNoTeto = true; break; }
                 if (relogio.Elapsed >= teto) { parouNoPrazo = true; break; }
+
+                // Uma busca na pasta do usuário atravessaria ~/.AIB e traria conversas antigas
+                // e registros sem ninguém ter autorizado.
+                if (!DadosProtegidos.NaVarredura(caminho, raiz, raizDeDados)) continue;
+
                 arquivosLidos++;
 
                 FileInfo info;
