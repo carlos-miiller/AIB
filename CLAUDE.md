@@ -79,6 +79,10 @@ commit**. `Regras de Identidade/` (SEGURANCA, CODIGO_LIMPO, VISUAL) são regras,
 
 ## Regras que pegam quem chega
 
+- **Nomes curtos** (`CODIGO_LIMPO.MD` §9): sem artigo nem preposição (`UsaJanelaOrbe`, não
+  `DeveUsarJanelaDoOrbe`), sem repetir o que a classe já diz, local curto em escopo curto. Frase
+  só em nome de teste. Nome existente encurta quando o arquivo é mexido por outro motivo, nunca
+  em mutirão; `x:Name`, nomes de ferramenta, chaves de JSON e de recurso dependem do texto.
 - **Testes nunca escrevem no `~/.AIB` real.** Toda classe que grava em disco aceita outra raiz, e o
   teste usa pasta temporária (tabela de portas em `08-testes-e-avaliacao.md`; auditoria e histórico
   já são desviados por `[ModuleInitializer]` em `TestAuditRedirect.cs`).

@@ -39,3 +39,12 @@ Normas de engenharia do AIB. O objetivo é código leve, explícito e fácil de 
 
 ## 8. Conflitos de nome
 - WPF e WinForms estão ligados juntos, e vários tipos existem nos dois (`Color`, `Brush`, `Brushes`, `Path`, `Clipboard`). Use alias no topo (`using Brush = System.Windows.Media.Brush;`) ou o nome completo.
+
+## 9. Nomes curtos
+O código é em português, e o português alonga nome à toa: artigo e preposição em cada junção. Nome comprido não pesa no programa (vira referência na compilação), pesa em quem lê.
+- **Sem artigos nem preposições** quando o sentido sobrevive: `UsaJanelaOrbe`, não `DeveUsarJanelaDoOrbe`; `RetOrbe` ou `AreaOrbe`, não `RetanguloDoOrbe`.
+- **Não repita o contexto.** A classe, o namespace e o tipo já dizem metade: dentro de `AskpassServidor`, `ResponderAsync`, não `ResponderPedidoDeSenhaAsync`; um `bool` não precisa de `Esta`/`Deve` se o nome já soa como pergunta (`Confiavel`, `Visivel`).
+- **Variável local é curta** quando o escopo é curto: `pedido`, `resp`, `dir`, não `pedidoDeSenhaRecebido`.
+- **Frase só em nome de teste.** Lá o nome vira a mensagem da falha e vale ser longo (`OSeletor_MostraOTemaGravado`).
+- **Abreviação só a consagrada** (`Ret`, `Dir`, `Msg`, `Cfg`, `Max`, `Min`); sigla inventada é pior que nome longo.
+- **Nomes existentes** encurtam quando o arquivo é mexido por outro motivo, não em mutirão. Cuidado com o que depende do texto do nome: `x:Name`/`FindName` no XAML, nomes de ferramenta (vão ao modelo), chaves de JSON gravado em `~/.AIB` e chaves de recurso dos temas.
