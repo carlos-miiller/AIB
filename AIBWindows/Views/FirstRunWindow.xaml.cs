@@ -197,7 +197,7 @@ public partial class FirstRunWindow : Window
         if (_catalogo.Count > 0) return;
 
         // Só modelos que aceitam ferramentas: sem elas a IA não lê nem grava nada.
-        _catalogo = (await AIB.Services.Ai.CatalogoDoOpenRouter.ListarAsync(_http)).Where(m => m.UsaFerramentas).ToList();
+        _catalogo = (await AIB.Services.Ai.CatalogoDoOpenRouter.ListarAsync(_http)).Where(m => m.ServeParaConversa).ToList();
         OpenRouterModelComboBox.ItemsSource = _catalogo.Select(m => m.Id).ToList();
         OpenRouterModelInfo.Text = _catalogo.Count > 0
             ? "Só aparecem modelos que aceitam ferramentas. Dá para digitar o id."

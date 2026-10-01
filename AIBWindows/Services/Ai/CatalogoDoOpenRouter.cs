@@ -28,6 +28,15 @@ public sealed record ModeloDoOpenRouter(
     /// <summary>Se o modelo aceita o parâmetro. Sem a lista, ninguém sabe — e a resposta é sim.</summary>
     public bool Aceita(string parametro) => Parametros == null || Parametros.Contains(parametro);
 
+    /// <summary>
+    /// Variante <c>:batch</c>: metade do preço, mas a resposta chega depois, em até 24 h. Não
+    /// serve para conversa — quem a escolhia na lista ficava esperando uma resposta que não vinha.
+    /// </summary>
+    public bool EmLote => Id.EndsWith(":batch", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Se entra nas listas de escolha: precisa de ferramentas e de resposta na hora.</summary>
+    public bool ServeParaConversa => UsaFerramentas && !EmLote;
+
     /// <summary>"janela 163.840 · US$ 0,27/M entrada · US$ 1,10/M saída · raciocínio".</summary>
     public string Resumo()
     {

@@ -520,6 +520,20 @@ public partial class App : System.Windows.Application
         }
     }
 
+    /// <summary>
+    /// Fecha o que o próprio AIB mantém aberto em <c>~/.AIB</c>, para o reset de fábrica poder
+    /// apagar: o Edge do navegador segura o perfil inteiro, e o registro de execução segura o
+    /// arquivo dele em <c>logs/</c>. Sem isto, as duas pastas sobravam do reset.
+    /// </summary>
+    public void SoltarArquivos()
+    {
+        try { Services.Navegador.NavegadorService.Padrao.DisposeAsync().AsTask().Wait(5000); } catch { }
+
+        _registro?.Dispose();
+        _registro = null;
+        _notifyIcon?.Dispose();
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         _notifyIcon?.Dispose();

@@ -409,7 +409,7 @@ Registra o **custo** e as **falhas**, que antes morriam no console: `GATILHO` (v
 
 ## 16. Regras para não quebrar
 
-- `raw.jsonl` nunca é apagado nem reescrito. Nenhum caminho novo remove arquivos da pasta da sessão.
+- `raw.jsonl` nunca é apagado nem reescrito. Nenhum caminho novo remove arquivos da pasta da sessão. A única exceção é o reset de fábrica, que apaga `~/.AIB` inteira (ver [07](07-configuracoes-e-dados.md)).
 - Turnos só saem do contexto **depois** de o capítulo existir. Nunca remova antes do resumo.
 - Nunca compacte turno aberto nem corte dentro de um turno. O primeiro turno escolhido entra mesmo grande.
 - Só a primeira mensagem de sistema é prefixo fixo. Não conte o bloco de memória no prefixo.

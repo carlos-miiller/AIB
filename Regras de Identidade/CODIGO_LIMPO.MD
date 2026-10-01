@@ -26,7 +26,7 @@ Normas de engenharia do AIB. O objetivo é código leve, explícito e fácil de 
 
 ## 5. Dados do usuário só em `~/.AIB`
 - Tudo o que é do usuário vive em `~/.AIB`, com caminho vindo de `DirectoryService`. A pasta do programa é só padrão de fábrica e fallback de leitura. Nada se grava fora disso.
-- `raw.jsonl` nunca é apagado. Chave e senha só nos cofres DPAPI (`CredentialService`, `MailVault`), nunca em configuração, log, console ou tela; a auditoria guarda no máximo `key_last4`.
+- `raw.jsonl` nunca é apagado (a única exceção é o reset de fábrica, que apaga tudo). Chave e senha só nos cofres DPAPI (`CredentialService`, `MailVault`), nunca em configuração, log, console ou tela; a auditoria guarda no máximo `key_last4`.
 - Toda classe que grava em disco aceita uma raiz alternativa, para o teste não tocar os dados reais.
 
 ## 6. Comentários em português, explicando o porquê

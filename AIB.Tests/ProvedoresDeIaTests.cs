@@ -260,6 +260,18 @@ namespace AIB.Tests
             modelos[1].UsaFerramentas.Should().BeFalse();
         }
 
+        [Fact]
+        public void Catalogo_ModeloEmLoteNaoEntraNaLista()
+        {
+            // As variantes ":batch" do OpenRouter custam metade e respondem em até 24 h. Apareciam
+            // na lista de modelos da conversa, ao lado do modelo normal de mesmo nome.
+            var modelos = CatalogoDoOpenRouter.Ler(
+                """{"data":[{"id":"a/modelo","supported_parameters":["tools"]},{"id":"a/modelo:batch","supported_parameters":["tools"]},{"id":"a/modelo:free","supported_parameters":["tools"]},{"id":"z/sem-tools","supported_parameters":[]}]}""");
+
+            modelos.Where(m => m.ServeParaConversa).Select(m => m.Id)
+                .Should().Equal("a/modelo", "a/modelo:free");
+        }
+
         // ── Limites por provedor ─────────────────────────────────────────────
 
         [Fact]

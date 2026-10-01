@@ -509,7 +509,7 @@ public partial class SettingsWindow : Window
         try
         {
             var todos = await AIB.Services.Ai.CatalogoDoOpenRouter.ListarAsync(_http);
-            _catalogo = todos.Where(m => m.UsaFerramentas).ToList();
+            _catalogo = todos.Where(m => m.ServeParaConversa).ToList();
 
             bool antes = _carregando;
             _carregando = true;
@@ -1988,58 +1988,50 @@ public partial class SettingsWindow : Window
     {
         // Ação destrutiva: confirmação obrigatória ANTES de executar. O8.
         //
-        // O texto lista o que some E o que fica. A versão anterior mostrava a pasta memory
-        // como alvo e não encostava nela: quem lia o diálogo acreditava ter apagado a memória
-        // e ela continuava lá. Agora some de verdade — então o que sobra tem de estar escrito.
+        // Reset TOTAL, por decisão do usuário: nada fica em ~/.AIB, nem .bak. O texto diz isso
+        // com todas as letras, porque inclui o que antes era preservado (o cru das conversas,
+        // os fatos, a auditoria) e o que o reset antigo nem tocava (skills, personagens, os
+        // logins do navegador).
         bool permitido = ConfirmDialog.Perguntar(
             this,
             "Restaurar o AIB para as configurações de fábrica?",
-            "SOME: todas as preferências; a chave da API e as senhas de e-mail guardadas no "
-                + "cofre; o histórico de chat; a memória das conversas (capítulos, atos, turno "
-                + "aberto e diário da compactação); e os arquivos de e-mail (diário, vigias, "
-                + "ponteiros das caixas, conversas e regras).\n\n"
-                + "FICA: o cru das conversas é preservado como raw.<data>.jsonl.bak, e os seus "
-                + "fatos como facts.<data>.md.bak, dentro da pasta memory. Nada é tocado no "
-                + "servidor de e-mail, e a pasta logs continua onde está.\n\n"
-                + "Não é possível desfazer. O AIB será encerrado em seguida.",
+            "SOME TUDO o que o AIB guardou: as preferências; a chave da API e as senhas de "
+                + "e-mail; o histórico e a memória das conversas, inclusive o registro cru "
+                + "(raw.jsonl) e os seus fatos (facts.md); os arquivos de e-mail; as skills "
+                + "instaladas; os personagens criados ou editados; os logins e os sites "
+                + "liberados do navegador; e os logs, inclusive a auditoria.\n\n"
+                + "NÃO FICA cópia nem .bak. Nada é tocado no servidor de e-mail.\n\n"
+                + "Não é possível desfazer. O AIB será encerrado e volta como na primeira vez.",
             ferramenta: "factory_reset",
             alvo: DirectoryService.DataDir,
             dica: "irreversível");
 
         if (!permitido) return;
 
+        // O Edge segura o perfil e o registro de execução segura o próprio arquivo: sem
+        // soltá-los antes, navegador/ e logs/ sobravam.
+        (System.Windows.Application.Current as App)?.SoltarArquivos();
+
         CredentialService.WipeAllCredentials();
         ChatHistoryService.ClearHistory();
 
-        // A limpeza de memory/ e email/ mora num serviço: é a parte com regra (o cru vira
-        // .bak) e por isso precisa de ensaio com raiz temporária. A tela só chama.
         var limpeza = ResetDeFabrica.Limpar();
-
-        _settingsService.SaveSettings(new UserAppSettings());
-
-        _ = AuditLogService.AppendAsync(new
-        {
-            ts = DateTime.UtcNow.ToString("o"),
-            outcome = "factory_reset",
-            apagados = limpeza.Apagados,
-            preservados = limpeza.Preservados,
-            falhas = limpeza.Falhas
-        });
 
         System.Windows.MessageBox.Show(
             "O AIB foi resetado e será encerrado. Inicie-o novamente."
-                + (limpeza.Preservados > 0
-                    ? $"\n\n{limpeza.Preservados} arquivo(s) do seu histórico bruto e dos seus "
-                      + "fatos foram preservados como .bak na pasta memory."
-                    : "")
                 + (limpeza.Falhas > 0
                     ? $"\n\n{limpeza.Falhas} arquivo(s) não puderam ser removidos (em uso?). "
-                      + "Veja o console."
+                      + $"Feche o que estiver usando a pasta e apague o que restou em {DirectoryService.DataDir}."
                     : ""),
             "Reset concluído",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
 
-        System.Windows.Application.Current.Shutdown();
+        // Segunda passada, colada na saída: enquanto a mensagem esteve na tela, um turno em
+        // curso ou o vigia de e-mail podem ter gravado de novo. E Exit em vez de Shutdown: o
+        // encerramento normal fecha a conversa, e fechar a conversa a ARQUIVA — recriava
+        // chat_history.json e a pasta da sessão logo depois do reset.
+        ResetDeFabrica.Limpar();
+        Environment.Exit(0);
     }
 }

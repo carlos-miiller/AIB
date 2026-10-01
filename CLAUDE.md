@@ -98,4 +98,5 @@ commit**. `Regras de Identidade/` (SEGURANCA, CODIGO_LIMPO, VISUAL) são regras,
 - WPF e WinForms estão ligados juntos: `Color`, `Brush`, `Point`, `Size`, `KeyEventArgs`,
   `MouseButtonEventArgs` etc. são ambíguos — use alias ou o nome completo.
 - Chaves e senhas só nos cofres DPAPI (`CredentialService`, `MailVault`). E-mail é só leitura e o
-  corpo nunca vai para disco. `raw.jsonl` nunca é apagado (o reset renomeia para `.bak`).
+  corpo nunca vai para disco. `raw.jsonl` nunca é apagado; a única exceção é
+  o reset de fábrica, que é total: esvazia `~/.AIB` inteira, sem `.bak` (`ResetDeFabrica`).

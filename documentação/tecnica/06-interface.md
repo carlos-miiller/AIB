@@ -334,7 +334,8 @@ Assistente em cinco passos, 40% × 80% da tela principal:
    - Ollama: lista os modelos instalados; se o Ollama não responde, oferece "Tentar novamente" e o
      modelo padrão (`ProvedoresDeIa.ModeloPadraoDoOllama`).
    - OpenRouter: chave (validada por `ProvedoresDeIa.ChaveValida` só no LostFocus, Enter ou Salvar)
-     e modelo, do catálogo filtrado para modelos que aceitam ferramentas.
+     e modelo, do catálogo filtrado para modelos que aceitam ferramentas e respondem na hora
+     (`ModeloDoOpenRouter.ServeParaConversa`: as variantes `:batch`, que respondem em até 24 h, ficam fora).
 4. "Níveis de Autonomia" e 5. "Seu Crescimento": texto explicativo.
 
 "Próximo" no passo 3 só habilita com modelo escolhido (e chave válida, no OpenRouter). Ao

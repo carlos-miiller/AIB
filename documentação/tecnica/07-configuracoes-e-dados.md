@@ -74,9 +74,9 @@ O AIB não usa pasta temporária.
 Detalhes que importam:
 
 - **`memory/sessions/<id>/`** (`SessionMemory`). O id é o instante de abertura, `yyyyMMdd-HHmmss-fff`; os milissegundos existem porque duas sessões no mesmo segundo misturariam dois `raw.jsonl`. O id passa por `Path.GetFileName`, para não virar caminho fora da pasta. Os JSONL são UTF-8 **sem BOM** (o BOM estragaria a primeira linha para qualquer parser) e sem escapar acentos. Gravar nunca lança: falha de disco vira `false` e linha no console, porque a memória é um acréscimo e não pode derrubar a conversa. O formato e o papel de cada arquivo estão em [04-memoria.md](04-memoria.md).
-- **`raw.jsonl` nunca é apagado.** Resumo é perda irreversível, e um resumo errado aqui não gera só incoerência: gera um agente agindo sobre informação errada com shell na mão. O cru sai do prompt, não sai do disco. Nenhum código apaga esse arquivo. O reset de fábrica, que desde a decisão do usuário limpa `memory/`, o **renomeia** para `raw.<carimbo>.jsonl.bak` — sai do caminho de quem lê, não sai do disco.
+- **`raw.jsonl` nunca é apagado.** Resumo é perda irreversível, e um resumo errado aqui não gera só incoerência: gera um agente agindo sobre informação errada com shell na mão. O cru sai do prompt, não sai do disco. Nenhum código do uso normal apaga esse arquivo. A única exceção é o reset de fábrica, que por decisão do usuário é total e apaga `~/.AIB` inteira.
 - **`compactacao.log`** (`RegistroDaCompactacao`) só é escrito com `CompactionLogging` ligado. Guarda contagens e tempos, não o texto dos resumos. A pasta é resolvida a cada escrita, porque a sessão troca quando a conversa é zerada ou restaurada.
-- **`facts.md`** é do usuário: a AIB só acrescenta linhas no fim, nunca reescreve nem apaga — nem no reset de fábrica, que o renomeia para `facts.<carimbo>.md.bak`. `facts.index.jsonl` é append-only e impede que um fato apagado pelo usuário volte na próxima promoção; ele, sim, é apagado no reset, porque é da máquina.
+- **`facts.md`** é do usuário: a AIB só acrescenta linhas no fim, nunca reescreve nem apaga (só o reset de fábrica o leva, com todo o resto). `facts.index.jsonl` é append-only e impede que um fato apagado pelo usuário volte na próxima promoção.
 - **`chat_history.json`** (`ChatHistoryService`) é regravado a cada turno, com a conversa viva por cima da própria entrada. Guarda até 50 conversas do usuário e, num teto à parte, até 50 conversas nascidas de e-mail — com um teto só, uma caixa movimentada expulsava as conversas que o usuário começou. Cada `ChatSession` guarda `MemorySessionId`, que liga a entrada à pasta da sessão, e `MailThreadKey` quando nasceu de um e-mail.
 - **`email/`**: o corpo de uma mensagem **nunca** é gravado. O diário guarda remetente, assunto e o resumo de uma frase; `MailJournalDays` controla a retenção e em zero desliga o diário. A pasta de cada conversa de e-mail tem nome de hash, para o assunto não vazar em listagens. Ver [05-email.md](05-email.md).
 - **`navegador/`** (`NavegadorService`, `SitesLiberados`): o perfil é do Edge, e guarda o que um navegador guarda — cookies e sessão dos sites em que o usuário logou pela janela. **Nada das páginas** é gravado pelo AIB: a leitura fica na RAM e sai para o modelo embrulhada por `ConteudoDeTerceiros` (ver [03](03-ferramentas-e-portao.md)). Apagar `sites-liberados.txt` faz o primeiro acesso a cada site voltar a perguntar; apagar `perfil/` desloga de tudo. O driver do Playwright vive em `.playwright/`, **ao lado do `AIB.exe`** (a publicação em arquivo único não o embute): mover o exe sem essa pasta desliga o navegador.
@@ -86,18 +86,28 @@ Detalhes que importam:
 
 ### Reset de fábrica
 
-`SettingsWindow.WipeData_Click`, depois de confirmação, faz quatro coisas: `CredentialService.WipeAllCredentials` (apaga `credentials/` inteira, o que inclui as senhas de e-mail), `ChatHistoryService.ClearHistory` (apaga `chat_history.json`), `ResetDeFabrica.Limpar` (varre `memory/` e `email/`) e grava um `UserAppSettings` novo. Audita `factory_reset` com as contagens da limpeza e encerra o app.
+É **total**, por decisão do usuário: nada do que o AIB guardou em `~/.AIB` fica, nem cópia `.bak`. A versão anterior varria só `memory/` e `email/` e renomeava `raw.jsonl` e `facts.md`; skills, personagens, logs e o perfil do navegador (com os logins) nem eram tocados.
 
-`ResetDeFabrica` (`AIBWindows/Services/ResetDeFabrica.cs`) existe fora da tela porque é a parte com regra — o diálogo antigo mostrava `memory/` como alvo e não encostava nela, e uma promessa cumprida sobre arquivo apagado precisa de ensaio:
+`SettingsWindow.WipeData_Click`, depois de uma confirmação que lista tudo o que some:
+
+1. `App.SoltarArquivos` fecha o Edge do navegador (que segura `navegador/perfil`) e o registro de execução (que segura o próprio arquivo em `logs/`), e tira o ícone da bandeja.
+2. `CredentialService.WipeAllCredentials` e `ChatHistoryService.ClearHistory`.
+3. `ResetDeFabrica.Limpar` esvazia a raiz de dados.
+4. Mostra o resultado, roda `ResetDeFabrica.Limpar` **de novo** e sai com `Environment.Exit`. A segunda passada pega o que um turno em curso ou o vigia de e-mail gravaram enquanto a mensagem estava na tela. `Exit` em vez de `Shutdown` porque o encerramento normal fecha a conversa, e fechar a conversa a arquiva: recriava `chat_history.json` e a pasta da sessão logo depois do reset.
+
+Não há linha de auditoria do reset: ela recriaria `logs/`. O próximo arranque não acha configuração e abre o primeiro arranque; os personagens de fábrica são semeados de novo.
+
+`ResetDeFabrica` (`AIBWindows/Services/ResetDeFabrica.cs`) vive fora da tela porque apagar arquivo precisa de ensaio:
 
 | | |
 |---|---|
-| Varre | `memory/` e `email/`, recursivamente. Nada fora das duas é tocado — `logs/` fica, porque auditoria que o reset apaga não é auditoria. |
-| Preserva | `raw.jsonl` e `facts.md`, **renomeados** para `<nome>.<carimbo>.<ext>.bak` (carimbo `yyyyMMdd-HHmm`). Arquivo que já termina em `.bak` também fica: senão a regra duraria um reset. |
-| Apaga | Todo o resto: `chapters.jsonl`, `acts.jsonl`, `turno-aberto.json`, `compactacao.log`, `facts.index.jsonl` e `email/` inteira. Pasta que ficou vazia sai junto. |
-| Falha | Vira linha `[RESET]` no console e entra na contagem. **Nunca lança e nunca aborta o resto**: a metade que morre é sempre a que ainda não rodou. |
+| Apaga | Tudo o que há dentro da raiz, recursivamente, inclusive arquivos só-leitura (o perfil do Edge tem). |
+| Fica | A pasta raiz, vazia. Sem ela, `EnsureDirectories` migraria de volta o que houver em `%AppData%\AIB` (o local antigo). |
+| Atalho de pasta | Junção ou link sai sozinho, sem descer: o destino fica fora da raiz e não é do AIB. |
+| Recusa | `RaizSegura`: a raiz de dados é configurável (`DataDirectory`), então recusa a raiz de uma unidade e qualquer pasta que contenha o perfil do usuário ou o próprio programa. |
+| Falha | Vira linha `[RESET]` no console e entra na contagem, que a mensagem final mostra. **Nunca lança e nunca aborta o resto.** |
 
-O texto do diálogo lista o que some e o que fica, com o nome do `.bak` escrito nele. Ensaios em `AIB.Tests/ResetDeFabricaTests.cs`, sempre em raiz temporária.
+Ensaios em `AIB.Tests/ResetDeFabricaTests.cs`, sempre em raiz temporária.
 
 ## Configurações: `SettingsService` e `UserAppSettings`
 

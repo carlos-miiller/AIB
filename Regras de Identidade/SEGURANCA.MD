@@ -80,8 +80,10 @@ são invioláveis; o mecanismo está em `documentação/tecnica/03-ferramentas-e
 ## 5. Dados e registros
 
 - Todo dado do usuário fica em `~/.AIB` (`DirectoryService.DataDir`).
-- **`raw.jsonl` nunca é apagado.** O reset de fábrica limpa `memory/` e `email/`, mas o `raw.jsonl` —
-  e o `facts.md`, que é texto do usuário — ele **renomeia** para `.bak` (`ResetDeFabrica`).
+- **`raw.jsonl` nunca é apagado** no uso normal: nenhuma ferramenta, compactação ou troca de conversa
+  o remove. A única exceção é o **reset de fábrica**, que é total por decisão do usuário: apaga tudo
+  o que há em `~/.AIB` (`ResetDeFabrica`), sem `.bak`, depois de uma confirmação que diz isso. Só
+  roda pelo botão da tela; o agente não tem ferramenta que o dispare.
 - Os arquivos de e-mail são apagáveis e obedecem `MailJournalDays`, que corta por **dias**.
 - A auditoria (`~/.AIB/logs/audit-*.jsonl`) é append-only e grava **antes** da execução, em todo
   desfecho do portão de confirmação (cartão, sessão, dispensa, floor list, sem contexto, sem UI).

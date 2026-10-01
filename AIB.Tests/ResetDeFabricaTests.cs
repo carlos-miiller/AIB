@@ -1,6 +1,6 @@
 using System;
+using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using AIB.Services;
 using FluentAssertions;
 using Xunit;
@@ -8,16 +8,16 @@ using Xunit;
 namespace AIB.Tests
 {
     /// <summary>
-    /// O reset de fábrica limpando a memória e os arquivos de e-mail.
+    /// O reset de fábrica apaga TUDO o que há na raiz de dados.
     /// <para>
-    /// O diálogo mostrava a pasta <c>memory</c> como alvo e não encostava nela: quem lia
-    /// acreditava ter apagado a memória, e ela continuava inteira. Agora apaga de verdade — e
-    /// por isso as DUAS exceções passam a valer dinheiro. O <c>raw.jsonl</c> nunca é apagado
-    /// (regra do projeto), e o <c>facts.md</c> é do usuário: os dois são renomeados.
+    /// Decisão do usuário: reset é total. A versão anterior varria só <c>memory/</c> e
+    /// <c>email/</c> e renomeava <c>raw.jsonl</c> e <c>facts.md</c> para <c>.bak</c>; skills,
+    /// personagens, logs e o perfil do navegador (com os logins) nem eram tocados. Quem
+    /// resetava para entregar a máquina deixava tudo isso para trás.
     /// </para>
     /// <para>
     /// Tudo em raiz temporária. Um ensaio deste assunto que escapasse para o <c>~/.AIB</c> real
-    /// apagaria a conversa de quem está rodando a suíte.
+    /// apagaria os dados de quem está rodando a suíte.
     /// </para>
     /// </summary>
     public class ResetDeFabricaTests : IDisposable
@@ -25,179 +25,79 @@ namespace AIB.Tests
         private readonly string _raiz =
             Path.Combine(Path.GetTempPath(), "aib-reset-" + Guid.NewGuid().ToString("N"));
 
-        private static readonly DateTime Quando = new(2026, 9, 22, 14, 30, 0);
-        private const string Carimbo = "20260922-1430";
-
         public void Dispose()
         {
             try { if (Directory.Exists(_raiz)) Directory.Delete(_raiz, recursive: true); } catch { }
         }
 
         /// <summary>Uma raiz de dados com a cara da de verdade.</summary>
-        private void Povoar(string sessao = "20260920-101500-123")
+        private void Povoar()
         {
-            Escrever($"memory/sessions/{sessao}/raw.jsonl", "{\"turno\":1}");
-            Escrever($"memory/sessions/{sessao}/chapters.jsonl", "{\"cap\":1}");
-            Escrever($"memory/sessions/{sessao}/acts.jsonl", "{\"ato\":1}");
-            Escrever($"memory/sessions/{sessao}/turno-aberto.json", "{}");
-            Escrever($"memory/sessions/{sessao}/compactacao.log", "compactou");
-            Escrever("memory/facts.md", "# fatos\n- mora em Curitiba");
-            Escrever("memory/facts.index.jsonl", "{\"fato\":\"x\"}");
-
+            Escrever("memory/sessions/20260920-101500-123/raw.jsonl", "{}");
+            Escrever("memory/sessions/20260920-101500-123/chapters.jsonl", "{}");
+            Escrever("memory/sessions/antiga/raw.20260901-0900.jsonl.bak", "{}");
+            Escrever("memory/facts.md", "# fatos");
             Escrever("email/estado.json", "{}");
-            Escrever("email/vigias.json", "[]");
-            Escrever("email/regras.md", "regras");
-            Escrever("email/diario/diario-2026-09-20.json", "[]");
             Escrever("email/conversas/abc/triagem.jsonl", "{}");
-
-            // Fora do alcance: quem cuida deles é outro pedaço do reset, ou ninguém.
             Escrever("profile.dat", "cifrado");
             Escrever("chat_history.json", "[]");
             Escrever("credentials/openrouter.bin", "cifrado");
             Escrever("logs/audit-2026-09-20.jsonl", "{}");
             Escrever("skills/planilha/SKILL.md", "# skill");
             Escrever("character/Ayano/SOUL.MD", "# alma");
+            Escrever("navegador/sites-liberados.txt", "exemplo.com");
+            Escrever("navegador/perfil/Default/Cookies", "sessao");
         }
+
+        private const int ArquivosPovoados = 14;
+
+        private string Caminho(string relativo) =>
+            Path.Combine(_raiz, relativo.Replace('/', Path.DirectorySeparatorChar));
 
         private void Escrever(string relativo, string conteudo)
         {
-            string caminho = Path.Combine(_raiz, relativo.Replace('/', Path.DirectorySeparatorChar));
-            Directory.CreateDirectory(Path.GetDirectoryName(caminho)!);
-            File.WriteAllText(caminho, conteudo);
+            Directory.CreateDirectory(Path.GetDirectoryName(Caminho(relativo))!);
+            File.WriteAllText(Caminho(relativo), conteudo);
         }
-
-        private bool Existe(string relativo) =>
-            File.Exists(Path.Combine(_raiz, relativo.Replace('/', Path.DirectorySeparatorChar)));
-
-        private string[] NomesEm(string relativo)
-        {
-            string pasta = Path.Combine(_raiz, relativo.Replace('/', Path.DirectorySeparatorChar));
-            return Directory.Exists(pasta)
-                ? Directory.GetFiles(pasta).Select(c => Path.GetFileName(c)!).ToArray()
-                : Array.Empty<string>();
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
-        // O que fica
-        // ─────────────────────────────────────────────────────────────────────
 
         [Fact]
-        public void ORAW_JSONL_VIRA_BAK_ENuncaEhApagado()
+        public void TUDO_Some_ESoARaizVaziaFica()
         {
-            // A regra mais dura do projeto. Resumo é perda irreversível, e um resumo errado aqui
-            // não gera só incoerência: gera um agente agindo sobre informação errada.
+            // Inclui o que o reset antigo preservava (raw.jsonl, facts.md, .bak de resets
+            // anteriores, logs) e o que ele nem tocava (skills, personagens, navegador).
             Povoar();
 
-            ResetDeFabrica.Limpar(_raiz, Quando);
+            var r = ResetDeFabrica.Limpar(_raiz);
 
-            Existe("memory/sessions/20260920-101500-123/raw.jsonl").Should().BeFalse();
-            Existe($"memory/sessions/20260920-101500-123/raw.{Carimbo}.jsonl.bak").Should().BeTrue();
-
-            File.ReadAllText(Path.Combine(_raiz, "memory", "sessions", "20260920-101500-123",
-                                          $"raw.{Carimbo}.jsonl.bak"))
-                .Should().Be("{\"turno\":1}", "renomear não é reescrever");
+            Directory.GetFileSystemEntries(_raiz).Should().BeEmpty();
+            r.Apagados.Should().Be(ArquivosPovoados);
+            r.Falhas.Should().Be(0);
         }
 
         [Fact]
-        public void OFACTS_MD_VIRA_BAK_PorqueEhTextoDoUsuario()
+        public void ARaiz_FICA_ParaAMigracaoAntigaNaoVoltar()
         {
-            // O facts.md é escrito e reordenado à mão. "Voltar ao estado de fábrica" não pode
-            // querer dizer "perder o que você escreveu".
+            // Sem a pasta ~/.AIB, o arranque migra de volta o que houver em %AppData%\AIB (o
+            // local de antes): os dados apagados reapareceriam.
             Povoar();
 
-            ResetDeFabrica.Limpar(_raiz, Quando);
+            ResetDeFabrica.Limpar(_raiz);
 
-            Existe("memory/facts.md").Should().BeFalse();
-            Existe($"memory/facts.{Carimbo}.md.bak").Should().BeTrue();
+            Directory.Exists(_raiz).Should().BeTrue();
         }
 
         [Fact]
-        public void UmSEGUNDO_Reset_NAO_ApagaOBakDoPrimeiro()
+        public void ArquivoSO_LEITURA_TambemSome()
         {
-            // Preservar uma vez e apagar na vez seguinte seria a regra durando um reset.
-            Povoar();
+            // O perfil do Edge e skills vindas de um repositório trazem arquivos só-leitura, e
+            // o File.Delete os recusa: a pasta navegador/ sobrava do reset.
+            Escrever("navegador/perfil/Default/Preferences", "{}");
+            File.SetAttributes(Caminho("navegador/perfil/Default/Preferences"), FileAttributes.ReadOnly);
 
-            ResetDeFabrica.Limpar(_raiz, Quando);
-            ResetDeFabrica.Limpar(_raiz, Quando.AddDays(1));
+            var r = ResetDeFabrica.Limpar(_raiz);
 
-            NomesEm("memory/sessions/20260920-101500-123")
-                .Should().BeEquivalentTo(new[] { $"raw.{Carimbo}.jsonl.bak" });
-        }
-
-        [Fact]
-        public void DoisResetsNoMESMO_Minuto_NaoSeAtropelam()
-        {
-            // O carimbo tem resolução de minuto; um File.Move por cima apagaria o cru salvo há
-            // trinta segundos.
-            Escrever("memory/sessions/a/raw.jsonl", "primeira");
-            ResetDeFabrica.Limpar(_raiz, Quando);
-
-            Escrever("memory/sessions/a/raw.jsonl", "segunda");
-            ResetDeFabrica.Limpar(_raiz, Quando);
-
-            NomesEm("memory/sessions/a").Should().HaveCount(2, "nenhum dos dois pode ter sumido");
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
-        // O que some
-        // ─────────────────────────────────────────────────────────────────────
-
-        [Fact]
-        public void OsRESUMOS_ECompanhia_SOMEM()
-        {
-            Povoar();
-
-            ResetDeFabrica.Limpar(_raiz, Quando);
-
-            NomesEm("memory/sessions/20260920-101500-123")
-                .Should().BeEquivalentTo(new[] { $"raw.{Carimbo}.jsonl.bak" },
-                                         "capítulos, atos, turno aberto e diário da compactação saem");
-
-            Existe("memory/facts.index.jsonl").Should().BeFalse("é da máquina, não do usuário");
-        }
-
-        [Fact]
-        public void APastaDeEMAIL_SOME_Inteira()
-        {
-            // Nada em email/ é do usuário nem é insubstituível: tudo volta na próxima passada do
-            // vigia, lendo o servidor.
-            Povoar();
-
-            ResetDeFabrica.Limpar(_raiz, Quando);
-
-            Directory.Exists(Path.Combine(_raiz, "email")).Should().BeFalse();
-        }
-
-        [Fact]
-        public void SessaoQueFicouVAZIA_SaiJunto()
-        {
-            // Uma conversa que nunca fechou turno não tem raw.jsonl. A pasta dela vira ruído.
-            Escrever("memory/sessions/vazia/turno-aberto.json", "{}");
-
-            ResetDeFabrica.Limpar(_raiz, Quando);
-
-            Directory.Exists(Path.Combine(_raiz, "memory", "sessions", "vazia")).Should().BeFalse();
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
-        // O que não se toca
-        // ─────────────────────────────────────────────────────────────────────
-
-        [Fact]
-        public void NADA_ForaDeMemoryEEmail_EhTocado()
-        {
-            // Os logs ficam: auditoria que o reset apaga não é auditoria. O resto tem dono —
-            // credenciais, configurações e histórico são apagados por quem cuida deles.
-            Povoar();
-
-            ResetDeFabrica.Limpar(_raiz, Quando);
-
-            Existe("profile.dat").Should().BeTrue();
-            Existe("chat_history.json").Should().BeTrue();
-            Existe("credentials/openrouter.bin").Should().BeTrue();
-            Existe("logs/audit-2026-09-20.jsonl").Should().BeTrue();
-            Existe("skills/planilha/SKILL.md").Should().BeTrue();
-            Existe("character/Ayano/SOUL.MD").Should().BeTrue();
+            r.Falhas.Should().Be(0);
+            Directory.GetFileSystemEntries(_raiz).Should().BeEmpty();
         }
 
         [Fact]
@@ -205,15 +105,15 @@ namespace AIB.Tests
         {
             // A raiz é parâmetro justamente para isto poder ser provado.
             string vizinha = _raiz + "-vizinha";
-            Directory.CreateDirectory(Path.Combine(vizinha, "memory"));
-            File.WriteAllText(Path.Combine(vizinha, "memory", "raw.jsonl"), "de outro");
+            Directory.CreateDirectory(vizinha);
+            File.WriteAllText(Path.Combine(vizinha, "raw.jsonl"), "de outro");
 
             try
             {
                 Povoar();
-                ResetDeFabrica.Limpar(_raiz, Quando);
+                ResetDeFabrica.Limpar(_raiz);
 
-                File.Exists(Path.Combine(vizinha, "memory", "raw.jsonl")).Should().BeTrue();
+                File.Exists(Path.Combine(vizinha, "raw.jsonl")).Should().BeTrue();
             }
             finally
             {
@@ -222,16 +122,43 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void AtalhoDePasta_SaiSemLevarODestino()
+        {
+            // Uma skill pode ser uma junção para a pasta de um projeto. Descer por ela apagaria
+            // o projeto, que não é do AIB.
+            string destino = _raiz + "-destino";
+            Directory.CreateDirectory(destino);
+            File.WriteAllText(Path.Combine(destino, "trabalho.txt"), "do usuário");
+            Directory.CreateDirectory(Caminho("skills"));
+
+            try
+            {
+                string juncao = Caminho("skills/projeto");
+                using (var p = Process.Start(new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{juncao}\" \"{destino}\"")
+                { CreateNoWindow = true, UseShellExecute = false })!)
+                {
+                    p.WaitForExit();
+                }
+                Directory.Exists(juncao).Should().BeTrue("o ensaio depende da junção criada");
+
+                ResetDeFabrica.Limpar(_raiz);
+
+                Directory.Exists(juncao).Should().BeFalse();
+                File.Exists(Path.Combine(destino, "trabalho.txt")).Should().BeTrue();
+            }
+            finally
+            {
+                try { Directory.Delete(destino, true); } catch { }
+            }
+        }
+
+        [Fact]
         public void RaizQueNAO_EXISTE_NaoEhErro()
         {
-            Action limpar = () => ResetDeFabrica.Limpar(Path.Combine(_raiz, "nunca-existiu"), Quando);
+            Action limpar = () => ResetDeFabrica.Limpar(Path.Combine(_raiz, "nunca-existiu"));
 
             limpar.Should().NotThrow();
         }
-
-        // ─────────────────────────────────────────────────────────────────────
-        // Quando o disco diz não
-        // ─────────────────────────────────────────────────────────────────────
 
         [Fact]
         public void ArquivoTRAVADO_NaoDerruba_NemABORTA_ORestante()
@@ -240,41 +167,45 @@ namespace AIB.Tests
             // que ainda não rodou. A falha vira linha no console e o resto segue.
             Povoar();
 
-            string travado = Path.Combine(_raiz, "memory", "sessions", "20260920-101500-123",
-                                          "chapters.jsonl");
-
-            using (new FileStream(travado, FileMode.Open, FileAccess.Read, FileShare.None))
+            ResetDeFabrica.Resultado r = null!;
+            using (new FileStream(Caminho("memory/facts.md"), FileMode.Open, FileAccess.Read, FileShare.None))
             {
-                Action limpar = () => ResetDeFabrica.Limpar(_raiz, Quando);
+                Action limpar = () => r = ResetDeFabrica.Limpar(_raiz);
                 limpar.Should().NotThrow();
             }
 
-            Existe($"memory/sessions/20260920-101500-123/raw.{Carimbo}.jsonl.bak")
-                .Should().BeTrue("o que vem depois do arquivo travado ainda tem de acontecer");
-            Existe($"memory/facts.{Carimbo}.md.bak").Should().BeTrue();
-            Directory.Exists(Path.Combine(_raiz, "email")).Should().BeFalse();
+            r.Falhas.Should().Be(1);
+            r.Apagados.Should().Be(ArquivosPovoados - 1);
+            File.Exists(Caminho("memory/facts.md")).Should().BeTrue();
+            Directory.Exists(Caminho("skills")).Should().BeFalse("o que vem depois do arquivo travado ainda tem de acontecer");
+            Directory.Exists(Caminho("navegador")).Should().BeFalse();
         }
 
         [Fact]
-        public void OResultado_CONTA_OQueFezEOQueNaoConseguiu()
+        public void PastaQueNaoEhSoDoAIB_EhRECUSADA()
         {
-            // A auditoria grava estes números: sem eles, "reset concluído" é uma frase sem prova.
-            Povoar();
+            // A raiz de dados é configurável (DataDirectory). "Apagar tudo" apontado para o
+            // perfil do usuário, para a raiz do disco ou para a pasta do programa apagaria o que
+            // não é do AIB.
+            string perfil = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-            var r = ResetDeFabrica.Limpar(_raiz, Quando);
+            ResetDeFabrica.RaizSegura(perfil).Should().BeFalse();
+            ResetDeFabrica.RaizSegura(Path.GetPathRoot(perfil)!).Should().BeFalse();
+            ResetDeFabrica.RaizSegura(Path.GetDirectoryName(perfil)!).Should().BeFalse("contém o perfil");
+            ResetDeFabrica.RaizSegura(AppContext.BaseDirectory).Should().BeFalse();
+            ResetDeFabrica.RaizSegura("").Should().BeFalse();
 
-            r.Preservados.Should().Be(2, "raw.jsonl e facts.md");
-            r.Apagados.Should().Be(10, "cinco de memory e cinco de email");
-            r.Falhas.Should().Be(0);
+            ResetDeFabrica.RaizSegura(Path.Combine(perfil, ".AIB")).Should().BeTrue();
+            ResetDeFabrica.RaizSegura(_raiz).Should().BeTrue();
         }
 
         [Fact]
-        public void ONomeDoBAK_PoeOCarimboANTES_DaExtensao()
+        public void RaizRecusada_NaoApagaNada_EContaAFalha()
         {
-            // É a promessa literal do diálogo. "raw.jsonl.20260922-1430.bak" cumpriria a regra e
-            // deixaria de se ler como o que é.
-            ResetDeFabrica.NomeDoBackup("raw.jsonl", Carimbo).Should().Be($"raw.{Carimbo}.jsonl.bak");
-            ResetDeFabrica.NomeDoBackup("facts.md", Carimbo).Should().Be($"facts.{Carimbo}.md.bak");
+            var r = ResetDeFabrica.Limpar(AppContext.BaseDirectory);
+
+            r.Should().Be(new ResetDeFabrica.Resultado(0, 1));
+            File.Exists(typeof(ResetDeFabricaTests).Assembly.Location).Should().BeTrue();
         }
     }
 }
