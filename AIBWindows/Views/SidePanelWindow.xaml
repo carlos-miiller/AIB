@@ -123,10 +123,7 @@
 
                 <!-- ── CABEÇALHO ───────────────────────────────────────── -->
                 <Grid Grid.Row="0" Height="{StaticResource HeaderHeight}"
-                      Background="Transparent"
-                      MouseLeftButtonDown="Cabecalho_MouseLeftButtonDown"
-                      MouseMove="Cabecalho_MouseMove"
-                      MouseLeftButtonUp="Cabecalho_MouseLeftButtonUp">
+                      Background="Transparent">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>

@@ -110,9 +110,10 @@
                     </Grid.RowDefinitions>
 
                     <!-- ── §3.3  HEADER  52px ───────────────────────────── -->
+                    <!-- A janela é FIXA: não se arrasta pelo cabeçalho. Ela fica ancorada
+                         acima da barra de tarefas (RepositionWindow). -->
                     <Grid Grid.Row="0" Height="{StaticResource HeaderHeight}"
-                          Background="Transparent"
-                          MouseDown="Window_MouseDown" Cursor="SizeAll">
+                          Background="Transparent">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
@@ -513,9 +514,16 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBlock Grid.Column="0" Text="✦" FontSize="13"
-                                               Foreground="{StaticResource AccentLilacBrush}"
-                                               VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <!-- Os itens da barra ficam na BORDA DE BAIXO: uma faixa da
+                                         altura de uma linha, ancorada embaixo, com o item centrado
+                                         nela. Com uma linha nada muda; quando a caixa cresce, eles
+                                         não sobem para o meio dela. -->
+                                    <Grid Grid.Column="0" Height="{StaticResource InputHeight}"
+                                          VerticalAlignment="Bottom">
+                                        <TextBlock Text="✦" FontSize="13"
+                                                   Foreground="{StaticResource AccentLilacBrush}"
+                                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    </Grid>
 
                                     <Popup x:Name="CommandsPopup"
                                            PlacementTarget="{Binding ElementName=InputBox}"
@@ -569,7 +577,7 @@
                                              SelectionBrush="{StaticResource AccentLilacBrush}"
                                              FontSize="{StaticResource FontSizeBubble}"
                                              VerticalContentAlignment="Center"
-                                             Padding="0,8" MinHeight="32" MaxHeight="110"
+                                             Padding="0,8" MinHeight="32"
                                              AcceptsReturn="True" TextWrapping="Wrap"
                                              PreviewKeyDown="InputBox_PreviewKeyDown"
                                              TextChanged="InputBox_TextChanged">
@@ -598,7 +606,8 @@
                                                IsHitTestVisible="False"/>
 
                                     <StackPanel Grid.Column="2" Orientation="Horizontal"
-                                                VerticalAlignment="Center">
+                                                Height="{StaticResource InputHeight}"
+                                                VerticalAlignment="Bottom">
                                         <Button x:Name="VisionButton" Style="{StaticResource IconButton}"
                                                 Click="VisionButton_Click" ToolTip="Ler tela (OCR)">
                                             <Path Data="M2.5,5.8 H5.4 L6.6,4 H11.4 L12.6,5.8 H15.5 V14 H2.5 Z M9,7.2 A2.6,2.6 0 1 1 9,12.4 A2.6,2.6 0 1 1 9,7.2 Z"

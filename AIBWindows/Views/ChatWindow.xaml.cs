@@ -93,9 +93,10 @@ public partial class ChatWindow : Window
         // Reposiciona após a janela ter tamanho real (SizeToContent)
         this.Loaded += (s, e) => RepositionWindow();
         this.SizeChanged += (s, e) => RepositionWindow();
+        MainAreaGrid.SizeChanged += (s, e) => AjustarTetoDaDigitacao();
 
         // O painel é uma janela separada, mas não uma janela independente: ele fica colado na
-        // conversa. Arrastar a conversa, redimensioná-la ou reposicioná-la leva o painel
+        // conversa. Reposicioná-la ou redimensioná-la (ela não se arrasta mais) leva o painel
         // junto, senão os dois se soltam e o conjunto deixa de parecer uma peça só.
         this.LocationChanged += (s, e) => PosicionarPainel();
 
@@ -1873,9 +1874,20 @@ public partial class ChatWindow : Window
         _timerDaFaixa.Start();
     }
 
-    private void Window_MouseDown(object sender, MouseButtonEventArgs e)
+    /// <summary>Quanto da altura da janela a caixa de digitação pode ocupar.</summary>
+    public const double FracaoDaDigitacao = 0.5;
+
+    /// <summary>
+    /// A altura máxima da caixa de digitação: metade da janela. Passou disso, ela rola por
+    /// dentro. O teto fixo de 110 mostrava cinco linhas de um texto colado de cinquenta.
+    /// </summary>
+    public static double TetoDaDigitacao(double alturaDaJanela) =>
+        Math.Max(32, alturaDaJanela * FracaoDaDigitacao);
+
+    private void AjustarTetoDaDigitacao()
     {
-        if (e.LeftButton == MouseButtonState.Pressed) this.DragMove();
+        // MainAreaGrid é o quadro visível: a Window é maior, por causa da margem da sombra.
+        if (MainAreaGrid.ActualHeight > 0) InputBox.MaxHeight = TetoDaDigitacao(MainAreaGrid.ActualHeight);
     }
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)

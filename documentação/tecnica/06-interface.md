@@ -100,6 +100,10 @@ resposta), a exclusão de conversa do histórico, o descarte de conversa de e-ma
   a conta parcela por parcela.
 - **Estado vazio:** "Nenhuma conversa ainda" enquanto `MessagesPanel` está vazio
   (`AtualizarEstadoVazio`).
+- **Barra de digitação:** a caixa cresce com o texto até metade da altura do quadro
+  (`ChatWindow.TetoDaDigitacao`, recalculado no `SizeChanged` do `MainAreaGrid`) e depois rola por
+  dentro. Os itens da barra (✦, câmera, microfone, enviar) ficam numa faixa da altura de uma linha
+  ancorada embaixo: com a caixa alta, continuam na borda inferior.
 - **Personagem:** `ApplyCharacterUI` escreve o nome no cabeçalho, no estado vazio e no placeholder.
   É chamada também ao salvar configurações, e por isso só começa conversa nova quando o personagem
   **mudou**: a alma (SOUL) está no prompt de sistema, e continuar com outra alma misturaria duas
@@ -274,7 +278,8 @@ e as ferramentas anunciadas pela fala seguinte abrem outra logo abaixo do balão
 
 Segunda janela de 300×520, e não um painel embutido: embutido, ele dividia a largura e encolhia a
 conversa ao abrir. `ChatWindow.PosicionarPainel` o encosta à direita da conversa, alinhado pela
-base, e ele a acompanha em `LocationChanged`. Arrastar pelo cabeçalho do painel move a **conversa**.
+base, e ele a acompanha em `LocationChanged`. Nem a conversa nem o painel se arrastam: a conversa é fixa,
+centrada acima da barra de tarefas (`RepositionWindow`).
 O painel entra na mesma regra de foco; fechar pelo X dele registra que o usuário não quer que ele
 volte sozinho (`FechadoPeloUsuario`).
 
