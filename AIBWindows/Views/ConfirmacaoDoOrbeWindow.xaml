@@ -5,7 +5,10 @@
         SizeToContent="WidthAndHeight"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" ShowInTaskbar="True" Topmost="True"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
 
     <!-- O MESMO ConfirmCardView da conversa, dentro da casca de vidro da janela de senha.
          Sem a casca, o card (translúcido, feito para ficar sobre o fundo da conversa)

@@ -45,6 +45,10 @@ public static class PertoDoOrbe
         return new Point(x, y);
     }
 
+    /// <summary>A posição em DIP arredondada para o pixel físico mais próximo.</summary>
+    public static double NoPixel(double dip, double escala) =>
+        escala <= 0 ? Math.Round(dip) : Math.Round(dip * escala) / escala;
+
     /// <summary>
     /// Ancora a janela ao orbe, se houver orbe na tela; senão ela fica onde já ia ficar. A
     /// posição é refeita quando a janela muda de tamanho (<c>SizeToContent</c> só sabe a altura
@@ -63,8 +67,12 @@ public static class PertoDoOrbe
 
             var p = Calcular(orbe.Value, new Size(janela.ActualWidth, janela.ActualHeight),
                              SystemParameters.WorkArea, sombraEmbaixo);
-            janela.Left = p.X;
-            janela.Top = p.Y;
+            // Pixel inteiro: a conta centra a janela no orbe e cai em meio pixel, e uma janela
+            // transparente em meio pixel tem o texto todo borrado. A 125% de escala, quase
+            // toda posição em DIP cai entre dois pixels.
+            double escala = System.Windows.Media.VisualTreeHelper.GetDpi(janela).DpiScaleX;
+            janela.Left = NoPixel(p.X, escala);
+            janela.Top = NoPixel(p.Y, escala);
         }
 
         // Antes de medir, fora da tela: sem isto ela pisca no canto (0,0) por um quadro.

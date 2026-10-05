@@ -5,7 +5,10 @@
         Width="520" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" ShowInTaskbar="True" Topmost="True"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
 
     <!-- Mesma casca do ConfirmDialog. Janela própria, e não card na conversa: o pedido chega
          no meio de um comando, com a conversa talvez fechada, e precisa do foco do teclado. -->

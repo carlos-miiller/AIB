@@ -1,4 +1,6 @@
+using System;
 using System.Windows;
+using System.Windows.Media;
 using AIB.Services.Terminal;
 using AIB.Views;
 using FluentAssertions;
@@ -42,6 +44,37 @@ namespace AIB.Tests
 
             (p.Y + 300 - 45).Should().Be(orbe.Top - PertoDoOrbe.Folga);
             (p.X + 200).Should().Be(orbe.Left + 28);
+        }
+
+        [Theory]
+        [InlineData(612.3, 1.25, 612.0)]
+        [InlineData(612.5, 1.25, 612.8)]
+        [InlineData(100.4, 1.0, 100.0)]
+        [InlineData(100.25, 1.5, 100.0)]
+        public void APosicao_CaiEmPixelInteiro(double dip, double escala, double esperado)
+        {
+            // A janela de confirmação do orbe aparecia com o texto borrado: centrada no orbe, a
+            // posição caía em meio pixel, e uma janela transparente em meio pixel borra tudo.
+            double posicao = PertoDoOrbe.NoPixel(dip, escala);
+
+            posicao.Should().BeApproximately(esperado, 0.001);
+            (posicao * escala).Should().BeApproximately(Math.Round(posicao * escala), 0.001, "pixel físico inteiro");
+        }
+
+        [Fact]
+        public void AsJanelasDePergunta_DesenhamTextoNitido()
+        {
+            // As outras janelas já tinham; estas duas, criadas depois, ficaram sem.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                foreach (Window janela in new Window[] { new ConfirmacaoDoOrbeWindow(new ConfirmCardView()), new SenhaDoTerminalDialog() })
+                {
+                    janela.UseLayoutRounding.Should().BeTrue();
+                    TextOptions.GetTextFormattingMode(janela).Should().Be(TextFormattingMode.Display);
+                    janela.Close();
+                }
+            });
         }
 
         [Fact]
