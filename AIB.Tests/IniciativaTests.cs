@@ -320,7 +320,7 @@ namespace AIB.Tests
         public void OPedido_EUmPapel_ComPersonaCurtaGanchoEFalas()
         {
             string m = ConversationService.MaterialDaIniciativa(
-                Ellen, new Gancho("pendência", "testar o backup"), Contexto(),
+                null, Ellen, new Gancho("pendência", "testar o backup"), Contexto(),
                 new[] { (true, "amanhã eu testo o backup"), (false, "Combinado!") }, Agora);
 
             m.Should().StartWith("Você é Ellen. Vinda de uma casa nobre de espadachins.")
@@ -333,9 +333,22 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ComAlma_AAlmaVaiInteira_EAPersonaCurtaFica()
+        {
+            // Decisão do usuário: o sorteio controla quantas vezes ela é chamada, e toda chamada
+            // vira mensagem — então a alma inteira só é paga quando ela fala de fato.
+            string m = ConversationService.MaterialDaIniciativa(
+                "## 1. Identidade\n- Nome: Ellen Walker", Ellen, null, Contexto(), Array.Empty<(bool, string)>(), Agora);
+
+            m.Should().StartWith("## 1. Identidade\n- Nome: Ellen Walker")
+             .And.NotContain("Um exemplo do seu jeito de falar", "a persona curta é só para quem não tem alma");
+        }
+
+        [Fact]
         public void SemNome_ElaFalaComOUsuario_ESemGancho_PuxaAssuntoParaConhecer()
         {
-            string m = ConversationService.MaterialDaIniciativa(Ellen, null, Contexto(nome: ""), Array.Empty<(bool, string)>(), Agora);
+            string m = ConversationService.MaterialDaIniciativa(
+                null, Ellen, null, Contexto(nome: ""), Array.Empty<(bool, string)>(), Agora);
 
             m.Should().Contain("O usuário está online").And.Contain("conhecer melhor");
         }
@@ -344,7 +357,7 @@ namespace AIB.Tests
         public void OPedido_TrazProximidadeDesfechoEOQueJaDisse()
         {
             string m = ConversationService.MaterialDaIniciativa(
-                Ellen, new Gancho("fato", "gosta de café"),
+                null, Ellen, new Gancho("fato", "gosta de café"),
                 Contexto(proximos: true, desfecho: "virou conversa", recentes: "E o café de hoje?"),
                 Array.Empty<(bool, string)>(), Agora);
 

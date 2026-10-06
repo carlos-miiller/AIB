@@ -370,12 +370,13 @@ vai?" de quem foi mandado falar sem assunto.
 
 `ConversationService.EscreverIniciativaAsync` chama o modelo fora de banda (sem ferramentas,
 temperatura 0,8, até 160 tokens) com um papel, não uma decisão (`MaterialDaIniciativa`): a
-**persona curta** do `info.json` (nome, descrição, personalidade, fala de exemplo — ~250 tokens no
-lugar dos ~4.000 da alma, que segue inteira na conversa de verdade), "Você está sem fazer nada.
+**alma inteira** — decisão do usuário: o sorteio controla quantas vezes ela é chamada e toda
+chamada vira mensagem, então os ~4.000 tokens só são pagos quando ela fala; sem alma, a persona
+curta do `info.json` (nome, descrição, personalidade, fala de exemplo) —, "Você está sem fazer nada.
 Carlo está online. Vocês conversaram pela última vez há 3 h. Você decide mandar uma mensagem para
 Carlo.", como terminou a última iniciativa (`UltimoDesfecho`), o gancho, as últimas 4 falas e as
 últimas 5 mensagens por iniciativa ("não repita", `Recentes`, sobrevive ao arranque). Sem saída
-NADA: o pedido custa ~600–800 tokens e toda chamada é uma mensagem. Com o geral ≥ 1,5, ganha
+NADA: o pedido custa ~4.500–5.000 tokens (a alma é quase tudo) e toda chamada é uma mensagem. Com o geral ≥ 1,5, ganha
 "vocês têm conversado bastante ultimamente": o afeto aparece na voz, não só na frequência.
 
 O nome vem de `NomeDoUsuario` (Configurações > Identidade, e o primeiro passo da primeira

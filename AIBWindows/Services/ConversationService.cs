@@ -2249,10 +2249,11 @@ public sealed class ConversationService : IMessageStore
     /// Escreve a mensagem por iniciativa (<see cref="Iniciativa"/>): o algoritmo já decidiu que
     /// ela fala, e o gancho; o modelo só escreve. Devolve null se a chamada falhar ou vier vazia.
     /// <para>
-    /// Chamada fora de banda, sem ferramentas e SEM A ALMA INTEIRA: só a persona curta do
-    /// info.json (~250 tokens no lugar de ~4.000). Para uma ou duas frases a fala de exemplo
-    /// segura o tom; a alma inteira continua na conversa, quando o usuário responde. Não entra
-    /// no histórico; quem põe a fala na conversa é o App.
+    /// Chamada fora de banda, sem ferramentas, COM A ALMA INTEIRA — decisão do usuário: o sorteio
+    /// controla exatamente quantas vezes ela é chamada, e toda chamada vira mensagem, então os
+    /// ~4.000 tokens da alma são pagos só quando ela de fato fala, e a voz é a de sempre. A
+    /// persona curta do info.json só entra quando o personagem não tem alma. Não entra no
+    /// histórico; quem põe a fala na conversa é o App.
     /// </para>
     /// </summary>
     public async Task<string?> EscreverIniciativaAsync(Gancho? gancho, ContextoDaIniciativa contexto, CancellationToken ct)
@@ -2260,7 +2261,8 @@ public sealed class ConversationService : IMessageStore
         var settings = _settingsService.LoadSettings();
 
         string material = MaterialDaIniciativa(
-            PerfilDoPersonagem(settings.ActiveCharacter), gancho, contexto, UltimasFalas(4), DateTime.UtcNow);
+            LoadActiveCharacterSoul(settings.ActiveCharacter), PerfilDoPersonagem(settings.ActiveCharacter),
+            gancho, contexto, UltimasFalas(4), DateTime.UtcNow);
 
         try
         {
@@ -2304,14 +2306,16 @@ public sealed class ConversationService : IMessageStore
     /// </para>
     /// </summary>
     public static string MaterialDaIniciativa(
-        AgentProfile? perfil, Gancho? gancho, ContextoDaIniciativa c,
+        string? alma, AgentProfile? perfil, Gancho? gancho, ContextoDaIniciativa c,
         IReadOnlyList<(bool DoUsuario, string Texto)> falas, DateTime agoraUtc)
     {
         string quem = string.IsNullOrWhiteSpace(c.Nome) ? "o usuário" : c.Nome.Trim();
         string Quem = char.ToUpper(quem[0]) + quem[1..];
         var sb = new StringBuilder();
 
-        if (perfil != null && !string.IsNullOrWhiteSpace(perfil.Name))
+        if (!string.IsNullOrWhiteSpace(alma))
+            sb.AppendLine(alma.Trim()).AppendLine().AppendLine("---").AppendLine();
+        else if (perfil != null && !string.IsNullOrWhiteSpace(perfil.Name))
         {
             sb.AppendLine($"Você é {perfil.Name}. {perfil.Description}".Trim());
             if (!string.IsNullOrWhiteSpace(perfil.Personality)) sb.AppendLine($"Personalidade: {perfil.Personality}");
