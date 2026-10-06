@@ -86,10 +86,12 @@
         <!-- ══════════════════════════════════════════════════════════════
              JANELA DE CHAT  770 x 520
              ══════════════════════════════════════════════════════════════ -->
+        <!-- A altura acompanha a da janela: o puxador de cima (PuxadorDeAltura) muda a altura
+             da janela, e a margem segue sendo a da sombra. -->
         <Border x:Name="MainRootBorder"
-                Width="770" Height="520"
+                Width="770"
                 Margin="40,25,10,60"
-                VerticalAlignment="Bottom"
+                VerticalAlignment="Stretch"
                 Background="{StaticResource NeonBrush}"
                 CornerRadius="{StaticResource RadiusWindowOuter}"
                 Padding="1.5"
@@ -669,6 +671,21 @@
                 </Grid>
             </Border>
         </Border>
+
+        <!-- Puxador da altura: a faixa de cima da casca. A base fica presa acima da barra de
+             tarefas (RepositionWindow), então só a borda de cima se move. Sem moldura do
+             Windows (AllowsTransparency), o ResizeMode não dá borda nenhuma. -->
+        <Thumb x:Name="PuxadorDeAltura"
+               Height="6" Margin="52,25,22,0" VerticalAlignment="Top"
+               Cursor="SizeNS"
+               DragDelta="PuxadorDeAltura_DragDelta"
+               DragCompleted="PuxadorDeAltura_DragCompleted">
+            <Thumb.Template>
+                <ControlTemplate TargetType="Thumb">
+                    <Border Background="Transparent"/>
+                </ControlTemplate>
+            </Thumb.Template>
+        </Thumb>
 
         <!-- O painel lateral é uma JANELA à parte (§6), não um filho daqui.
              Como filho, ele dividia a largura com o chat e fazia a janela de

@@ -86,6 +86,9 @@ public partial class ChatWindow : Window
 
 
 
+        double guardada = _settingsService.LoadSettings().AlturaDaConversa;
+        if (guardada > 0) Height = AlturaNoLimite(guardada, SystemParameters.WorkArea.Height);
+
         // Posiciona a janela: centralizada horizontal, flutuando acima da barra de tarefas
         this.Left = (SystemParameters.PrimaryScreenWidth - this.Width) / 2;
         this.Top = SystemParameters.WorkArea.Bottom - this.ActualHeight - FolgaDaBarraDeTarefas;
@@ -340,6 +343,32 @@ public partial class ChatWindow : Window
     /// </para>
     /// </summary>
     private const double FolgaDaBarraDeTarefas = 22;
+
+    /// <summary>
+    /// A menor altura da janela (com a margem da sombra): abaixo disso a lista de mensagens
+    /// some atrás do cabeçalho e da barra de digitação.
+    /// </summary>
+    public const double AlturaMinima = 445;
+
+    /// <summary>
+    /// A altura pedida pelo puxador, presa entre a mínima e a área de trabalho: a base fica
+    /// acima da barra de tarefas, então o topo não pode passar do topo da tela.
+    /// </summary>
+    public static double AlturaNoLimite(double pedida, double area) =>
+        Math.Clamp(pedida, AlturaMinima, Math.Max(AlturaMinima, area - FolgaDaBarraDeTarefas));
+
+    private void PuxadorDeAltura_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+    {
+        // A base é presa; subir o puxador (VerticalChange negativo) cresce a janela para cima.
+        Height = AlturaNoLimite(Height - e.VerticalChange, SystemParameters.WorkArea.Height);
+    }
+
+    private void PuxadorDeAltura_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        var settings = _settingsService.LoadSettings();
+        settings.AlturaDaConversa = Height;
+        _settingsService.SaveSettings(settings);
+    }
 
     private void RepositionWindow()
     {

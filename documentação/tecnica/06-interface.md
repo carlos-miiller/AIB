@@ -60,9 +60,13 @@ primeiro arranque só define `DialogResult`; quem encerra é o `App`.
 ## ChatWindow — a conversa
 
 Janela sem moldura do sistema (`WindowStyle="None"`, transparente, `Topmost`, fora da barra de
-tarefas), 820×605 com a área útil de 770×520. `RepositionWindow` a centraliza na tela principal com
-a base 22 px acima da barra de tarefas (`FolgaDaBarraDeTarefas`; era 45 e o vão chamava mais atenção
-que a conversa). Arrastar pelo fundo move a janela (`Window_MouseDown`).
+tarefas), 820×605 por padrão, com a área útil de 770×520 (o resto é a margem da sombra).
+`RepositionWindow` a centraliza na tela principal com a base 22 px acima da barra de tarefas
+(`FolgaDaBarraDeTarefas`; era 45 e o vão chamava mais atenção que a conversa). A janela não se
+arrasta. A altura muda pelo `PuxadorDeAltura`, uma faixa de 6 px na borda de cima da casca: a base
+fica presa, então só o topo sobe ou desce. `AlturaNoLimite` prende entre `AlturaMinima` (445) e a
+área de trabalho, e a altura escolhida vai para `UserAppSettings.AlturaDaConversa` ao soltar. A
+largura é fixa. Sem moldura do Windows, `ResizeMode` não daria borda nenhuma, daí o `Thumb`.
 
 ### Ghosting: some ao perder o foco
 

@@ -66,6 +66,40 @@ namespace AIB.Tests
             });
         }
 
+        [Theory]
+        [InlineData(800, 1040, 800, "dentro do limite")]
+        [InlineData(200, 1040, ChatWindow.AlturaMinima, "não some a lista de mensagens")]
+        [InlineData(5000, 1040, 1018, "o topo não passa do topo da tela")]
+        [InlineData(800, 300, ChatWindow.AlturaMinima, "tela menor que a mínima: fica a mínima")]
+        public void AAltura_FicaNoLimite(double pedida, double area, double esperada, string porque)
+        {
+            // Pedido: habilitar o resize vertical. A base é presa acima da barra de tarefas,
+            // então só o topo se move, e ele não pode sair da tela.
+            ChatWindow.AlturaNoLimite(pedida, area).Should().Be(esperada, porque);
+        }
+
+        [Fact]
+        public void OPuxador_MudaAAltura_EACascaAcompanha()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var chat = JanelaDeEnsaio.Nova();
+                var casca = (FrameworkElement)chat.FindName("MainRootBorder");
+                chat.FindName("PuxadorDeAltura").Should().BeOfType<System.Windows.Controls.Primitives.Thumb>();
+
+                chat.Show();
+                Montar(chat);
+                double antes = casca.ActualHeight;
+
+                chat.Height += 120;
+                Montar(chat);
+
+                casca.ActualHeight.Should().BeApproximately(antes + 120, 0.5, "a casca enche a janela, sem altura fixa");
+                chat.Close();
+            });
+        }
+
         [Fact]
         public void AJanela_NaoSeArrasta()
         {

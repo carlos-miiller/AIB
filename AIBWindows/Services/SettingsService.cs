@@ -161,6 +161,12 @@ public sealed class UserAppSettings
     public string Tema { get; set; } = AIB.Ui.Tema.Escuro;
 
     /// <summary>
+    /// Altura da janela de conversa escolhida pelo usuário (puxador da borda de cima), em DIPs.
+    /// 0 é a altura padrão.
+    /// </summary>
+    public double AlturaDaConversa { get; set; }
+
+    /// <summary>
     /// Se o orbe pode ler e triar a caixa de entrada.
     /// <para>
     /// Opt-in pelo mesmo motivo que o orbe: ninguém ganha um programa lendo o próprio e-mail
