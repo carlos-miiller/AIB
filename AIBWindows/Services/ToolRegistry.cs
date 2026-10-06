@@ -445,6 +445,7 @@ public class ToolRegistry
             new WriteFileTool(),
             new FsTool(),
             new LembrarTool(),
+            new LembreteTool(),
 
             // O Edge só abre na primeira chamada: construir aqui não toca disco nem processo.
             new BrowserTool(Navegador.NavegadorService.Padrao,

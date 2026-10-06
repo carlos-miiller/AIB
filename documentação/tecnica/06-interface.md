@@ -330,6 +330,19 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   `TerminarDeProcessarEmail` (frase do digest e itens) e `PararDeProcessarEmail`. A fala do digest
   leva até `TetoDeEmails` itens (`ShadowMailPreviewCount`); o excedente vira uma linha de texto.
 
+### Fala por iniciativa (lembretes)
+
+A persona também fala sem ter sido chamada. `App.IniciarAgenda` roda um `DispatcherTimer` de 20 s
+que retira os lembretes vencidos (`Lembretes.Retirar`) e os entrega por `FalarPorIniciativa`; o
+primeiro passe é no arranque, para os que venceram com o app fechado, que chegam com "(Era para
+15:00.)" (`Lembretes.Atrasado`). Com turno em andamento (`ChatWindow.Ocupada`), espera a batida
+seguinte.
+
+`FalarPorIniciativa` põe a fala na conversa (`ChatWindow.ReceberIniciativa`: balão e
+`AppendAssistantText`, para a resposta do usuário continuar o assunto) e, com a conversa fora da
+tela, avisa pelo orbe (`EnfileirarFala`: pulso, texto só no clique) ou, sem orbe, pela bandeja.
+Lembrete não chama o modelo: o texto foi escrito pela persona no pedido.
+
 ## MailListItem
 
 O mesmo item nas duas telas (orbe e modo e-mail). As diferenças são propriedades

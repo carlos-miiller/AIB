@@ -245,6 +245,52 @@ public partial class App : System.Windows.Application
         }
     }
 
+    private Lembretes _lembretes = null!;
+    private System.Windows.Threading.DispatcherTimer? _agenda;
+
+    /// <summary>
+    /// A agenda dos lembretes: a cada 20 s entrega os vencidos. Não chama o modelo — o texto foi
+    /// escrito pela persona quando o lembrete foi pedido.
+    /// </summary>
+    private void IniciarAgenda()
+    {
+        _lembretes = new Lembretes();
+        _agenda = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+        _agenda.Tick += (_, _) => EntregarLembretes();
+        _agenda.Start();
+        Exit += (_, _) => _agenda?.Stop();
+
+        EntregarLembretes();
+    }
+
+    private void EntregarLembretes()
+    {
+        // Com turno rodando, espera a próxima batida: a fala entraria no histórico no meio do
+        // turno, entre a chamada de uma ferramenta e o resultado dela.
+        if (_chatWindow == null || _chatWindow.Ocupada) return;
+
+        var agora = DateTime.UtcNow;
+        foreach (var lembrete in _lembretes.Retirar(agora))
+            FalarPorIniciativa(Lembretes.Atrasado(lembrete, agora));
+    }
+
+    /// <summary>
+    /// A persona fala sem ter sido chamada. A fala entra na conversa (para a resposta continuar
+    /// o assunto) e, com a conversa fora da tela, avisa pelo orbe — pulso, o texto só no clique —
+    /// ou, sem orbe, pela bandeja.
+    /// </summary>
+    private void FalarPorIniciativa(string texto)
+    {
+        if (_chatWindow == null || string.IsNullOrWhiteSpace(texto)) return;
+
+        _chatWindow.ReceberIniciativa(texto);
+        if (_chatWindow.IsVisible) return;
+
+        string limpo = QuebraDeFala.Limpar(texto);
+        if (_orbe != null) _orbe.EnfileirarFala(limpo);
+        else ShowNotification(_settingsService.LoadSettings().ActiveCharacter ?? "AIB", limpo);
+    }
+
     public void ShowNotification(string title, string message)
     {
         if (_notifyIcon != null)
@@ -436,6 +482,10 @@ public partial class App : System.Windows.Application
             {
                 Console.WriteLine($"[HOTKEY] Não foi possível registrar o atalho global: {ex.Message}");
             }
+
+            // Depois do orbe e da bandeja: o primeiro passe já entrega os lembretes que venceram
+            // com o app fechado, e eles precisam de onde aparecer.
+            IniciarAgenda();
 
             // Aquecimento só depois que a UI existe — nunca de dentro de um construtor.
             _ = _conversation.StartWarmupAsync();

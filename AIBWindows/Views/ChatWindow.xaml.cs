@@ -279,6 +279,25 @@ public partial class ChatWindow : Window
     /// </summary>
     public bool TurnoVeioDoOrbe { get; private set; }
 
+    /// <summary>Se há turno em andamento. A fala por iniciativa espera ele acabar.</summary>
+    public bool Ocupada => _isSending;
+
+    /// <summary>
+    /// Uma fala que a persona puxa sozinha (lembrete, iniciativa): entra na conversa como fala
+    /// dela, em balão e no histórico, para que a resposta do usuário continue o assunto. Quem
+    /// avisa por fora (orbe, bandeja) é o App.
+    /// </summary>
+    public void ReceberIniciativa(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+
+        foreach (var parte in QuebraDeFala.Dividir(texto)) AddAgentBubble(parte);
+        AtualizarEstadoVazio();
+        ChatScrollViewer.ScrollToEnd();
+
+        _conversation.AppendAssistantText(texto.Trim());
+    }
+
     /// <summary>
     /// Armado por <see cref="AbrirComMensagem"/> e consumido pelo envio.
     /// <para>
