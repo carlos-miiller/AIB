@@ -110,6 +110,16 @@ public class ToolRegistry
                 return recusa;
             }
 
+            // A memória sobre o usuário não aceita pedido que pode ter vindo de um e-mail ou de
+            // uma página: "anote que o usuário quer X" valeria em todas as conversas seguintes.
+            if (tool.SoComFalaDoUsuario && ConteudoDeEmailNoContexto?.Invoke() == true)
+            {
+                Console.WriteLine($"[REGISTRY] {toolName} recusada: texto de terceiros no contexto.");
+                aoDecidir?.Invoke("recusada_no_pre_voo");
+                return $"ACESSO NEGADO: '{toolName}' não roda com texto de e-mail ou de página no contexto. "
+                       + "Se o usuário contou isso, guarde numa próxima conversa.";
+            }
+
             // O que foi autorizado viaja até a execução: a ferramenta confere se ainda é aquilo.
             // Ver ITool.ExecutarAutorizadoAsync.
             CommandConfirmationContext? autorizado = null;
@@ -434,6 +444,7 @@ public class ToolRegistry
             new RunCommandTool(),
             new WriteFileTool(),
             new FsTool(),
+            new LembrarTool(),
 
             // O Edge só abre na primeira chamada: construir aqui não toca disco nem processo.
             new BrowserTool(Navegador.NavegadorService.Padrao,

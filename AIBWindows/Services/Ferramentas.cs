@@ -28,6 +28,7 @@ public static class Ferramentas
     public const string LerEmail = "mail_read";
     public const string Arquivos = "fs";
     public const string Navegador = "browser";
+    public const string Lembrar = "remember";
 
     /// <summary>
     /// O que aparece na trilha de ações enquanto a ferramenta roda.
@@ -53,6 +54,7 @@ public static class Ferramentas
         LerEmail => "Lendo o e-mail",
         Arquivos => "Mexendo em arquivos",
         Navegador => "Navegando",
+        Lembrar => "Guardando na memória",
         _ => nome ?? ""
     };
 }

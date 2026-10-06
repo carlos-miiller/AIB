@@ -588,6 +588,39 @@ public partial class ChatWindow : Window
         return cadeia;
     }
 
+    /// <summary>O texto do aviso: o nome da persona, e não "AIB guardou um fato".</summary>
+    public static string TextoDoAviso(string nome) => $"{nome} lembrará disso…";
+
+    /// <summary>
+    /// A linha discreta que avisa que a persona guardou um fato sobre o usuário. O fato em si
+    /// fica no tooltip e no facts.md: o aviso é para o usuário saber que ela vai lembrar, não
+    /// para repetir o que ele acabou de dizer.
+    /// </summary>
+    private void AddAvisoDeMemoria(string fato, FrameworkElement? typingBubble)
+    {
+        var aviso = new TextBlock
+        {
+            Text = "✦ " + TextoDoAviso(NomeDaInteligencia()),
+            FontSize = (double)FindResource("FontSizeToolArg"),
+            FontStyle = FontStyles.Italic,
+            Foreground = (System.Windows.Media.Brush)FindResource("TextMutedBrush"),
+            Margin = new Thickness(6, 0, 0, 14),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            ToolTip = string.IsNullOrWhiteSpace(fato) ? null : fato
+        };
+
+        // Antes da linha do "digitando", como a cadeia.
+        int indice = MessagesPanel.Children.Count;
+        if (typingBubble != null && LinhaDe(typingBubble) is { } linha)
+        {
+            int achado = MessagesPanel.Children.IndexOf(linha);
+            if (achado >= 0) indice = achado;
+        }
+
+        MessagesPanel.Children.Insert(indice, aviso);
+        ChatScrollViewer.ScrollToEnd();
+    }
+
     /// <summary>
     /// Alimenta as abas do painel a partir de uma ação concluída — §6.2 e §6.3.
     /// <para>
@@ -1254,6 +1287,17 @@ public partial class ChatWindow : Window
             await foreach (var item in stream)
             {
                 // ── §4  CADEIA DE AÇÕES ──────────────────────────────────────────
+                // Guardar um fato não é ação na máquina: não entra na cadeia, vira o aviso
+                // "Ellen lembrará disso…" quando termina (AddAvisoDeMemoria).
+                if (item is ChatStreamItem.ToolStarted { Tool: Ferramentas.Lembrar }) continue;
+
+                if (item is ChatStreamItem.ToolFinished { Tool: Ferramentas.Lembrar } lembrado)
+                {
+                    RegistrarAcao(lembrado);
+                    if (!lembrado.Failed) AddAvisoDeMemoria(lembrado.Argument, typingBubble);
+                    continue;
+                }
+
                 if (item is ChatStreamItem.ToolStarted iniciada)
                 {
                     // A cadeia entra ACIMA do indicador "digitando", na coluna da IA.

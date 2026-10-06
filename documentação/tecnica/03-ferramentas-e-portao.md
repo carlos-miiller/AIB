@@ -39,6 +39,7 @@ Renomear uma ferramenta é mudar só a constante.
 | `browser` (`Navegador`) | `BrowserTool` | 2 | **por ação** (`PedeConfirmacao`) — ler não pergunta; clicar e digitar perguntam, com "sempre" por site; site novo pergunta uma vez | Navegador (Edge, perfil próprio, logado pelo usuário): abre, lê a vista, procura, lê tabela, clica, digita (§7). |
 | `mail` (`Email`) | `ConsultarEmailsTool` | 1 | não | Consulta o diário da triagem de e-mail (disco, não o servidor). |
 | `mail_read` (`LerEmail`) | `LerEmailTool` | 1 | não | Relê no servidor o e-mail da conversa aberta (somente leitura). |
+| `remember` (`Lembrar`) | `LembrarTool` | 1 | não — mas **recusada com texto de terceiros no contexto** (`SoComFalaDoUsuario`) | Guarda no `facts.md` um fato que o usuário contou sobre si (`- sobre o usuário: …`). Sem segredo, uma frase (200), teto de 60. Na tela vira o aviso "<persona> lembrará disso…", fora da cadeia de ações. |
 
 Detalhes de registro:
 
@@ -50,7 +51,7 @@ Detalhes de registro:
 - **`mail_read` é registrada sempre, mas só é oferecida** (`GetActiveTools`) quando a conversa está
   ligada a um e-mail (`ChaveDaConversaDeEmail` não vazia).
 - `GetActiveTools(userLevel)` corta do schema as ferramentas acima do nível do usuário.
-- **A `Description` é paga em TODA requisição.** As nove de antes somavam 1.951 caracteres (eram 2.056); o `browser` acrescenta cerca de 290. A
+- **A `Description` é paga em TODA requisição.** As nove de antes somavam 1.951 caracteres (eram 2.056); o `browser` acrescenta cerca de 290 e o `remember` cerca de 200 (teto próprio no teste). A
   regra de redação: cada uma diz uma capacidade que o modelo não adivinharia (o `write` cria
   pasta), uma fronteira com a ferramenta vizinha (o `shell` não é para arquivo; o `edit` não cria
   arquivo) e o teto que muda a decisão antes de chamar (100 no `glob`, 60 no `grep`, 30 s no

@@ -114,6 +114,12 @@ public interface ITool
     bool PassaPelaFloorList => false;
 
     /// <summary>
+    /// Se a chamada só vale quando o pedido só pode ter vindo do usuário: com texto de terceiros
+    /// no contexto (e-mail, página), o registry recusa. Ver <see cref="Tools.LembrarTool"/>.
+    /// </summary>
+    bool SoComFalaDoUsuario => false;
+
+    /// <summary>
     /// A mesma pergunta, para uma operação já descrita. É o que o registry consulta.
     /// <para>
     /// Existe porque uma ferramenta pode ter operações dos dois tipos. A <c>skill</c> que só

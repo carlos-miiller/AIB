@@ -75,6 +75,14 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ADescricaoDoRemember_TemOrcamentoProprio()
+        {
+            // Entrou depois do orçamento das nove, por decisão do usuário (a persona guardar o
+            // que ele conta sobre si). Teto próprio para não crescer escondida.
+            new AIB.Services.Tools.LembrarTool().Description.Length.Should().BeLessThanOrEqualTo(210);
+        }
+
+        [Fact]
         public async Task FerramentaDesconhecida_NaoLanca_EDevolveErroDescritivo()
         {
             var registry = new ToolRegistry();
@@ -159,7 +167,9 @@ namespace AIB.Tests
             // mail entra mesmo com a triagem desligada, ao contrário da skill: sem ela o modelo
             // não sabe que "tem algo urgente?" tem resposta possível e responde de memória.
             // Desligada, ela responde exatamente isso.
-            names.Should().Equal("browser", "edit", "fs", "glob", "grep", "mail", "read", "shell", "write");
+            //
+            // remember guarda o que o usuário conta sobre si (LembrarTool).
+            names.Should().Equal("browser", "edit", "fs", "glob", "grep", "mail", "read", "remember", "shell", "write");
         }
 
         [Fact]
@@ -223,7 +233,7 @@ namespace AIB.Tests
 
             var (natives, dynamics) = registry.GetCategorizedTools();
 
-            natives.Should().HaveCount(10, "mail_read é registrada sempre, e só oferecida na conversa de um e-mail");
+            natives.Should().HaveCount(11, "mail_read é registrada sempre, e só oferecida na conversa de um e-mail");
             dynamics.Should().BeEmpty("no lazy loading as skills não entram no registry");
         }
 

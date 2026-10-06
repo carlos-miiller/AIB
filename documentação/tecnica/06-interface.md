@@ -126,7 +126,7 @@ O que aparece durante o turno:
 |---|---|
 | `Thinking` | Mostra os três pontos (`AddTypingIndicator`). É o primeiro sinal real de que há token saindo. |
 | `Text` | Acumula em `fullText`; mostra os três pontos se ainda não estiverem. Se o acumulado já tem a marca `⁂` (`QuebraDeFala`), o que veio antes dela vira balão na hora. |
-| `ToolStarted` / `ToolFinished` | Alimenta a `ToolChainView` e o registro de ações (`RegistrarAcao`). |
+| `ToolStarted` / `ToolFinished` | Alimenta a `ToolChainView` e o registro de ações (`RegistrarAcao`). O `remember` fica fora da cadeia: ao terminar, vira a linha discreta "✦ Ellen lembrará disso…" (`AddAvisoDeMemoria`, o fato no tooltip). |
 | `SegmentBreak` | A IA terminou uma fala e vai usar ferramenta: a fala acumulada vira balão e a cadeia seguinte começa abaixo dela. |
 
 Os três pontos somem depois de 3 s sem novidade (`idleTimer`) e voltam com o próximo pedaço. No

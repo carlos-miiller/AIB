@@ -318,6 +318,12 @@ Os pedidos do usuário que carregam **valor**, copiados por código. Motivo: o u
   nunca entra literal: vira a descrição do `ComandoQueApaga` ("apagou X — já feito, não repetir"). Fatos
   gravados antes dessa regra passam por `ArtifactDigest.ParaOPrompt` na hora de ir ao prompt, que
   só reescreve as linhas com os prefixos gerados pela AIB — o que o usuário escreveu fica intacto.
+- **Fatos sobre o usuário** (`remember`, `LembrarTool`): a persona grava na hora, pelo mesmo
+  `Promote`, o que o usuário contou sobre si — `- sobre o usuário: …`, chave `usuario|<frase em
+  minúsculas>`. Passam pelo mesmo índice (apagado não volta), têm teto de 60 linhas para não
+  empurrar os fatos de trabalho para fora da cota, e são recusados com texto de terceiros no
+  contexto. Entram no prompt na próxima montagem da memória (capítulo ou ato novo, ou conversa
+  nova); na conversa em que foram ditos, o modelo já os tem no histórico.
 - No prompt (`FactStore.Render`): só linhas que começam com `- `, relidas do disco a cada montagem; corte **do fim para o começo** (a ordem é a do usuário, o topo é o que ele quer garantir), dentro de `quota.Facts`.
 
 ---
