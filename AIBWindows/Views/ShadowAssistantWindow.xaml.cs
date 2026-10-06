@@ -784,10 +784,18 @@ public partial class ShadowAssistantWindow : Window
     /// tela do usuário.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// O usuário abriu o pulso e leu o que esperava. A iniciativa usa para separar "leu e não
+    /// respondeu" de "nem viu".
+    /// </summary>
+    public event Action? FalasLidas;
+
     private void RevelarFalasPendentes()
     {
         PararDePulsar();
         if (_falasPendentes.Count == 0) return;
+
+        FalasLidas?.Invoke();
 
         int primeira = Math.Max(0, _falasPendentes.Count - 3);
         string texto = string.Join("\n\n", _falasPendentes.GetRange(primeira, _falasPendentes.Count - primeira));

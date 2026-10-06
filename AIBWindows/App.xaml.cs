@@ -73,6 +73,16 @@ public partial class App : System.Windows.Application
         if (Current is App app) app.SincronizarOrbe();
     }
 
+    /// <summary>O que a iniciativa aprendeu, para a página Shadow. Vazio antes de ela existir.</summary>
+    public static string ResumoDaIniciativa() =>
+        Current is App { _iniciativa: not null } app ? Iniciativa.Resumo(app._iniciativa.Estado) : "";
+
+    /// <summary>Zera o aprendizado da iniciativa, pela instância viva (ela regrava o arquivo).</summary>
+    public static void ZerarIniciativa()
+    {
+        if (Current is App { _iniciativa: not null } app) app._iniciativa.Zerar();
+    }
+
     private void SincronizarOrbe()
     {
         bool ligado = _settingsService.LoadSettings().ShadowAssistantEnabled;
@@ -112,6 +122,9 @@ public partial class App : System.Windows.Application
             NomeDoAgente = configuracoes.ActiveCharacter,
             TetoDeEmails = configuracoes.ShadowMailPreviewCount
         };
+
+        // "Leu e não respondeu" pesa menos que "nem viu" no aprendizado da iniciativa.
+        orbe.FalasLidas += () => _iniciativa?.Leu();
 
         // Solta a ligação do orbe ANTERIOR antes de criar a do novo. Sem isto, desligar e
         // religar o orbe deixava a conversa com duas assinaturas: a do orbe vivo e a do orbe
@@ -285,11 +298,12 @@ public partial class App : System.Windows.Application
         // não respondendo a ela.
         _chatWindow!.TurnoConcluido += _ => _ultimaConversaUtc = DateTime.UtcNow;
 
-        // Conversa no orbe: é a resposta à iniciativa, se havia uma esperando.
-        _conversaDoOrbe.UsuarioFalou += _ =>
+        // Conversa no orbe: é a resposta à iniciativa, se havia uma esperando — e quanto ele
+        // conversou, e se foi um "agora não", é o que ela aprende.
+        _conversaDoOrbe.UsuarioFalou += texto =>
         {
             _ultimaConversaUtc = DateTime.UtcNow;
-            _iniciativa.Respondeu();
+            _iniciativa.UsuarioFalou(DateTime.UtcNow, texto);
         };
 
         _agenda = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
@@ -310,8 +324,9 @@ public partial class App : System.Windows.Application
     private bool _ponderando;
 
     /// <summary>
-    /// A cada batida, vê se a persona pode puxar assunto; podendo, pergunta ao modelo se ela
-    /// quer, e o quê. As condições são baratas e vêm antes: só a ponderação custa.
+    /// A cada batida, vê se a persona pode puxar assunto; podendo, sorteia (de 10 em 10 min) e,
+    /// acertando, pergunta ao modelo se ela quer, e o quê. As condições e o sorteio são baratos e
+    /// vêm antes: só a ponderação custa.
     /// <para>
     /// Só com o orbe na tela. Sem ele a fala viraria aviso da bandeja com bipe, e conversa solta
     /// apitando no canto da tela não é companhia, é interrupção. Lembrete pedido não depende disso.
@@ -327,7 +342,7 @@ public partial class App : System.Windows.Application
         var agora = DateTime.Now;
         var utc = DateTime.UtcNow;
         _iniciativa.NovoDia(agora);
-        _iniciativa.ConferirPaciencia(utc);
+        _iniciativa.Classificar(utc);
 
         bool livre = _orbe != null && !_chatWindow.Ocupada && !_chatWindow.IsVisible && !_conversaDoOrbe.Ocupada;
         string? impedimento = Iniciativa.Impedimento(
@@ -337,17 +352,21 @@ public partial class App : System.Windows.Application
             livre && Presenca.Disponivel(), livre, _ultimaConversaUtc);
         if (impedimento != null) return;
 
+        if (!_iniciativa.Sortear(utc, agora.TimeOfDay, Random.Shared.NextDouble())) return;
+
         _ponderando = true;
         try
         {
-            string? fala = await _conversaDoOrbe.Conversa.PonderarIniciativaAsync(System.Threading.CancellationToken.None);
+            string? fala = await _conversaDoOrbe.Conversa.PonderarIniciativaAsync(
+                proximos: _iniciativa.Estado.Geral >= Iniciativa.Proximidade,
+                System.Threading.CancellationToken.None);
 
             // Enquanto ela pensava, o usuário pode ter começado a falar com ela.
             if (fala != null && _conversaDoOrbe.Ocupada) fala = null;
 
-            _iniciativa.Ponderou(DateTime.UtcNow, falou: fala != null);
+            _iniciativa.Ponderou(DateTime.UtcNow, DateTime.Now.TimeOfDay, falou: fala != null);
             Console.WriteLine($"[INICIATIVA] ponderou: {(fala == null ? "ficou quieta" : "falou")} "
-                              + $"(ritmo {_iniciativa.Estado.Ritmo:0.0}/dia).");
+                              + $"(geral {_iniciativa.Estado.Geral:0.00}, chance {Iniciativa.Chance(_iniciativa.Estado, agora.TimeOfDay):P1}).");
 
             if (fala != null) FalarPorIniciativa(fala);
         }

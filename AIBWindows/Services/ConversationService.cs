@@ -2224,7 +2224,8 @@ public sealed class ConversationService : IMessageStore
     /// na conversa, se houver, é o App.
     /// </para>
     /// </summary>
-    public async Task<string?> PonderarIniciativaAsync(CancellationToken ct)
+    /// <param name="proximos">Se eles têm conversado bastante (multiplicador geral alto).</param>
+    public async Task<string?> PonderarIniciativaAsync(bool proximos, CancellationToken ct)
     {
         var settings = _settingsService.LoadSettings();
 
@@ -2232,7 +2233,8 @@ public sealed class ConversationService : IMessageStore
             LoadActiveCharacterSoul(settings.ActiveCharacter),
             _facts.ReadFacts(),
             UltimasFalas(12),
-            DateTime.Now);
+            DateTime.Now,
+            proximos);
 
         try
         {
@@ -2264,7 +2266,8 @@ public sealed class ConversationService : IMessageStore
     /// </para>
     /// </summary>
     public static string MaterialDaIniciativa(
-        string? alma, IReadOnlyList<string> fatos, IReadOnlyList<(bool DoUsuario, string Texto)> falas, DateTime agora)
+        string? alma, IReadOnlyList<string> fatos, IReadOnlyList<(bool DoUsuario, string Texto)> falas, DateTime agora,
+        bool proximos = false)
     {
         var sb = new StringBuilder();
         if (!string.IsNullOrWhiteSpace(alma)) sb.AppendLine(alma.Trim()).AppendLine().AppendLine("---").AppendLine();
@@ -2272,6 +2275,11 @@ public sealed class ConversationService : IMessageStore
         sb.AppendLine($"Agora: {agora.ToString("dddd, dd/MM, HH:mm", new System.Globalization.CultureInfo("pt-BR"))}.");
         sb.AppendLine("O usuário está no computador, mas não está conversando com você agora. Você pode puxar "
                       + "assunto, como uma colega faria — ou não.");
+
+        // O afeto aparece na voz, não só na frequência: com quem conversa muito com ela, a alma
+        // já prevê que ela fique mais solta. Uma frase, e não um número que o modelo não saberia ler.
+        if (proximos)
+            sb.AppendLine("Vocês têm conversado bastante ultimamente, e você se sente à vontade com ele.");
 
         sb.AppendLine().AppendLine("O que você sabe dele:");
         if (fatos.Count == 0) sb.AppendLine("(quase nada ainda)");

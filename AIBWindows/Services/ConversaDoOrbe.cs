@@ -55,8 +55,8 @@ public sealed class ConversaDoOrbe
     /// <summary>O texto final do turno, sem marca de quebra.</summary>
     public event Action<string>? Respondeu;
 
-    /// <summary>Um turno do usuário terminou: quantas palavras ele escreveu nele.</summary>
-    public event Action<int>? UsuarioFalou;
+    /// <summary>Um turno do usuário terminou: o que ele escreveu nele.</summary>
+    public event Action<string>? UsuarioFalou;
 
     private int Nivel => LevelService.GetLevel(_settings.LoadSettings().MessageCount);
 
@@ -106,7 +106,7 @@ public sealed class ConversaDoOrbe
             PassoMudou?.Invoke("", null);
         }
 
-        UsuarioFalou?.Invoke(Palavras(texto));
+        UsuarioFalou?.Invoke(texto);
 
         string final = erro ?? QuebraDeFala.Limpar(fala).Trim();
         Respondeu?.Invoke(final.Length > 0 ? final : "Feito.");

@@ -356,19 +356,34 @@ Lembrete não chama o modelo: o texto foi escrito pela persona no pedido.
 sem custo: fora do horário de silêncio (`SilencioInicio`/`SilencioFim`, atravessa a meia-noite);
 orbe na tela, conversa fora da tela e sem turno; usuário presente (`Presenca`: entrada nos
 últimos 5 min e `SHQueryUserNotificationState` aceitando avisos — sem tela cheia nem "não
-perturbe"); 15 min sem conversa; a última fala dela já respondida; o ritmo do dia não cumprido;
-e o espaço que o ritmo pede desde a última fala (horas acordadas ÷ ritmo; meio espaço depois de
-uma ponderação que terminou quieta).
+perturbe"); 15 min sem conversa; fora da pausa pedida; a última fala dela já respondida; menos
+de 12 ponderações no dia (cada uma é paga, mesmo terminando em NADA). Podendo, **sorteia** de 10
+em 10 min: `chance = 2,5% × geral × faixa` (`Iniciativa.Chance`; ~2 ponderações num dia de 14 h
+com tudo neutro). Sem número fixo de falas por dia e sem intervalo mínimo, por decisão do usuário.
 
-Podendo, `ConversationService.PonderarIniciativaAsync` chama o modelo fora de banda (sem
-ferramentas, temperatura 0,8) com a alma, os fatos e as últimas 12 falas
+Acertando, `ConversationService.PonderarIniciativaAsync` chama o modelo fora de banda (sem
+ferramentas, temperatura 0,8) com a alma, os fatos e as últimas 12 falas da conversa do orbe
 (`MaterialDaIniciativa`): retomar algo em aberto, perguntar sobre o usuário, ou `NADA`. NADA é a
-saída de primeira classe — ela escolhe quando falar.
+saída de primeira classe — ela escolhe quando falar. Com o geral ≥ 1,5, o pedido ganha "vocês têm
+conversado bastante ultimamente": o afeto aparece na voz, não só na frequência.
 
-O ritmo é adaptativo e fica em `~/.AIB/iniciativa.json`: começa em 2 falas por dia, sobe 0,5
-quando o usuário responde (qualquer turno depois da fala, `Respondeu`) e cai para 60% quando a
-fala fica 8 h sem resposta (`ConferirPaciencia`), entre 0,5 e 6. Teto de 12 ponderações por dia,
-contando as que terminam em NADA: cada uma é uma requisição paga.
+**Aprendizado** (`~/.AIB/iniciativa.json`): multiplicador geral e um por faixa de 2 h, entre 0,2 e
+3. Cada fala é classificada uma vez — 30 min depois da primeira resposta na conversa do orbe, ou
+8 h sem resposta (`Classificar`) — e o fator (`Fator`) vai inteiro para a faixa em que ela falou
+e pela raiz para o geral:
+
+| O que aconteceu | Fator |
+|---|---|
+| Conversa (2+ turnos em 30 min) | 1,10 + 0,05 por turno além do 2º, até 1,70 |
+| Resposta única longa (≥ 12 palavras) | 1,10 |
+| Resposta curta | 1,05 |
+| Leu (abriu o pulso, `FalasLidas`) e não respondeu | 0,90 |
+| Não abriu em 8 h | 0,75 |
+| "Agora não" (`EhRecusa`, na primeira resposta) | 0,50, e pausa de 4 h ou até o fim do dia |
+
+A cada dia os multiplicadores voltam 10% para 1 no logaritmo (`Esquecer`). A página Shadow mostra
+o resumo (`Iniciativa.Resumo`: geral e a melhor e a pior faixa) e "Zerar aprendizado", que vale na
+hora pela instância viva do `App`.
 
 ## MailListItem
 

@@ -1354,8 +1354,17 @@
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                                 <TextBlock Text="Puxar assunto sozinha"
                                                            Style="{StaticResource FieldLabelText}"/>
-                                                <TextBlock Text="Pelo orbe, retoma o que ficou em aberto ou pergunta sobre você. Fala mais quando você responde e menos quando ignora. Cada vez que ela pensa em falar é uma requisição ao modelo."
+                                                <TextBlock Text="Pelo orbe, retoma o que ficou em aberto ou pergunta sobre você. Fala mais quando você conversa com ela e menos quando ignora. Cada vez que ela pensa em falar é uma requisição ao modelo."
                                                            Style="{StaticResource FieldHelpText}"/>
+                                                <!-- O que ela aprendeu, e como esquecer. -->
+                                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                                    <TextBlock x:Name="IniciativaResumo"
+                                                               VerticalAlignment="Center"
+                                                               Style="{StaticResource FieldHelpText}"/>
+                                                    <Button Content="Zerar aprendizado" Margin="10,0,0,0"
+                                                            Style="{StaticResource QuietButton}"
+                                                            Click="ZerarIniciativa_Click"/>
+                                                </StackPanel>
                                             </StackPanel>
                                             <ToggleButton x:Name="IniciativaSwitch" Grid.Column="1"
                                                           Style="{StaticResource Switch}"

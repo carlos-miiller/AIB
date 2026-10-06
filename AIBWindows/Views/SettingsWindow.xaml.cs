@@ -195,6 +195,7 @@ public partial class SettingsWindow : Window
 
             ShadowMailPreviewTextBox.Text = _currentSettings.ShadowMailPreviewCount.ToString();
             IniciativaSwitch.IsChecked = _currentSettings.IniciativaLigada;
+            IniciativaResumo.Text = App.ResumoDaIniciativa();
             SilencioInicioTextBox.Text = _currentSettings.SilencioInicio;
             SilencioFimTextBox.Text = _currentSettings.SilencioFim;
             MailWindowTextBox.Text = _currentSettings.MailWindowDays.ToString();
@@ -1246,6 +1247,16 @@ public partial class SettingsWindow : Window
     /// Mudança de seleção, de texto ou de switch sujam. Foco, hover e rolagem não.
     /// </summary>
     private void Campo_Mudou(object sender, RoutedEventArgs e) => MarcarSujo();
+
+    /// <summary>
+    /// Esquece o que a iniciativa aprendeu. Vale na hora, sem "Salvar": não é configuração, é
+    /// memória dela — e o arquivo é regravado pela instância viva, no App.
+    /// </summary>
+    private void ZerarIniciativa_Click(object sender, RoutedEventArgs e)
+    {
+        App.ZerarIniciativa();
+        IniciativaResumo.Text = App.ResumoDaIniciativa();
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // Restaurar padrões

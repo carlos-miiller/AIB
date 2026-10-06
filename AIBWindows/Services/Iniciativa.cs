@@ -1,67 +1,107 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 
 namespace AIB.Services;
 
 /// <summary>
-/// O estado do ritmo, gravado em <c>~/.AIB/iniciativa.json</c> para sobreviver ao arranque.
+/// O que a iniciativa aprendeu, gravado em <c>~/.AIB/iniciativa.json</c> para sobreviver ao
+/// arranque.
 /// </summary>
 public sealed class EstadoDaIniciativa
 {
-    /// <summary>Quantas iniciativas por dia o ritmo pede agora.</summary>
-    public double Ritmo { get; set; } = Iniciativa.RitmoInicial;
+    /// <summary>O quanto ele gosta de conversa com ela, em geral. 1 é neutro.</summary>
+    public double Geral { get; set; } = 1;
 
-    /// <summary>Quando ela falou por iniciativa pela última vez.</summary>
-    public DateTime? UltimaFalaUtc { get; set; }
+    /// <summary>O mesmo por faixa de 2 h do dia (0 = 0h–2h, 4 = 8h–10h...).</summary>
+    public double[] Faixas { get; set; } = Enumerable.Repeat(1.0, Iniciativa.NumeroDeFaixas).ToArray();
 
-    /// <summary>Se a última fala ainda espera resposta. Enquanto espera, ela não insiste.</summary>
-    public bool Aguardando { get; set; }
+    /// <summary>A última fala por iniciativa, enquanto não foi classificada.</summary>
+    public DateTime? FalaUtc { get; set; }
 
-    /// <summary>Quando ela ponderou pela última vez, falando ou não.</summary>
-    public DateTime? UltimaPonderacaoUtc { get; set; }
+    /// <summary>A faixa em que a fala aconteceu: é ela que recebe o que se aprender.</summary>
+    public int FaixaDaFala { get; set; }
 
-    /// <summary>O dia local das contagens, "yyyy-MM-dd".</summary>
+    /// <summary>Se ele abriu o pulso e leu.</summary>
+    public bool Leu { get; set; }
+
+    /// <summary>A primeira resposta dele. Nula: ainda não respondeu, e ela não insiste.</summary>
+    public DateTime? RespostaUtc { get; set; }
+
+    /// <summary>Turnos dele na conversa do orbe desde a fala.</summary>
+    public int Turnos { get; set; }
+
+    /// <summary>Palavras da primeira resposta.</summary>
+    public int Palavras { get; set; }
+
+    /// <summary>Depois de um "agora não", ela não puxa assunto até aqui.</summary>
+    public DateTime? PausaAteUtc { get; set; }
+
+    /// <summary>Último sorteio, para sortear de 10 em 10 min e não a cada batida.</summary>
+    public DateTime? SorteioUtc { get; set; }
+
+    /// <summary>O dia local das contagens e do esquecimento, "yyyy-MM-dd".</summary>
     public string Dia { get; set; } = "";
 
-    public int FalasHoje { get; set; }
     public int PonderacoesHoje { get; set; }
 }
 
 /// <summary>
 /// A persona puxa assunto sozinha: retoma algo que ficou em aberto, pergunta sobre o usuário.
 /// <para>
-/// O RITMO É ADAPTATIVO, por decisão do usuário: começa devagar, sobe quando ele responde e cai
-/// quando ele ignora. Sem intervalo mínimo fixo — o espaço entre uma fala e outra sai do ritmo
-/// (horas acordadas ÷ ritmo) —, e com uma regra que segura quase todo excesso: enquanto a
-/// última fala não foi respondida, ela não manda outra.
+/// POR SORTEIO, por decisão do usuário: de 10 em 10 min, nas batidas em que ela poderia falar,
+/// sorteia <c>chance = 2,5% × geral × faixa</c>. Acertando, o modelo decide se fala e o quê — ou
+/// NADA. Sem número fixo por dia e sem intervalo mínimo: às vezes ela fala duas vezes numa manhã
+/// e depois some, como gente.
 /// </para>
 /// <para>
-/// Cada ponderação é uma requisição paga, mesmo quando ela decide ficar quieta (NADA). Por isso
-/// há teto de falas e de ponderações por dia, e ela só pondera com o usuário no computador,
-/// fora de tela cheia e "não perturbe", fora do horário de silêncio, sem turno rodando e sem
-/// conversa nos últimos minutos.
+/// OS MULTIPLICADORES SÃO O APRENDIZADO. Cada fala é classificada uma vez — 30 min depois da
+/// primeira resposta, ou 8 h sem resposta — e o fator vai inteiro para a faixa de 2 h em que
+/// ela falou e pela metade (raiz) para o geral. Conversa sobe até 1,70, porque a alma dela é
+/// afetuosa e quem conversa muito com ela a deixa mais inclinada a puxar assunto; ignorar desce
+/// 0,75; "agora não" desce 0,5 e cala até o fim do dia ou por 4 h. Todo dia os multiplicadores
+/// voltam 10% na direção de 1: uma semana ruim não a cala para sempre.
+/// </para>
+/// <para>
+/// Travas que não aprendem: com uma fala sem resposta ela não sorteia; teto de 12 ponderações
+/// por dia (cada uma é paga, mesmo terminando em NADA); silêncio, presença e "não perturbe".
 /// </para>
 /// </summary>
 public sealed class Iniciativa
 {
-    public const double RitmoInicial = 2;
-    public const double RitmoMinimo = 0.5;
+    public const int NumeroDeFaixas = 12;
 
-    /// <summary>Teto de falas por dia: o ritmo nunca passa disso, e é o que limita o custo.</summary>
-    public const double RitmoMaximo = 6;
+    /// <summary>A chance por sorteio com tudo neutro: ~2 ponderações num dia de 14 h.</summary>
+    public const double ChanceBase = 0.025;
+
+    public static readonly TimeSpan Cadencia = TimeSpan.FromMinutes(10);
+
+    public const double Minimo = 0.2;
+    public const double Maximo = 3.0;
 
     /// <summary>Teto de ponderações por dia, contando as que terminam em NADA.</summary>
     public const int PonderacoesPorDia = 12;
 
-    /// <summary>Sem resposta depois disso, a fala conta como ignorada e o ritmo cai.</summary>
+    /// <summary>Sem resposta depois disso, a fala é classificada como não respondida.</summary>
     public static readonly TimeSpan Paciencia = TimeSpan.FromHours(8);
+
+    /// <summary>Depois da primeira resposta, quanto tempo a conversa ainda conta para a fala.</summary>
+    public static readonly TimeSpan JanelaDaConversa = TimeSpan.FromMinutes(30);
+
+    /// <summary>Pausa depois de "agora não" (ou até o fim do dia, o que vier primeiro).</summary>
+    public static readonly TimeSpan PausaDaRecusa = TimeSpan.FromHours(4);
+
+    /// <summary>Quanto os multiplicadores voltam para 1 por dia (no logaritmo).</summary>
+    public const double Esquecimento = 0.10;
+
+    /// <summary>Geral a partir do qual a ponderação diz que eles têm conversado bastante.</summary>
+    public const double Proximidade = 1.5;
 
     /// <summary>Usuário sem mexer no PC há mais que isso não está lá para ler.</summary>
     public static readonly TimeSpan Ausencia = TimeSpan.FromMinutes(5);
@@ -101,43 +141,46 @@ public sealed class Iniciativa
         return inicio < fim ? hora >= inicio && hora < fim : hora >= inicio || hora < fim;
     }
 
-    /// <summary>Horas fora do silêncio num dia.</summary>
-    public static TimeSpan HorasAcordadas(TimeSpan inicio, TimeSpan fim)
-    {
-        if (inicio == fim) return TimeSpan.FromHours(24);
-        var silencio = inicio < fim ? fim - inicio : TimeSpan.FromHours(24) - inicio + fim;
-        return TimeSpan.FromHours(24) - silencio;
-    }
+    public static int FaixaDe(TimeSpan hora) => Math.Clamp((int)(hora.TotalHours / 2), 0, NumeroDeFaixas - 1);
 
-    /// <summary>
-    /// O espaço entre duas falas que o ritmo pede: as horas acordadas divididas pelas falas do
-    /// dia. Ritmo 2 num dia de 14 h: uma fala a cada 7 h. Ritmo 6: a cada 2h20.
-    /// </summary>
-    public static TimeSpan Espaco(double ritmo, TimeSpan acordadas) =>
-        TimeSpan.FromTicks((long)(acordadas.Ticks / Math.Clamp(ritmo, RitmoMinimo, RitmoMaximo)));
+    /// <summary>A chance deste sorteio.</summary>
+    public static double Chance(EstadoDaIniciativa e, TimeSpan hora) =>
+        ChanceBase * e.Geral * e.Faixas[FaixaDe(hora)];
 
-    /// <summary>O que impede de ponderar agora, ou null quando pode.</summary>
+    /// <summary>O que impede de sortear agora, ou null quando pode.</summary>
     public static string? Impedimento(
         EstadoDaIniciativa e, DateTime agoraUtc, TimeSpan horaLocal, TimeSpan silencioInicio, TimeSpan silencioFim,
         bool presente, bool livre, DateTime? ultimaConversaUtc)
     {
         if (EmSilencio(horaLocal, silencioInicio, silencioFim)) return "silêncio";
+        if (e.PausaAteUtc is DateTime p && agoraUtc < p) return "pausa pedida";
         if (!presente) return "ausente ou ocupado";
         if (!livre) return "turno ou conversa aberta";
         if (ultimaConversaUtc is DateTime c && agoraUtc - c < Calma) return "conversa recente";
-        if (e.Aguardando) return "esperando resposta";
-        if (e.FalasHoje >= (int)Math.Floor(e.Ritmo + 0.5) || e.FalasHoje >= RitmoMaximo) return "ritmo do dia cumprido";
+        if (e.FalaUtc != null && e.RespostaUtc == null) return "esperando resposta";
         if (e.PonderacoesHoje >= PonderacoesPorDia) return "teto de ponderações";
-
-        var espaco = Espaco(e.Ritmo, HorasAcordadas(silencioInicio, silencioFim));
-        if (e.UltimaFalaUtc is DateTime f && agoraUtc - f < espaco) return "cedo para outra fala";
-
-        // Ficou quieta da última vez: pondera de novo só depois de meio espaço, senão cada
-        // batida viraria uma requisição terminando em NADA.
-        if (e.UltimaPonderacaoUtc is DateTime p && agoraUtc - p < espaco / 2) return "ponderou há pouco";
-
+        if (e.SorteioUtc is DateTime s && agoraUtc - s < Cadencia) return "sorteou há pouco";
         return null;
     }
+
+    /// <summary>
+    /// O fator de uma fala já encerrada. Conversa: 1,10 com 2 turnos, +0,05 por turno a mais,
+    /// até 1,70 — decisão do usuário, pela alma afetuosa dela.
+    /// </summary>
+    public static double Fator(bool recusou, bool respondeu, int turnos, int palavras, bool leu)
+    {
+        if (recusou) return 0.5;
+        if (!respondeu) return leu ? 0.9 : 0.75;
+        if (turnos >= 2) return Math.Min(1.70, 1.10 + 0.05 * (turnos - 2));
+        return palavras >= 12 ? 1.10 : 1.05;
+    }
+
+    private static readonly Regex Recusa = new(
+        @"\b(agora n[aã]o|depois a gente|depois falamos|para de|pare de|chega|n[aã]o quero conversar|me deixa|fala menos|menos mensage)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>Se a resposta é um "agora não".</summary>
+    public static bool EhRecusa(string? texto) => Recusa.IsMatch(texto ?? "");
 
     /// <summary>Se o texto do modelo é a escolha de ficar quieta.</summary>
     public static bool EhSilencio(string? texto)
@@ -146,59 +189,174 @@ public sealed class Iniciativa
         return t.Length == 0 || t.Equals("NADA", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static double Preso(double m) => Math.Clamp(m, Minimo, Maximo);
+
+    /// <summary>Um multiplicador andando <see cref="Esquecimento"/> na direção de 1.</summary>
+    public static double Esquecer(double m) => Preso(Math.Exp(Math.Log(m) * (1 - Esquecimento)));
+
     // ── Transições ────────────────────────────────────────────────────────
 
-    /// <summary>Vira o dia: zera as contagens.</summary>
+    /// <summary>Vira o dia: zera a contagem e esquece um pouco.</summary>
     public void NovoDia(DateTime agoraLocal)
     {
         lock (_gate)
         {
             string hoje = agoraLocal.ToString("yyyy-MM-dd");
             if (Estado.Dia == hoje) return;
+
+            bool primeiraVez = Estado.Dia.Length == 0;
             Estado.Dia = hoje;
-            Estado.FalasHoje = 0;
             Estado.PonderacoesHoje = 0;
+            if (!primeiraVez)
+            {
+                Estado.Geral = Esquecer(Estado.Geral);
+                for (int i = 0; i < Estado.Faixas.Length; i++) Estado.Faixas[i] = Esquecer(Estado.Faixas[i]);
+            }
             Gravar();
         }
     }
 
-    /// <summary>Fala sem resposta além da paciência: conta como ignorada, e o ritmo cai.</summary>
-    public void ConferirPaciencia(DateTime agoraUtc)
+    /// <summary>Marca o sorteio desta janela de 10 min e diz se acertou.</summary>
+    public bool Sortear(DateTime agoraUtc, TimeSpan horaLocal, double dado)
     {
         lock (_gate)
         {
-            if (!Estado.Aguardando || Estado.UltimaFalaUtc is not DateTime f || agoraUtc - f < Paciencia) return;
-            Estado.Aguardando = false;
-            Estado.Ritmo = Math.Max(RitmoMinimo, Estado.Ritmo * 0.6);
+            Estado.SorteioUtc = agoraUtc;
             Gravar();
+            return dado < Chance(Estado, horaLocal);
         }
     }
 
-    /// <summary>O usuário falou depois de uma iniciativa: ela fica um pouco mais presente.</summary>
-    public void Respondeu()
+    /// <summary>Registra uma ponderação, e a fala, se houve.</summary>
+    public void Ponderou(DateTime agoraUtc, TimeSpan horaLocal, bool falou)
     {
         lock (_gate)
         {
-            if (!Estado.Aguardando) return;
-            Estado.Aguardando = false;
-            Estado.Ritmo = Math.Min(RitmoMaximo, Estado.Ritmo + 0.5);
-            Gravar();
-        }
-    }
-
-    /// <summary>Registra uma ponderação, e se ela terminou em fala.</summary>
-    public void Ponderou(DateTime agoraUtc, bool falou)
-    {
-        lock (_gate)
-        {
-            Estado.UltimaPonderacaoUtc = agoraUtc;
             Estado.PonderacoesHoje++;
             if (falou)
             {
-                Estado.UltimaFalaUtc = agoraUtc;
-                Estado.FalasHoje++;
-                Estado.Aguardando = true;
+                Estado.FalaUtc = agoraUtc;
+                Estado.FaixaDaFala = FaixaDe(horaLocal);
+                Estado.Leu = false;
+                Estado.RespostaUtc = null;
+                Estado.Turnos = 0;
+                Estado.Palavras = 0;
             }
+            Gravar();
+        }
+    }
+
+    /// <summary>Ele abriu o pulso.</summary>
+    public void Leu()
+    {
+        lock (_gate)
+        {
+            if (Estado.FalaUtc == null || Estado.Leu) return;
+            Estado.Leu = true;
+            Gravar();
+        }
+    }
+
+    /// <summary>
+    /// Ele falou na conversa do orbe. A primeira resposta depois da fala: se for "agora não",
+    /// classifica na hora e pausa; senão abre a janela de 30 min em que os turnos contam.
+    /// </summary>
+    public void UsuarioFalou(DateTime agoraUtc, string texto)
+    {
+        lock (_gate)
+        {
+            if (Estado.FalaUtc == null) return;
+
+            if (Estado.RespostaUtc == null)
+            {
+                Estado.RespostaUtc = agoraUtc;
+                Estado.Palavras = ConversaDoOrbe.Palavras(texto);
+
+                if (EhRecusa(texto))
+                {
+                    Aplicar(Fator(recusou: true, true, 1, Estado.Palavras, Estado.Leu));
+                    var fimDoDia = agoraUtc.ToLocalTime().Date.AddDays(1).ToUniversalTime();
+                    Estado.PausaAteUtc = agoraUtc + PausaDaRecusa < fimDoDia ? agoraUtc + PausaDaRecusa : fimDoDia;
+                    Encerrar();
+                    Gravar();
+                    return;
+                }
+            }
+
+            if (agoraUtc - Estado.RespostaUtc.Value <= JanelaDaConversa) Estado.Turnos++;
+            Gravar();
+        }
+    }
+
+    /// <summary>
+    /// Fecha a fala que já pode ser julgada: 30 min depois da primeira resposta, ou 8 h sem
+    /// resposta. Chamado a cada batida.
+    /// </summary>
+    public void Classificar(DateTime agoraUtc)
+    {
+        lock (_gate)
+        {
+            if (Estado.FalaUtc is not DateTime fala) return;
+
+            if (Estado.RespostaUtc is DateTime r)
+            {
+                if (agoraUtc - r < JanelaDaConversa) return;
+                Aplicar(Fator(false, respondeu: true, Estado.Turnos, Estado.Palavras, Estado.Leu));
+            }
+            else
+            {
+                if (agoraUtc - fala < Paciencia) return;
+                Aplicar(Fator(false, respondeu: false, 0, 0, Estado.Leu));
+            }
+
+            Encerrar();
+            Gravar();
+        }
+    }
+
+    /// <summary>O fator inteiro na faixa da fala, e a raiz dele no geral.</summary>
+    private void Aplicar(double fator)
+    {
+        int f = Math.Clamp(Estado.FaixaDaFala, 0, NumeroDeFaixas - 1);
+        Estado.Faixas[f] = Preso(Estado.Faixas[f] * fator);
+        Estado.Geral = Preso(Estado.Geral * Math.Sqrt(fator));
+    }
+
+    private void Encerrar()
+    {
+        Estado.FalaUtc = null;
+        Estado.RespostaUtc = null;
+        Estado.Leu = false;
+        Estado.Turnos = 0;
+        Estado.Palavras = 0;
+    }
+
+    /// <summary>
+    /// O aprendizado numa frase, para a página Shadow: "Geral 1,20 · mais à vontade das 8h às
+    /// 10h · menos das 14h às 16h".
+    /// </summary>
+    public static string Resumo(EstadoDaIniciativa e)
+    {
+        var br = new CultureInfo("pt-BR");
+        var partes = new System.Collections.Generic.List<string> { "Geral " + e.Geral.ToString("0.00", br) };
+
+        int melhor = Array.IndexOf(e.Faixas, e.Faixas.Max());
+        int pior = Array.IndexOf(e.Faixas, e.Faixas.Min());
+        string Faixa(int i) => $"das {i * 2}h às {i * 2 + 2}h";
+
+        if (e.Faixas[melhor] >= 1.05) partes.Add("mais à vontade " + Faixa(melhor));
+        if (e.Faixas[pior] <= 0.95) partes.Add("menos " + Faixa(pior));
+        if (partes.Count == 1) partes.Add("ainda sem preferência de horário");
+
+        return string.Join(" · ", partes);
+    }
+
+    /// <summary>Zera o aprendizado (botão das configurações).</summary>
+    public void Zerar()
+    {
+        lock (_gate)
+        {
+            Estado = new EstadoDaIniciativa { Dia = Estado.Dia, PonderacoesHoje = Estado.PonderacoesHoje };
             Gravar();
         }
     }
@@ -208,8 +366,10 @@ public sealed class Iniciativa
         try
         {
             if (File.Exists(_arquivo))
-                return JsonSerializer.Deserialize<EstadoDaIniciativa>(File.ReadAllText(_arquivo, Encoding.UTF8), Json)
-                       ?? new EstadoDaIniciativa();
+            {
+                var e = JsonSerializer.Deserialize<EstadoDaIniciativa>(File.ReadAllText(_arquivo, Encoding.UTF8), Json);
+                if (e != null && e.Faixas?.Length == NumeroDeFaixas) return e;
+            }
         }
         catch (Exception ex)
         {
