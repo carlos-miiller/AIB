@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
@@ -50,50 +50,33 @@ public static class CredentialService
         }
     }
 
-    public static string RetrieveCredential(string system, string key)
+    /// <summary>
+    /// A credencial de UM sistema, sem busca global pelos outros arquivos do cofre. Nulo quando
+    /// não existe.
+    /// <para>
+    /// Uma busca global devolveria a primeira chave com o mesmo NOME em qualquer arquivo do cofre:
+    /// sem chave do OpenRouter, ela entregaria a chave da OpenAI gravada por uma versão antiga — e a
+    /// requisição a mandaria para outro serviço.
+    /// </para>
+    /// </summary>
+    public static string? LerDoSistema(string system, string key)
     {
         try
         {
-            EnsureDir();
             string filePath = Path.Combine(CredentialsDir, $"{system.ToLower()}.bin");
-            Console.WriteLine($"[DEBUG-COFRE] Buscando sistema: {system} | Chave: {key}");
-            Console.WriteLine($"[DEBUG-COFRE] Caminho do arquivo: {filePath}");
+            if (!File.Exists(filePath)) return null;
 
-            if (!File.Exists(filePath)) 
-            {
-                Console.WriteLine($"[DEBUG-COFRE] Sistema '{system}' não encontrado. Tentando busca global...");
-                // Busca global: Varre todos os sistemas para ver se a chave existe em algum lugar
-                var allFiles = Directory.GetFiles(CredentialsDir, "*.bin");
-                foreach (var file in allFiles)
-                {
-                    var data = DecryptFile(file);
-                    if (string.IsNullOrEmpty(data)) continue;
-                    var c = JsonSerializer.Deserialize<Dictionary<string, string>>(data);
-                    if (c != null && c.TryGetValue(key, out string? val))
-                    {
-                        Console.WriteLine($"[DEBUG-COFRE] SUCESSO GLOBAL: Chave '{key}' encontrada no sistema '{Path.GetFileNameWithoutExtension(file)}'.");
-                        return val;
-                    }
-                }
-                Console.WriteLine($"[DEBUG-COFRE] ERRO: Chave '{key}' não encontrada em nenhum sistema.");
-                return "ERRO: Credencial não encontrada em nenhum sistema.";
-            }
+            string json = DecryptFile(filePath);
+            if (string.IsNullOrEmpty(json)) return null;
 
-            var decryptedJson = DecryptFile(filePath);
-            if (string.IsNullOrEmpty(decryptedJson)) return "ERRO: Falha ao descriptografar arquivo.";
-
-            var creds = JsonSerializer.Deserialize<Dictionary<string, string>>(decryptedJson);
-            if (creds != null && creds.TryGetValue(key, out string? value))
-            {
-                Console.WriteLine($"[DEBUG-COFRE] SUCESSO: Chave '{key}' encontrada.");
-                return value;
-            }
-            Console.WriteLine($"[DEBUG-COFRE] ERRO: Chave '{key}' não existe dentro do sistema '{system}'.");
-            return "ERRO: Chave não encontrada para este sistema.";
+            var creds = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+            return creds != null && creds.TryGetValue(key, out string? valor) && !string.IsNullOrEmpty(valor)
+                ? valor
+                : null;
         }
-        catch (Exception ex)
+        catch
         {
-            return $"ERRO ao recuperar credencial: {ex.Message}";
+            return null;
         }
     }
 
@@ -108,15 +91,19 @@ public static class CredentialService
         catch { return ""; }
     }
 
-    public static string ListSystems()
+    public static void WipeAllCredentials()
     {
-        EnsureDir();
-        var systems = Directory.GetFiles(CredentialsDir, "*.bin")
-                               .Select(Path.GetFileNameWithoutExtension)
-                               .ToList();
-        
-        return systems.Count > 0 
-            ? "Sistemas com credenciais seguras: " + string.Join(", ", systems)
-            : "Nenhuma credencial segura armazenada.";
+        try
+        {
+            if (Directory.Exists(CredentialsDir))
+            {
+                Directory.Delete(CredentialsDir, true);
+                EnsureDir();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEBUG-COFRE] ERRO ao limpar cofre: {ex.Message}");
+        }
     }
 }

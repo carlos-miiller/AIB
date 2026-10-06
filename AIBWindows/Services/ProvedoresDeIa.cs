@@ -1,0 +1,271 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace AIB.Services;
+
+/// <summary>
+/// Os provedores de IA que a AIB fala, e o que é próprio de cada um.
+/// <para>
+/// Existe porque a configuração fingia que qualquer provedor era "o Ollama com outra URL". A tela
+/// oferecia OpenAI, Anthropic e LM Studio com os mesmos campos — keep-alive, lista de modelos do
+/// <c>/api/tags</c>, "chave não necessária para Ollama" — e nenhum deles fazia sentido fora do
+/// Ollama. O OpenRouter, que é o que de fato se usa na nuvem, nem estava na lista.
+/// </para>
+/// <para>
+/// Dois provedores, de propósito: o Ollama, local, e o OpenRouter, que dá acesso aos modelos de
+/// nuvem por uma API só. Acrescentar um terceiro é acrescentar aqui, na fábrica e na tela.
+/// </para>
+/// </summary>
+public static class ProvedoresDeIa
+{
+    public const string Ollama = "Ollama";
+    public const string OpenRouter = "OpenRouter";
+
+    public static IReadOnlyList<string> Todos { get; } = new[] { Ollama, OpenRouter };
+
+    public const string UrlDoOllama = "http://127.0.0.1:11434";
+    public const string UrlDoOpenRouter = "https://openrouter.ai/api/v1";
+
+    /// <summary>
+    /// O modelo que o Ollama recebe quando ninguém escolheu outro — padrão das configurações, do
+    /// perfil de fábrica e do "usar o padrão" do primeiro arranque. Um nome só: com o literal
+    /// repetido em cada um, trocar o padrão deixava metade do programa no antigo.
+    /// </summary>
+    public const string ModeloPadraoDoOllama = "qwen2.5:7b";
+
+    /// <summary>
+    /// O endereço do Ollama na forma que a AIB usa: sem o <c>/v1</c> da API compatível com a
+    /// OpenAI (a AIB fala a nativa, <c>/api/chat</c>), sem barra no fim, e com <c>localhost</c>
+    /// trocado por <c>127.0.0.1</c>.
+    /// <para>
+    /// A troca do <c>localhost</c> não é estética: no Windows ele resolve primeiro para IPv6, o
+    /// Ollama escuta só em IPv4, e cada conexão esperava o IPv6 desistir — timeouts de até dois
+    /// minutos. Era feita só na fábrica; a lista de modelos da tela usava <c>localhost</c> cru e
+    /// pagava a espera. Vazio vira o endereço padrão.
+    /// </para>
+    /// </summary>
+    public static string NormalizarUrlDoOllama(string? url)
+    {
+        string u = string.IsNullOrWhiteSpace(url) ? UrlDoOllama : url.Trim();
+        u = u.Replace("localhost", "127.0.0.1", StringComparison.OrdinalIgnoreCase).TrimEnd('/');
+
+        // Só o /v1 do FIM: um Replace solto comeria "/v1" de qualquer ponto do caminho.
+        if (u.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)) u = u[..^3].TrimEnd('/');
+        return u;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex _formatoDaChave =
+        new(@"^sk-or-[a-zA-Z0-9_-]{20,}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Se <paramref name="chave"/> TEM O FORMATO de uma chave do OpenRouter: <c>sk-or-</c> e pelo
+    /// menos vinte caracteres depois. Só formato — quem diz se ela vale é o OpenRouter, na
+    /// primeira requisição.
+    /// <para>
+    /// Um critério para as duas telas. O primeiro arranque usava esta regra e as configurações só
+    /// olhavam o prefixo: a mesma chave passava numa e era recusada na outra. Não registra nada —
+    /// quem chama decide o que auditar, e nunca a chave.
+    /// </para>
+    /// </summary>
+    public static bool ChaveValida(string? chave) =>
+        !string.IsNullOrEmpty(chave) && _formatoDaChave.IsMatch(chave.Trim());
+
+    /// <summary>Onde a chave do provedor mora no cofre. Nulo para quem não usa chave.</summary>
+    public static string? SistemaDaChave(string provedor) =>
+        provedor == OpenRouter ? "openrouter" : null;
+
+    public const string NomeDaChave = "ApiKey";
+
+    /// <summary>
+    /// O provedor gravado, no nome que a AIB conhece. Gravações antigas trazem "OpenAI",
+    /// "Anthropic" ou "LmStudio": uma URL do OpenRouter as leva ao OpenRouter; o resto volta ao
+    /// Ollama, que é o único que funciona sem configuração a mais.
+    /// </summary>
+    public static string Normalizar(string? provedor, string? url)
+    {
+        string p = (provedor ?? "").Trim();
+
+        if (string.Equals(p, Ollama, StringComparison.OrdinalIgnoreCase)) return Ollama;
+        if (string.Equals(p, OpenRouter, StringComparison.OrdinalIgnoreCase)) return OpenRouter;
+        if (p.Length == 0) return "";
+
+        return (url ?? "").Contains("openrouter.ai", StringComparison.OrdinalIgnoreCase)
+            ? OpenRouter
+            : Ollama;
+    }
+
+    /// <summary>O perfil de fábrica de um provedor.</summary>
+    public static PerfilDeProvedor PerfilPadrao(string provedor) => provedor == OpenRouter
+        ? new PerfilDeProvedor
+        {
+            Url = UrlDoOpenRouter,
+            Modelo = "",
+            KeepAlive = "",
+            JanelaDeContexto = PerfilDeProvedor.JanelaPadrao,
+            Raciocinio = PerfilDeProvedor.RaciocinioDesligado
+        }
+        : new PerfilDeProvedor
+        {
+            Url = UrlDoOllama,
+            Modelo = ModeloPadraoDoOllama,
+            KeepAlive = "-1",
+            JanelaDeContexto = PerfilDeProvedor.JanelaPadrao,
+            Raciocinio = PerfilDeProvedor.RaciocinioDesligado
+        };
+
+    /// <summary>Os valores de raciocínio que fazem sentido em cada provedor, na ordem da tela.</summary>
+    public static IReadOnlyList<(string Valor, string Rotulo)> OpcoesDeRaciocinio(string provedor) =>
+        provedor == OpenRouter
+            ? new[]
+            {
+                (PerfilDeProvedor.RaciocinioDesligado, "Desligado"),
+                ("low", "Baixo"),
+                ("medium", "Médio"),
+                ("high", "Alto"),
+                (PerfilDeProvedor.RaciocinioDoModelo, "Padrão do modelo")
+            }
+            : new[]
+            {
+                (PerfilDeProvedor.RaciocinioDesligado, "Desligado"),
+                (PerfilDeProvedor.RaciocinioDoModelo, "Ligado (padrão do modelo)")
+            };
+}
+
+/// <summary>
+/// A configuração de UM provedor. Cada provedor guarda a sua: voltar ao Ollama depois de testar
+/// o OpenRouter traz de volta o modelo, a janela e o keep-alive que ele tinha.
+/// <para>
+/// A chave NÃO está aqui. Este objeto vai para o arquivo de configurações; a chave vai para o
+/// cofre, por provedor (<see cref="ProvedoresDeIa.SistemaDaChave"/>).
+/// </para>
+/// </summary>
+public sealed class PerfilDeProvedor
+{
+    public const int JanelaPadrao = 32768;
+    public const int JanelaMinima = 8192;
+
+    /// <summary>
+    /// Teto do que a AIB aceita pedir. Acima disso a conta dos orçamentos por nível e o custo de
+    /// cada turno deixam de ser razoáveis nesta máquina e na fatura; o modelo pode aguentar mais.
+    /// </summary>
+    public const int JanelaMaxima = 262144;
+
+    public const string RaciocinioDesligado = "off";
+    public const string RaciocinioDoModelo = "model";
+
+    public string Url { get; set; } = "";
+    public string Modelo { get; set; } = "";
+
+    /// <summary>Só Ollama: "1m", "5m", "30m" ou "-1" (sempre carregado).</summary>
+    public string KeepAlive { get; set; } = "";
+
+    /// <summary>
+    /// A janela que a AIB usa. No Ollama é o <c>num_ctx</c> pedido; nos dois provedores é a base
+    /// dos orçamentos de histórico por nível.
+    /// </summary>
+    public int JanelaDeContexto { get; set; } = JanelaPadrao;
+
+    /// <summary>
+    /// <see cref="RaciocinioDesligado"/>, <see cref="RaciocinioDoModelo"/> ou, no OpenRouter,
+    /// um esforço: "low", "medium", "high".
+    /// </summary>
+    public string Raciocinio { get; set; } = RaciocinioDesligado;
+
+    public PerfilDeProvedor Clone() => (PerfilDeProvedor)MemberwiseClone();
+
+    /// <summary>Números e valores dentro do que o provedor aceita.</summary>
+    public PerfilDeProvedor Sanear(string provedor)
+    {
+        JanelaDeContexto = Math.Clamp(JanelaDeContexto <= 0 ? JanelaPadrao : JanelaDeContexto, JanelaMinima, JanelaMaxima);
+
+        if (!ProvedoresDeIa.OpcoesDeRaciocinio(provedor).Any(o => o.Valor == Raciocinio))
+            Raciocinio = RaciocinioDesligado;
+
+        if (provedor == ProvedoresDeIa.OpenRouter)
+        {
+            // O endereço do OpenRouter não é escolha: é onde a API está.
+            Url = ProvedoresDeIa.UrlDoOpenRouter;
+            KeepAlive = "";
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(Url)) Url = ProvedoresDeIa.UrlDoOllama;
+            if (KeepAlive is not ("1m" or "5m" or "30m" or "-1")) KeepAlive = "-1";
+        }
+
+        return this;
+    }
+}
+
+/// <summary>
+/// Quanto as ferramentas trazem de uma vez, por provedor.
+/// <para>
+/// Os tetos do Ollama foram medidos pela lentidão local: o prefill anda a ~30 tok/s, e cada mil
+/// tokens a mais eram meio minuto antes da primeira palavra. No OpenRouter o mesmo prompt chega
+/// em segundos e custa frações de centavo — ali o teto pequeno só obriga o modelo a pedir o
+/// resto em mais voltas, e cada volta reenvia o prompt inteiro, o que sai MAIS caro.
+/// </para>
+/// </summary>
+/// <param name="LinhasDeLeitura">Linhas por leitura de arquivo, quando ninguém pede faixa.</param>
+/// <param name="ItensDaPasta">Entradas listadas de uma pasta.</param>
+/// <param name="EmailPorMensagem">Caracteres do corpo de cada mensagem em <c>mail_read</c>.</param>
+/// <param name="EmailPorLeitura">Caracteres da leitura inteira em <c>mail_read</c>.</param>
+/// <param name="LoteDaTriagem">Mensagens numa chamada de triagem.</param>
+/// <param name="AlvoDepoisDeCompactar">
+/// Fração da cota em que a conversa viva fica depois de compactar. Cada compactação reescreve o
+/// começo do prompt e perde o cache do provedor; no OpenRouter isso é dinheiro, então ela libera
+/// mais espaço de uma vez e volta menos vezes.
+/// </param>
+/// <param name="CapitulosPorAto">
+/// TETO de capítulos soltos num ato. Quem decide a hora de promover é a cota — ver
+/// <c>ConversationService.CapitulosParaAto</c> —; este número só impede um ato sobre material
+/// demais, que seria resumo de resumo sobre o dobro do material, onde a informação some.
+/// <para>
+/// Doze no Ollama e vinte e quatro no OpenRouter — é TETO, não gatilho. Já foram oito e dezesseis,
+/// e antes quatro e oito; o número fixo errava nos dois sentidos: no nível 9 do OpenRouter a
+/// faixa de capítulos tem ~24.400 tokens e quatro capítulos de uma sessão inteira somaram 3.462
+/// — promover ali era jogar fora detalhe com 21 mil tokens de espaço sobrando. No Ollama, com a
+/// faixa em ~536 tokens, um capítulo já estoura e a cota promove antes de o teto importar.
+/// </para>
+/// <para>
+/// No OpenRouter há ainda o cache: a promoção reescreve o bloco de capítulos, no começo do
+/// prompt, e tudo o que vem depois dele é pago a preço cheio na volta seguinte. Promover menos
+/// vezes é também gastar menos.
+/// </para>
+/// </param>
+/// <param name="LinhasDoAto">
+/// Linhas de Aprendido que um ato guarda. É do provedor, como o teto de capítulos, e foi
+/// dimensionado junto com ele: um ato sobre vinte e quatro capítulos com as mesmas cinco lições
+/// de um ato sobre dois joga fora o que a promoção deveria preservar. Não acompanha um
+/// <c>CapitulosPorAto</c> ajustado à mão — quem muda o teto nas configurações fica com as linhas
+/// do provedor. No Ollama fica em cinco — lá cada linha gerada é segundo de espera na CPU, e a
+/// faixa de atos tem algumas centenas de tokens.
+/// </param>
+/// <param name="TetoDoResumoDoAto">
+/// Teto de tokens que o resumidor do ato pode gerar. Acompanha <paramref name="LinhasDoAto"/>:
+/// mais linhas pedidas com o mesmo teto seria pedir e cortar no meio.
+/// </param>
+public sealed record LimitesDoProvedor(
+    int LinhasDeLeitura, int ItensDaPasta, int EmailPorMensagem, int EmailPorLeitura, int LoteDaTriagem,
+    double AlvoDepoisDeCompactar, int CapitulosPorAto, int LinhasDoAto, int TetoDoResumoDoAto)
+{
+    public static readonly LimitesDoProvedor Local = new(
+        Tools.ReadFileTool.LinhasPadrao, Tools.ReadFileTool.TetoDaPasta,
+        Tools.LerEmailTool.TetoPorMensagem, Tools.LerEmailTool.TetoDaLeitura,
+        Mail.MailDigestService.TetoDoLote, 0.5, 12, 5,
+        // 400 tokens para cinco lições. Coincide com o teto do resumo do capítulo
+        // (Compactor.MaxSummaryTokens), mas é número do ato: um não deve arrastar o outro.
+        400);
+
+    public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3, 24, 10, 700);
+
+    public static LimitesDoProvedor Para(string? provedor) =>
+        provedor == ProvedoresDeIa.OpenRouter ? Nuvem : Local;
+
+    /// <summary>
+    /// Os do provedor da conversa. Configurado pelo <see cref="SettingsService"/> ao carregar e
+    /// ao salvar, como <see cref="Ai.ChatRequestOptions.JanelaAtual"/>.
+    /// </summary>
+    public static LimitesDoProvedor Atual { get; set; } = Local;
+}

@@ -1,0 +1,154 @@
+using System;
+
+namespace AIB.Services;
+
+/// <summary>
+/// O custo de contexto da conversa, em duas medidas: o que ela pesaria inteira e o que ela
+/// pesa depois do sistema de capítulos e atos.
+/// <para>
+/// Substitui a medida anterior, que era a economia do CACHE DE PREFIXO do Ollama — quanto do
+/// prompt não precisou ser reprocessado. Aquilo media o servidor, não a AIB: variava com a
+/// última requisição feita, ia a zero quando outra completação despejava a fatia de KV, e não
+/// dizia nada sobre o que a compactação estava fazendo. O que se quer ver aqui é o trabalho da
+/// memória: quanta conversa já foi resumida e quanto isso está poupando a cada turno.
+/// </para>
+/// </summary>
+/// <param name="Total">
+/// O custo CRU da conversa inteira: o contexto de hoje, mais os turnos que viraram capítulo,
+/// mais o que a reabertura descartou, menos os resumos que substituíram os turnos.
+/// <para>
+/// Sobrevive a fechar e reabrir porque cada parcela vem de disco — <c>chapters.jsonl</c> traz
+/// o custo dos turnos resumidos e <c>raw.jsonl</c> traz as mensagens de ferramenta que não
+/// voltam ao contexto. Sem somar a segunda, uma conversa que pesou 9.144 tokens ao vivo
+/// reaparecia como 1.910, contradizendo quem esteve nela.
+/// </para>
+/// </param>
+/// <param name="Contexto">O que realmente vai ao modelo agora — prompt, memória e conversa viva.</param>
+/// <param name="Max">
+/// Teto de tokens do nível do usuário. É PLACAR, não freio: passar dele não interrompe nada,
+/// apenas marca que a compactação vai rodar no fim do turno. Quem realmente para a conversa é
+/// <paramref name="Rede"/>.
+/// </param>
+/// <param name="Cru">
+/// Tokens dos turnos crus já engolidos por capítulos. Vem somado dos REGISTROS em
+/// chapters.jsonl, e não de um campo em memória: o campo zerava ao reabrir uma conversa do
+/// histórico e a economia inteira sumia da tela.
+/// </param>
+/// <param name="Memoria">
+/// O que a faixa narrativa pesa AGORA no prompt, medida sobre o texto renderizado. É esta que
+/// entra na conta do total, e por isso é ela que precisa aparecer na tela: mostrar a soma dos
+/// registros ao lado de uma economia calculada sobre outra grandeza dava três números que não
+/// fechavam entre si.
+/// </param>
+/// <param name="MemoriaDosRegistros">
+/// A soma do custo próprio dos atos e capítulos soltos. Difere de <paramref name="Memoria"/>
+/// pelo cabeçalho da faixa — as duas linhas que abrem o bloco e são pagas uma vez só, existindo
+/// um capítulo ou vinte. Medido: 27 tokens.
+/// </param>
+/// <param name="Descartado">
+/// Tokens de chamada e resultado de ferramenta que a REABERTURA da conversa não trouxe de
+/// volta — só as falas voltam ao histórico vivo, porque um tool_calls sem o resultado
+/// correspondente quebra a requisição seguinte.
+/// <para>
+/// NÃO entra no total, pela mesma regra da poda de emergência: quem descartou foi a
+/// reabertura, e creditar isso à compactação a faria parecer melhor por trabalho que não fez.
+/// Aparece em linha própria porque sem ela a conta reaberta contradiz a memória de quem
+/// esteve na conversa — medido numa sessão real: 9.144 tokens ao vivo, 1.838 ao reabrir.
+/// </para>
+/// </param>
+/// <param name="Capitulos">Quantos capítulos existem.</param>
+/// <param name="Atos">Quantos atos existem.</param>
+/// <param name="MedidaCompleta">
+/// Falso quando algum capítulo foi gravado antes da medição existir. A conta continua sendo
+/// mostrada, mas a interface avisa que ela é um piso, não o número.
+/// </param>
+public readonly record struct TokenReport(
+    int Total,
+    int Contexto,
+    int Max,
+    int Cru = 0,
+    int Memoria = 0,
+    int MemoriaDosRegistros = 0,
+    int Descartado = 0,
+    /// <summary>Onde a poda de emergência age de verdade: a janela do modelo menos a resposta.</summary>
+    int Rede = 0,
+    int Capitulos = 0,
+    int Atos = 0,
+    bool MedidaCompleta = true,
+    /// <summary>
+    /// O que a conversa já custou em US$: as voltas ao modelo e os resumos. Só o OpenRouter
+    /// cobra e relata; nulo é "nada cobrado", e a tela não mostra nada.
+    /// </summary>
+    decimal? CustoUsd = null)
+{
+    /// <summary>
+    /// "US$ 0,0123". Quatro casas abaixo de um dólar: um turno custa frações de centavo, e
+    /// arredondar a duas casas mostraria "US$ 0,00" conversa afora.
+    /// </summary>
+    public static string Dolares(decimal valor) =>
+        "US$ " + valor.ToString(valor < 1m ? "0.0000" : "N2", System.Globalization.CultureInfo.GetCultureInfo("pt-BR"));
+
+    /// <summary>
+    /// O que a COMPACTAÇÃO poupou: os turnos crus que ela engoliu menos a faixa de memória que
+    /// entrou no lugar deles. Nunca negativo.
+    /// <para>
+    /// Não é <c>Total - Contexto</c>. Essa diferença inclui o que a reabertura descartou, e
+    /// creditá-la à compactação a faria parecer melhor por trabalho que não fez — a mesma regra
+    /// que já vale para a poda de emergência.
+    /// </para>
+    /// </summary>
+    public int Economia => Cru > Memoria ? Cru - Memoria : 0;
+
+    /// <summary>
+    /// O que existiu na conversa e não está no contexto: o poupado mais o descartado. Fecha a
+    /// conta entre os dois números da barra.
+    /// </summary>
+    public int ForaDoContexto => Total > Contexto ? Total - Contexto : 0;
+
+    /// <summary>
+    /// Quanto do teto do nível o contexto já ocupa, em porcentagem.
+    /// <para>
+    /// É esta a grandeza que merece cor de alarme na barra, e não a economia. Economia baixa
+    /// não é falha: um capítulo que resumiu 200 tokens em 128 fez o trabalho dele, e pintar
+    /// isso de vermelho acusa o sistema de errar quando a conversa é que era curta. Ocupação
+    /// alta, sim, é acionável — é o aviso de que a próxima mensagem vai disparar compactação
+    /// ou, pior, a poda.
+    /// </para>
+    /// </summary>
+    public int OcupacaoPct =>
+        Max > 0 ? Math.Max(0, (int)Math.Round((double)Contexto / Max * 100)) : 0;
+
+    /// <summary>
+    /// Quanto da REDE o contexto ocupa. É esta que vira alarme.
+    /// <para>
+    /// O teto do nível virou placar quando a janela passou a ser bem maior que ele: passar de
+    /// 100% dele é rotina num turno com ferramentas, e pintar isso de vermelho seria alarme
+    /// falso a cada turno. A rede, sim, é o ponto em que a poda volta a descartar sem
+    /// substituto.
+    /// </para>
+    /// </summary>
+    public int OcupacaoDaRedePct =>
+        Rede > 0 ? Math.Max(0, (int)Math.Round((double)Contexto / Rede * 100)) : 0;
+
+    /// <summary>Passou do orçamento do nível: a compactação vai rodar no fim do turno.</summary>
+    public bool AcimaDoOrcamento => Max > 0 && Contexto > Max;
+
+    /// <summary>
+    /// O que a faixa cobra além do custo próprio dos capítulos: o cabeçalho do bloco.
+    /// <para>
+    /// Negativo significa outra coisa — a cota aparou capítulos na renderização, e parte do que
+    /// os registros somam não chegou ao prompt. Quem exibe precisa dizer qual dos dois é.
+    /// </para>
+    /// </summary>
+    public int DiferencaDaFaixa => Memoria - MemoriaDosRegistros;
+
+    /// <summary>
+    /// Quanto da conversa a memória está poupando, em porcentagem. <c>null</c> enquanto nada
+    /// foi compactado — e null é diferente de zero: zero seria afirmar que o sistema rodou e
+    /// não economizou nada, quando a verdade é que ele ainda não teve o que fazer.
+    /// </summary>
+    public int? EconomiaPct =>
+        Total > 0 && Economia > 0
+            ? Math.Clamp((int)Math.Round((double)Economia / Total * 100), 0, 100)
+            : null;
+}

@@ -1,0 +1,103 @@
+﻿<!--
+    ============================================================================
+     DESIGN TOKENS — §1 de refactor-interface/tela-chat-v3.html
+                     §1 de refactor-interface/tela-configuracoes.html
+    ============================================================================
+     Fonte de verdade: os dois HTML acima. Os valores aqui são a conversão
+     mecânica de CSS para WPF; não inventar nem arredondar por conta própria.
+
+     Conversão de rgba(r,g,b,a) para o hexadecimal do WPF: #AARRGGBB, com
+     AA = round(a * 255). As specs já trazem o alfa em decimal nas tabelas de
+     §1 — quando houver divergência de 1 unidade por arredondamento, vale o
+     número escrito na spec.
+
+     Este dicionário é compartilhado por TODAS as telas. Nenhuma cor literal
+     deve voltar a aparecer nos arquivos de View: antes deste arquivo, #9B51E0
+     estava escrito 27 vezes em 6 XAMLs.
+    ============================================================================
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- As CORES moram em Cores.Escuro.xaml / Cores.Claro.xaml, uma por tema.
+         Aqui fica só o que não muda com o tema. -->
+
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         RAIOS
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <CornerRadius x:Key="RadiusWindowOuter">20</CornerRadius>
+    <CornerRadius x:Key="RadiusWindowInner">18.5</CornerRadius>
+    <!-- Raio UNIFORME. Não voltar ao canto "rabinho" de balão: a geometria é
+         de card, herdada da tela de seleção. Chat O4. -->
+    <CornerRadius x:Key="RadiusBubble">18</CornerRadius>
+    <CornerRadius x:Key="RadiusChip">18</CornerRadius>
+    <CornerRadius x:Key="RadiusInputFrame">18</CornerRadius>
+    <CornerRadius x:Key="RadiusInputInner">16.5</CornerRadius>
+    <CornerRadius x:Key="RadiusCard">12</CornerRadius>
+    <CornerRadius x:Key="RadiusControl">10</CornerRadius>
+    <CornerRadius x:Key="RadiusButton">10</CornerRadius>
+    <CornerRadius x:Key="RadiusIconBtn">8</CornerRadius>
+    <CornerRadius x:Key="RadiusTooltip">8</CornerRadius>
+    <CornerRadius x:Key="RadiusPill">20</CornerRadius>
+    <CornerRadius x:Key="RadiusSwitch">20</CornerRadius>
+
+    <!-- Shadow Assistant §4.2. Nao ha CornerRadiusAnimation em WPF puro, e animar
+         por keyframes discretos daria um morph aos saltos. Nao precisa: TODO raio
+         da spec e exatamente metade da altura do elemento (56/2=28, 52/2=26, e os
+         internos 53/2=26,5 e 49/2=24,5). O raio e ligado a altura pelo
+         AlturaParaRaioConverter e acompanha sozinho a animacao de Height.
+         Estes valores ficam aqui como referencia do desenho; quem manda em tempo
+         de execucao e o conversor. -->
+    <CornerRadius x:Key="RadiusOrb">28</CornerRadius>
+    <CornerRadius x:Key="RadiusBar">26</CornerRadius>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         TIPOGRAFIA
+         Família UI = Segoe UI, o default do WPF: não declarar fonte custom.
+         Mono só nos valores técnicos que o usuário confere caractere por
+         caractere. Configurações A10.
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <FontFamily x:Key="MonoFontFamily">Cascadia Code, Consolas, Courier New</FontFamily>
+
+    <sys:Double x:Key="FontSizeHeaderTitle">20</sys:Double>
+    <sys:Double x:Key="FontSizeHeaderSub">12.5</sys:Double>
+    <sys:Double x:Key="FontSizeAgentName">16</sys:Double>
+    <sys:Double x:Key="FontSizeBubble">14</sys:Double>
+    <sys:Double x:Key="FontSizeField">13</sys:Double>
+    <sys:Double x:Key="FontSizeControl">12.5</sys:Double>
+    <sys:Double x:Key="FontSizeControlMono">12</sys:Double>
+    <sys:Double x:Key="FontSizeTool">12</sys:Double>
+    <sys:Double x:Key="FontSizeToolArg">11</sys:Double>
+    <sys:Double x:Key="FontSizePill">11</sys:Double>
+    <sys:Double x:Key="FontSizeHelp">11</sys:Double>
+    <sys:Double x:Key="FontSizeStamp">10.5</sys:Double>
+    <sys:Double x:Key="FontSizeCode">12.5</sys:Double>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         GEOMETRIA
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <sys:Double x:Key="HeaderHeight">52</sys:Double>
+    <sys:Double x:Key="IconButtonSize">34</sys:Double>
+    <sys:Double x:Key="RecordButtonSize">38</sys:Double>
+    <sys:Double x:Key="InputHeight">49</sys:Double>
+    <sys:Double x:Key="ControlHeight">36</sys:Double>
+    <sys:Double x:Key="ControlColumnWidth">210</sys:Double>
+    <!-- A mesma medida como GridLength. ColumnDefinition.Width não aceita Double:
+         ligar o token de cima ali estoura como XamlParseException na abertura da
+         tela, não na compilação. -->
+    <GridLength x:Key="ControlColumnGrid">210</GridLength>
+    <sys:Double x:Key="ChipMinHeight">41</sys:Double>
+    <!-- 5 ícones de 22px + 4 vãos de 8px. A barra de 4px é o único aviso de
+         que há mais ações fora de vista: o contador "+N" foi implementado e
+         removido de propósito. Chat A11. -->
+    <sys:Double x:Key="IconTrackMaxWidth">142</sys:Double>
+    <sys:Double x:Key="TooltipBlockWidth">340</sys:Double>
+    <sys:Double x:Key="TooltipRawMaxHeight">118</sys:Double>
+    <sys:Double x:Key="TooltipDiffMaxHeight">180</sys:Double>
+
+</ResourceDictionary>

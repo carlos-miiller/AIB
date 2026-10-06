@@ -1,59 +1,63 @@
-<Window x:Class="AIB.Views.ChatWindow"
+﻿<Window x:Class="AIB.Views.ChatWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:markdig="clr-namespace:Markdig.Wpf;assembly=Markdig.Wpf"
         xmlns:local="clr-namespace:AIB.Views"
         Title="AIB"
-        SizeToContent="Height"
-        Width="760"
-        MaxHeight="880"
-        MinHeight="100"
+        Width="820"
+        Height="605"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
         WindowStartupLocation="Manual"
         Topmost="True"
         ShowInTaskbar="False"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
 
+    <!--
+        Implementação de refactor-interface/tela-chat-v3.html.
+
+        A janela do WPF é maior que os 770x520 do desenho porque a DropShadow
+        precisa de área para desenhar e não pode ser recortada (§3.1). A margem
+        do MainRootBorder faz a conta: 40+770+10 = 820 e 25+520+60 = 605.
+
+        Largura FIXA: quando o painel lateral abre, a janela de chat NÃO encolhe;
+        o painel aparece ao lado. A2.
+    -->
     <Window.Resources>
-        <!-- Estilos das bolhas de chat -->
-        <Style x:Key="UserBubble" TargetType="Border">
-            <Setter Property="CornerRadius" Value="18,18,4,18"/>
-            <Setter Property="Padding" Value="14,10"/>
-            <Setter Property="Margin" Value="4,3,4,3"/>
-            <Setter Property="HorizontalAlignment" Value="Right"/>
-            <Setter Property="MaxWidth" Value="420"/>
-        </Style>
-        <Style x:Key="AgentBubble" TargetType="Border">
-            <Setter Property="CornerRadius" Value="18,18,18,4"/>
-            <Setter Property="Padding" Value="14,10"/>
-            <Setter Property="Margin" Value="4,3,4,3"/>
-            <Setter Property="HorizontalAlignment" Value="Left"/>
-            <Setter Property="MaxWidth" Value="420"/>
-        </Style>
 
-        <!-- Estilo dos botões de ícone da cápsula -->
-        <Style x:Key="CapsuleIconButton" TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Foreground" Value="#888899"/>
-            <Setter Property="Width" Value="36"/>
-            <Setter Property="Height" Value="36"/>
+        <!-- §3.3(d)  Botão do switch de modo. Inativo textSecondary, hover textBody,
+             ATIVO accentLilac sobre fundo lilás — mesma família da pill de nível e da
+             aba ativa do painel. Sem sombra e sem borda no ativo: o realce é só fundo
+             e cor, para a moldura neon seguir sendo a única cor saturada (§0 O2). -->
+        <Style x:Key="AbaDeModo" TargetType="RadioButton">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="11,0"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root" Background="Transparent" CornerRadius="18">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Casca" CornerRadius="12"
+                                Background="Transparent"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center"
+                                              HorizontalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#1AFFFFFF"/>
+                                <Setter Property="Foreground"
+                                        Value="{StaticResource TextBodyBrush}"/>
                             </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#2AFFFFFF"/>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource AccentFill12Brush}"/>
+                                <Setter Property="Foreground"
+                                        Value="{StaticResource AccentLilacBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -61,291 +65,630 @@
             </Setter>
         </Style>
 
-        <!-- Estilo do botão Enviar -->
-        <Style x:Key="SendButton" TargetType="Button">
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Width" Value="36"/>
-            <Setter Property="Height" Value="36"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root" CornerRadius="18">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#9B51E0" Offset="0"/>
-                                    <GradientStop Color="#3182CE" Offset="0.5"/>
-                                    <GradientStop Color="#D53F8C" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.85"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.65"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+
+        <!-- §3.9 — HORA. Fora da bolha, some por padrão e aparece no hover da
+             linha. Dentro da linha ela ocuparia espaço e empurraria a bolha
+             para longe da borda. A5. -->
+        <Style x:Key="StampText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="{StaticResource FontSizeStamp}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Bottom"/>
+            <Setter Property="Padding" Value="4,0,4,3"/>
+            <Setter Property="Opacity" Value="0"/>
         </Style>
+
+        <!-- §3.7(e) — BOTÃO PRIMÁRIO do input: 38px circular, gradiente primary
+             com glow. Sempre ENVIAR; o microfone é botão separado. O10 / A7. -->
     </Window.Resources>
 
-    <!-- Sombra de flutuação -->
-    <Window.Effect>
-        <DropShadowEffect BlurRadius="28" ShadowDepth="6" Direction="270"
-                          Color="#000000" Opacity="0.55"/>
-    </Window.Effect>
+    <Grid Background="Transparent">
 
-    <!-- Root Layout container (Horizontal Stack) -->
-    <StackPanel Orientation="Horizontal" MouseDown="Window_MouseDown" Background="Transparent">
-        
-        <!-- Container principal do CHAT -->
+        <!-- ══════════════════════════════════════════════════════════════
+             JANELA DE CHAT  770 x 520
+             ══════════════════════════════════════════════════════════════ -->
+        <!-- A altura acompanha a da janela: o puxador de cima (PuxadorDeAltura) muda a altura
+             da janela, e a margem segue sendo a da sombra. -->
         <Border x:Name="MainRootBorder"
-                Width="760"
-                CornerRadius="24"
-                Padding="2"
-                VerticalAlignment="Bottom">
-            <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Color="#9B51E0" Offset="0"/>
-                    <GradientStop Color="#3182CE" Offset="0.33"/>
-                    <GradientStop Color="#D53F8C" Offset="0.66"/>
-                    <GradientStop Color="#E28743" Offset="1"/>
-                </LinearGradientBrush>
-            </Border.Background>
+                Width="770"
+                Margin="40,25,10,60"
+                VerticalAlignment="Stretch"
+                Background="{StaticResource NeonBrush}"
+                CornerRadius="{StaticResource RadiusWindowOuter}"
+                Padding="1.5"
+                Effect="{StaticResource WindowShadow}">
 
-            <!-- Conteúdo interno (fundo escuro translúcido) -->
-            <Border CornerRadius="22"
-                    Background="#F0101013"
+            <Border Background="{StaticResource GlassBrush}"
+                    CornerRadius="{StaticResource RadiusWindowInner}"
                     ClipToBounds="True">
+
+                <!-- Row 1 = "*" é o que impede a lista de crescer com o conteúdo e
+                     empurrar o input e o rodapé para fora do frame. A3. -->
                 <Grid x:Name="MainAreaGrid">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/> <!-- Drag Handle -->
-                        <RowDefinition Height="*"/> <!-- Chat (cresce até MaxHeight) -->
-                        <RowDefinition Height="Auto"/> <!-- Status bar -->
-                        <RowDefinition Height="Auto"/> <!-- Input Capsule -->
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                <!-- ── DRAG HANDLE + HEADER ──────────────────────────────── -->
-                <Grid Grid.Row="0" Margin="18,12,18,4" MouseDown="Window_MouseDown" Cursor="SizeAll">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+                    <!-- ── §3.3  HEADER  52px ───────────────────────────── -->
+                    <!-- A janela é FIXA: não se arrasta pelo cabeçalho. Ela fica ancorada
+                         acima da barra de tarefas (RepositionWindow). -->
+                    <Grid Grid.Row="0" Height="{StaticResource HeaderHeight}"
+                          Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
-                    <!-- Logo + Título -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="✦" FontSize="13" Foreground="#9B51E0" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBlock Text="AIB" FontSize="15" FontWeight="Bold" Foreground="#E0E0E0" VerticalAlignment="Center"/>
-                        
-                        <!-- Level Indicator -->
-                        <TextBlock x:Name="LevelText" Text="Nível 1" FontSize="12" FontWeight="SemiBold" Foreground="#CD7F32" VerticalAlignment="Center" Margin="16,0,0,0">
-                            <TextBlock.ToolTip>
-                                <ToolTip Background="#F01A1A1E" BorderBrush="#3FFFFFFF" HasDropShadow="True">
-                                    <StackPanel Margin="4">
-                                        <TextBlock x:Name="TooltipLevelInfo" Text="Nível 1 (0/20 XP)" Foreground="#E0E0E0" FontSize="12" FontFamily="Consolas" />
-                                        <ProgressBar x:Name="XpProgressBar" Width="180" Height="6" Margin="0,6,0,0" 
-                                                     Value="0" Maximum="20" Background="#2A2A30" Foreground="#CD7F32" BorderThickness="0" />
-                                    </StackPanel>
-                                </ToolTip>
-                            </TextBlock.ToolTip>
-                        </TextBlock>
-                    </StackPanel>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal"
+                                    VerticalAlignment="Center" Margin="20,0,0,0">
+                            <TextBlock Text="✦" FontSize="13" LineHeight="13"
+                                       Foreground="{StaticResource AccentLilacBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,10,0"/>
 
-                    <!-- Botões de controle -->
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <!-- Token Counter -->
-                        <TextBlock x:Name="TokenCounterText" Text="0/30k tokens" FontSize="11" Foreground="#888899" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                        
-                        <Button x:Name="BtnToggleShadow" Content="👁" Style="{StaticResource CapsuleIconButton}"
-                                FontSize="15" Click="BtnToggleShadow_Click" ToolTip="Shadow Assistant (Alpha)"/>
-                        <Button x:Name="SidebarButton" Content="◨" Style="{StaticResource CapsuleIconButton}"
-                                FontSize="15" Click="SidebarButton_Click" ToolTip="Painel de Contexto"/>
-                        <Button x:Name="SettingsButton" Content="⚙" Style="{StaticResource CapsuleIconButton}"
-                                FontSize="13" Click="SettingsButton_Click" ToolTip="Configurações"/>
-                        <Button x:Name="ClearButton" Content="🗑" Style="{StaticResource CapsuleIconButton}"
-                                FontSize="13" Click="ClearButton_Click" ToolTip="Limpar conversa"/>
-                        <Button Content="✕" Style="{StaticResource CapsuleIconButton}"
-                                FontSize="12" Click="CloseButton_Click" ToolTip="Fechar"/>
-                    </StackPanel>
-                </Grid>
+                            <TextBlock x:Name="AgentNameText" Text="AIB"
+                                       FontSize="{StaticResource FontSizeAgentName}"
+                                       FontWeight="SemiBold" LineHeight="16"
+                                       Foreground="{StaticResource TextStrongBrush}"
+                                       VerticalAlignment="Center"/>
 
-                <!-- Divisor sutil -->
-                <Rectangle Grid.Row="0" Height="1" VerticalAlignment="Bottom"
-                           Fill="#15FFFFFF" Margin="18,38,18,0"/>
+                            <!-- PILL de nível: a mesma da tela de seleção. A cor é
+                                 sempre lilás — a faixa (bronze…diamante) vive na
+                                 barra de XP do ToolTip, para a moldura neon seguir
+                                 sendo a única cor saturada. O2. -->
+                            <Border Style="{StaticResource PillBorder}" Margin="10,0,0,0">
+                                <TextBlock x:Name="LevelText" Text="Nível 1"
+                                           Style="{StaticResource PillText}"/>
+                                <Border.ToolTip>
+                                    <ToolTip Background="{StaticResource SurfaceTooltipBrush}"
+                                             BorderBrush="{StaticResource AccentBorderBrush}"
+                                             BorderThickness="1" HasDropShadow="True">
+                                        <StackPanel>
+                                            <TextBlock x:Name="TooltipLevelInfo" Text="Nível 1 (0/20 XP)"
+                                                       FontFamily="{StaticResource MonoFontFamily}"
+                                                       FontSize="11"
+                                                       Foreground="{StaticResource TextBodyBrush}"/>
+                                            <ProgressBar x:Name="XpProgressBar" Width="180" Height="6"
+                                                         Margin="0,6,0,0" Value="0" Maximum="20"
+                                                         Background="{StaticResource SurfaceCodeBrush}"
+                                                         BorderThickness="0"/>
+                                        </StackPanel>
+                                    </ToolTip>
+                                </Border.ToolTip>
+                            </Border>
+                        </StackPanel>
 
-                <!-- ── ÁREA DE CHAT (cresce dinamicamente) ───────────────── -->
-                <ScrollViewer x:Name="ChatScrollViewer"
-                              Grid.Row="1"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled"
-                              Padding="10,8"
-                              Background="Transparent"
-                              MaxHeight="480">
-                    <StackPanel x:Name="MessagesPanel"
-                                VerticalAlignment="Top"
-                                Margin="8,4"/>
-                </ScrollViewer>
+        <!-- §3.3(d)  SWITCH CHAT / E-MAIL.
+             Fica à ESQUERDA dos botões de ícone, encostado no espaçador, e é o que
+             troca o conteúdo da área central. O realce do ativo é só fundo + cor:
+             sem sombra e sem borda, para a moldura neon seguir sendo a única cor
+             saturada da janela (§0 O2). -->
+        <StackPanel Grid.Column="2" Orientation="Horizontal"
+                    VerticalAlignment="Center" Margin="0,0,12,0">
 
-                <!-- ── STATUS BAR (Pensando...) ───────────────────────────── -->
-                <Border x:Name="StatusBar"
-                        Grid.Row="2"
-                        Background="#0AFFFFFF"
-                        Margin="18,0,18,4"
-                        Padding="12,6"
-                        CornerRadius="8"
-                        Visibility="Collapsed">
-                    <TextBlock x:Name="StatusText"
-                               Text="🧠 Pensando..."
-                               Foreground="#9B51E0"
-                               FontSize="11"
-                               FontStyle="Italic"/>
-                </Border>
+            <Border Height="28" CornerRadius="14" Padding="2" Margin="0,0,10,0"
+                    Background="{StaticResource ReadFill05Brush}"
+                    BorderBrush="{StaticResource BorderCardBrush}"
+                    BorderThickness="1">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="ModoChat" GroupName="ModoDeExibicao"
+                                 IsChecked="True" Content="Chat"
+                                 Style="{StaticResource AbaDeModo}"
+                                 Checked="Modo_Checked"/>
+                    <RadioButton x:Name="ModoEmail" GroupName="ModoDeExibicao"
+                                 Content="E-mail"
+                                 Style="{StaticResource AbaDeModo}"
+                                 Checked="Modo_Checked"/>
+                </StackPanel>
+            </Border>
 
-                <!-- ── INPUT CAPSULE (cápsula Gemini) ────────────────────── -->
-                <Border Grid.Row="3" Margin="12,6,12,12" CornerRadius="22">
-                    <!-- Borda externa de gradiente da cápsula -->
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                            <GradientStop Color="#9B51E0" Offset="0"/>
-                            <GradientStop Color="#3182CE" Offset="0.5"/>
-                            <GradientStop Color="#D53F8C" Offset="1"/>
-                        </LinearGradientBrush>
-                    </Border.Background>
-                    <Border CornerRadius="20" Padding="1">
-                        <Border CornerRadius="19" Background="#1A1A1E" Padding="6,4">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>   <!-- ✦ ícone -->
-                                    <ColumnDefinition Width="*"/>      <!-- TextBox -->
-                                    <ColumnDefinition Width="Auto"/>   <!-- Botões -->
-                                </Grid.ColumnDefinitions>
+                            <!-- O Shadow ANTIGO (captura de tela). Fica SEMPRE Collapsed:
+                                 ShadowAssistantEnabled hoje liga o ORBE, e mostrar este botão
+                                 com a chave ligada oferecia um segundo "Shadow" que não faz
+                                 nada. O código continua; ver ApplyShadowAssistantSetting. -->
+                            <Button x:Name="BtnToggleShadow" Style="{StaticResource IconButton}"
+                                    Click="BtnToggleShadow_Click" Visibility="Collapsed"
+                                    ToolTip="Shadow Assistant (Alpha)"/>
 
-                                <!-- Ícone da marca -->
-                                <TextBlock Grid.Column="0"
-                                           Text="✦"
-                                           Foreground="#6644AA"
-                                           FontSize="14"
-                                           VerticalAlignment="Center"
-                                           Margin="10,0,6,0"/>
+                            <Button x:Name="SidebarButton" Style="{StaticResource IconButton}"
+                                    Click="SidebarButton_Click" ToolTip="Painel lateral">
+                                <Path Data="M2.5,3.5 H15.5 V14.5 H2.5 Z M11,3.5 V14.5"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.4" Width="18" Height="18" Stretch="None"/>
+                            </Button>
 
-                                <!-- Campo de texto e Pop-up -->
-                                <Popup x:Name="CommandsPopup" PlacementTarget="{Binding ElementName=InputBox}" Placement="Top" StaysOpen="False" AllowsTransparency="True" VerticalOffset="-8">
-                                    <Border Background="#F01A1A1E" BorderBrush="#3FFFFFFF" BorderThickness="1" CornerRadius="8" Padding="4">
-                                        <ListBox x:Name="CommandsList" Background="Transparent" BorderThickness="0" Foreground="White" Width="200"
-                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                                 PreviewKeyDown="CommandsList_PreviewKeyDown">
-                                            <ListBox.ItemContainerStyle>
-                                                <Style TargetType="ListBoxItem">
-                                                    <Setter Property="Padding" Value="8,4"/>
-                                                    <Setter Property="Margin" Value="0,2"/>
-                                                    <Setter Property="Cursor" Value="Hand"/>
-                                                    <Setter Property="Template">
-                                                        <Setter.Value>
-                                                            <ControlTemplate TargetType="ListBoxItem">
-                                                                <Border x:Name="Bd" Background="Transparent" CornerRadius="4">
-                                                                    <ContentPresenter/>
-                                                                </Border>
-                                                                <ControlTemplate.Triggers>
-                                                                    <Trigger Property="IsSelected" Value="True">
-                                                                        <Setter TargetName="Bd" Property="Background" Value="#309B51E0"/>
-                                                                    </Trigger>
-                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                        <Setter TargetName="Bd" Property="Background" Value="#20FFFFFF"/>
-                                                                    </Trigger>
-                                                                </ControlTemplate.Triggers>
-                                                            </ControlTemplate>
-                                                        </Setter.Value>
-                                                    </Setter>
-                                                </Style>
-                                            </ListBox.ItemContainerStyle>
-                                        </ListBox>
+                            <Button x:Name="SettingsButton" Style="{StaticResource IconButton}"
+                                    Click="SettingsButton_Click" ToolTip="Configurações">
+                                <!-- Engrenagem em duas partes: aro fino e DENTES curtos e
+                                     grossos. Com traço único e fino os oito raios saem longos
+                                     e o ícone lê como um sol, não como uma engrenagem. -->
+                                <Grid Width="18" Height="18">
+                                    <Path Data="M9,5.6 A3.4,3.4 0 1 1 9,12.4 A3.4,3.4 0 1 1 9,5.6 Z"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="1.4" Stretch="None"/>
+                                    <Path Data="M9,1.6 V3.2 M9,14.8 V16.4 M16.4,9 H14.8 M3.2,9 H1.6 M14.2,3.8 L13.1,4.9 M4.9,13.1 L3.8,14.2 M14.2,14.2 L13.1,13.1 M4.9,4.9 L3.8,3.8"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="2.4" StrokeStartLineCap="Flat" StrokeEndLineCap="Flat"
+                                          Stretch="None"/>
+                                </Grid>
+                            </Button>
+
+                            <Button x:Name="ClearButton" Style="{StaticResource IconButton}"
+                                    Click="ClearButton_Click" ToolTip="Limpar conversa">
+                                <Path Data="M3,4.8 H15 M7,4.8 V3.2 H11 V4.8 M4.8,4.8 V15 H13.2 V4.8 M7.6,7.4 V12.4 M10.4,7.4 V12.4"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Width="18" Height="18" Stretch="None"/>
+                            </Button>
+
+                            <Button Style="{StaticResource CloseIconButton}"
+                                    Click="CloseButton_Click" ToolTip="Fechar">
+                                <Path Data="M5,5 L13,13 M13,5 L5,13"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Width="18" Height="18" Stretch="None"/>
+                            </Button>
+                        </StackPanel>
+
+                        <Rectangle Grid.ColumnSpan="3" Height="1" VerticalAlignment="Bottom"
+                                   Fill="{StaticResource DividerBrush}"/>
+                    </Grid>
+
+                    <!-- ── §3.4  LISTA DE MENSAGENS ─────────────────────── -->
+                    <Grid Grid.Row="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- ── §3.10/§3.11  CABEÇALHO DO MODO E-MAIL ────────────
+                         UMA linha com dois estados. Na LISTA: título, as três
+                         medidas e a engrenagem. Na LEITURA: o caminho de volta
+                         e as duas ações. É a MESMA .mv-head da spec, e por isso
+                         é um elemento só: dois cabeçalhos empilhados mudariam a
+                         altura da linha ao trocar de estado, e o conteúdo abaixo
+                         saltaria.
+                         Fica FORA das duas áreas de conteúdo porque sobrevive às
+                         duas: na leitura a lista some, mas o cabeçalho fica. -->
+                    <Grid x:Name="CabecalhoDoEmail" Grid.Row="0" Margin="20,10,20,8"
+                          Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock x:Name="TituloDaCaixa" Grid.Column="0"
+                                   Text="Caixa de entrada"
+                                   FontSize="13" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Left"
+                                   Foreground="{StaticResource TextStrongBrush}"/>
+
+                        <!-- §3.11  O TÍTULO VIRA CAMINHO.
+                             O ASSUNTO é o ÚNICO elemento que encolhe: coluna *,
+                             MinWidth 0 e reticências. Sem isso um assunto longo
+                             empurraria "Abrir no Gmail" e "Recarregar" para fora
+                             da janela — e são eles que dão o que fazer aqui. -->
+                        <Grid x:Name="CaminhoDaLeitura" Grid.Column="0"
+                              VerticalAlignment="Center" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*" MinWidth="0"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Button x:Name="BotaoVoltarParaCaixa" Grid.Column="0"
+                                    Content="Caixa de entrada"
+                                    Style="{StaticResource CaminhoDeVolta}"
+                                    Click="VoltarParaCaixa_Click"/>
+
+                            <TextBlock Grid.Column="1" Text="&#x203A;" FontSize="13"
+                                       Margin="7,0" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextMutedBrush}"/>
+
+                            <TextBlock x:Name="AssuntoDaLeitura" Grid.Column="2"
+                                       FontSize="13" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{StaticResource TextStrongBrush}"/>
+                        </Grid>
+
+                        <TextBlock x:Name="MedidasDaCaixa" Grid.Column="1"
+                                   FontFamily="{StaticResource MonoFontFamily}"
+                                   FontSize="11" VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   Foreground="{StaticResource TextMutedBrush}"/>
+
+                        <Button x:Name="EngrenagemDoEmail" Grid.Column="2"
+                                Style="{StaticResource IconButton}"
+                                Width="26" Height="26"
+                                Click="EngrenagemDoEmail_Click"
+                                ToolTip="Configurações de e-mail">
+                            <Path Data="M7.4,10 A2.6,2.6 0 0 1 12.6,10 A2.6,2.6 0 0 1 7.4,10 Z
+                                        M10,1.9 L10,4.2 M10,15.8 L10,18.1
+                                        M3.9,3.9 L5.5,5.5 M14.5,14.5 L16.1,16.1
+                                        M1.9,10 L4.2,10 M15.8,10 L18.1,10
+                                        M3.9,16.1 L5.5,14.5 M14.5,5.5 L16.1,3.9"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.3" Width="15" Height="15" Stretch="Uniform"/>
+                        </Button>
+
+                        <!-- §3.11  AS DUAS AÇÕES.
+                             As contagens NÃO voltam durante a leitura: elas
+                             descrevem a CAIXA, e aqui se está dentro de um item.
+                             Mantê-las seria um número certo respondendo a outra
+                             pergunta. -->
+                        <StackPanel x:Name="AcoesDaLeitura" Grid.Column="3"
+                                    Orientation="Horizontal" VerticalAlignment="Center"
+                                    Visibility="Collapsed">
+                            <Button x:Name="BotaoAbrirNoClienteDaLeitura"
+                                    Style="{StaticResource AcaoDeCabecalho}"
+                                    Content="Abrir no cliente" Margin="0,0,8,0"
+                                    Click="AbrirNoClienteDaLeitura_Click"/>
+
+                            <Button x:Name="BotaoRecarregarEmail"
+                                    Style="{StaticResource AcaoDeCabecalho}"
+                                    Click="RecarregarEmail_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path x:Name="SetaDeRecarregar"
+                                          Data="M16.4,8.2 A6.6,6.6 0 1 0 16.8,12
+                                                M16.8,3.6 L16.8,8.2 L12.2,8.2"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="1.7" Width="12" Height="12"
+                                          Stretch="Uniform" Margin="0,0,6,0"
+                                          VerticalAlignment="Center"
+                                          RenderTransformOrigin="0.5,0.5">
+                                        <Path.RenderTransform>
+                                            <RotateTransform x:Name="GiroDoRecarregar" Angle="0"/>
+                                        </Path.RenderTransform>
+                                    </Path>
+                                    <TextBlock Text="Recarregar" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <!-- DESCARTAR a conversa deste e-mail.
+                                 SÓ ÍCONE, e não um terceiro botão de texto igual aos
+                                 dois ao lado: é a única ação desta linha que não
+                                 tem desfazer, e três rótulos de mesmo peso convidam
+                                 ao clique errado. Mesma caixa de 26px da
+                                 engrenagem de §3.10.
+                                 Existe porque a conversa de e-mail ficou FORA
+                                 da lista do painel, e com ela ficou fora do
+                                 botão direito -> Excluir. Sem gerir por aqui,
+                                 não se gere em lugar nenhum. -->
+                            <Button x:Name="BotaoDescartarConversa" Margin="8,0,0,0"
+                                    Style="{StaticResource IconButton}"
+                                    Width="26" Height="26"
+                                    Click="DescartarConversaDoEmail_Click"
+                                    ToolTip="Descartar esta conversa">
+                                <Path Data="M4.6,5.8 H15.4 M8.2,5.8 V4.4 A0.9,0.9 0 0 1 9.1,3.5
+                                            H10.9 A0.9,0.9 0 0 1 11.8,4.4 V5.8
+                                            M6.1,5.8 L6.8,15.6 A1,1 0 0 0 7.8,16.5
+                                            H12.2 A1,1 0 0 0 13.2,15.6 L13.9,5.8
+                                            M8.6,8.4 V13.6 M11.4,8.4 V13.6"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.3" StrokeLineJoin="Round"
+                                      Width="15" Height="15" Stretch="Uniform"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- A área de conteúdo: chat, lista de e-mails e convite são
+                         irmãos aqui, e só a Visibility troca. -->
+                    <Grid Grid.Row="1">
+                            <ScrollViewer x:Name="ChatScrollViewer"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          Padding="26,24" Background="Transparent">
+                                <StackPanel x:Name="MessagesPanel" VerticalAlignment="Top"/>
+                            </ScrollViewer>
+
+                            <!-- §5.6  CONVERSA VAZIA. Ocupa a lista inteira; sem botões,
+                                 o convite é o input. -->
+                            <StackPanel x:Name="EmptyState" HorizontalAlignment="Center"
+                                        VerticalAlignment="Center" IsHitTestVisible="False">
+                                <Border Width="46" Height="46" CornerRadius="23"
+                                        Background="{StaticResource AccentFill12Brush}"
+                                        BorderBrush="{StaticResource AccentEdge28Brush}"
+                                        BorderThickness="1" HorizontalAlignment="Center">
+                                    <TextBlock Text="✦" FontSize="18"
+                                               Foreground="{StaticResource AccentLilacBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock x:Name="EmptyTitleText" Text="Nenhuma conversa ainda"
+                                           FontSize="17" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextStrongBrush}"
+                                           HorizontalAlignment="Center" Margin="0,14,0,0"/>
+                                <TextBlock Text="Peça alguma coisa e o trabalho começa aqui."
+                                           FontSize="13" MaxWidth="300" TextWrapping="Wrap"
+                                           TextAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                            </StackPanel>
+
+                            <!-- ── §3.10  MODO E-MAIL — A LISTA ─────────────────
+                                 Irmã de MessagesPanel no mesmo lugar da grade; uma das
+                                 duas está visível. Não é janela nova nem pane: é o MESMO
+                                 Grid.Row 1, e por isso a janela NÃO muda de tamanho ao
+                                 trocar de modo (§8 A2).
+                                 O cabeçalho NÃO mora aqui: ele é compartilhado com a
+                                 leitura de §3.11, onde esta lista some. -->
+                            <Grid x:Name="CaixaDeEntrada" Visibility="Collapsed">
+                                <ScrollViewer x:Name="RoloDaCaixa"
+                                              VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              Padding="20,0,20,18">
+                                    <StackPanel x:Name="ListaDaCaixa" VerticalAlignment="Top"/>
+                                </ScrollViewer>
+
+                                <!-- SEM CONTA: a mesma composição do antigo convite do painel,
+                                     centralizada na área central inteira e em escala de janela. -->
+                                <StackPanel x:Name="ConviteDeEmailCentral"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Visibility="Collapsed">
+                                    <Border Width="42" Height="42" CornerRadius="21"
+                                            Background="{StaticResource AccentFill12Brush}"
+                                            BorderBrush="{StaticResource AccentEdge28Brush}"
+                                            BorderThickness="1" HorizontalAlignment="Center">
+                                        <Path Data="M3,5 H15 V13 H3 Z M3,5 L9,10 L15,5"
+                                              Stroke="{StaticResource AccentLilacBrush}"
+                                              StrokeThickness="1.3" Width="18" Height="18"
+                                              Stretch="Uniform"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
-                                </Popup>
-
-                                <TextBox x:Name="InputBox"
-                                         Grid.Column="1"
-                                         Background="Transparent"
-                                         Foreground="#E8E8F0"
-                                         BorderThickness="0"
-                                         CaretBrush="#9B51E0"
-                                         SelectionBrush="#559B51E0"
-                                         FontSize="14"
-                                         VerticalAlignment="Center"
-                                         VerticalContentAlignment="Center"
-                                         Padding="0,8"
-                                         AcceptsReturn="False"
-                                         PreviewKeyDown="InputBox_PreviewKeyDown"
-                                         TextChanged="InputBox_TextChanged">
-                                    <TextBox.Style>
-                                        <Style TargetType="TextBox">
-                                            <Setter Property="Template">
-                                                <Setter.Value>
-                                                    <ControlTemplate TargetType="TextBox">
-                                                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
-                                                                      HorizontalScrollBarVisibility="Hidden"
-                                                                      VerticalScrollBarVisibility="Hidden"/>
-                                                    </ControlTemplate>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Style>
-                                    </TextBox.Style>
-                                </TextBox>
-
-                                <!-- Botões rápidos da cápsula -->
-                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0">
-                                    <Button x:Name="VisionButton"
-                                            Content="📷"
-                                            Style="{StaticResource CapsuleIconButton}"
-                                            Click="VisionButton_Click"
-                                            ToolTip="Ler tela (OCR)"/>
-                                    <Button x:Name="VoiceButton"
-                                            Content="🎙"
-                                            Style="{StaticResource CapsuleIconButton}"
-                                            Click="VoiceButton_Click"
-                                            ToolTip="Falar com o AIB (Whisper)"/>
-                                    <Button x:Name="SendButton"
-                                            Content="➔"
-                                            Style="{StaticResource SendButton}"
-                                            Click="SendButton_Click"
-                                            ToolTip="Enviar"/>
+                                    <TextBlock Text="Nenhum e-mail conectado"
+                                               FontSize="15" FontWeight="SemiBold" Margin="0,14,0,0"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{StaticResource TextStrongBrush}"/>
+                                    <TextBlock Text="Conecte uma caixa para a triagem começar a trabalhar enquanto você faz outra coisa."
+                                               FontSize="12.5" MaxWidth="300" TextWrapping="Wrap"
+                                               TextAlignment="Center" Margin="0,6,0,0"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <Button Content="Configurar e-mail" Margin="0,14,0,0"
+                                            HorizontalAlignment="Center"
+                                            Style="{StaticResource OutlineButton}"
+                                            Click="EngrenagemDoEmail_Click"/>
                                 </StackPanel>
                             </Grid>
+
+                            <!-- §5.4/§5.7  FAIXA DE SISTEMA. Centralizada, nem usuário nem
+                                 IA. Flutua sobre o fim da lista para não gastar uma linha
+                                 da grade — as quatro linhas de §2 são fixas. -->
+                            <Border x:Name="StatusBar" Visibility="Collapsed"
+                                    HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                    Margin="0,0,0,10" Padding="14,9"
+                                    CornerRadius="14"
+                                    Background="{StaticResource WarnFill10Brush}"
+                                    BorderBrush="{StaticResource WarnBorderBrush}"
+                                    BorderThickness="1">
+                                <StackPanel Orientation="Horizontal">
+
+                                    <!-- O ANEL DE §4.2, reusado: mesmo traço, mesma volta em
+                                         0,9s. Aqui ele não é enfeite — é a única coisa que
+                                         separa "demorando" de "travado" numa espera que
+                                         nesta máquina passa de cinco minutos. -->
+                                    <Ellipse x:Name="AnelDaFaixa" Width="12" Height="12"
+                                             Margin="0,0,9,0" VerticalAlignment="Center"
+                                             Visibility="Collapsed"
+                                             StrokeThickness="1.6"
+                                             Stroke="{StaticResource AccentLilacBrush}"
+                                             StrokeDashArray="2.6 1.4"
+                                             RenderTransformOrigin="0.5,0.5">
+                                        <Ellipse.RenderTransform>
+                                            <RotateTransform x:Name="GiroDaFaixa" Angle="0"/>
+                                        </Ellipse.RenderTransform>
+                                    </Ellipse>
+
+                                    <TextBlock x:Name="StatusText" Text="Pensando…"
+                                               FontSize="12" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextBodyBrush}"/>
+
+                                    <!-- A AÇÃO da faixa (§5.8): "Interromper", "Tentar agora".
+                                         Colapsada por padrão — a maioria dos estados não oferece
+                                         escolha, e um botão que não faz nada é pior que nenhum. -->
+                                    <Button x:Name="AcaoDaFaixa" Margin="12,0,0,0"
+                                            VerticalAlignment="Center" Visibility="Collapsed"
+                                            Style="{StaticResource AcaoDeCabecalho}"
+                                            Click="AcaoDaFaixa_Click"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Grid>
+
+                    <!-- ── §3.7  BARRA DE INPUT ─────────────────────────── -->
+                    <Grid x:Name="BarraDeInput" Grid.Row="2" Margin="20,0,20,0">
+                        <Border Background="{StaticResource InputFrameBrush}"
+                                CornerRadius="{StaticResource RadiusInputFrame}"
+                                Padding="1.5">
+                            <Border Background="{StaticResource SurfaceInputBarBrush}"
+                                    CornerRadius="{StaticResource RadiusInputInner}"
+                                    MinHeight="{StaticResource InputHeight}"
+                                    Padding="16,0,6,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Os itens da barra ficam na BORDA DE BAIXO: uma faixa da
+                                         altura de uma linha, ancorada embaixo, com o item centrado
+                                         nela. Com uma linha nada muda; quando a caixa cresce, eles
+                                         não sobem para o meio dela. -->
+                                    <Grid Grid.Column="0" Height="{StaticResource InputHeight}"
+                                          VerticalAlignment="Bottom">
+                                        <TextBlock Text="✦" FontSize="13"
+                                                   Foreground="{StaticResource AccentLilacBrush}"
+                                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    </Grid>
+
+                                    <Popup x:Name="CommandsPopup"
+                                           PlacementTarget="{Binding ElementName=InputBox}"
+                                           Placement="Top" StaysOpen="False"
+                                           AllowsTransparency="True" VerticalOffset="-8">
+                                        <Border Background="{StaticResource SurfaceInputBarBrush}"
+                                                BorderBrush="{StaticResource AccentBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="{StaticResource RadiusTooltip}"
+                                                Padding="4" Effect="{StaticResource TooltipShadow}">
+                                            <ListBox x:Name="CommandsList" Background="Transparent"
+                                                     BorderThickness="0" Width="200"
+                                                     Foreground="{StaticResource TextBodyBrush}"
+                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                     PreviewKeyDown="CommandsList_PreviewKeyDown">
+                                                <ListBox.ItemContainerStyle>
+                                                    <Style TargetType="ListBoxItem">
+                                                        <Setter Property="Padding" Value="8,5"/>
+                                                        <Setter Property="Cursor" Value="Hand"/>
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="ListBoxItem">
+                                                                    <Border x:Name="Bd" Background="Transparent"
+                                                                            CornerRadius="6"
+                                                                            Padding="{TemplateBinding Padding}">
+                                                                        <ContentPresenter/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsSelected" Value="True">
+                                                                            <Setter TargetName="Bd" Property="Background"
+                                                                                    Value="{StaticResource AccentFill12Brush}"/>
+                                                                        </Trigger>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="Bd" Property="Background"
+                                                                                    Value="{StaticResource SurfaceHoverSoftBrush}"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                </ListBox.ItemContainerStyle>
+                                            </ListBox>
+                                        </Border>
+                                    </Popup>
+
+                                    <TextBox x:Name="InputBox" Grid.Column="1"
+                                             Background="Transparent" BorderThickness="0"
+                                             Foreground="{StaticResource TextNormalBrush}"
+                                             CaretBrush="{StaticResource AccentLilacBrush}"
+                                             SelectionBrush="{StaticResource AccentLilacBrush}"
+                                             FontSize="{StaticResource FontSizeBubble}"
+                                             VerticalContentAlignment="Center"
+                                             Padding="0,8" MinHeight="32"
+                                             AcceptsReturn="True" TextWrapping="Wrap"
+                                             PreviewKeyDown="InputBox_PreviewKeyDown"
+                                             TextChanged="InputBox_TextChanged">
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="TextBox">
+                                                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                                                          HorizontalScrollBarVisibility="Hidden"
+                                                                          VerticalScrollBarVisibility="Auto"/>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
+
+                                    <!-- Placeholder some quando há texto. Nome do agente
+                                         entra em ApplyCharacterUI. -->
+                                    <TextBlock x:Name="InputPlaceholder" Grid.Column="1"
+                                               Text="Fale com o AIB..."
+                                               FontSize="{StaticResource FontSizeBubble}"
+                                               Foreground="{StaticResource TextMutedBrush}"
+                                               VerticalAlignment="Center"
+                                               IsHitTestVisible="False"/>
+
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                                Height="{StaticResource InputHeight}"
+                                                VerticalAlignment="Bottom">
+                                        <Button x:Name="VisionButton" Style="{StaticResource IconButton}"
+                                                Click="VisionButton_Click" ToolTip="Ler tela (OCR)">
+                                            <Path Data="M2.5,5.8 H5.4 L6.6,4 H11.4 L12.6,5.8 H15.5 V14 H2.5 Z M9,7.2 A2.6,2.6 0 1 1 9,12.4 A2.6,2.6 0 1 1 9,7.2 Z"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                  StrokeThickness="1.3" StrokeLineJoin="Round"
+                                                  Width="18" Height="18" Stretch="None"/>
+                                        </Button>
+
+                                        <Button x:Name="VoiceButton" Style="{StaticResource IconButton}"
+                                                Click="VoiceButton_Click" ToolTip="Falar com o AIB (Whisper)">
+                                            <Path Data="M9,2.5 A2,2 0 0 1 11,4.5 V8.5 A2,2 0 0 1 7,8.5 V4.5 A2,2 0 0 1 9,2.5 Z M4.8,8.6 A4.2,4.2 0 0 0 13.2,8.6 M9,12.8 V15.2"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                  StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  Width="18" Height="18" Stretch="None"/>
+                                        </Button>
+
+                                        <Button x:Name="SendButton" Style="{StaticResource SendButton}"
+                                                Click="SendButton_Click" ToolTip="Enviar" Margin="4,0,0,0">
+                                            <!-- Aviãozinho. O conteúdo troca para um quadrado
+                                                 vermelho enquanto grava e enquanto o turno
+                                                 corre (§3.7(e)), e VOLTA para este mesmo
+                                                 desenho depois — ver RestaurarIconeDeEnviar. -->
+                                            <Path x:Name="SendIcon"
+                                                  Data="M2,9 L16,2.5 L10.4,15.5 L8.6,10.4 Z"
+                                                  Fill="White" Width="18" Height="18" Stretch="None"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
                         </Border>
-                    </Border>
-                </Border>
+                    </Grid>
+
+                    <!-- ── §3.8  RODAPÉ DE CONTEXTO ─────────────────────── -->
+                    <!-- 5px acima e abaixo, e nada mais.
+                         O vão de antes vinha de três somas invisíveis: 10px de margem
+                         inferior da barra de digitação, 14px de margem inferior daqui e um
+                         MinHeight de 26 que centralizava um texto de 12 — mais 5 de cada
+                         lado. A linha parecia flutuar no meio de um espaço vazio. Sem o
+                         MinHeight, a altura é a do texto. -->
+                    <Grid x:Name="RodapeDeContexto" Grid.Row="3" Margin="26,5,26,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock x:Name="ChatTitleText" Text="Nova conversa"
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" Margin="0,0,16,0"/>
+
+                        <TextBlock x:Name="TokenCounterText" Grid.Column="1"
+                                   Text="0/8192 tokens"
+                                   FontFamily="{StaticResource MonoFontFamily}"
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
                 </Grid>
             </Border>
         </Border>
 
-        <!-- ── SIDEBAR SEPARADA (DASHBOARD) ───────────────────────────── -->
-        <Border x:Name="SidebarPanel"
-                Width="0"
-                Margin="5,0,0,0"
-                CornerRadius="24"
-                Padding="2"
-                VerticalAlignment="Bottom"
-                MaxHeight="880">
-            <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Color="#E28743" Offset="0"/>
-                    <GradientStop Color="#D53F8C" Offset="0.5"/>
-                    <GradientStop Color="#9B51E0" Offset="1"/>
-                </LinearGradientBrush>
-            </Border.Background>
-            
-            <Border CornerRadius="22"
-                    Background="#F0101013"
-                    ClipToBounds="True">
-                <local:ContextSidebar x:Name="ContextSidebarControl" />
-                </Border>
-            </Border>
-    </StackPanel>
+        <!-- Puxador da altura: a faixa de cima da casca. A base fica presa acima da barra de
+             tarefas (RepositionWindow), então só a borda de cima se move. Sem moldura do
+             Windows (AllowsTransparency), o ResizeMode não dá borda nenhuma. -->
+        <Thumb x:Name="PuxadorDeAltura"
+               Height="6" Margin="52,25,22,0" VerticalAlignment="Top"
+               Cursor="SizeNS"
+               DragDelta="PuxadorDeAltura_DragDelta"
+               DragCompleted="PuxadorDeAltura_DragCompleted">
+            <Thumb.Template>
+                <ControlTemplate TargetType="Thumb">
+                    <Border Background="Transparent"/>
+                </ControlTemplate>
+            </Thumb.Template>
+        </Thumb>
+
+        <!-- O painel lateral é uma JANELA à parte (§6), não um filho daqui.
+             Como filho, ele dividia a largura com o chat e fazia a janela de
+             conversa encolher ao abrir — a armadilha A2. -->
+    </Grid>
 </Window>

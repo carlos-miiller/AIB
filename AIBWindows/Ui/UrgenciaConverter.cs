@@ -1,0 +1,120 @@
+﻿using System;
+using System.Globalization;
+using System.Windows;
+using System.Windows.Data;
+using System.Windows.Media;
+using AIB.Services;
+
+// WinForms entra junto com o WPF em net8.0-windows e traz homonimos.
+using Brush = System.Windows.Media.Brush;
+using Color = System.Windows.Media.Color;
+using ColorConverter = System.Windows.Media.ColorConverter;
+
+namespace AIB.Ui;
+
+/// <summary>
+/// Traduz o nível de urgência de um e-mail em cor, fundo ou rótulo — shadow-assistant.html §4.8.
+/// <para>
+/// Um conversor com <see cref="Modo"/> em vez de três classes: as três saídas vêm do MESMO
+/// mapeamento, e separá-las abriria a porta para a cor da barra e a do selo divergirem — que é
+/// exatamente o que a §4.8 não quer, já que as duas são o mesmo sinal lido de dois jeitos.
+/// </para>
+/// </summary>
+public sealed class UrgenciaConverter : IValueConverter
+{
+    public enum Saida
+    {
+        /// <summary>Cor sólida: barra lateral, ponto e texto do selo.</summary>
+        Cor,
+
+        /// <summary>Fundo do selo — a mesma cor a 13% (Baixa usa branco a 5%).</summary>
+        Fundo,
+
+        /// <summary>Máxima / Média / Baixa. A12: o texto acompanha a cor, sempre.</summary>
+        Rotulo
+    }
+
+    public Saida Modo { get; set; } = Saida.Cor;
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var nivel = value is MailUrgency u ? u : MailUrgency.Baixa;
+
+        return Modo switch
+        {
+            Saida.Rotulo => Rotulo(nivel),
+            Saida.Fundo => Pincel(Fundo(nivel)),
+            _ => PincelDaCor(nivel)
+        };
+    }
+
+    /// <summary>
+    /// A cor sólida de um nível, para quem precisa dela FORA de um Binding — a barra do
+    /// cartão de §3.11 (<c>CartaoDoEmail</c>), por exemplo, que é montado por código.
+    /// <para>
+    /// Existe para que essa cor continue vindo daqui. Um <c>#E8A33D</c> digitado na View seria
+    /// a quarta cópia do mesmo âmbar, e a primeira a não acompanhar uma correção.
+    /// </para>
+    /// </summary>
+    public static Brush CorDe(MailUrgency nivel) => PincelDaCor(nivel);
+
+    /// <summary>
+    /// A cor sólida, vinda do TOKEN quando existe um com o mesmo valor: Máxima é
+    /// <c>DangerBrush</c> e Baixa é <c>TextSecondaryBrush</c>. O âmbar da Média não tem token
+    /// igual (o <c>WarnBrush</c> é outro tom) e fica no hex — trocá-lo mudaria a barra.
+    /// </summary>
+    private static SolidColorBrush PincelDaCor(MailUrgency nivel) => nivel switch
+    {
+        MailUrgency.Maxima => PincelDoTema.De("DangerBrush", Cor(nivel)),
+        MailUrgency.Media => Pincel(Cor(nivel)),
+        _ => PincelDoTema.De("TextSecondaryBrush", Cor(nivel))
+    };
+
+    /// <summary>
+    /// O rótulo de um nível, para quem precisa dele FORA de um Binding — o enquadramento que
+    /// abre a leitura de §3.11, por exemplo, que é texto e vai para o modelo.
+    /// <para>
+    /// Pelo mesmo motivo de <see cref="CorDe"/>: "Máxima" digitado na View seria a quarta
+    /// cópia da mesma palavra, e a primeira a não acompanhar uma correção.
+    /// </para>
+    /// </summary>
+    public static string RotuloDe(MailUrgency nivel) => Rotulo(nivel);
+
+    private static string Rotulo(MailUrgency nivel) => nivel switch
+    {
+        MailUrgency.Maxima => "Máxima",
+        MailUrgency.Media => "Média",
+        _ => "Baixa"
+    };
+
+    private static string Cor(MailUrgency nivel) => nivel switch
+    {
+        MailUrgency.Maxima => "#FFE5484D",
+        MailUrgency.Media => "#FFE8A33D",
+        _ => "#FF8B8794"
+    };
+
+    /// <summary>
+    /// Fundo do selo. Máxima e Média usam a própria cor a 13%; Baixa usa branco a 5% — a
+    /// cinza a 13% sumiria contra o card, que já é claro por transparência.
+    /// </summary>
+    private static string Fundo(MailUrgency nivel) => nivel switch
+    {
+        MailUrgency.Maxima => "#21E5484D",
+        MailUrgency.Media => "#21E8A33D",
+        _ => "#0DFFFFFF"
+    };
+
+    private static SolidColorBrush Pincel(string hex)
+    {
+        var pincel = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+
+        // Congelado: a lista redesenha estes pincéis a cada item, e um Freezable congelado é
+        // compartilhado entre threads e não paga notificação de mudança.
+        pincel.Freeze();
+        return pincel;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException("Mão única: o nível vira aparência, nunca o contrário.");
+}

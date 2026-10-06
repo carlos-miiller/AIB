@@ -1,242 +1,211 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace AIB.Services;
 
-public class SkillMetadata
+/// <summary>
+/// Uma habilidade instalada: um script em disco com um cabeçalho que o descreve.
+/// </summary>
+public class LocalSkill
 {
+    /// <summary>Nome pelo qual o modelo a chama. Vem do cabeçalho, não da pasta.</summary>
     public string Name { get; set; } = "";
+
+    /// <summary>Uma linha dizendo para que serve. É o que entra no prompt.</summary>
     public string Description { get; set; } = "";
-    public string ScriptFile { get; set; } = ""; 
-    public string Interpreter { get; set; } = "python"; 
-    public List<string> Dependencies { get; set; } = new();
+
+    /// <summary>Como rodar: <c>powershell</c>, <c>python</c> ou <c>markdown</c>.</summary>
+    public string Interpreter { get; set; } = "";
+
+    /// <summary>Caminho absoluto do script. Vazio quando o arquivo declarado não existe.</summary>
+    public string ScriptPath { get; set; } = "";
+
+    /// <summary>Pasta da skill. Vira diretório de trabalho na execução.</summary>
+    public string Folder { get; set; } = "";
+
+    /// <summary>Corpo do SKILL.md depois do cabeçalho — instruções de uso, para o modelo ler.</summary>
+    public string Instructions { get; set; } = "";
+
+    /// <summary>
+    /// Extensões que a habilidade sabe abrir, declaradas em <c>accepts:</c>. Vazio aceita tudo.
+    /// <para>
+    /// Existe porque <c>.xls</c> e <c>.xlsx</c> são formatos diferentes por dentro — um é OLE2
+    /// binário, o outro um ZIP de XML — e a habilidade que lê um devolve lixo ou erro no outro.
+    /// Sem declarar, a incompatibilidade só aparecia como uma falha genérica depois de rodar.
+    /// </para>
+    /// </summary>
+    public List<string> Accepts { get; set; } = new();
 }
 
+/// <summary>
+/// Lê as habilidades instaladas em <c>~/.AIB/skills</c>.
+/// <para>
+/// Cada skill é uma pasta com um <c>SKILL.md</c>: cabeçalho entre linhas de <c>---</c>
+/// declarando nome, descrição, interpretador e arquivo de script, seguido do texto livre que
+/// explica como usá-la.
+/// </para>
+/// <para>
+/// Só o nome e a descrição entram no prompt de sistema — o corpo é entregue ao modelo apenas
+/// quando ele pede a skill. É o "lazy loading" que o <see cref="ToolRegistry"/> documenta:
+/// vinte skills instaladas custam vinte linhas no prompt, não vinte schemas de ferramenta.
+/// </para>
+/// </summary>
 public static class SkillService
 {
-    private static string SkillsDir => Path.Combine(DirectoryService.DataDir, "skills");
-    private static string DefaultSkillsDir => Path.Combine(DirectoryService.DataDir, ".default_skills");
+    /// <summary>
+    /// Raiz alternativa para ensaios. Mesmo motivo do override do histórico e da auditoria: a
+    /// suíte não pode ler nem escrever nas skills reais do usuário.
+    /// </summary>
+    public static string? SkillsDirectoryOverride { get; set; }
 
-    public static void EnsureDir()
+    public static string Raiz => SkillsDirectoryOverride ?? DirectoryService.SkillsDir;
+
+    public static int GetSkillCount() => ListLocalSkills().Count;
+
+    /// <summary>
+    /// Todas as skills legíveis, em ordem alfabética. Uma pasta quebrada é ignorada em
+    /// silêncio: uma skill malformada não pode impedir as outras de existirem, e muito menos
+    /// derrubar a montagem do prompt de sistema.
+    /// </summary>
+    public static List<LocalSkill> ListLocalSkills()
     {
-        if (!Directory.Exists(SkillsDir))
-            Directory.CreateDirectory(SkillsDir);
+        var skills = new List<LocalSkill>();
 
-        if (!Directory.Exists(DefaultSkillsDir))
+        try
         {
-            Directory.CreateDirectory(DefaultSkillsDir);
-            foreach (var skill in DefaultSkills.Skills)
+            if (!Directory.Exists(Raiz)) return skills;
+
+            foreach (var pasta in Directory.GetDirectories(Raiz))
             {
-                try
-                {
-                    string skillPath = Path.Combine(DefaultSkillsDir, skill.Name);
-                    Directory.CreateDirectory(skillPath);
-                    string scriptContent = DefaultSkills.GetScriptContent(skill.Name);
-                    
-                    File.WriteAllText(Path.Combine(skillPath, "skill.json"), JsonSerializer.Serialize(skill));
-                    File.WriteAllText(Path.Combine(skillPath, skill.ScriptFile), scriptContent);
-                }
-                catch { }
+                var skill = Ler(pasta);
+                if (skill != null) skills.Add(skill);
             }
         }
-    }
-
-    public static List<SkillMetadata> ListLocalSkills()
-    {
-        EnsureDir();
-        var skills = new List<SkillMetadata>();
-        
-        var dirsToScan = new List<string>();
-        if (Directory.Exists(DefaultSkillsDir)) dirsToScan.AddRange(Directory.GetDirectories(DefaultSkillsDir));
-        if (Directory.Exists(SkillsDir)) dirsToScan.AddRange(Directory.GetDirectories(SkillsDir));
-
-        // Evita duplicatas se o usuário tiver uma skill com o mesmo nome que a default (sobrescreve com a do usuário)
-        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        // Ordem inversa: processa as do usuário primeiro, assim a do usuário tem precedência
-        var allSubDirs = new List<string>();
-        if (Directory.Exists(SkillsDir)) allSubDirs.AddRange(Directory.GetDirectories(SkillsDir));
-        if (Directory.Exists(DefaultSkillsDir)) allSubDirs.AddRange(Directory.GetDirectories(DefaultSkillsDir));
-
-        foreach (var dir in allSubDirs)
+        catch (Exception ex)
         {
-            string skillName = Path.GetFileName(dir);
-            if (seenNames.Contains(skillName)) continue; // Já carregou a versão prioritária
-
-            string jsonPath = Path.Combine(dir, "skill.json");
-            if (File.Exists(jsonPath))
-            {
-                try
-                {
-                    var json = File.ReadAllText(jsonPath);
-                    var meta = JsonSerializer.Deserialize<SkillMetadata>(json);
-                    if (meta != null) {
-                        if (!Path.IsPathRooted(meta.ScriptFile)) meta.ScriptFile = Path.Combine(dir, meta.ScriptFile);
-                        skills.Add(meta);
-                        seenNames.Add(skillName);
-                    }
-                    continue;
-                }
-                catch { }
-            }
-
-            var markdownFiles = Directory.GetFiles(dir, "SKILL.md", SearchOption.AllDirectories);
-            foreach (var file in markdownFiles)
-            {
-                try
-                {
-                    string content = File.ReadAllText(file);
-                    var meta = ParseMarkdownSkill(content, file);
-                    if (meta != null && !seenNames.Contains(meta.Name))
-                    {
-                        skills.Add(meta);
-                        seenNames.Add(meta.Name);
-                    }
-                }
-                catch { }
-            }
+            Console.WriteLine($"[SKILLS] Falha ao listar: {ex.Message}");
         }
-        return skills;
+
+        return skills.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    private static SkillMetadata? ParseMarkdownSkill(string content, string filePath)
+    /// <summary>Busca por nome, sem diferenciar maiúsculas. Null quando não existe.</summary>
+    public static LocalSkill? Find(string? name)
     {
-        var lines = content.Split('\n');
-        if (lines.Length < 3 || !lines[0].Trim().Equals("---")) return null;
+        if (string.IsNullOrWhiteSpace(name)) return null;
 
-        var meta = new SkillMetadata { Interpreter = "markdown", ScriptFile = filePath };
-        string skillDir = Path.GetDirectoryName(filePath) ?? "";
-
-        for (int i = 1; i < lines.Length; i++)
-        {
-            if (lines[i].Trim().Equals("---")) break;
-            var parts = lines[i].Split(':', 2);
-            if (parts.Length == 2)
-            {
-                string key = parts[0].Trim().ToLower();
-                string value = parts[1].Trim();
-                if (key == "name") meta.Name = value;
-                else if (key == "description") meta.Description = value;
-                else if (key == "interpreter") meta.Interpreter = value;
-                else if (key == "script_file") meta.ScriptFile = Path.Combine(skillDir, value);
-            }
-        }
-        return string.IsNullOrEmpty(meta.Name) ? null : meta;
+        return ListLocalSkills()
+            .FirstOrDefault(s => s.Name.Equals(name.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
-    public static async Task<string> InstallSkillAsync(string name, string description, string scriptContent, string interpreter = "python")
+    /// <summary>
+    /// Lê uma pasta de skill. Devolve null quando não há SKILL.md, quando o cabeçalho não tem
+    /// nome, ou quando o arquivo não pode ser lido.
+    /// </summary>
+    private static LocalSkill? Ler(string pasta)
     {
         try
         {
-            EnsureDir();
-            string skillPath = Path.Combine(SkillsDir, name);
-            if (!Directory.Exists(skillPath)) Directory.CreateDirectory(skillPath);
+            string caminho = Path.Combine(pasta, "SKILL.md");
+            if (!File.Exists(caminho)) return null;
 
-            var meta = new SkillMetadata { Name = name, Description = description, Interpreter = interpreter, ScriptFile = "main." + (interpreter == "python" ? "py" : "ps1") };
-            await File.WriteAllTextAsync(Path.Combine(skillPath, "skill.json"), JsonSerializer.Serialize(meta));
-            await File.WriteAllTextAsync(Path.Combine(skillPath, meta.ScriptFile), scriptContent);
-            return $"SUCESSO: Skill '{name}' instalada.";
-        }
-        catch (Exception ex) { return $"Erro: {ex.Message}"; }
-    }
+            string texto = File.ReadAllText(caminho);
+            var (cabecalho, corpo) = SepararCabecalho(texto);
 
-    public static async Task<string> InstallFromOnlineAsync(string url)
-    {
-        string workPath = Path.Combine(Path.GetTempPath(), "AIB_Skills_Work");
-        try
-        {
-            EnsureDir();
-            if (!Directory.Exists(workPath)) Directory.CreateDirectory(workPath);
-            string installArg = url;
-            if (url.Contains("skills.sh/"))
+            string nome = Valor(cabecalho, "name");
+
+            // Sem nome não há como o modelo chamá-la. O nome da pasta NÃO serve de substituto:
+            // as instruções dentro do arquivo se referem ao nome declarado, e adivinhar aqui
+            // produziria uma skill que o modelo chama por um nome e que documenta outro.
+            if (string.IsNullOrWhiteSpace(nome)) return null;
+
+            string script = Valor(cabecalho, "script_file");
+            string caminhoScript = string.IsNullOrWhiteSpace(script)
+                ? ""
+                : Path.Combine(pasta, script);
+
+            return new LocalSkill
             {
-                var urlParts = url.Split("skills.sh/", StringSplitOptions.RemoveEmptyEntries)[1].Split('/', StringSplitOptions.RemoveEmptyEntries);
-                if (urlParts.Length >= 3) installArg = $"{urlParts[0]}/{urlParts[1]}@{urlParts[2]}";
-            }
-
-            string result = await CommandService.ExecuteAsync($"cmd /c call npx -y skills add {installArg} --yes", workPath, 900000);
-            string agentsSkillsPath = Path.Combine(workPath, ".agents", "skills");
-            if (Directory.Exists(agentsSkillsPath))
-            {
-                foreach (var skillDir in Directory.GetDirectories(agentsSkillsPath))
-                {
-                    string skillName = Path.GetFileName(skillDir);
-                    string targetPath = Path.Combine(SkillsDir, skillName);
-                    if (Directory.Exists(targetPath)) Directory.Delete(targetPath, true);
-                    CopyDirectory(skillDir, targetPath);
-                }
-                return $"SUCESSO: A habilidade '{installArg}' foi instalada.";
-            }
-            return $"FALHA na instalação: {result}";
+                Name = nome,
+                Description = Valor(cabecalho, "description"),
+                Interpreter = Valor(cabecalho, "interpreter"),
+                ScriptPath = File.Exists(caminhoScript) ? caminhoScript : "",
+                Folder = pasta,
+                Instructions = corpo.Trim(),
+                Accepts = Extensoes(Valor(cabecalho, "accepts"))
+            };
         }
-        catch (Exception ex) { return $"Erro: {ex.Message}"; }
-    }
-
-    private static void CopyDirectory(string sourceDir, string destinationDir)
-    {
-        Directory.CreateDirectory(destinationDir);
-        foreach (FileInfo file in new DirectoryInfo(sourceDir).GetFiles()) file.CopyTo(Path.Combine(destinationDir, file.Name), true);
-        foreach (DirectoryInfo subDir in new DirectoryInfo(sourceDir).GetDirectories()) CopyDirectory(subDir.FullName, Path.Combine(destinationDir, subDir.Name));
-    }
-
-    public static async Task<string> RunSkillAsync(string name, string arguments)
-    {
-        var skill = ListLocalSkills().FirstOrDefault(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-        if (skill == null) return $"Erro: Skill '{name}' não encontrada.";
-
-        if (skill.Interpreter == "markdown")
-            return $"INSTRUÇÕES DA SKILL '{name}':\n\n{File.ReadAllText(skill.ScriptFile)}\n\nSugestão: Use 'materialize_skill' para criar um script para esta skill.";
-
-        string scriptPath = skill.ScriptFile;
-        string safeArgs = arguments.Replace("\n", " ").Replace("\r", "");
-        string command = skill.Interpreter.ToLower() switch
+        catch (Exception ex)
         {
-            "python" => $"py \"{scriptPath}\" {safeArgs}",
-            "powershell" => $"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\" {safeArgs}",
-            "cmd" => $"cmd.exe /c \"{scriptPath}\" {safeArgs}",
-            _ => throw new Exception("Interpretador não suportado.")
-        };
-
-        return await CommandService.ExecuteAsync(command, Path.GetDirectoryName(scriptPath));
-    }
-
-    public static async Task<string> MaterializeSkillAsync(string skillName, string scriptContent, string interpreter)
-    {
-        try
-        {
-            EnsureDir();
-            string skillPath = Path.Combine(SkillsDir, skillName);
-            if (!Directory.Exists(skillPath)) Directory.CreateDirectory(skillPath);
-
-            string ext = interpreter == "python" ? "py" : "ps1";
-            string scriptFileName = $"{skillName}.{ext}";
-            string scriptFullPath = Path.Combine(skillPath, scriptFileName);
-
-            await File.WriteAllTextAsync(scriptFullPath, scriptContent);
-
-            string mdPath = Path.Combine(skillPath, "SKILL.md");
-            if (File.Exists(mdPath))
-            {
-                string mdContent = await File.ReadAllTextAsync(mdPath);
-                if (mdContent.StartsWith("---"))
-                {
-                    var endOfFrontmatter = mdContent.IndexOf("---", 3);
-                    if (endOfFrontmatter > 0)
-                    {
-                        string header = mdContent.Substring(0, endOfFrontmatter);
-                        string body = mdContent.Substring(endOfFrontmatter);
-                        if (!header.Contains("interpreter:")) header += $"interpreter: {interpreter}\n";
-                        if (!header.Contains("script_file:")) header += $"script_file: {scriptFileName}\n";
-                        await File.WriteAllTextAsync(mdPath, header + "---" + body.Substring(3));
-                    }
-                }
-            }
-            return $"SUCESSO: A habilidade '{skillName}' foi materializada como um script {interpreter}.";
+            Console.WriteLine($"[SKILLS] Ignorando '{pasta}': {ex.Message}");
+            return null;
         }
-        catch (Exception ex) { return $"Erro: {ex.Message}"; }
+    }
+
+    /// <summary>
+    /// Separa o cabeçalho delimitado por <c>---</c> do corpo.
+    /// <para>
+    /// Não é um parser de YAML e não pretende ser: aceita <c>chave: valor</c> por linha e nada
+    /// mais. Um YAML de verdade traria listas, aninhamento e âncoras — superfície que ninguém
+    /// pediu, num arquivo que o usuário escreve à mão.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// Lê a lista do <c>accepts:</c>. Aceita "xlsx", ".xlsx" e "*.xlsx" — quem escreve o
+    /// cabeçalho não deve ter de adivinhar a forma, e as três significam a mesma coisa.
+    /// </summary>
+    public static List<string> Extensoes(string? declarado)
+    {
+        if (string.IsNullOrWhiteSpace(declarado)) return new List<string>();
+
+        return declarado
+            .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(e => e.Trim().TrimStart('*'))
+            .Select(e => e.StartsWith('.') ? e : "." + e)
+            .Where(e => e.Length > 1)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static (List<string> Cabecalho, string Corpo) SepararCabecalho(string texto)
+    {
+        var linhas = texto.Replace("\r\n", "\n").Split('\n');
+        var cabecalho = new List<string>();
+
+        int i = 0;
+        while (i < linhas.Length && linhas[i].Trim().Length == 0) i++;
+
+        if (i >= linhas.Length || linhas[i].Trim() != "---")
+            return (cabecalho, texto);
+
+        i++;
+        while (i < linhas.Length && linhas[i].Trim() != "---")
+        {
+            cabecalho.Add(linhas[i]);
+            i++;
+        }
+
+        i++; // pula o --- de fechamento
+        string corpo = i < linhas.Length ? string.Join("\n", linhas.Skip(i)) : "";
+
+        return (cabecalho, corpo);
+    }
+
+    private static string Valor(List<string> cabecalho, string chave)
+    {
+        foreach (var linha in cabecalho)
+        {
+            int sep = linha.IndexOf(':');
+            if (sep <= 0) continue;
+
+            if (!linha.Substring(0, sep).Trim().Equals(chave, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            return linha.Substring(sep + 1).Trim().Trim('"', '\'');
+        }
+
+        return "";
     }
 }

@@ -1,0 +1,601 @@
+﻿<Window x:Class="AIB.Views.ShadowAssistantWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:AIB.Ui"
+        xmlns:v="clr-namespace:AIB.Views"
+        Title="AIB"
+        Width="640"
+        SizeToContent="Height"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
+
+    <!--
+        Implementação de refactor-interface/shadow-assistant.html, passos P1–P5.
+        Presentes: a janela (§4.1), o posicionamento (§1), a casca (§4.2), o glyph
+        (§4.3), o hover (§4.4), a barra de input (§4.7), o estado Idle (§5.1), o
+        Composing (§5.3) e o morph (§6).
+        Ainda NÃO: pulso, trilha de ações, balão de fala, lista de e-mails.
+
+        LARGURA — a spec fala em palco de 560 (§2 stage.width) para a barra de 520
+        caber com folga. Aqui a Window é maior porque ela também precisa hospedar o
+        que TRANSBORDA do palco: o WPF recorta no limite da janela.
+
+        Três coisas transbordam, e a janela tem de caber a maior de cada eixo:
+          barShadow  44 de blur + 16 de deslocamento  -> ~60 abaixo da barra
+          orbShadow  28 de blur                       -> ~28 em volta do orbe
+          onda do pulso  64/2 x 2,34                  -> ~75 do centro do orbe
+
+        Daí MargemDaSombra = 56 e Width = 640: 520 + 56 + 56 = 632, com folga.
+        A LARGURA DA JANELA PRECISA ACOMPANHAR A MARGEM. Mexer numa e esquecer a
+        outra corta a sombra e a onda em linha reta nas laterais — foi exatamente o
+        que aconteceu quando a margem subiu para 48 e a largura ficou em 600.
+
+        O centro visual continua onde §1 manda — quem corrige é o
+        ScreenAnchorService, que desconta a margem inferior.
+
+        A2 — a área transparente NÃO pode bloquear clique no desktop. O Grid raiz
+        fica com Background="{x:Null}" (e não Transparent): nulo não participa do
+        hit-test, Transparent participa.
+    -->
+
+    <Window.Resources>
+        <ui:AlturaParaRaioConverter x:Key="AlturaParaRaio"/>
+
+        <!-- O topo da pilha ROLADA termina em desvanecimento, e não em corte reto.
+             MappingMode absoluto porque os 32px têm de ser 32px sempre: com
+             coordenadas relativas o desvanecimento encolheria junto com a pilha e
+             sumiria justamente quando ela está curta.
+             É aplicada como OpacityMask SÓ quando há conteúdo acima da vista — ver
+             AtualizarDesvanecimento. Deixar fixa lavaria o topo da primeira bolha
+             mesmo sem nada cortado atrás dela. -->
+        <LinearGradientBrush x:Key="DesvanecimentoDoTopo"
+                             StartPoint="0,0" EndPoint="0,32"
+                             MappingMode="Absolute">
+            <GradientStop Color="#00000000" Offset="0"/>
+            <GradientStop Color="#FF000000" Offset="1"/>
+        </LinearGradientBrush>
+    </Window.Resources>
+
+    <Grid x:Name="Raiz" Background="{x:Null}">
+
+        <!-- LARGURA FIXA de 520 (a da barra, a maior das duas formas). Sem isto o
+             balão de fala, que pode ter 440, mudaria a largura do palco e deslocaria
+             o orbe do centro toda vez que aparecesse — a armadilha A8, agora pelo
+             eixo do conteúdo em vez do da janela. -->
+        <Grid x:Name="Palco"
+              Width="520"
+              Margin="56"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Bottom"
+              Background="{x:Null}">
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="FormaDoOrbe">
+
+                    <!-- §5.1 IDLE — círculo de 56, glyph ✦, borda neon. Nada mais. -->
+                    <VisualState x:Name="Orbe">
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetName="Casca"
+                                             Storyboard.TargetProperty="Width"
+                                             To="56" Duration="0:0:0.22">
+                                <DoubleAnimation.EasingFunction>
+                                    <CubicEase EasingMode="EaseIn"/>
+                                </DoubleAnimation.EasingFunction>
+                            </DoubleAnimation>
+                            <DoubleAnimation Storyboard.TargetName="Casca"
+                                             Storyboard.TargetProperty="Height"
+                                             To="56" Duration="0:0:0.22">
+                                <DoubleAnimation.EasingFunction>
+                                    <CubicEase EasingMode="EaseIn"/>
+                                </DoubleAnimation.EasingFunction>
+                            </DoubleAnimation>
+
+                            <DoubleAnimation Storyboard.TargetName="Glyph"
+                                             Storyboard.TargetProperty="FontSize"
+                                             To="20" Duration="0:0:0.18"/>
+
+                            <!-- O conteúdo some ANTES de a casca encolher. Se ele
+                                 continuasse visível, as colunas Auto do microfone e do
+                                 enviar (34+38=72) não caberiam nos 53px internos do
+                                 orbe e empurrariam o glyph para fora. -->
+                            <DoubleAnimation Storyboard.TargetName="ConteudoDaBarra"
+                                             Storyboard.TargetProperty="Opacity"
+                                             To="0" Duration="0:0:0.08"/>
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ConteudoDaBarra"
+                                                           Storyboard.TargetProperty="Visibility">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0.08"
+                                                        Value="{x:Static Visibility.Collapsed}"/>
+                            </ObjectAnimationUsingKeyFrames>
+
+                            <!-- A6 — troca de Effect por keyframe. Animar BlurRadius ou
+                                 Opacity de um DropShadowEffect por quadro engasga. -->
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Casca"
+                                                           Storyboard.TargetProperty="Effect">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0.22"
+                                                        Value="{StaticResource OrbShadow}"/>
+                            </ObjectAnimationUsingKeyFrames>
+                        </Storyboard>
+                    </VisualState>
+
+                    <!-- §5.3 COMPOSING — a mesma casca, agora pílula de 520x52. -->
+                    <VisualState x:Name="Barra">
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetName="Casca"
+                                             Storyboard.TargetProperty="Width"
+                                             To="520" Duration="0:0:0.28">
+                                <DoubleAnimation.EasingFunction>
+                                    <CubicEase EasingMode="EaseOut"/>
+                                </DoubleAnimation.EasingFunction>
+                            </DoubleAnimation>
+                            <DoubleAnimation Storyboard.TargetName="Casca"
+                                             Storyboard.TargetProperty="Height"
+                                             To="52" Duration="0:0:0.28">
+                                <DoubleAnimation.EasingFunction>
+                                    <CubicEase EasingMode="EaseOut"/>
+                                </DoubleAnimation.EasingFunction>
+                            </DoubleAnimation>
+
+                            <!-- §4.3 — o glyph acompanha a casca crescendo, sem salto.
+                                 Ele fica SEMPRE alinhado à esquerda: a margem de 20 é o
+                                 que o centraliza nos 53px internos do orbe, e ela desce
+                                 para os 16 de padding da barra numa animação contínua.
+                                 A margem é animada em CÓDIGO, e não aqui: a do orbe depende
+                                 da largura REAL do ✦ na fonte do sistema, que só se sabe
+                                 medindo. Ver GlyphCentragem. -->
+                            <DoubleAnimation Storyboard.TargetName="Glyph"
+                                             Storyboard.TargetProperty="FontSize"
+                                             To="13" Duration="0:0:0.12"
+                                             BeginTime="0:0:0.10"/>
+
+                            <!-- §6 — cross-fade do conteúdo: 0,12s começando aos 0,10s.
+                                 A visibilidade volta no MESMO instante, e não em zero:
+                                 aos 0,10s de um EaseOut a casca já passou dos 400px, e há
+                                 espaço para as colunas Auto sem espremer o campo. -->
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ConteudoDaBarra"
+                                                           Storyboard.TargetProperty="Visibility">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0.10"
+                                                        Value="{x:Static Visibility.Visible}"/>
+                            </ObjectAnimationUsingKeyFrames>
+                            <DoubleAnimation Storyboard.TargetName="ConteudoDaBarra"
+                                             Storyboard.TargetProperty="Opacity"
+                                             To="1" Duration="0:0:0.12"
+                                             BeginTime="0:0:0.10"/>
+
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Casca"
+                                                           Storyboard.TargetProperty="Effect">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0"
+                                                        Value="{StaticResource BarShadow}"/>
+                            </ObjectAnimationUsingKeyFrames>
+                        </Storyboard>
+                    </VisualState>
+
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+
+            <!-- §4.6 — PILHA DE FALAS. Só aparece DEPOIS do clique (§0 O3): nunca
+                 sozinha, nunca como toast. Fica ACIMA da barra, 10px de gap,
+                 alinhada por ela. Tudo na MESMA janela — abrir uma segunda Window
+                 para o balão traria flicker de Topmost (§3).
+
+                 Era UM balão só, e isso era o defeito: a mensagem que o usuário
+                 acabava de mandar não aparecia em lugar nenhum, e fechar a barra
+                 apagava a resposta. A §4.6 já previa empilhar até três, mais
+                 recente embaixo; agora a pilha guarda os DOIS lados da troca e
+                 SOBREVIVE ao fechar da barra — o que some é a pilha, não o conteúdo
+                 dela. Só o X descarta.
+
+                 Duas DataTemplates implícitas, escolhidas pelo TIPO do item. As
+                 bolhas não são a mesma bolha com outra cor: lado, fundo, cabeçalho
+                 e lista de e-mails mudam, e um template só com metade colapsada
+                 seria mais difícil de ler que dois. -->
+            <!-- A pilha não tem mais teto de bolhas: ela ROLA. O que limita é a
+                 ALTURA, e não a contagem — um teto de três apagava a pergunta que
+                 explicava a resposta ainda visível logo abaixo dela.
+
+                 A barra de rolagem fica escondida: a roda do mouse e o
+                 ScrollToEnd de cada bolha nova dão conta, e uma barra cinza no
+                 canto de uma janela sem chrome flutuando no desktop seria o
+                 único elemento da interface com cara de caixa de diálogo.
+
+                 2 aqui + 8 na margem inferior de cada bolha = os 10px de gap da
+                 §4.6. A margem da bolha é o que separa uma da outra; a da pilha é
+                 só o resto para fechar a conta com a barra. -->
+            <ScrollViewer x:Name="RoloDasFalas"
+                          Grid.Row="0"
+                          MaxHeight="450"
+                          Margin="0,0,0,2"
+                          VerticalScrollBarVisibility="Hidden"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Visibility="Collapsed"
+                          ScrollChanged="RoloDasFalas_ScrollChanged">
+            <ItemsControl x:Name="PilhaDeFalas">
+                <ItemsControl.Resources>
+
+                    <!-- A fala do USUÁRIO: a bolha da janela de chat (§3.5), estilo
+                         compartilhado no Controls.xaml. O degradê é opaco, então ela
+                         se sustenta sobre o desktop sem ajuste. -->
+                    <DataTemplate DataType="{x:Type ui:FalaDoUsuario}">
+                        <Border Style="{StaticResource UserBubble}"
+                                MaxWidth="380"
+                                Margin="0,0,0,8">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="EntradaDoUsuario" Y="8"/>
+                            </Border.RenderTransform>
+                            <Border.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="0" To="1" Duration="0:0:0.18"/>
+                                            <DoubleAnimation Storyboard.TargetName="EntradaDoUsuario"
+                                                             Storyboard.TargetProperty="Y"
+                                                             From="8" To="0" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Border.Triggers>
+
+                            <TextBlock Text="{Binding Texto}"
+                                       FontSize="13.5" LineHeight="20.25"
+                                       TextWrapping="Wrap"
+                                       Foreground="White"/>
+                        </Border>
+                    </DataTemplate>
+
+                    <!-- A fala da IA.
+                         FUNDO: GlassBrush (sólido a 90%), e NÃO o surfaceCard da §4.6.
+                         O token da spec é branco a 3,5% — funciona no mock porque o
+                         <body> dele tem um degradê escuro atrás. No desktop de verdade
+                         não há nada atrás: a janela é transparente, e o balão ficava
+                         com o papel de parede aparecendo através dele, o texto
+                         disputando com a imagem. A janela de chat não sofre disso
+                         porque os cards dela ficam DENTRO do vidro da janela; este
+                         balão flutua sozinho e precisa ser o próprio vidro (§0 O6). -->
+                    <DataTemplate DataType="{x:Type ui:FalaDaIA}">
+                        <Border x:Name="Balao"
+                                MaxWidth="440"
+                                HorizontalAlignment="Left"
+                                Margin="0,0,0,8"
+                                Padding="14,14,16,14"
+                                Background="{StaticResource GlassBrush}"
+                                BorderBrush="{StaticResource BorderCardBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource RadiusBubble}"
+                                Effect="{StaticResource OrbShadow}">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="EntradaDaIA" Y="8"/>
+                            </Border.RenderTransform>
+                            <Border.Triggers>
+                                <EventTrigger RoutedEvent="Loaded">
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="0" To="1" Duration="0:0:0.18"/>
+                                            <DoubleAnimation Storyboard.TargetName="EntradaDaIA"
+                                                             Storyboard.TargetProperty="Y"
+                                                             From="8" To="0" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </EventTrigger>
+                            </Border.Triggers>
+
+                            <StackPanel>
+                                <TextBlock x:Name="TextoDoBalao"
+                                           Text="{Binding Texto}"
+                                           FontSize="13.5" LineHeight="20.25"
+                                           TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextBodyBrush}"/>
+
+                                <!-- §4.8 — a lista de e-mails vive DENTRO do mesmo
+                                     balão, abaixo do texto. Nunca um segundo balão.
+                                     A11: no máximo 3 itens e SEM rolagem; o excedente
+                                     é uma linha de texto. Uma caixa de entrada inteira
+                                     flutuando sobre o desktop não é o produto. -->
+                                <ItemsControl x:Name="ListaDeEmails" Margin="0,6,0,0"
+                                              ItemsSource="{Binding Emails}"
+                                              Visibility="{Binding VisibilidadeDaLista}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <!-- §6.6 E3: o MESMO controle da lista central. O
+                                                 layout deste item ainda vai ser revisto, e
+                                                 duas cópias divergiriam na primeira
+                                                 correção feita só de um lado.
+
+                                                 PediuAlternar é o clique no item. Aqui ele não
+                                                 abre acordeão nenhum — Aberto nunca é ligado na
+                                                 pilha —, então é o único gesto que o item tem, e
+                                                 ele leva o e-mail para a conversa. Sem esta
+                                                 linha a lista era desenho: clicar não fazia
+                                                 nada. -->
+                                            <v:MailListItem Margin="0,0,0,6"
+                                                            PediuAlternar="EmailDaPilha_Click"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock x:Name="OutrosEmails"
+                                           Text="{Binding Excedente}"
+                                           FontSize="11.5"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Visibility="{Binding VisibilidadeDoExcedente}"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+
+                </ItemsControl.Resources>
+            </ItemsControl>
+            </ScrollViewer>
+
+            <!-- §5.2 — O PULSO. Um anel que expande a partir da borda: Scale 1 -> 1.8
+                 com Opacity 0.55 -> 0, em laço de 2s.
+                 A6 — é um Border com Scale e Opacity, e NÃO um DropShadowEffect animado:
+                 animar BlurRadius por quadro engasga a interface inteira.
+                 Fica ATRÁS da casca (mesma célula, declarado antes) e não recebe mouse,
+                 senão ele roubaria o clique que deveria ir para o orbe.
+                 64 = os 56 do orbe mais 8, e a margem de -4 devolve a pegada de
+                 LAYOUT para 56 — sem ela a linha Auto cresceria e o orbe pularia na
+                 tela toda vez que uma fala chegasse, que é o mesmo defeito que o
+                 anel de progresso já teve. -->
+            <Border x:Name="AnelDePulso"
+                    Grid.Row="1"
+                    Width="64" Height="64"
+                    Margin="-4"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    BorderThickness="1.5"
+                    BorderBrush="{StaticResource AccentLilacBrush}"
+                    Background="{x:Null}"
+                    IsHitTestVisible="False"
+                    Opacity="0"
+                    RenderTransformOrigin="0.5,0.5"
+                    CornerRadius="{Binding RelativeSource={RelativeSource Self},
+                                           Path=ActualHeight,
+                                           Converter={StaticResource AlturaParaRaio}}">
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="EscalaDoPulso" ScaleX="1" ScaleY="1"/>
+                </Border.RenderTransform>
+            </Border>
+
+            <!-- §4.2 — A CASCA QUE MORFA. É o MESMO Border em todos os estados;
+                 mudam Width, Height e o conteúdo. Dois Borders aninhados por causa
+                 de A4: gradiente em BorderBrush com CornerRadius renderiza canto
+                 sujo no WPF, então o gradiente é o FUNDO do externo e o Padding de
+                 1,5 faz o papel da borda. -->
+            <Border x:Name="Casca"
+                    Grid.Row="1"
+                    Width="56" Height="56"
+                    Background="{StaticResource NeonBrush}"
+                    Padding="1.5"
+                    Cursor="Hand"
+                    Effect="{StaticResource OrbShadow}"
+                    RenderTransformOrigin="0.5,0.5"
+                    CornerRadius="{Binding RelativeSource={RelativeSource Self},
+                                           Path=ActualHeight,
+                                           Converter={StaticResource AlturaParaRaio}}">
+
+                <!-- §4.4 — hover cresce 6%. Sem mudança de cor. -->
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="EscalaDaCasca" ScaleX="1" ScaleY="1"/>
+                </Border.RenderTransform>
+
+                <Border x:Name="CascaInterna"
+                        Background="{StaticResource GlassBrush}"
+                        ClipToBounds="True"
+                        CornerRadius="{Binding RelativeSource={RelativeSource Self},
+                                               Path=ActualHeight,
+                                               Converter={StaticResource AlturaParaRaio}}">
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- §4.3 — a âncora visual do morph. Sempre à esquerda; o que
+                             muda é a margem, e é isso que faz a transição ler como
+                             continuidade em vez de troca de tela. -->
+                        <!-- UMA CÉLULA para os três: o símbolo, o ícone que o
+                             substitui durante a varredura, e o anel que gira em volta.
+                             Antes cada um tinha a própria margem à esquerda — 20, 15 e
+                             13, todas chutadas — e por isso nenhum coincidia com os
+                             outros: o anel aparecia deslocado do glyph.
+                             Agora os três são CENTRADOS na mesma célula, e o que se
+                             posiciona é a célula. Coincidir deixa de ser cálculo e
+                             passa a ser estrutura. -->
+                        <Grid x:Name="CelulaDoGlyph"
+                              Grid.Column="0"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Center">
+
+                            <!-- §5.6 — o anel da BARRA. Com o orbe expandido não há
+                                 círculo em volta do que girar, e a spec resolve assim:
+                                 "o anel continua girando no glyph pequeno da ponta
+                                 esquerda". No estado orbe quem aparece é o AnelDoOrbe.
+                                 Margem de -16 (metade dos 32) zera a pegada de layout
+                                 dele: o anel envolve o símbolo sem alargar a célula,
+                                 que continua tendo o tamanho do próprio símbolo. -->
+                            <Path x:Name="AnelDeProgresso"
+                                  Data="M 16,1 A 15,15 0 0 1 31,16"
+                                  Stroke="{StaticResource AccentLilacBrush}"
+                                  StrokeThickness="2"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Width="32" Height="32"
+                                  Margin="-16"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  IsHitTestVisible="False"
+                                  RenderTransformOrigin="0.5,0.5"
+                                  Visibility="Collapsed">
+                                <Path.RenderTransform>
+                                    <RotateTransform x:Name="GiroDoAnel"/>
+                                </Path.RenderTransform>
+                            </Path>
+
+                            <!-- §5.6 — no lugar do glyph durante a varredura. -->
+                            <Path x:Name="IconeDeInbox"
+                                  Stroke="{StaticResource AccentLilacBrush}"
+                                  StrokeThickness="1.5"
+                                  StrokeLineJoin="Round"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Width="23" Height="23"
+                                  Stretch="Uniform"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Visibility="Collapsed"/>
+
+                            <!-- No lugar do glyph enquanto uma ferramenta roda: o MESMO
+                                 desenho do chip da cadeia de ações (ToolIcons). Com a janela
+                                 oculta, é por aqui que se sabe o que ela está fazendo. -->
+                            <Path x:Name="IconeDaAcao"
+                                  Stroke="{StaticResource AccentLilacBrush}"
+                                  StrokeThickness="1.5"
+                                  StrokeLineJoin="Round"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Width="23" Height="23"
+                                  Stretch="Uniform"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Visibility="Collapsed"/>
+
+                            <TextBlock x:Name="Glyph"
+                                       Text="✦"
+                                       FontSize="20"
+                                       Foreground="{StaticResource AccentLilacBrush}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <!-- §4.7 — só existe no estado barra. Colapsado, e não apenas
+                             transparente: as colunas Auto ocupariam espaço mesmo
+                             invisíveis. -->
+                        <Grid x:Name="ConteudoDaBarra"
+                              Grid.Column="1"
+                              Margin="8,0,7,0"
+                              Opacity="0"
+                              Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox x:Name="Campo" Grid.Column="0"
+                                     Background="Transparent" BorderThickness="0"
+                                     Foreground="{StaticResource TextNormalBrush}"
+                                     CaretBrush="{StaticResource AccentLilacBrush}"
+                                     SelectionBrush="{StaticResource AccentLilacBrush}"
+                                     FontSize="14"
+                                     VerticalContentAlignment="Center"
+                                     AcceptsReturn="False"
+                                     TextChanged="Campo_TextChanged"
+                                     PreviewKeyDown="Campo_PreviewKeyDown">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="TextBox">
+                                                    <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                                                  HorizontalScrollBarVisibility="Hidden"
+                                                                  VerticalScrollBarVisibility="Hidden"/>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+
+                            <!-- Mesmo padrão da janela de chat: o WPF não tem placeholder,
+                                 então é um TextBlock por baixo que some quando há texto. -->
+                            <TextBlock x:Name="Dica" Grid.Column="0"
+                                       Text="Fale com o AIB..."
+                                       FontSize="14"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False"/>
+
+                            <Button x:Name="BotaoMic" Grid.Column="1"
+                                    Style="{StaticResource IconButton}"
+                                    ToolTip="Microfone">
+                                <Path Data="M9,3.4 A2.4,2.4 0 0 1 11.4,5.8 V9.4 A2.4,2.4 0 0 1 6.6,9.4 V5.8 A2.4,2.4 0 0 1 9,3.4 Z M4.6,9 A4.4,4.4 0 0 0 13.4,9 M9,13.4 V15.6"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.4" StrokeLineJoin="Round" StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" Width="18" Height="18" Stretch="None"/>
+                            </Button>
+
+                            <Button x:Name="BotaoEnviar" Grid.Column="2"
+                                    Style="{StaticResource SendButton}"
+                                    Margin="4,0,0,0"
+                                    Click="BotaoEnviar_Click"
+                                    ToolTip="Enviar">
+                                <Path Data="M2,9 L16,2.5 L10.4,15.5 L8.6,10.4 Z"
+                                      Stroke="White" StrokeThickness="1.6"
+                                      StrokeLineJoin="Round" StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" Width="18" Height="18" Stretch="None"/>
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Border>
+
+            <!-- §5.5 — ANEL DE PROGRESSO AO REDOR DA BORDA. O CSS do mock usa
+                 inset:-3px: é um anel MAIOR que o orbe, por fora dele. A primeira
+                 versão o pôs dentro da casca, na célula do glyph, e ele girava
+                 espremido no meio do círculo.
+                 Fica FORA da CascaInterna de propósito — ela tem ClipToBounds e
+                 recortaria qualquer coisa que passasse da borda. E depois da casca
+                 na ordem de declaração, para desenhar por cima dela.
+                 71 = 56 do orbe + 7,5 de folga de cada lado, e a MARGEM DE -7,5 é o
+                 inset:-3px do mock traduzido. Sem ela o anel MEDE 62 na linha Auto:
+                 a linha cresce de 56 para 62 quando ele aparece, a janela cresce
+                 junto (a altura é SizeToContent), o reposicionamento sobe o Top em
+                 6 e a casca desce 3 dentro da linha maior — líquido, o orbe pulava
+                 3px para cima ao começar a trabalhar e voltava ao terminar. Com -3
+                 de cada lado a pegada de LAYOUT volta a ser 56x56 e o anel
+                 transborda só no DESENHO, que é o que se quer. -->
+            <Path x:Name="AnelDoOrbe"
+                  Grid.Row="1"
+                  Data="M 35.5,1 A 34.5,34.5 0 0 1 70,35.5"
+                  Stroke="{StaticResource AccentLilacBrush}"
+                  StrokeThickness="2"
+                  StrokeStartLineCap="Round"
+                  StrokeEndLineCap="Round"
+                  Width="71" Height="71"
+                  Margin="-7.5"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  IsHitTestVisible="False"
+                  RenderTransformOrigin="0.5,0.5"
+                  Visibility="Collapsed">
+                <Path.RenderTransform>
+                    <RotateTransform x:Name="GiroDoAnelDoOrbe"/>
+                </Path.RenderTransform>
+            </Path>
+
+        </Grid>
+    </Grid>
+</Window>

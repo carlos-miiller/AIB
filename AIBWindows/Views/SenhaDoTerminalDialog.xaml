@@ -1,0 +1,89 @@
+<Window x:Class="AIB.Views.SenhaDoTerminalDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AIB — o terminal pede"
+        Width="520" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="True" Topmost="True"
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
+
+    <!-- Mesma casca do ConfirmDialog. Janela própria, e não card na conversa: o pedido chega
+         no meio de um comando, com a conversa talvez fechada, e precisa do foco do teclado. -->
+    <Border Margin="30,20,30,45" Background="{StaticResource NeonBrush}"
+            CornerRadius="{StaticResource RadiusWindowOuter}" Padding="1.5"
+            Effect="{StaticResource WindowShadow}">
+        <Border Background="{StaticResource GlassBrush}"
+                CornerRadius="{StaticResource RadiusWindowInner}" ClipToBounds="True">
+            <StackPanel Margin="18,16">
+
+                <Border Style="{StaticResource PillBorder}" HorizontalAlignment="Left">
+                    <TextBlock x:Name="PillText" Text="O terminal pede" Style="{StaticResource PillText}"/>
+                </Border>
+
+                <TextBlock x:Name="TituloText" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextStrongBrush}"
+                           TextWrapping="Wrap" Margin="0,12,0,0"/>
+
+                <TextBlock x:Name="ExplicacaoText" FontSize="12.5"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           TextWrapping="Wrap" LineHeight="18" Margin="0,6,0,0"/>
+
+                <!-- O prompt exato do programa: é ele que diz usuário@host. -->
+                <Border Background="{StaticResource SurfaceCodeBrush}"
+                        CornerRadius="{StaticResource RadiusCard}" Padding="12,10" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock x:Name="PromptText" FontFamily="{StaticResource MonoFontFamily}"
+                                   FontSize="12" Foreground="{StaticResource TextBodyBrush}"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock x:Name="OrigemText" FontFamily="{StaticResource MonoFontFamily}"
+                                   FontSize="11" Foreground="{StaticResource TextMutedBrush}"
+                                   TextWrapping="Wrap" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="AvisoBox" Visibility="Collapsed" Margin="0,12,0,0" Padding="10,7"
+                        CornerRadius="8" BorderThickness="1"
+                        Background="{StaticResource DangerFill12Brush}"
+                        BorderBrush="{StaticResource DangerBorderBrush}">
+                    <TextBlock x:Name="AvisoText" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource DangerTextBrush}"/>
+                </Border>
+
+                <!-- O que se digita no campo, dito por extenso ("Senha de root"). -->
+                <TextBlock x:Name="RotuloText" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBodyBrush}" Margin="0,14,0,6"/>
+
+                <PasswordBox x:Name="SenhaBox" Style="{StaticResource ControlPasswordBox}"
+                             Visibility="Collapsed"/>
+                <TextBox x:Name="TextoBox" Style="{StaticResource ControlTextBox}"
+                         Visibility="Collapsed"/>
+
+                <CheckBox x:Name="LembrarCheck" Visibility="Collapsed" Margin="0,10,0,0"
+                          Foreground="{StaticResource TextMutedBrush}" FontSize="11"
+                          Content="Lembrar esta senha até fechar o AIB"/>
+
+                <Rectangle Height="1" Fill="{StaticResource DividerBrush}" Margin="0,16,0,0"/>
+                <Grid Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="EnviarButton" Grid.Column="0" Content="Enviar"
+                            Style="{StaticResource PrimaryButton}"
+                            Click="Enviar_Click" Margin="0,0,10,0"/>
+                    <Button x:Name="CancelarButton" Grid.Column="1" Content="Cancelar"
+                            Style="{StaticResource OutlineButton}" Padding="18,8"
+                            Click="Cancelar_Click" IsCancel="True"/>
+                    <TextBlock x:Name="DicaText" Grid.Column="2" FontSize="11"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Border>
+</Window>

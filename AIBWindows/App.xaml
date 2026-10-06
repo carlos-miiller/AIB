@@ -3,7 +3,11 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:AIB"
              ShutdownMode="OnExplicitShutdown">
+    <!-- Vazio de propósito. As cores dependem do tema escolhido, que só se conhece depois de
+         ler as configurações: o App.OnStartup carrega Themes/Cores.<tema>.xaml e, DEPOIS,
+         Themes/Controls.xaml (ver Ui/Tema.cs). A ordem é o que faz os estilos acharem as
+         cores. Fonte de verdade dos valores: refactor-interface/*.html, §1. -->
     <Application.Resources>
-         
+        <ResourceDictionary/>
     </Application.Resources>
 </Application>

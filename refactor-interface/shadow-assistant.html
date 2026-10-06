@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Shadow Assistant (orbe de segundo plano) — Especificação de Implementação (C# / WPF)</title>
+
+<!--
+================================================================================
+ ARQUIVO: shadow-assistant.html
+ PAPEL:   Especificação executável do SHADOW ASSISTANT do AIB — o orbe
+          proativo que fica sobre o desktop quando a janela de chat está
+          fechada. Substitui modo-segundo-plano.html (mesmo conteúdo, mais
+          o relatório de e-mails e o plano de implementação de §-1).
+ DESTINO: Reimplementação 1:1 em C# / WPF (.NET 8, XAML + MVVM).
+ LEITOR:  um agente de codificação (Claude Code). O arquivo foi escrito para
+          ser lido de cima para baixo UMA vez e depois consultado por âncora
+          (§N) e por data-spec. Toda medida citada em prosa também existe em
+          número no JSON do fim do arquivo — em caso de divergência, o JSON
+          vence.
+
+ RELACIONADOS (mesma família visual; tokens compartilhados):
+   handoff/selecao-inteligencia.html  — seleção de Inteligência
+   handoff/tela-chat-v3.html          — janela de chat + painel lateral
+   handoff/tela-configuracoes.html    — configurações
+
+ COMO LER ESTE ARQUIVO
+ ------------------------------------------------------------------------------
+ Este arquivo é a FONTE DE VERDADE do visual. Ele é ao mesmo tempo:
+   (a) um protótipo que renderiza no navegador,
+   (b) uma especificação anotada, e
+   (c) um mapa de conversão para XAML.
+
+ Ordem recomendada de leitura:
+   0. §-1 PLANO DE IMPLEMENTAÇÃO      — ordem de trabalho, arquivos, classes.
+   1. §0  CONTRATO DE IMPLEMENTAÇÃO   — obrigatório vs. livre.
+   2. §1  POSICIONAMENTO NA TELA      — a parte mais delicada; leia inteira.
+   3. §2  DESIGN TOKENS               — cole em App.xaml antes de tudo.
+   4. §3  ÁRVORE VISUAL.
+   5. §4  ESPECIFICAÇÃO POR COMPONENTE — medidas exatas.
+   6. §5  MÁQUINA DE ESTADOS          — os 7 estados do orbe (§5.1–§5.7).
+   7. §6  ANIMAÇÃO DE MORPH           — orbe -> barra.
+   8. §7  MODELO DE DADOS (ViewModel).
+   9. §8  MAPA HTML -> XAML, ARMADILHAS e CHECKLIST DE ACEITE.
+  10. O markup, onde cada elemento tem `data-spec` e comentários `IMPL:`.
+
+ No fim do <body> há um <script type="application/json" id="design-spec"> com
+ todos os tokens e medidas em JSON.
+
+ O SELETOR DE ESTADOS abaixo (.scenarios), a barra de tarefas falsa e o
+ papel de parede NÃO fazem parte do produto: existem só para posicionar o
+ orbe em contexto neste mock.
+
+================================================================================
+ §-1  PLANO DE IMPLEMENTAÇÃO  (para quem vai escrever o C#)
+================================================================================
+ CONVENÇÕES DESTE ARQUIVO
+ ------------------------------------------------------------------------------
+   • data-spec="x"   no markup = a identidade do elemento na spec. Procure por
+     ele para achar o HTML real de qualquer coisa citada em prosa.
+   • Comentários "IMPL:" no CSS/markup = instrução direta de WPF.
+   • "MOCK-ONLY" / "NÃO IMPLEMENTAR" = cenário do protótipo, fora do produto
+     (papel de parede, barra de tarefas falsa, seletor de estados).
+   • Números com decimal (13.5px, 1.5px) são intencionais; não arredondar.
+   • Todos os estados existem no arquivo como markup pronto no array STATES do
+     <script> final — é ele, e não o screenshot, a referência de estrutura.
+
+ ORDEM DE TRABALHO SUGERIDA  (cada passo é verificável isolado)
+ ------------------------------------------------------------------------------
+   P1. Tokens em App.xaml (§2). Se as outras telas já foram feitas, só
+       conferir que os nomes batem; NÃO duplicar recursos.
+   P2. ShadowAssistantWindow: Topmost, ShowInTaskbar=False, ShowActivated=
+       False, WindowStyle=None, AllowsTransparency=True, Width=560 fixa,
+       SizeToContent=Height. Posicionamento de §1 + os 4 gatilhos de
+       reposicionamento. Nada dentro ainda — validar que a janela fica no
+       lugar certo com a barra de tarefas em cima, embaixo e oculta.
+   P3. A casca (§4.2): um Border com a borda neon de duas camadas (§8 A4) no
+       estado orbe (56x56, r28) + glyph ✦. Já é o estado Idle (§5.1).
+   P4. VisualStateManager com os estados Orb e Bar + o Storyboard de morph
+       (§6). Testar clique de ida e volta antes de qualquer conteúdo novo.
+   P5. Conteúdo da barra (§4.7): TextBox, microfone, botão enviar.
+   P6. Pulso (§5.2) — anel Border com Scale+Opacity, NUNCA Effect animado.
+   P7. Balão de fala (§4.6) + estado Speaking (§5.4).
+   P8. Anel de progresso + trilha de ícones (§4.4, §4.5) + Working (§5.5).
+       A trilha é o MESMO controle da janela de chat: reaproveitar.
+   P9. ProcessingMail (§5.6) — reusa o Working sem a cápsula da trilha.
+   P10. Lista de e-mails no balão (§4.8) + Speaking.MailReport (§5.7).
+   P11. Menu de contexto (§7) e o checklist de aceite (§8.2).
+
+ ARQUIVOS/CLASSES SUGERIDOS  (nomes livres — §0 L3)
+ ------------------------------------------------------------------------------
+   Views/ShadowAssistantWindow.xaml(.cs)   a Window de §1; a casca e os estados
+   Views/Controls/OrbShell.xaml            o Border que morfa (§4.2)
+   Views/Controls/ActionTrack.xaml         trilha de ícones — COMPARTILHADO
+                                           com a janela de chat (§4.5, §8 A9)
+   Views/Controls/SpeechCard.xaml          balão (§4.6) + MailList (§4.8)
+   ViewModels/ShadowAssistantViewModel.cs  §7
+   Models/MailSummary.cs                   §4.8 / §7
+   Services/ScreenAnchorService.cs         cálculo e reposicionamento de §1
+   Services/MailDigestService.cs           alimenta MailDigest; fora do escopo
+                                           visual (contrato em §7)
+   Resources/Tokens.xaml                   §2, se ainda não existir
+
+ O QUE JÁ ESTÁ DECIDIDO E NÃO DEVE SER REINTERPRETADO
+ ------------------------------------------------------------------------------
+   Leia §0 (contrato) e §8.1 (armadilhas) antes de propor qualquer melhoria de
+   comportamento. As duas seções existem porque cada item ali já foi tentado
+   de outra forma e rejeitado.
+
+================================================================================
+ §0  CONTRATO DE IMPLEMENTAÇÃO
+================================================================================
+ OBRIGATÓRIO (decisões já validadas com o usuário; não desviar):
+   O1. O orbe fica SEMPRE VISÍVEL sobre todas as janelas (Topmost), no monitor
+       PRIMÁRIO, centralizado na horizontal, com a base a 45px ACIMA da barra
+       de tarefas. Ver §1 para o cálculo exato.
+   O2. Em repouso o orbe é um CÍRCULO com o glyph ✦ e a borda neon. Sem texto,
+       sem avatar, sem badge.
+   O3. Quando a IA quer falar, o único sinal é o PULSO na borda neon. Nada de
+       balão automático, toast ou contador — a fala só aparece quando o
+       usuário clica. Ver §5.2 e §8 A5.
+   O4. Ao clicar, o orbe MORFA na barra de input e DESAPARECE como círculo —
+       não é um painel que abre ao lado. É o mesmo elemento mudando de forma.
+       Ver §6.
+   O5. Enquanto a IA executa ações em segundo plano, o orbe mostra a TRILHA DE
+       ÍCONES das ações concluídas, idêntica à da janela de chat (§4.5).
+   O6. NADA de Blur nativo. O "vidro fumê" é cor sólida a 90%.
+   O7. A borda neon de 4 paradas é a única cor saturada. Mesma ordem das
+       outras telas.
+   O8. O orbe NÃO rouba foco do teclado ao aparecer nem ao pulsar. Só ao ser
+       clicado, e aí o foco vai para o TextBox. Ver §8 A3.
+
+ LIVRE (escolha da implementação):
+   L1. Organização dos ResourceDictionaries.
+   L2. Framework MVVM.
+   L3. Nomes de classes C#; os de §7 são sugestão.
+   L4. Curvas de easing (durações sugeridas, não obrigatórias).
+   L5. Como o hit-test da região transparente é resolvido (§8 A2).
+
+================================================================================
+ §1  POSICIONAMENTO NA TELA  (leia inteira antes de codar)
+================================================================================
+ REGRA: monitor primário, centralizado na horizontal, base 45px acima da
+ barra de tarefas.
+
+ CÁLCULO
+ ------------------------------------------------------------------------------
+   var wa   = SystemParameters.WorkArea;         // exclui a barra de tarefas
+   var dpi  = VisualTreeHelper.GetDpi(this);     // fator de escala do monitor
+   double gap = 45;                              // px lógicos, acima da barra
+
+   Left = wa.Left + (wa.Width - ActualWidth) / 2;
+   Top  = wa.Bottom - ActualHeight - gap;
+
+ Usar SystemParameters.WorkArea (e NÃO PrimaryScreenHeight) resolve de graça:
+ barra de tarefas em qualquer borda, barra oculta automaticamente, e barras de
+ ferramentas de terceiros.
+
+ REPOSICIONAR EM (todos obrigatórios):
+   • SystemEvents.DisplaySettingsChanged  — resolução ou monitor trocado
+   • SystemParameters.StaticPropertyChanged (WorkArea) — barra escondeu/apareceu
+   • DpiChanged                            — janela mudou de monitor/escala
+   • SizeChanged do próprio elemento       — o morph muda a largura! §6
+
+ ANCORAGEM DURANTE O MORPH
+ ------------------------------------------------------------------------------
+ O elemento muda de 56px para ~520px de largura. Se a Window ficar com Left
+ fixo, ele cresce só para a direita e sai do centro. Duas saídas:
+   (a) Window com largura FIXA de 560px (a maior das duas formas) e o conteúdo
+       centralizado dentro dela — o Left nunca muda. RECOMENDADO.
+   (b) Recalcular Left a cada frame da animação — funciona, mas treme.
+ Este mock usa (a): o palco tem largura fixa e o conteúdo é centralizado.
+
+ MULTI-MONITOR
+ ------------------------------------------------------------------------------
+ Sempre o monitor PRIMÁRIO (Screen.PrimaryScreen). Se o usuário mover a janela
+ de chat para outro monitor, o orbe permanece no primário.
+
+================================================================================
+ §2  DESIGN TOKENS  (App.xaml — compartilhados com TODAS as telas)
+================================================================================
+ Se já existirem no projeto (vindos das outras telas), NÃO duplicar.
+
+ --- SUPERFÍCIES -------------------------------------------------------------
+ glass             | rgba(18,18,22,0.90)      | Color.FromArgb(230,18,18,22)
+ surfaceCard       | rgba(255,255,255,0.035)  | Color.FromArgb(9,255,255,255)
+ surfaceInputBar   | #16151C                  | (sólido)
+ surfaceHoverSoft  | rgba(255,255,255,0.07)   | Color.FromArgb(18,255,255,255)
+
+ --- BORDAS ------------------------------------------------------------------
+ borderCard        | rgba(255,255,255,0.08)
+ divider           | rgba(255,255,255,0.06)
+ accentBorder      | rgba(155,81,224,0.30)
+
+ --- TEXTO -------------------------------------------------------------------
+ textStrong        | #F5F4F7   nome da IA no balão de fala
+ textNormal        | #E8E6EC   texto digitado
+ textBody          | #CBC8D1   corpo da fala proativa
+ textSecondary     | #8B8794   ícones inativos, rótulos
+ textMuted         | #6F6A7A   placeholder, hora
+ accentLilac       | #C79EF0   glyph ✦, spinner
+ success           | #4ADE80   check de conclusão
+ danger            | #E5484D   gravando, dispensar
+
+ --- GRADIENTES --------------------------------------------------------------
+ neon (borda do orbe e da barra) — StartPoint="0,0" EndPoint="1,1"
+   #9B51E0 @ 0.00 / #3182CE @ 0.35 / #D53F8C @ 0.65 / #E28743 @ 1.00
+ primary (botão enviar) — #9B51E0 @ 0.00 / #3182CE @ 1.00
+
+ --- SOMBRAS -----------------------------------------------------------------
+ orbShadow    | 0 8px 28px rgba(0,0,0,0.55)
+              | <DropShadowEffect BlurRadius="28" ShadowDepth="8"
+              |                   Direction="270" Opacity="0.55" Color="Black"/>
+ barShadow    | 0 16px 44px rgba(0,0,0,0.58)
+ pulseGlow    | 0 0 0 rgba(155,81,224,0.55) -> 0 0 22px rgba(155,81,224,0)
+
+ --- GEOMETRIA ---------------------------------------------------------------
+ orb.size            56px   (círculo; hit target confortável no desktop)
+ orb.stroke          1.5px  (borda neon, igual às janelas)
+ orb.glyph           20px
+ bar.width           520px
+ bar.height          52px
+ bar.radius          26px   (pílula — aqui SIM: a forma vem de um círculo)
+ stage.width         560px  (largura fixa da Window; ver §1)
+ gapAboveTaskbar     45px
+ actionIcon          22px   (na trilha de concluídas)
+ orb.actionIcon      23px   (o ícone grande no centro do orbe, §5.5/§5.6)
+ iconTrack.maxWidth  142px  (= 5 × 22 + 4 × 8)
+ speech.maxWidth     440px
+ sendBtn             38px
+ mailItem.radius     12px
+ mailItem.gap        6px    (entre itens da lista de e-mails)
+ mailUrgencyBar      3px    (largura da barra de urgência, §4.8)
+
+ --- TIPOGRAFIA --------------------------------------------------------------
+ Família UI:   Segoe UI    | Família mono: Cascadia Code -> Consolas
+ uso                | size   | weight | color
+ -------------------|--------|--------|---------------
+ speech.name        | 12px   | 600    | textStrong
+ speech.text        | 13.5px | 400    | textBody      (lh 1.5)
+ speech.time        | 10.5px | 400    | textMuted
+ input.field        | 14px   | 400    | textNormal
+ input.placeholder  | 14px   | 400    | textMuted
+ tool.name          | 11.5px | 600    | accentLilac   (mono)
+ mail.name          | 12.5px | 600    | textStrong    (1 linha, ellipsis)
+ mail.desc          | 11.5px | 400    | textSecondary (lh 1.45, máx 2 linhas)
+ mail.urgency       | 10px   | 600    | cor do nível  (§4.8)
+
+ --- CORES DE URGÊNCIA (§4.8) ------------------------------------------------
+ urgency.maxima    | #E5484D | fundo = a mesma cor a 13%
+ urgency.media     | #E8A33D | fundo = a mesma cor a 13%
+ urgency.baixa     | #8B8794 | fundo = branco a 5%
+
+================================================================================
+ §3  ÁRVORE VISUAL
+================================================================================
+ Window (Topmost, chrome=None, transparent, 560px de largura, altura Auto)
+ └── Grid  .stage                    conteúdo centralizado; ver §1 ancoragem
+     ├── Border .speech-card         (estados 4 e 7) — acima
+     │     ├── TextBlock .sp-text     a fala em si
+     │     └── ItemsControl .mail-list  (só no estado 7, §4.8)
+     │           └── Border .mail-item  barra de urgência | nome+resumo | selo
+     └── Border .shell               O ELEMENTO QUE MORFA
+         │   Background = glass, borda neon 1.5px, orbShadow
+         │   Width: 56 -> 520 | CornerRadius: 28 -> 26
+         ├── (estado orbe)   TextBlock ✦
+         ├── (estado orbe)   trilha de ícones — só quando executando
+         └── (estado barra)  ✦ | TextBox | mic | botão enviar
+
+ UMA Window só. O balão de fala e a barra pertencem à mesma janela; nada de
+ abrir uma segunda Window para o balão (traria flicker de Topmost).
+
+================================================================================
+ §4  ESPECIFICAÇÃO POR COMPONENTE
+================================================================================
+
+ §4.1  JANELA  (data-spec="window")
+ ------------------------------------------------------------------------------
+ WindowStyle=None, AllowsTransparency=True, Background=Transparent,
+ Topmost=True, ShowInTaskbar=False, ResizeMode=NoResize,
+ SizeToContent=Height, Width=560.
+ ShowActivated=False — aparecer não pode roubar foco (§0 O8, §8 A3).
+ A área transparente da janela precisa ser clicável-através: ver §8 A2.
+
+ §4.2  CASCA QUE MORFA  (data-spec="shell")
+ ------------------------------------------------------------------------------
+ É o MESMO Border em todos os estados. Só mudam Width, CornerRadius e conteúdo.
+   Background     = glass (cor sólida a 90%; §0 O6)
+   BorderBrush    = gradiente neon, 1.5px — usar o truque de dois Borders
+                    aninhados, igual às janelas (§8 A4)
+   Effect         = orbShadow (estado orbe) / barShadow (estado barra)
+   Estado orbe    : Width 56, Height 56, CornerRadius 28
+   Estado barra   : Width 520, Height 52, CornerRadius 26
+ Cursor: Hand no estado orbe; IBeam sobre o TextBox no estado barra.
+
+ §4.3  GLYPH  (data-spec="orb.glyph")
+ ------------------------------------------------------------------------------
+ "✦" 20px accentLilac, centralizado. No estado barra ele encolhe para 13px e
+ migra para a ponta esquerda — é a mesma âncora visual do input da tela de
+ chat, o que faz o morph ler como continuidade e não como troca de tela.
+
+ §4.4  HOVER DO ORBE  (data-spec="orb.hover")
+ ------------------------------------------------------------------------------
+ Scale 1.0 -> 1.06 em 0.15s e a sombra sobe para 0 10px 32px rgba(0,0,0,0.6).
+ Sem mudança de cor. WPF: ScaleTransform no VisualState MouseOver.
+ Um ToolTip nativo aparece após ~600ms: "Fale com a KAI" (ou o nome ativo).
+
+ §4.8  LISTA DE E-MAILS NO BALÃO  (data-spec="mail-list")
+ ------------------------------------------------------------------------------
+ Variante do balão de fala (§4.6) usada quando a IA relata o resultado do
+ PROCESSING_MAIL (§5.6). Dentro do MESMO Border do balão, abaixo do .sp-text,
+ entra uma ItemsControl com um item por e-mail. Nunca um segundo balão.
+   ITEM (.mail-item) — Border r12, fundo rgba(255,255,255,0.03), borda
+   rgba(255,255,255,0.06), padding 9/11/10/9, gap vertical 6 entre itens.
+   Grid de 3 colunas: [3px barra] [conteúdo *] [selo Auto].
+     • BARRA de urgência: 3px de largura, altura total do item, r2, cor do
+       nível. É o que se lê de relance.
+     • NOME 12.5px SemiBold #F5F4F7, uma linha, TextTrimming CharacterEllipsis.
+       É o assunto/remetente — não inventar prefixo.
+     • DESCRIÇÃO 11.5px #8B8794, line-height 1.45, MÁXIMO 2 LINHAS com
+       ellipsis. Resumo gerado pela IA a partir do corpo do e-mail.
+     • SELO de urgência (.mail-urg): pílula r999, 10px SemiBold, ponto de 5px +
+       rótulo. Máxima #E5484D / Média #E8A33D / Baixa #8B8794, fundo = a mesma
+       cor a 13% (Baixa usa branco a 5%).
+   Clique no item abre o e-mail no cliente padrão; hover clareia o fundo.
+   Mais de 3 e-mails: mostrar os 3 mais urgentes e uma linha final de texto
+   "+N outros" — o balão nunca rola.
+
+ §4.5  TRILHA DE ÍCONES  (data-spec="icon-track")
+ ------------------------------------------------------------------------------
+ IDÊNTICA à da janela de chat (tela-chat-v3.html §4.4). No modo segundo plano
+ ela aparece à DIREITA do orbe, dentro de uma cápsula própria que cresce a
+ partir dele:
+   MaxWidth 142px = 5 × 22px (ícone) + 4 × 8px (gap) — no máximo 5 visíveis
+   overflow-x auto, barra horizontal de 4px, thumb rgba(255,255,255,0.18)
+   roda vertical do mouse rola na horizontal
+   cada ícone reflete a OPERAÇÃO; hover abre o tooltip com o caminho completo
+ A cápsula usa a mesma casca do chip do chat: surfaceCard, borda borderCard,
+ r18, cardShadow, com um check verde 12px antes da trilha.
+ A ação EM CURSO aparece no próprio orbe como anel de progresso (§5.5).
+
+ §4.6  BALÃO DE FALA PROATIVA  (data-spec="speech-card")
+ ------------------------------------------------------------------------------
+ Só aparece DEPOIS do clique num orbe pulsando (§0 O3). Fica ACIMA da barra,
+ com 10px de gap, alinhado pela esquerda dela.
+   MaxWidth 440px, padding 14px 16px, r18
+   Background surfaceCard, borda 1px borderCard, cardShadow
+   Cabeçalho: glyph ✦ 11px accentLilac + nome 12px/600 textStrong +
+              hora 10.5px textMuted à direita
+   Corpo: 13.5px textBody, line-height 1.5
+   Botão de dispensar (X) 22px no canto, textMuted, hover danger
+ Entrada: fade + translateY 8px -> 0 em 0.18s.
+ Se houver mais de uma fala pendente, empilhar (gap 8px), mais recente embaixo,
+ no máximo 3 visíveis.
+
+ §4.7  BARRA DE INPUT  (data-spec="bar")
+ ------------------------------------------------------------------------------
+ Conteúdo, esquerda -> direita, gap 8px, padding 0 7px 0 16px:
+   (a) glyph "✦" 13px accentLilac
+   (b) TextBox transparente, 14px textNormal, placeholder "Fale com a KAI..."
+       em textMuted. Enter envia; Shift+Enter quebra linha; Esc fecha (§5.3).
+   (c) botão MICROFONE 34x34, r8, transparente, textSecondary,
+       hover surfaceHoverSoft
+   (d) BOTÃO PRIMÁRIO circular 38px, gradiente primary, glow
+       0 4px 16px rgba(155,81,224,0.35), ícone de ENVIAR (aviãozinho).
+       Estado gravando: quadrado vermelho 13px r3 danger.
+       Igual ao da janela de chat — o microfone é botão separado.
+
+================================================================================
+ §5  MÁQUINA DE ESTADOS
+================================================================================
+ Estados mutuamente exclusivos, na propriedade OrbState do ViewModel.
+
+ §5.1  IDLE  (data-spec="state.idle")
+ ------------------------------------------------------------------------------
+ Orbe 56px, glyph ✦, borda neon estática, orbShadow. Nada mais.
+ Transições: clique -> Composing (§5.3) | IA quer falar -> Pulsing |
+             IA começa a agir -> Working.
+
+ §5.2  PULSING — a IA quer falar  (data-spec="state.pulsing")
+ ------------------------------------------------------------------------------
+ O ÚNICO sinal é o pulso; sem balão automático, sem badge, sem som (§0 O3).
+ Animação em loop de 2s: um anel expande a partir da borda,
+   box-shadow  0 0 0 0 rgba(155,81,224,0.55)  ->  0 0 0 22px rgba(155,81,224,0)
+ e a opacidade da borda oscila levemente (1 -> 0.75 -> 1).
+ WPF: Storyboard com RepeatBehavior="Forever" animando um Border-anel externo
+ (ScaleTransform 1 -> 1.8 + Opacity 0.55 -> 0), não o Effect — animar
+ DropShadowEffect por frame é caro. Ver §8 A6.
+ O pulso NÃO expira sozinho: continua até o usuário clicar.
+ Clique -> Speaking (§5.4).
+
+ §5.3  COMPOSING — input aberto  (data-spec="state.composing")
+ ------------------------------------------------------------------------------
+ O orbe morfou na barra (§6) e o TextBox está com foco.
+ Fechar e voltar a Idle: Esc, clique fora da janela (Deactivated) ou envio da
+ mensagem. Ao enviar, a janela de chat completa abre com a mensagem já enviada
+ (a conversa continua lá) e o orbe volta para Idle.
+
+ §5.4  SPEAKING — fala revelada  (data-spec="state.speaking")
+ ------------------------------------------------------------------------------
+ Alcançado clicando um orbe que estava pulsando. Acontecem as duas coisas de
+ uma vez: a barra abre (mesmo morph de §6) E o balão de fala aparece acima
+ dela (§4.6). O usuário lê e pode responder no mesmo lugar, sem abrir o chat.
+ Dispensar o balão (X) mantém a barra aberta.
+ Sem pendências restantes, o pulso cessa.
+
+ §5.5  WORKING — executando ações  (data-spec="state.working")
+ ------------------------------------------------------------------------------
+ O orbe permanece círculo e ganha:
+   • ANEL DE PROGRESSO indeterminado ao redor da borda: arco de ~90° em
+     accentLilac girando 360° em 0.9s linear infinito (mesma cadência do
+     spinner dos chips do chat).
+   • O glyph ✦ é substituído pelo ÍCONE DA AÇÃO ATUAL, 23px accentLilac.
+   • À direita, a CÁPSULA COM A TRILHA de ícones concluídos (§4.5), que cresce
+     a partir do orbe com fade + translateX −8px -> 0 em 0.18s.
+ Clicar durante Working abre a barra normalmente; a cápsula permanece visível
+ acima dela enquanto a execução continua.
+ Ao terminar tudo: a cápsula recolhe após 4s e o orbe volta a Idle (ou a
+ Pulsing, se a IA tiver algo a dizer sobre o resultado).
+
+ §5.6  PROCESSING_MAIL — processando e-mails  (data-spec="state.mail")
+ ------------------------------------------------------------------------------
+ Tarefa periódica em segundo plano: a IA varre a caixa de entrada, classifica e
+ resume. Visualmente é o Working (§5.5) com UMA diferença: NÃO há cápsula de
+ trilha à direita. Nenhuma ação de filesystem foi executada, então não há o que
+ listar — o orbe permanece um círculo de 56px, sozinho.
+   • ANEL DE PROGRESSO idêntico ao de Working (arco ~90°, accentLilac, 0.9s
+     linear infinito).
+   • No centro, o ÍCONE DE INBOX (caixa de entrada) 23px accentLilac no lugar
+     do glyph ✦ — mesmo traço 1.5px dos outros ícones.
+   • ToolTip: "Processando e-mails".
+ Se a varredura gerar ações reais em arquivos (salvar anexo, arquivar), o estado
+ passa a Working e a cápsula aparece normalmente.
+ Clicar abre a barra (mesmo morph de §6); o anel continua girando no glyph
+ pequeno da ponta esquerda enquanto o processamento não termina.
+ Ao terminar: volta a Idle, ou a Pulsing se houver algo a relatar
+ ("3 e-mails precisam da sua resposta").
+
+ §5.7  SPEAKING / MAIL_REPORT — relatório de e-mails  (data-spec="state.mail-report")
+ ------------------------------------------------------------------------------
+ Mesmo estado Speaking (§5.4): barra aberta + balão acima. A única diferença é
+ o conteúdo do balão — texto de fala normal E, abaixo dele, a lista de e-mails
+ (§4.8). Alcançado clicando o orbe pulsando depois de um PROCESSING_MAIL.
+ O X dispensa o balão inteiro (lista incluída) e mantém a barra aberta; o
+ usuário pode responder por texto ali mesmo ("responde o do jurídico").
+
+================================================================================
+ §6  ANIMAÇÃO DE MORPH  (orbe -> barra)
+================================================================================
+ É o mesmo elemento (§0 O4). Nada aparece "ao lado"; o círculo VIRA a barra.
+
+ Duração total 0.28s, easing CubicEase EaseOut. Em paralelo:
+   Width         56  -> 520     (DoubleAnimation)
+   Height        56  -> 52
+   CornerRadius  28  -> 26      (CornerRadiusAnimation ou um Border com
+                                 Height/2 calculado — no WPF puro use
+                                 ObjectAnimationUsingKeyFrames ou anime uma
+                                 propriedade de dependência custom)
+   Effect        orbShadow -> barShadow
+ O conteúdo interno faz cross-fade em 0.12s, começando aos 0.10s:
+   glyph central 20px  ->  glyph 13px na ponta esquerda
+   (fade out do conteúdo do orbe, fade in do conteúdo da barra)
+ O foco vai para o TextBox ao FIM da animação, não no início — focar antes faz
+ o cursor piscar dentro de um círculo. Ver §8 A7.
+
+ REVERSO (barra -> orbe): mesma animação invertida, 0.22s, EaseIn. O texto
+ digitado é DESCARTADO ao fechar por Esc ou clique fora; se houver rascunho
+ longo (> 40 caracteres), preservá-lo para a próxima abertura.
+
+ ANCORAGEM: a Window tem largura fixa de 560px e o conteúdo é centralizado
+ dentro dela, então o crescimento é simétrico e o Left nunca muda (§1).
+
+================================================================================
+ §7  MODELO DE DADOS (ViewModel)
+================================================================================
+ BackgroundOrbViewModel
+   AgentName          : string                  "KAI"
+   OrbState           : enum { Idle, Pulsing, Composing, Speaking, Working,
+                                  ProcessingMail }
+   PendingMessages    : ObservableCollection<ProactiveMessage>
+   MailDigest         : ObservableCollection<MailSummary>   -- §4.8
+     MailSummary { Name : string; Description : string;
+                   Urgency : enum { Maxima, Media, Baixa } }
+   Draft              : string                  rascunho preservado
+   IsRecording        : bool
+   RunningAction      : ToolCall?               ação em curso (ícone do orbe)
+   CompletedActions   : ObservableCollection<ToolCall>   trilha (§4.5)
+   IsTrackVisible     : bool                    recolhe 4s após terminar
+
+ ProactiveMessage
+   Text : string | Timestamp : DateTime | IsDismissed : bool
+
+ ToolCall  — MESMO tipo da janela de chat (tela-chat-v3.html §7)
+   Tool, Argument, FullTarget : string
+   Kind : enum { Write, Copy, Move, CreateDir, Rename, Read, List, Delete,
+                 Command }
+   Status : enum { Running, Waiting, Done, Failed }
+
+ COMANDOS
+   ActivateCommand        clique no orbe -> Composing ou Speaking
+   SendCommand            Enter / botão primário; abre a janela de chat
+   DismissSpeechCommand   X do balão
+   CollapseCommand        Esc / clique fora -> Idle
+   ToggleRecordingCommand microfone
+   OpenChatWindowCommand  duplo clique no orbe (atalho para o chat completo)
+
+ MENU DE CONTEXTO (botão direito no orbe) — mínimo viável:
+   "Abrir chat" | "Configurações" | "Ocultar por 1 hora" | "Sair"
+
+================================================================================
+ §8  MAPA HTML -> XAML, ARMADILHAS E CHECKLIST
+================================================================================
+
+ §8.0  MAPA DE CONVERSÃO
+ ------------------------------------------------------------------------------
+ seletor CSS       | elemento WPF                | observação
+ ------------------|-----------------------------|------------------------------
+ .desktop/.taskbar | (NÃO IMPLEMENTAR)           | cenário do mock
+ .scenarios        | (NÃO IMPLEMENTAR)           | seletor do mock
+ .stage            | Grid                        | largura fixa 560, centralizado
+ .shell            | Border (o que morfa)        | Width/CornerRadius animados
+ .shell.orb        | VisualState "Orb"           | 56x56, r28
+ .shell.bar        | VisualState "Bar"           | 520x52, r26
+ .pulse-ring       | Border + Storyboard         | Scale+Opacity, não Effect
+ .progress-ring    | Path/Arc + RotateTransform  | 0.9s linear infinito
+ .action-current   | ContentControl              | ícone da ação OU de inbox
+ .track-capsule    | Border + ScrollViewer       | MaxWidth 142
+ .action-icon      | Path 22x22 + ToolTip        | Kind -> Geometry
+ .speech-card      | Border                      | acima, gap 10
+ .mail-list        | ItemsControl                | dentro do balão
+ .mail-item        | Border + Grid 3 colunas     | ver §4.8
+ .mail-urg         | Border r999 + Ellipse       | Urgency -> Brush
+ .bar-input        | TextBox transparente        | PreviewKeyDown
+ .send-btn         | Button circular 38          | 2 estados
+
+ Equivalências que costumam confundir:
+   gap: Npx           -> Margin nos filhos (WPF não tem gap)
+   transform: scale   -> ScaleTransform com RenderTransformOrigin="0.5,0.5"
+   box-shadow anel    -> Border extra atrás, com Scale+Opacity animados
+   transition         -> Storyboard em VisualStateManager
+   position: fixed    -> a própria Window posicionada por §1
+
+ §8.1  ARMADILHAS  (não repetir)
+ ------------------------------------------------------------------------------
+ A1. PrimaryScreenHeight EM VEZ DE WorkArea. Com a barra de tarefas em cima,
+     à esquerda, oculta ou com DPI diferente de 100%, a conta erra. Sempre
+     SystemParameters.WorkArea (§1).
+ A2. JANELA TRANSPARENTE BLOQUEANDO CLIQUES. Com AllowsTransparency=True, a
+     área transparente ainda captura mouse em algumas configurações — o
+     usuário não consegue clicar no desktop atrás do orbe. Deixe o Background
+     do Grid raiz como {x:Null} (não Transparent) OU aplique
+     WS_EX_TRANSPARENT via HwndSource nas regiões vazias.
+ A3. ROUBAR FOCO. ShowActivated=False e nunca chamar Activate() ao pulsar. Um
+     orbe que rouba o foco enquanto o usuário digita em outro app é motivo
+     para desinstalar o programa.
+ A4. GRADIENTE COMO BorderBrush. Com CornerRadius o WPF renderiza cantos
+     sujos. Usar dois Borders aninhados, como nas outras telas.
+ A5. BALÃO AUTOMÁTICO. Foi decidido que a fala NÃO aparece sozinha — só o
+     pulso. Um balão que abre por conta própria sobre o trabalho do usuário é
+     invasivo. Não "melhorar" isso.
+ A6. ANIMAR DropShadowEffect. Animar BlurRadius/Opacity de um Effect por frame
+     é caro e engasga. O pulso é um Border-anel com Scale + Opacity.
+ A7. FOCAR O TextBox CEDO DEMAIS. Se o foco for dado no início do morph, o
+     cursor pisca dentro do círculo. Focar no Completed do Storyboard.
+ A8. ORBE CRESCENDO SÓ PARA A DIREITA. Sem a largura fixa da Window (§1), o
+     morph desloca o elemento do centro.
+ A9. TRILHA DIFERENTE DA DO CHAT. A trilha aqui é a MESMA da janela de chat —
+     mesmo tamanho de ícone, mesmo máximo de 5, mesma rolagem. Reaproveite o
+     controle, não reimplemente.
+ A10. PULSO COM PRAZO. O pulso não some sozinho: some quando o usuário clica.
+     Se sumir sozinho, a mensagem se perde.
+
+ A11. LISTA DE E-MAILS ROLÁVEL OU LONGA. O balão mostra no máximo 3 itens e
+     nunca rola; o excedente é uma linha de texto "+N outros" (§4.8). Uma
+     caixa de entrada inteira flutuando no desktop não é o produto.
+ A12. URGÊNCIA SÓ POR COR. A cor é o sinal de relance, mas o rótulo textual
+     (Máxima/Média/Baixa) fica junto — daltonismo e captura de tela em tons
+     de cinza. Não remover o texto para "limpar" o visual.
+ A13. DESCRIÇÃO DO E-MAIL SEM LIMITE. O resumo é gerado pela IA e pode vir
+     longo; o TextBlock tem MaxLines=2 + TextTrimming. Sem isso o balão
+     estica e cobre a tela do usuário.
+
+ §8.2  CHECKLIST DE ACEITE
+ ------------------------------------------------------------------------------
+ [ ] Orbe no monitor primário, centralizado, base 45px acima da barra.
+ [ ] Reposiciona ao trocar resolução, DPI ou visibilidade da barra.
+ [ ] Topmost sobre tudo, sem aparecer na barra de tarefas.
+ [ ] Não rouba foco ao aparecer nem ao pulsar.
+ [ ] Área transparente deixa clicar no desktop atrás.
+ [ ] Repouso: círculo 56px, glyph ✦, borda neon, sem mais nada.
+ [ ] Pulso: anel expandindo em loop, sem balão automático.
+ [ ] Clique morfa o orbe na barra (mesmo elemento), 0.28s.
+ [ ] Foco no TextBox só ao fim da animação.
+ [ ] Clique num orbe pulsando abre barra + balão de fala.
+ [ ] Working: anel de progresso + ícone da ação + trilha à direita.
+ [ ] Trilha idêntica à do chat: 5 ícones, rolagem, tooltip de caminho.
+ [ ] Esc / clique fora volta ao orbe.
+ [ ] Enter abre a janela de chat com a mensagem enviada.
+ [ ] Botão primário = enviar; microfone separado.
+ [ ] ProcessingMail: anel de progresso + ícone de inbox, SEM cápsula de trilha.
+ [ ] Balão de e-mails: 3 itens, barra de urgência, nome em 1 linha com
+     ellipsis, resumo em no máximo 2 linhas, selo com a cor do nível.
+ [ ] Clique num item de e-mail abre o e-mail; o balão não rola.
+ [ ] Menu de contexto com Abrir chat / Configurações / Ocultar / Sair.
+================================================================================
+-->
+
+<style>
+  /* ==========================================================================
+     RESET
+     ========================================================================== */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+
+  /* ==========================================================================
+     CENÁRIO DO MOCK — NÃO IMPLEMENTAR
+     Papel de parede + barra de tarefas falsa, só para mostrar o orbe na
+     posição real (45px acima da barra, centralizado).
+     ========================================================================== */
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: radial-gradient(120% 100% at 30% 0%, #241b3a 0%, #0d0b14 55%, #0a0910 100%);
+    overflow: hidden;
+  }
+  .desktop {
+    position: relative;
+    height: 100%;
+    min-height: 560px;
+    display: flex;
+    flex-direction: column;
+  }
+  /* barra de tarefas simulada (Windows 11 ~48px) */
+  .taskbar {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 48px;
+    background: rgba(12, 12, 16, 0.94);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+  .taskbar .tb-icon {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.10);
+  }
+
+  /* ==========================================================================
+     §1  PALCO — Window de largura FIXA, centralizada, base 45px acima da barra
+     A largura fixa é o que impede o morph de deslocar o elemento (§8 A8).
+     ========================================================================== */
+  .stage {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 93px;                 /* 48px da barra + 45px de gap */
+    width: 560px;                 /* stage.width — maior que a barra (520) */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* ==========================================================================
+     §4.6  BALÃO DE FALA PROATIVA — só no estado Speaking
+     ========================================================================== */
+  .speech-card {
+    align-self: flex-start;
+    margin-left: 20px;                              /* alinha com a barra */
+    max-width: 440px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.035);         /* surfaceCard */
+    border: 1px solid rgba(255, 255, 255, 0.08);    /* borderCard */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.20);      /* cardShadow */
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    animation: speechIn 0.18s ease-out;
+  }
+  @keyframes speechIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .sp-head { display: flex; align-items: center; gap: 8px; }
+  .sp-glyph { font-size: 11px; color: #C79EF0; }
+  .sp-name { font-size: 12px; font-weight: 600; color: #F5F4F7; }
+  .sp-time { font-size: 10.5px; color: #6F6A7A; margin-left: auto; }
+  .sp-text { font-size: 13.5px; color: #CBC8D1; line-height: 1.5; }
+  .sp-close {
+    position: absolute;
+    top: 10px; right: 10px;
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; border-radius: 6px;
+    background: transparent;
+    color: #6F6A7A;
+    cursor: pointer;
+  }
+  .sp-close:hover { color: #E5484D; background: rgba(229, 72, 77, 0.14); }
+  .speech-card { position: relative; }
+  .speech-card .sp-head { padding-right: 26px; }
+
+  /* ==========================================================================
+     §4.8  LISTA DE E-MAILS DENTRO DO BALÃO  (data-spec="mail-list")
+     Aparece só no Speaking variante e-mails. É uma ItemsControl dentro do
+     mesmo Border do balão; NÃO é um segundo balão.
+     ========================================================================== */
+  .mail-list { display: flex; flex-direction: column; gap: 6px; margin-top: 3px; }
+  .mail-item {
+    display: grid;
+    grid-template-columns: 3px 1fr auto;
+    align-items: start;
+    column-gap: 10px;
+    row-gap: 3px;
+    padding: 9px 11px 10px 9px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .mail-item:hover { background: rgba(255, 255, 255, 0.055); border-color: rgba(255,255,255,0.11); }
+  .mail-bar { grid-row: 1 / span 2; align-self: stretch; width: 3px; border-radius: 2px; }
+  .mail-name {
+    grid-column: 2; font-size: 12.5px; font-weight: 600; color: #F5F4F7;
+    line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mail-desc {
+    grid-column: 2; grid-row: 2; font-size: 11.5px; color: #8B8794; line-height: 1.45;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .mail-urg {
+    grid-column: 3; grid-row: 1;
+    display: flex; align-items: center; gap: 5px;
+    padding: 3px 8px 3px 6px;
+    border-radius: 999px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .mail-urg .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  /* três níveis — a cor É o indicador; o texto é só reforço acessível */
+  .u-max  { color: #E5484D; background: rgba(229, 72, 77, 0.13); }
+  .u-med  { color: #E8A33D; background: rgba(232, 163, 61, 0.13); }
+  .u-low  { color: #8B8794; background: rgba(255, 255, 255, 0.05); }
+  .b-max  { background: #E5484D; }
+  .b-med  { background: #E8A33D; }
+  .b-low  { background: rgba(255, 255, 255, 0.16); }
+
+  /* ==========================================================================
+     LINHA DO ORBE — orbe + cápsula da trilha, lado a lado
+     ========================================================================== */
+  .orb-row { display: flex; align-items: center; gap: 10px; }
+
+  /* ==========================================================================
+     §4.2  CASCA QUE MORFA — o MESMO elemento em todos os estados
+     Em WPF: um Border só, com Width/CornerRadius animados por VisualState.
+     Aqui o gradiente é o fundo + padding de 1.5px (truque de duas camadas).
+     ========================================================================== */
+  .shell {
+    position: relative;
+    flex: 0 0 auto;
+    padding: 1.5px;                                 /* orb.stroke */
+    background: linear-gradient(135deg,
+      #9B51E0 0%, #3182CE 35%, #D53F8C 65%, #E28743 100%);   /* neon */
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);     /* orbShadow */
+    cursor: pointer;
+    transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+                height 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+                border-radius 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 0.28s ease;
+  }
+  .shell-inner {
+    width: 100%; height: 100%;
+    background: rgba(18, 18, 22, 0.90);             /* glass — §0 O6 */
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    transition: border-radius 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* --- estado ORBE --- */
+  .shell.orb { width: 56px; height: 56px; border-radius: 28px; }
+  .shell.orb .shell-inner { border-radius: 26.5px; justify-content: center; }
+  /* hover: cresce 6% (§4.4) */
+  .shell.orb:hover { transform: scale(1.06); box-shadow: 0 10px 32px rgba(0,0,0,0.60); }
+  .shell.orb { transform-origin: center; }
+
+  /* --- estado BARRA --- */
+  .shell.bar { width: 520px; height: 52px; border-radius: 26px; cursor: default; }
+  .shell.bar .shell-inner { border-radius: 24.5px; padding: 0 7px 0 16px; gap: 8px; }
+
+  /* §4.3 glyph — 20px centralizado no orbe, 13px na ponta da barra */
+  .orb-glyph {
+    font-size: 20px;
+    color: #C79EF0;
+    line-height: 1;
+    transition: font-size 0.18s ease;
+  }
+  .shell.bar .orb-glyph { font-size: 13px; }
+
+  /* conteúdo que só existe no estado barra: cross-fade em 0.12s aos 0.10s */
+  .bar-only {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+    animation: fadeIn 0.12s ease-out 0.10s backwards;
+  }
+  .shell.bar .bar-only { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* §4.7 campo de texto */
+  .bar-input {
+    flex: 1 1 auto;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #E8E6EC;                                 /* textNormal */
+    font-size: 14px;
+    font-family: inherit;
+  }
+  .bar-input::placeholder { color: #6F6A7A; }       /* textMuted */
+
+  /* botão de ícone (microfone) */
+  .icon-btn {
+    width: 34px; height: 34px; flex: 0 0 34px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; border-radius: 8px;
+    background: transparent;
+    color: #8B8794;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .icon-btn:hover { background: rgba(255, 255, 255, 0.07); color: #CBC8D1; }
+
+  /* botão primário: ENVIAR (o microfone é separado) */
+  .send-btn {
+    width: 38px; height: 38px; flex: 0 0 38px;
+    display: flex; align-items: center; justify-content: center;
+    border: none; border-radius: 50%;
+    background: linear-gradient(135deg, #9B51E0, #3182CE);   /* primary */
+    box-shadow: 0 4px 16px rgba(155, 81, 224, 0.35);
+    cursor: pointer;
+  }
+
+  /* ==========================================================================
+     §5.2  PULSO — anel expandindo. Em WPF: Border extra com Scale + Opacity,
+     NUNCA animando o DropShadowEffect (§8 A6).
+     ========================================================================== */
+  .pulse-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    box-shadow: 0 0 0 0 rgba(155, 81, 224, 0.55);
+    animation: pulse 2s ease-out infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(155, 81, 224, 0.55); }
+    70%  { box-shadow: 0 0 0 22px rgba(155, 81, 224, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(155, 81, 224, 0); }
+  }
+
+  /* ==========================================================================
+     §5.5  ANEL DE PROGRESSO — arco girando ao redor do orbe
+     ========================================================================== */
+  .progress-ring {
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    border-top-color: #C79EF0;
+    animation: spin 0.9s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ícone da ação atual, no lugar do glyph durante Working */
+  .action-current { color: #C79EF0; display: flex; }
+
+  /* ==========================================================================
+     §4.5  CÁPSULA DA TRILHA — mesma casca do chip do chat
+     ========================================================================== */
+  .track-capsule {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.035);         /* surfaceCard */
+    border: 1px solid rgba(255, 255, 255, 0.08);    /* borderCard */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.20);      /* cardShadow */
+    animation: capsuleIn 0.18s ease-out;
+  }
+  @keyframes capsuleIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .track-check { width: 12px; height: 12px; flex: 0 0 12px; display: flex; color: #4ADE80; }
+
+  /* trilha: no máximo 5 ícones (142px = 5×22 + 4×8) */
+  .icon-track {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 142px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .icon-track::-webkit-scrollbar { height: 4px; }
+  .icon-track::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 2px; }
+
+  .action-icon {
+    width: 22px; height: 22px; flex: 0 0 22px;
+    display: flex; align-items: center; justify-content: center;
+    color: #8B8794;
+    cursor: default;
+    transition: color 0.12s ease;
+  }
+  .action-icon:hover { color: #CBC8D1; }
+
+  /* tooltip único, fora de qualquer área rolável (mesma regra do chat) */
+  .action-tooltip {
+    position: fixed;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: #1D1C24;
+    border: 1px solid rgba(155, 81, 224, 0.30);
+    color: #CBC8D1;
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-size: 11px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    z-index: 100;
+  }
+  .action-tooltip.on { opacity: 1; }
+
+  a { color: #C79EF0; }
+  a:hover { color: #D9BCFF; }
+
+  /* ==========================================================================
+     SELETOR DE ESTADOS — NÃO FAZ PARTE DO PRODUTO
+     ========================================================================== */
+  .scenarios {
+    position: absolute;
+    top: 24px; left: 24px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+    max-width: 220px;
+  }
+  .scenarios .tag {
+    width: 100%; text-align: left;
+    font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #6F6A7A; margin-bottom: 2px;
+  }
+  .scn-btn {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    color: #8B8794;
+    font-size: 12px; font-weight: 600; font-family: inherit;
+    padding: 7px 14px; border-radius: 10px;
+    cursor: pointer;
+    transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  }
+  .scn-btn:hover { color: #CBC8D1; border-color: rgba(255,255,255,0.2); }
+  .scn-btn.active {
+    color: #FFFFFF;
+    background: linear-gradient(135deg, #9B51E0, #3182CE);
+    border-color: transparent;
+  }
+</style>
+</head>
+<body>
+
+<div class="desktop">
+
+  <!-- SELETOR DE ESTADOS — NÃO IMPLEMENTAR -->
+  <div class="scenarios" id="scenarios" data-spec="MOCK-ONLY">
+    <span class="tag">estados do orbe — seletor do mock, não faz parte do produto</span>
+  </div>
+
+  <!-- ======================================================================
+       §1  PALCO — a Window real: 560px fixos, centralizada, base 45px acima
+       da barra de tarefas. Aqui: bottom = 48 (barra) + 45 (gap) = 93px.
+       ====================================================================== -->
+  <div class="stage" id="stage" data-spec="window">
+    <!-- conteúdo injetado pelo seletor de estados; ver o <script> -->
+  </div>
+
+  <!-- BARRA DE TAREFAS SIMULADA — NÃO IMPLEMENTAR -->
+  <div class="taskbar" data-spec="MOCK-ONLY">
+    <span class="tb-icon"></span>
+    <span class="tb-icon"></span>
+    <span class="tb-icon"></span>
+    <span class="tb-icon"></span>
+  </div>
+
+</div>
+
+<!-- tooltip único das ações, fora de qualquer área rolável -->
+<div class="action-tooltip" id="actionTooltip" data-spec="action-tooltip"></div>
+
+<script>
+/*
+  ================================================================================
+  ESTADOS
+  Cada entrada abaixo é o markup REAL de um estado do orbe. É esse markup que
+  serve de referência para o XAML — o seletor em si é só um atalho deste arquivo.
+  ================================================================================
+*/
+
+/* --- ícones de operação (os mesmos da janela de chat) --- */
+const ICON_CREATE = '<path d="M9 1.8H4.2a1.4 1.4 0 0 0-1.4 1.4v9.6a1.4 1.4 0 0 0 1.4 1.4h7.6a1.4 1.4 0 0 0 1.4-1.4V6.2z"></path><path d="M9 1.8v4.4h4.2"></path><path d="M8 8.6v3.4M6.3 10.3h3.4"></path>';
+const ICON_COPY   = '<rect x="5.8" y="5.8" width="7.6" height="8.4" rx="1.3"></rect><path d="M10.6 3.9V3.1a1.3 1.3 0 0 0-1.3-1.3H3.9a1.3 1.3 0 0 0-1.3 1.3v6.2a1.3 1.3 0 0 0 1.3 1.3h.8"></path>';
+const ICON_MOVE   = '<path d="M2.4 8h9.4"></path><path d="M9.2 5.2L12 8l-2.8 2.8"></path><path d="M13.6 3.4v9.2"></path>';
+const ICON_FOLDER = '<path d="M2.2 4.6a1.3 1.3 0 0 1 1.3-1.3h2.4l1.3 1.6h5.1a1.3 1.3 0 0 1 1.3 1.3v5.5a1.3 1.3 0 0 1-1.3 1.3H3.5a1.3 1.3 0 0 1-1.3-1.3z"></path><path d="M8 7.8v3.4M6.3 9.5h3.4"></path>';
+const ICON_LIST   = '<path d="M5.6 4.2h8M5.6 8h8M5.6 11.8h8"></path><path d="M2.8 4.2v.01M2.8 8v.01M2.8 11.8v.01"></path>';
+const ICON_MAIL   = '<path d="M14.1 8H10.6l-1.1 1.9h-3L5.4 8H1.9"></path><path d="M4.1 2.9h7.8l2.2 5.1v3.8a1.3 1.3 0 0 1-1.3 1.3H3.2a1.3 1.3 0 0 1-1.3-1.3V8z"></path>';
+const ICON_RENAME = '<path d="M2.6 13.4h10.8"></path><path d="M4.2 10.8l6.6-6.6a1.3 1.3 0 0 1 1.9 0l.3.3a1.3 1.3 0 0 1 0 1.9l-6.6 6.6H4.2z"></path>';
+
+const SVG_SEND = '<svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.1 10L16.9 3.4 12.6 16.6 9.7 11.6z"></path><path d="M9.7 11.6L16.9 3.4"></path></svg>';
+const SVG_MIC  = '<svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="7.6" y="2.4" width="4.8" height="9.2" rx="2.4"></rect><path d="M4.6 9.6a5.4 5.4 0 0 0 10.8 0M10 15v2.6"></path></svg>';
+const SVG_CHECK = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.6l3.1 3.1 6.5-7"></path></svg>';
+
+/* ícone de ação com tooltip de caminho completo no hover */
+function actionIcon(paths, tip) {
+  return '<span class="action-icon" data-tip="' + tip + '">'
+    + '<svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+    + paths + '</svg></span>';
+}
+
+/* §4.7 — conteúdo interno da barra (só aparece no estado barra) */
+const BAR_CONTENT =
+  '<span class="bar-only">'
+  + '<input class="bar-input" type="text" placeholder="Fale com a KAI...">'
+  + '<button class="icon-btn" title="Microfone">' + SVG_MIC + '</button>'
+  + '<button class="send-btn" title="Enviar">' + SVG_SEND + '</button>'
+  + '</span>';
+
+/* §4.5 — cápsula com a trilha de ícones concluídos */
+const TRACK_CAPSULE =
+  '<span class="track-capsule" data-spec="icon-track">'
+  +   '<span class="track-check">' + SVG_CHECK + '</span>'
+  +   '<span class="icon-track">'
+  +     actionIcon(ICON_LIST,   'list_dir &nbsp;•&nbsp; C:\\Users\\rafa\\Documentos\\notas')
+  +     actionIcon(ICON_CREATE, 'write_file &nbsp;•&nbsp; C:\\Users\\rafa\\Documentos\\notas\\_index.md')
+  +     actionIcon(ICON_RENAME, 'rename_file &nbsp;•&nbsp; nota1.txt → 2026-08-02.txt')
+  +     actionIcon(ICON_FOLDER, 'create_dir &nbsp;•&nbsp; notas\\arquivo-morto')
+  +     actionIcon(ICON_MOVE,   'move_file &nbsp;•&nbsp; 2026-08-02.txt → arquivo-morto\\')
+  +     actionIcon(ICON_COPY,   'copy_file &nbsp;•&nbsp; _index.md → _index.bak')
+  +   '</span>'
+  + '</span>';
+
+/* §4.8 — um item da lista de e-mails do balão */
+function mailItem(name, desc, urg) {
+  var map = { max: ['u-max', 'b-max', 'Máxima'],
+              med: ['u-med', 'b-med', 'Média'],
+              low: ['u-low', 'b-low', 'Baixa'] };
+  var m = map[urg];
+  return '<span class="mail-item" data-spec="mail-item" data-urgency="' + urg + '">'
+    +   '<span class="mail-bar ' + m[1] + '"></span>'
+    +   '<span class="mail-name">' + name + '</span>'
+    +   '<span class="mail-urg ' + m[0] + '"><span class="dot"></span>' + m[2] + '</span>'
+    +   '<span class="mail-desc">' + desc + '</span>'
+    + '</span>';
+}
+
+const STATES = [
+
+  /* ---- §5.1  IDLE ---- */
+  { id: 'idle', label: '1. Repouso', html:
+      '<span class="orb-row">'
+      + '<span class="shell orb" data-spec="state.idle" title="Fale com a KAI">'
+      +   '<span class="shell-inner"><span class="orb-glyph">✦</span></span>'
+      + '</span>'
+      + '</span>'
+  },
+
+  /* ---- §5.2  PULSING — só o pulso; sem balão automático (§0 O3) ---- */
+  { id: 'pulsing', label: '2. Pulsando (quer falar)', html:
+      '<span class="orb-row">'
+      + '<span class="shell orb" data-spec="state.pulsing" title="KAI quer falar">'
+      +   '<span class="pulse-ring"></span>'
+      +   '<span class="shell-inner"><span class="orb-glyph">✦</span></span>'
+      + '</span>'
+      + '</span>'
+  },
+
+  /* ---- §5.3  COMPOSING — o orbe morfou na barra (§6) ---- */
+  { id: 'composing', label: '3. Input aberto', html:
+      '<span class="orb-row">'
+      + '<span class="shell bar" data-spec="state.composing">'
+      +   '<span class="shell-inner">'
+      +     '<span class="orb-glyph">✦</span>'
+      +     BAR_CONTENT
+      +   '</span>'
+      + '</span>'
+      + '</span>'
+  },
+
+  /* ---- §5.4  SPEAKING — clique num orbe pulsando: barra + fala ---- */
+  { id: 'speaking', label: '4. Fala revelada', html:
+      '<div class="speech-card" data-spec="speech-card">'
+      +   '<button class="sp-close" title="Dispensar">'
+      +     '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"></path></svg>'
+      +   '</button>'
+      +   '<span class="sp-head">'
+      +     '<span class="sp-glyph">✦</span>'
+      +     '<span class="sp-name">KAI</span>'
+      +     '<span class="sp-time">14:22</span>'
+      +   '</span>'
+      +   '<span class="sp-text">Terminei de organizar a pasta de notas. Sobraram três arquivos duplicados que preferi não apagar sem você ver.</span>'
+      + '</div>'
+      + '<span class="orb-row">'
+      + '<span class="shell bar" data-spec="state.speaking">'
+      +   '<span class="shell-inner">'
+      +     '<span class="orb-glyph">✦</span>'
+      +     BAR_CONTENT
+      +   '</span>'
+      + '</span>'
+      + '</span>'
+  },
+
+  /* ---- §5.5  WORKING — anel de progresso + ícone da ação + trilha ---- */
+  { id: 'working', label: '5. Executando ações', html:
+      '<span class="orb-row">'
+      + '<span class="shell orb" data-spec="state.working" title="Executando: copy_file">'
+      +   '<span class="progress-ring"></span>'
+      +   '<span class="shell-inner">'
+      +     '<span class="action-current">'
+      +       '<svg width="23" height="23" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + ICON_COPY + '</svg>'
+      +     '</span>'
+      +   '</span>'
+      + '</span>'
+      + TRACK_CAPSULE
+      + '</span>'
+  },
+
+  /* ---- §5.6  PROCESSING_MAIL — igual ao Working, SEM a cápsula de trilha ---- */
+  { id: 'mail', label: '6. Processando e-mails', html:
+      '<span class="orb-row">'
+      + '<span class="shell orb" data-spec="state.mail" title="Processando e-mails">'
+      +   '<span class="progress-ring"></span>'
+      +   '<span class="shell-inner">'
+      +     '<span class="action-current">'
+      +       '<svg width="23" height="23" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + ICON_MAIL + '</svg>'
+      +     '</span>'
+      +   '</span>'
+      + '</span>'
+      + '</span>'
+  },
+
+  /* ---- §5.7  SPEAKING / MAIL_REPORT — balão com a lista de e-mails ---- */
+  { id: 'mail-report', label: '7. Fala revelada — e-mails', html:
+      '<div class="speech-card" data-spec="speech-card">'
+      +   '<button class="sp-close" title="Dispensar">'
+      +     '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"></path></svg>'
+      +   '</button>'
+      +   '<span class="sp-head">'
+      +     '<span class="sp-glyph">✦</span>'
+      +     '<span class="sp-name">KAI</span>'
+      +     '<span class="sp-time">09:12</span>'
+      +   '</span>'
+      +   '<span class="sp-text">Li os 34 e-mails da manhã. Três precisam de você hoje; o resto eu arquivei.</span>'
+      +   '<span class="mail-list" data-spec="mail-list">'
+      +     mailItem('Jurídico — contrato Vertex', 'Pedem sua assinatura no aditivo até as 18h de hoje, senão a renovação volta para a fila do trimestre que vem.', 'max')
+      +     mailItem('Marina Costa — revisão do orçamento', 'Enviou a planilha com os cortes de infra e quer sua confirmação antes da reunião de quinta.', 'med')
+      +     mailItem('Notion — resumo semanal', 'Relatório automático de atividade do workspace. Nada pendente, só números da semana.', 'low')
+      +   '</span>'
+      + '</div>'
+      + '<span class="orb-row">'
+      + '<span class="shell bar" data-spec="state.mail-report">'
+      +   '<span class="shell-inner">'
+      +     '<span class="orb-glyph">✦</span>'
+      +     BAR_CONTENT
+      +   '</span>'
+      + '</span>'
+      + '</span>'
+  }
+];
+
+/* ================================================================================
+   MONTAGEM DO MOCK
+   WPF: a troca de estado é OrbState no ViewModel + VisualStateManager.
+   ================================================================================ */
+(function () {
+  var stage = document.getElementById('stage');
+  var bar   = document.getElementById('scenarios');
+  var tip   = document.getElementById('actionTooltip');
+
+  function show(i) {
+    stage.innerHTML = STATES[i].html;
+    Array.prototype.forEach.call(bar.querySelectorAll('.scn-btn'), function (b, j) {
+      b.classList.toggle('active', j === i);
+    });
+  }
+
+  STATES.forEach(function (s, i) {
+    var b = document.createElement('button');
+    b.className = 'scn-btn';
+    b.textContent = s.label;
+    b.addEventListener('click', function () { show(i); });
+    bar.appendChild(b);
+  });
+
+  show(0);
+
+  /* Tooltip das ações concluídas: elemento único, posicionado no hover.
+     Mesma regra da janela de chat — nunca filho da trilha rolável. */
+  stage.addEventListener('mouseover', function (e) {
+    var el = e.target.closest ? e.target.closest('.action-icon[data-tip]') : null;
+    if (!el) return;
+    tip.innerHTML = el.getAttribute('data-tip');
+    tip.classList.add('on');
+    var r = el.getBoundingClientRect();
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8) + 'px';
+    tip.style.top = Math.max(8, r.top - h - 10) + 'px';
+  });
+  stage.addEventListener('mouseout', function (e) {
+    var el = e.target.closest ? e.target.closest('.action-icon[data-tip]') : null;
+    if (el) tip.classList.remove('on');
+  });
+
+  /* Roda vertical sobre a trilha rola na horizontal (igual ao chat).
+     WPF: PreviewMouseWheel somando delta ao HorizontalOffset. */
+  stage.addEventListener('wheel', function (e) {
+    var track = e.target.closest ? e.target.closest('.icon-track') : null;
+    if (!track) return;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      track.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  /* §6 — clicar no orbe morfa na barra; Esc volta ao orbe.
+     WPF: Storyboard de 0.28s animando Width/Height/CornerRadius; o foco no
+     TextBox vai no Completed do Storyboard, nunca no início (§8 A7). */
+  stage.addEventListener('click', function (e) {
+    var shell = e.target.closest ? e.target.closest('.shell.orb') : null;
+    if (!shell) return;
+    var pulsing = !!shell.querySelector('.pulse-ring');
+    show(pulsing ? 3 : 2);
+    setTimeout(function () {
+      var input = stage.querySelector('.bar-input');
+      if (input) input.focus();
+    }, 280);
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && stage.querySelector('.shell.bar')) show(0);
+  });
+})();
+</script>
+
+<!-- ============================================================================
+     ESPECIFICAÇÃO EM JSON
+     Os mesmos tokens e medidas dos comentários, em formato consumível por
+     ferramenta. Bloco inerte: não afeta a renderização.
+     ============================================================================ -->
+<script type="application/json" id="design-spec">
+{
+  "screen": "shadow-assistant",
+  "supersedes": "modo-segundo-plano.html",
+  "target": "csharp-wpf",
+  "relatedScreens": {
+    "selection": "handoff/selecao-inteligencia.html",
+    "chat": "handoff/tela-chat-v3.html",
+    "settings": "handoff/tela-configuracoes.html"
+  },
+  "window": {
+    "topmost": true,
+    "showInTaskbar": false,
+    "showActivated": false,
+    "chrome": "none",
+    "transparent": true,
+    "width": 560,
+    "sizeToContent": "height",
+    "monitor": "primary"
+  },
+  "positioning": {
+    "horizontal": "centered on primary monitor work area",
+    "gapAboveTaskbar": 45,
+    "formula": {
+      "left": "wa.Left + (wa.Width - ActualWidth) / 2",
+      "top": "wa.Bottom - ActualHeight - 45"
+    },
+    "source": "SystemParameters.WorkArea",
+    "recalculateOn": [
+      "SystemEvents.DisplaySettingsChanged",
+      "SystemParameters WorkArea changed",
+      "DpiChanged",
+      "SizeChanged (o morph muda a largura)"
+    ],
+    "anchoringNote": "Window de largura fixa 560 com conteúdo centralizado; assim o morph não desloca o elemento"
+  },
+  "tokens": {
+    "surfaces": {
+      "glass": "rgba(18,18,22,0.90)", "glassArgb": [230, 18, 18, 22],
+      "surfaceCard": "rgba(255,255,255,0.035)",
+      "surfaceInputBar": "#16151C",
+      "surfaceHoverSoft": "rgba(255,255,255,0.07)",
+      "surfaceTooltip": "#1D1C24"
+    },
+    "borders": {
+      "borderCard": "rgba(255,255,255,0.08)",
+      "divider": "rgba(255,255,255,0.06)",
+      "accentBorder": "rgba(155,81,224,0.30)"
+    },
+    "text": {
+      "textStrong": "#F5F4F7", "textNormal": "#E8E6EC", "textBody": "#CBC8D1",
+      "textSecondary": "#8B8794", "textMuted": "#6F6A7A",
+      "accentLilac": "#C79EF0", "success": "#4ADE80", "danger": "#E5484D"
+    },
+    "gradients": {
+      "neon": { "angle": "135deg", "stops": [
+        { "color": "#9B51E0", "offset": 0.00 }, { "color": "#3182CE", "offset": 0.35 },
+        { "color": "#D53F8C", "offset": 0.65 }, { "color": "#E28743", "offset": 1.00 }
+      ]},
+      "primary": { "angle": "135deg", "stops": [
+        { "color": "#9B51E0", "offset": 0.00 }, { "color": "#3182CE", "offset": 1.00 }
+      ]}
+    },
+    "shadows": {
+      "orbShadow": "0 8px 28px rgba(0,0,0,0.55)",
+      "orbShadowHover": "0 10px 32px rgba(0,0,0,0.60)",
+      "barShadow": "0 16px 44px rgba(0,0,0,0.58)",
+      "cardShadow": "0 2px 8px rgba(0,0,0,0.20)",
+      "sendGlow": "0 4px 16px rgba(155,81,224,0.35)"
+    },
+    "geometry": {
+      "orbSize": 56, "orbRadius": 28, "orbStroke": 1.5, "orbGlyph": 20,
+      "barWidth": 520, "barHeight": 52, "barRadius": 26, "barGlyph": 13,
+      "stageWidth": 560, "gapAboveTaskbar": 45,
+      "speechMaxWidth": 440, "speechGap": 10,
+      "actionIcon": 22, "iconTrackMaxWidth": 142,
+      "iconTrackFormula": "5*22 + 4*8", "actionIconsVisible": 5,
+      "sendButton": 38, "iconButton": 34, "scrollbarIconTrack": 4
+    },
+    "typography": {
+      "uiFamily": "Segoe UI", "monoFamily": ["Cascadia Code", "Consolas"],
+      "speechName": { "size": 12, "weight": 600, "color": "#F5F4F7" },
+      "speechText": { "size": 13.5, "weight": 400, "color": "#CBC8D1", "lineHeight": 1.5 },
+      "speechTime": { "size": 10.5, "weight": 400, "color": "#6F6A7A" },
+      "inputField": { "size": 14, "weight": 400, "color": "#E8E6EC" }
+    }
+  },
+  "states": [
+    { "id": "Idle", "orbShape": "circle",
+      "content": ["glyph ✦ 20px"],
+      "transitions": { "click": "Composing", "aiWantsToTalk": "Pulsing", "aiActs": "Working" } },
+    { "id": "Pulsing", "orbShape": "circle",
+      "signal": "apenas o pulso do anel neon",
+      "noAutoBubble": true, "noBadge": true, "noSound": true,
+      "animation": { "duration": "2s", "loop": true,
+        "ring": "scale 1 -> 1.8, opacity 0.55 -> 0",
+        "implementation": "Border extra com Scale+Opacity; NUNCA animar DropShadowEffect" },
+      "expires": false,
+      "transitions": { "click": "Speaking" } },
+    { "id": "Composing", "orbShape": "bar",
+      "focus": "TextBox ao fim da animação de morph",
+      "transitions": { "escape": "Idle", "clickOutside": "Idle", "send": "abre a janela de chat" } },
+    { "id": "Speaking", "orbShape": "bar",
+      "extra": "balão de fala acima da barra, gap 10, maxWidth 440",
+      "dismissKeepsBar": true, "maxStackedBubbles": 3 },
+    { "id": "Working", "orbShape": "circle",
+      "content": ["anel de progresso girando 0.9s linear", "ícone da ação atual 23px", "cápsula com a trilha à direita"],
+      "trackCollapseDelaySeconds": 4,
+      "clickOpensBar": true },
+    { "id": "ProcessingMail", "orbShape": "circle",
+      "sameAs": "Working",
+      "content": ["anel de progresso girando 0.9s linear", "ícone de inbox 23px"],
+      "iconTrack": false,
+      "tooltip": "Processando e-mails",
+      "clickOpensBar": true,
+      "transitions": { "fileActionStarted": "Working", "done": "Idle | Pulsing" } },
+    { "id": "Speaking.MailReport", "orbShape": "bar",
+      "sameAs": "Speaking",
+      "extra": "balão com sp-text + mail-list (§4.8)",
+      "mailList": {
+        "itemsShown": 3, "overflow": "linha de texto \"+N outros\"", "scroll": false,
+        "item": { "radius": 12, "padding": [9, 11, 10, 9], "gap": 6,
+                  "columns": ["3px urgencyBar", "*", "auto badge"],
+                  "name": { "size": 12.5, "weight": 600, "color": "#F5F4F7", "lines": 1 },
+                  "desc": { "size": 11.5, "color": "#8B8794", "lines": 2, "source": "resumo gerado pela IA" } },
+        "urgency": {
+          "Maxima": { "color": "#E5484D", "label": "Máxima" },
+          "Media":  { "color": "#E8A33D", "label": "Média" },
+          "Baixa":  { "color": "#8B8794", "label": "Baixa" },
+          "badgeBackgroundAlpha": 0.13 },
+        "itemClick": "abre o e-mail no cliente padrão" } }
+  ],
+  "morph": {
+    "duration": "0.28s", "easing": "CubicEase EaseOut",
+    "animated": { "width": [56, 520], "height": [56, 52], "cornerRadius": [28, 26],
+                  "effect": ["orbShadow", "barShadow"] },
+    "contentCrossfade": { "duration": "0.12s", "delay": "0.10s" },
+    "glyph": { "size": [20, 13], "position": ["center", "left edge"] },
+    "focusTiming": "Completed do Storyboard",
+    "reverse": { "duration": "0.22s", "easing": "CubicEase EaseIn" },
+    "draftPreservedAbove": 40
+  },
+  "iconTrack": {
+    "sameAs": "tela-chat-v3.html §4.4",
+    "maxWidth": 142, "visibleIcons": 5, "scrollbarHeight": 4,
+    "wheelRedirect": "vertical -> horizontal",
+    "iconMeaning": "a OPERAÇÃO",
+    "tooltip": "elemento único fora de área rolável; caminho completo"
+  },
+  "contextMenu": ["Abrir chat", "Configurações", "Ocultar por 1 hora", "Sair"],
+  "keyboard": { "Enter": "enviar e abrir o chat", "Shift+Enter": "quebrar linha", "Escape": "voltar ao orbe" },
+  "constraints": [
+    "monitor primário, centralizado, base 45px acima da barra de tarefas",
+    "Topmost sobre tudo, fora da barra de tarefas",
+    "não rouba foco ao aparecer nem ao pulsar",
+    "sem blur nativo; vidro = cor sólida Argb(230,18,18,22)",
+    "em repouso é só círculo + glyph ✦ + borda neon",
+    "o pulso é o único sinal; a fala só aparece ao clicar",
+    "o orbe MORFA na barra; não abre painel ao lado",
+    "a trilha de ícones é a mesma da janela de chat",
+    "o pulso não expira sozinho"
+  ],
+  "mockOnly": [".desktop", ".taskbar", ".scenarios", "body background"]
+}
+</script>
+
+</body>
+</html>

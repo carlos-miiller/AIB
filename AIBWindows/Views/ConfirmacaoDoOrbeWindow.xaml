@@ -1,0 +1,25 @@
+<Window x:Class="AIB.Views.ConfirmacaoDoOrbeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AIB — confirmar ação"
+        SizeToContent="WidthAndHeight"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="True" Topmost="True"
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
+
+    <!-- O MESMO ConfirmCardView da conversa, dentro da casca de vidro da janela de senha.
+         Sem a casca, o card (translúcido, feito para ficar sobre o fundo da conversa)
+         deixava a área de trabalho vazar por trás do texto. A margem transparente é a
+         folga da sombra. -->
+    <Border Margin="30,20,30,45" Background="{StaticResource NeonBrush}"
+            CornerRadius="{StaticResource RadiusWindowOuter}" Padding="1.5"
+            Effect="{StaticResource WindowShadow}">
+        <Border Background="{StaticResource GlassBrush}"
+                CornerRadius="{StaticResource RadiusWindowInner}" ClipToBounds="True">
+            <ContentPresenter x:Name="Lugar" Margin="6"/>
+        </Border>
+    </Border>
+</Window>

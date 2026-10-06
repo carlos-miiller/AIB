@@ -1,202 +1,2010 @@
-<Window x:Class="AIB.Views.SettingsWindow"
+﻿<Window x:Class="AIB.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Configurações AIB" 
-        Height="650" Width="450"
-        WindowStyle="None" 
-        AllowsTransparency="True" 
-        Background="#01000000" 
-        WindowStartupLocation="CenterOwner"
+        xmlns:ui="clr-namespace:AIB.Ui"
+        Title="Configurações AIB"
+        Width="960" Height="650"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
         ShowInTaskbar="False"
-        MouseDown="Window_MouseDown">
+        WindowStartupLocation="CenterOwner">
+
+    <!--
+        Implementação de refactor-interface/tela-configuracoes (3).html.
+
+        TAMANHO — §7 A5: 880x560 é o desenho de referência (era 620 antes do menu
+        lateral). A janela do WPF é maior porque a DropShadow precisa de área e
+        não pode ser recortada (§3.1). A margem do Border faz a conta:
+        960-40-40 = 880 e 650-30-60 = 560. Mexer numa e esquecer a outra corta a
+        sombra em linha reta — o mesmo defeito que a janela do orbe já pagou.
+
+        A13 — o menu NÃO é ListBox. A própria armadilha explica por quê: o
+        ListBox pinta o item selecionado com o azul do sistema e o hover com
+        cinza claro, e reescrever o ItemContainerStyle para apagar as duas coisas
+        é mais código que o problema pede. RadioButton com GroupName dá
+        exatamente a semântica ("uma das quatro"), já é o padrão das abas do
+        painel de chat, e não traz realce nenhum para desfazer.
+    -->
 
     <Window.Resources>
-        <SolidColorBrush x:Key="FlyoutBg" Color="#EE121214" />
-        <SolidColorBrush x:Key="SystemBorder" Color="#3FFFFFFF" />
-        <SolidColorBrush x:Key="SystemText" Color="#F2F2F5" />
-        <SolidColorBrush x:Key="InputBg" Color="#15FFFFFF" />
-        
-        <LinearGradientBrush x:Key="AiAccent" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#2B5BFF" Offset="0"/>
-            <GradientStop Color="#6A3BFF" Offset="1"/>
-        </LinearGradientBrush>
+        <ui:ContaDeEmailConverter x:Key="CorDoPonto"           Modo="CorDoPonto"/>
+        <ui:ContaDeEmailConverter x:Key="RotuloDoPonto"         Modo="RotuloDoPonto"/>
+        <ui:ContaDeEmailConverter x:Key="CorDoTextoDeEstado"    Modo="CorDoTexto"/>
+        <ui:ContaDeEmailConverter x:Key="VisibilidadeDoSelo"    Modo="VisibilidadeDoSelo"/>
+        <ui:ContaDeEmailConverter x:Key="VisibilidadeDaEstrela" Modo="VisibilidadeDaEstrela"/>
 
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource SystemText}"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Margin" Value="0,12,0,4"/>
+        <!-- §3.10 — ITEM DO MENU. ~34px de altura, r10, ícone 16 + rótulo 12.5.
+             O selecionado é o único com fundo, e é o MESMO tratamento do item
+             ativo das listas do painel de chat: lilás a 12% com borda de acento.
+             Não inventar realce novo. -->
+        <Style x:Key="NavItem" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,0,0,2"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Casca"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Padding="11,9">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource SurfaceHoverSoftBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource AccentFill12Brush}"/>
+                                <Setter TargetName="Casca" Property="BorderBrush"
+                                        Value="{StaticResource AccentBorderBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
-        <Style TargetType="TextBox">
-            <Setter Property="Background" Value="{StaticResource InputBg}"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#2A2A30"/>
-            <Setter Property="Padding" Value="8"/>
-            <Setter Property="FontSize" Value="13"/>
+        <!-- O ícone do item selecionado vira lilás; o rótulo segue o Foreground
+             do item. Por isso o Path lê o Foreground do RadioButton pai e o
+             TextBlock também: uma fonte de verdade para os dois.
+
+             STRETCH UNIFORME, e não None. Os desenhos vêm de um viewBox de
+             20x20 (a engrenagem chega a x=18,1; o envelope a y=15,6) e a caixa
+             tem 16: com Stretch="None" o Path desenha em coordenada nativa e o
+             que passa de 16 é RECORTADO — daí os ícones cortados à direita e
+             embaixo. É também o que faz o SVG do mock: ele declara
+             width="16" viewBox="0 0 20 20", ou seja, escala 20 para 16. A
+             espessura acompanha a escala nos dois casos (1,5 vira 1,2), então
+             não há compensação a fazer. -->
+        <Style x:Key="NavIcon" TargetType="Path">
+            <Setter Property="Width" Value="16"/>
+            <Setter Property="Height" Value="16"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="StrokeThickness" Value="1.5"/>
+            <Setter Property="StrokeLineJoin" Value="Round"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
-        <Style TargetType="ComboBox">
-            <Setter Property="Background" Value="{StaticResource InputBg}"/>
-            <Setter Property="Padding" Value="5"/>
+        <!-- §3.4 — TÍTULO DA PÁGINA. Substitui o cabeçalho maiúsculo com régua,
+             que virou redundante com o menu (§7 A14): cada página tem UM título. -->
+        <Style x:Key="PageTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource TextStrongBrush}"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
         </Style>
 
-        <Style x:Key="BrowseButton" TargetType="Button">
-            <Setter Property="Width" Value="35"/>
-            <Setter Property="Height" Value="35"/>
-            <Setter Property="Background" Value="{StaticResource InputBg}"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#2A2A30"/>
+        <Style x:Key="PageSubtitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="LineHeight" Value="16.7"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Margin" Value="0,3,0,0"/>
+        </Style>
+
+        <!-- §3.12 — botão de ação da linha de conta. 28x28, r7, ícone 15.
+             SEMPRE visível: uma lista curta com ações escondidas no hover gera
+             clique exploratório. -->
+        <Style x:Key="AcctButton" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Casca" Background="{TemplateBinding Background}"
+                                CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource SurfaceHoverSoftBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Variante destrutiva: a lixeira. Hover vermelho. -->
+        <Style x:Key="AcctDangerButton" TargetType="Button" BasedOn="{StaticResource AcctButton}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Casca" Background="Transparent" CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource DangerFill16Brush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AcctIcon" TargetType="Path">
+            <Setter Property="Width" Value="15"/>
+            <Setter Property="Height" Value="15"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="StrokeThickness" Value="1.6"/>
+            <Setter Property="StrokeLineJoin" Value="Round"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+        </Style>
+
+        <!-- §3.12 — "Adicionar conta". A borda é TRACEJADA, e é isso que
+             distingue "acrescentar" de "confirmar". O WPF não tem borda
+             tracejada em Border: é um Rectangle com StrokeDashArray por baixo
+             do conteúdo. -->
+        <Style x:Key="AddAccountButton" TargetType="Button">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBodyBrush}"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}" 
-                                BorderThickness="1" 
-                                CornerRadius="4">
+                        <Grid>
+                            <Border x:Name="Fundo" Background="Transparent" CornerRadius="10"/>
+                            <Rectangle x:Name="Tracejado"
+                                       RadiusX="10" RadiusY="10"
+                                       Stroke="{StaticResource BorderOutlineBtnBrush}"
+                                       StrokeThickness="1"
+                                       StrokeDashArray="3 2"/>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fundo" Property="Background"
+                                        Value="{StaticResource AccentFill10Brush}"/>
+                                <Setter TargetName="Tracejado" Property="Stroke"
+                                        Value="{StaticResource AccentFocusBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Rodapé do formulário: 32px, sem borda. -->
+        <Style x:Key="QuietButton" TargetType="Button">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Casca" Background="{TemplateBinding Background}"
+                                CornerRadius="9" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource SurfaceHoverSoftBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextNormalBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SolidSmallButton" TargetType="Button">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Casca" Background="{TemplateBinding Background}"
+                                CornerRadius="9" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Opacity" Value="0.88"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Casca" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
     </Window.Resources>
 
-    <!-- Sombra de flutuação -->
-    <Window.Effect>
-        <DropShadowEffect BlurRadius="28" ShadowDepth="6" Direction="270"
-                          Color="#000000" Opacity="0.55"/>
-    </Window.Effect>
+    <Border Margin="40,30,40,60"
+            Background="{StaticResource NeonBrush}"
+            CornerRadius="{StaticResource RadiusWindowOuter}"
+            Padding="1.5"
+            Effect="{StaticResource WindowShadow}">
 
-    <!-- Container principal com bordas arredondadas e gradiente -->
-    <Border CornerRadius="16" Padding="2">
-        <Border.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#9B51E0" Offset="0"/>
-                <GradientStop Color="#3182CE" Offset="0.33"/>
-                <GradientStop Color="#D53F8C" Offset="0.66"/>
-                <GradientStop Color="#E28743" Offset="1"/>
-            </LinearGradientBrush>
-        </Border.Background>
+        <Border Background="{StaticResource GlassBrush}"
+                CornerRadius="{StaticResource RadiusWindowInner}"
+                ClipToBounds="True">
 
-        <!-- Fundo Escuro Interno -->
-        <Border CornerRadius="14" Background="#F01A1A1E">
-        <Grid Margin="25">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/> <!-- Title -->
-                <RowDefinition Height="*"/>    <!-- Content -->
-                <RowDefinition Height="Auto"/> <!-- Buttons -->
-            </Grid.RowDefinitions>
+            <!-- O `*` na linha do meio é o que impede o rodapé de sair da tela. §7 A4. -->
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-            <StackPanel Grid.Row="0">
-                <TextBlock Text="CONFIGURAÇÕES" FontSize="18" FontWeight="Bold" Margin="0,0,0,5" Foreground="White"/>
-                <TextBlock Text="Personalize a conexão e o comportamento do AIB." Margin="0,0,0,10" Opacity="0.6"/>
-                <Border Height="1" Background="{StaticResource AiAccent}" Opacity="0.5" Margin="0,0,0,10"/>
-            </StackPanel>
+                <!-- ══════════════════════════════════════════════════════════
+                     §3.3  CABEÇALHO
+                     ══════════════════════════════════════════════════════════ -->
+                <Grid Grid.Row="0" Background="Transparent"
+                      MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                <StackPanel VerticalAlignment="Top" Margin="0,0,10,0">
-                    <TextBlock Text="CONEXÃO" FontWeight="Bold" Opacity="0.8" Margin="0,5,0,5"/>
-                    
-                    <TextBlock Text="Provedor de IA"/>
-                    <ComboBox x:Name="ProviderComboBox" Height="38" SelectionChanged="ProviderComboBox_SelectionChanged">
-                        <ComboBoxItem Content="Ollama"/>
-                        <ComboBoxItem Content="Google Gemini"/>
-                    </ComboBox>
+                    <!-- O glyph acompanha a LINHA DO TÍTULO, e o subtítulo continua alinhado
+                         com o título, não com o glyph. Por isso as duas coisas vivem numa
+                         grade de duas linhas por duas colunas em vez de um glyph solto ao
+                         lado de um StackPanel: assim o glyph é CENTRALIZADO na altura da
+                         linha do título, sem margem calculada à mão.
+                         A versão anterior o alinhava ao topo com Margin="24,20,10,0" e
+                         LineHeight="22" — dois números escolhidos a olho para o glyph de 15
+                         cair na altura de um título de outro tamanho. Errou, e o símbolo
+                         ficava alto demais. -->
+                    <Grid Grid.Column="0" Grid.ColumnSpan="2" Margin="24,20,0,16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-                    <StackPanel x:Name="AdvancedConnectionPanel">
-                        <TextBlock Text="Base URL (Ollama ou OpenAI)"/>
-                        <TextBox x:Name="UrlTextBox" Text="http://127.0.0.1:11434/v1" LostFocus="UrlTextBox_LostFocus"/>
+                        <TextBlock x:Name="GlyphDoCabecalho"
+                                   Grid.Row="0" Grid.Column="0" Text="✦" FontSize="15"
+                                   Foreground="{StaticResource AccentLilacBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
 
-                        <TextBlock Text="API Key"/>
-                        <TextBox x:Name="KeyTextBox" Text="ollama"/>
+                        <TextBlock x:Name="TituloDoCabecalho"
+                                   Grid.Row="0" Grid.Column="1" Text="Configurações"
+                                   FontSize="{StaticResource FontSizeHeaderTitle}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextStrongBrush}"/>
 
-                        <TextBlock Text="Modelo LLM (Principal)"/>
-                        <Grid>
-                            <ComboBox x:Name="ModelComboBox" IsEditable="True" Height="38" VerticalContentAlignment="Center"/>
-                            <ProgressBar x:Name="LoadingProgress" IsIndeterminate="True" Height="2" VerticalAlignment="Bottom" Visibility="Collapsed"/>
-                        </Grid>
-                        
-                        <TextBlock Text="Modelo LLM (Shadow Assistant)"/>
-                        <Grid>
-                            <ComboBox x:Name="ShadowModelComboBox" IsEditable="True" Height="38" VerticalContentAlignment="Center"/>
-                        </Grid>
+                        <!-- TEXTO VERBATIM — §3.3. -->
+                        <TextBlock Grid.Row="1" Grid.Column="1"
+                                   Text="Personalize a identidade, conexão e comportamento do AIB."
+                                   FontSize="{StaticResource FontSizeHeaderSub}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Margin="0,4,0,0"/>
+                    </Grid>
+
+                    <Button Grid.Column="2" Style="{StaticResource CloseIconButton}"
+                            VerticalAlignment="Top" Margin="0,16,16,0"
+                            Click="Cancel_Click" ToolTip="Fechar">
+                        <Path Data="M4,4 L12,12 M12,4 L4,12"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Width="16" Height="16" Stretch="None"/>
+                    </Button>
+
+                    <Rectangle Grid.Row="1" Grid.ColumnSpan="3" Height="1"
+                               Fill="{StaticResource DividerBrush}"/>
+                </Grid>
+
+                <!-- ══════════════════════════════════════════════════════════
+                     §3.10  CORPO EM DUAS COLUNAS — menu de 200px + página
+                     ══════════════════════════════════════════════════════════ -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="200"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- MENU. Não rola: a lista é curta e fixa (§3.10). -->
+                    <StackPanel Grid.Column="0" Margin="10,14">
+                        <RadioButton x:Name="NavIdentidade" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}"
+                                     IsChecked="True" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M6.9,7.2 A3.1,3.1 0 0 1 13.1,7.2 A3.1,3.1 0 0 1 6.9,7.2 Z
+                                            M3.9,16.6 C3.9,13.7 6.6,12 10,12 C13.4,12 16.1,13.7 16.1,16.6"/>
+                                <TextBlock Text="Identidade" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <RadioButton x:Name="NavConexao" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M7.6,5.4 L12.4,5.4 A2.2,2.2 0 0 1 14.6,7.6 L14.6,12.4
+                                            A2.2,2.2 0 0 1 12.4,14.6 L7.6,14.6 A2.2,2.2 0 0 1 5.4,12.4
+                                            L5.4,7.6 A2.2,2.2 0 0 1 7.6,5.4 Z
+                                            M8.2,2.6 L8.2,5.4 M11.8,2.6 L11.8,5.4
+                                            M8.2,14.6 L8.2,17.4 M11.8,14.6 L11.8,17.4
+                                            M2.6,8.2 L5.4,8.2 M2.6,11.8 L5.4,11.8
+                                            M14.6,8.2 L17.4,8.2 M14.6,11.8 L17.4,11.8"/>
+                                <TextBlock Text="Conexão LLM" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <RadioButton x:Name="NavEmail" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <!-- O MESMO envelope da aba de e-mails do painel de chat. -->
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M4.2,4.4 L15.8,4.4 A1.8,1.8 0 0 1 17.6,6.2 L17.6,13.8
+                                            A1.8,1.8 0 0 1 15.8,15.6 L4.2,15.6 A1.8,1.8 0 0 1 2.4,13.8
+                                            L2.4,6.2 A1.8,1.8 0 0 1 4.2,4.4 Z
+                                            M3.1,5.6 L10,10.8 L16.9,5.6"/>
+                                <TextBlock Text="E-mail" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <RadioButton x:Name="NavShadow" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <!-- Um olho: é o que o orbe faz, olhar. A pupila são dois
+                                     semicírculos exatos, e não um arco de volta inteira com
+                                     extremos coincidentes — esse último é degenerado e o WPF
+                                     desenha qualquer coisa com ele. -->
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M2.2,10 C4.6,5.8 7.2,4 10,4 C12.8,4 15.4,5.8 17.8,10
+                                            C15.4,14.2 12.8,16 10,16 C7.2,16 4.6,14.2 2.2,10 Z
+                                            M12.4,10 A2.4,2.4 0 0 1 7.6,10 A2.4,2.4 0 0 1 12.4,10 Z"/>
+                                <TextBlock Text="Shadow" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <RadioButton x:Name="NavFerramentas" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M12.6,2.6 A4,4 0 0 0 7.6,7.6 L2.6,12.6 A1.6,1.6 0 0 0 5,15
+                                            L10,10 A4,4 0 0 0 15,5 L12.4,7.6 L10,7.6 L10,5.2 Z"/>
+                                <TextBlock Text="Ferramentas" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <RadioButton x:Name="NavMemoria" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M10,3.4 A3.1,3.1 0 0 0 4.6,5.6 A2.8,2.8 0 0 0 3.6,10.4
+                                            A3,3 0 0 0 5.8,15.4 A3,3 0 0 0 10,16.4 Z
+                                            M10,3.4 A3.1,3.1 0 0 1 15.4,5.6 A2.8,2.8 0 0 1 16.4,10.4
+                                            A3,3 0 0 1 14.2,15.4 A3,3 0 0 1 10,16.4 Z"/>
+                                <TextBlock Text="Memória" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <RadioButton x:Name="NavAvancado" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M7.4,10 A2.6,2.6 0 0 1 12.6,10 A2.6,2.6 0 0 1 7.4,10 Z
+                                            M10,1.9 L10,4.2 M10,15.8 L10,18.1
+                                            M3.9,3.9 L5.5,5.5 M14.5,14.5 L16.1,16.1
+                                            M1.9,10 L4.2,10 M15.8,10 L18.1,10
+                                            M3.9,16.1 L5.5,14.5 M14.5,5.5 L16.1,3.9"/>
+                                <TextBlock Text="Avançado" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <RadioButton x:Name="NavLogs" GroupName="Paginas"
+                                     Style="{StaticResource NavItem}" Checked="Nav_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Style="{StaticResource NavIcon}"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                                      Data="M4.5,2.5 H12 L15.5,6 V17.5 H4.5 Z M12,2.5 V6 H15.5
+                                            M7,9.5 H13 M7,12.5 H13 M7,15 H10.5"/>
+                                <TextBlock Text="Logs" FontSize="12.5" FontWeight="Medium"
+                                           Margin="9,0,0,0" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                            </StackPanel>
+                        </RadioButton>
                     </StackPanel>
 
-                    <Separator Background="White" Opacity="0.1" Margin="0,20,0,10"/>
-                    <TextBlock Text="DIRETÓRIOS" FontWeight="Bold" Opacity="0.8" Margin="0,5,0,5"/>
+                    <Rectangle Grid.Column="1" Width="1" Fill="{StaticResource DividerBrush}"/>
 
-                    <TextBlock Text="Diretório de Dados"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBox x:Name="DataDirTextBox" Grid.Column="0" IsReadOnly="True" Opacity="0.7"/>
-                        <Button Content="📁" Grid.Column="1" Margin="5,0,0,0" Style="{StaticResource BrowseButton}" Click="BrowseDataDir_Click"/>
-                    </Grid>
-                    <TextBlock Text="Skills, memória e configurações persistentes." FontSize="11" Opacity="0.4" Margin="0,2,0,0"/>
+                    <!-- ══════════════════════════════════════════════════════
+                         §3.4  PÁGINAS. Só a ativa está visível.
+                         A área NÃO tem padding: a faixa de título encosta nas
+                         laterais. O respiro é do grupo de campos, 40 à esquerda
+                         para separar as opções da faixa.
+                         ══════════════════════════════════════════════════════ -->
+                    <Grid Grid.Column="2">
 
-                    <TextBlock Text="Diretório Temporário"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBox x:Name="TempDirTextBox" Grid.Column="0" IsReadOnly="True" Opacity="0.7"/>
-                        <Button Content="📁" Grid.Column="1" Margin="5,0,0,0" Style="{StaticResource BrowseButton}" Click="BrowseTempDir_Click"/>
-                    </Grid>
-                    <TextBlock Text="Cache de OCR e arquivos temporários da IA." FontSize="11" Opacity="0.4" Margin="0,2,0,0"/>
+                        <!-- ─────────── PÁGINA 1 — Identidade (Soul) ─────────── -->
+                        <Grid x:Name="PaginaIdentidade">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
 
-                    <Separator Background="White" Opacity="0.1" Margin="0,20,0,10"/>
-                    <TextBlock Text="AVANÇADO" FontWeight="Bold" Opacity="0.8" Margin="0,5,0,5"/>
-
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Máximo de Tokens de Contexto" Grid.Column="0" VerticalAlignment="Center" ToolTip="Determinado automaticamente pelo seu Nível"/>
-                        <TextBox x:Name="MaxHistoryTextBox" Grid.Column="1" Width="70" TextAlignment="Center" IsReadOnly="True" Background="#2A2A30" Foreground="#888899" ToolTip="O limite aumenta conforme você sobe de Nível."/>
-                    </Grid>
-
-                    <CheckBox x:Name="ConfirmCmdCheckBox" Content="Confirmar comandos perigosos" Foreground="White" Margin="0,15,0,0"/>
-                    <CheckBox x:Name="EphemeralSkillCheckBox" Content="Contexto efêmero de skills (economiza tokens)" Foreground="White" Margin="0,10,0,0"/>
-                    <CheckBox x:Name="SendSystemPromptCheckBox" Content="Enviar System Prompt a cada requisição (desmarque se usar Modelfile)" Foreground="White" Margin="0,10,0,0"/>
-                    <CheckBox x:Name="EnableIntelligentToolsCheckBox" Content="Habilitar Ferramentas da AIB (Pode causar lentidão no Ollama local)" Foreground="White" Margin="0,10,0,0"/>
-                    <CheckBox x:Name="ShadowAssistantEnabledCheckBox" Foreground="White" Margin="0,10,0,0">
-                        <TextBlock TextWrapping="Wrap">
-                            <Run Text="Habilitar Shadow Assistant "/>
-                            <Run Text="(ALPHA)" Foreground="#D53F8C" FontWeight="Bold"/>
-                            <Run Text=" — sugestões automáticas baseadas na janela em foco"/>
-                        </TextBlock>
-                    </CheckBox>
-                    
-                    <TextBlock Text="Motor de Busca Web" Margin="0,15,0,5" Opacity="0.8"/>
-                    <ComboBox x:Name="SearchEngineComboBox" Height="38">
-                        <ComboBoxItem Content="DuckDuckGo"/>
-                        <ComboBoxItem Content="Google"/>
-                        <ComboBoxItem Content="Bing"/>
-                    </ComboBox>
-                    <TextBlock Text="DuckDuckGo não requer chave de API." FontSize="11" Opacity="0.4" Margin="0,2,0,0"/>
-                    
-                    <TextBlock Height="20"/>
-                </StackPanel>
-            </ScrollViewer>
-
-            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
-                <Button Content="Cancelar" Click="Cancel_Click" Width="80" Height="35" Background="Transparent" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0"/>
-                <Button Content="Salvar" Click="Save_Click" Width="100" Height="35" Cursor="Hand">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border Background="{StaticResource AiAccent}" CornerRadius="6">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Identidade (Soul)" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="Quem responde, e com que personalidade."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
                             </Border>
-                        </ControlTemplate>
-                    </Button.Template>
-                </Button>
-            </StackPanel>
-        </Grid>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+                                    <!-- CAMPO 1 -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Personagem Ativo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="A Inteligência escolhida na tela de seleção."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="CharacterComboBox" Grid.Column="1"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Como chamar o usuário: escolha dele. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Como te chamar" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="O nome ou apelido que a Inteligência usa com você. Vazio, ela não usa nome."
+                                                           Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="NomeDoUsuarioTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBox}"
+                                                     MaxLength="40"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- CAMPO 2 — último da página: sem divisória. -->
+                                    <Grid Margin="0,13">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                            <TextBlock Text="Tema" Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock Text="Claro, escuro ou o mesmo do Windows. Vale ao reabrir o AIB."
+                                                       Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                        <ComboBox x:Name="TemaComboBox" Grid.Column="1"
+                                                  Style="{StaticResource ControlComboBox}"
+                                                  DisplayMemberPath="Rotulo" SelectedValuePath="Valor"
+                                                  SelectionChanged="Campo_Mudou"/>
+                                    </Grid>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Identidade" Click="Restaurar_Click"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- ─────────── PÁGINA 2 — Conexão LLM ─────────── -->
+                        <Grid x:Name="PaginaConexao" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Conexão LLM" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="Onde o modelo roda e com qual chave."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+
+                                    <!-- CAMPO 2 — Provedor de IA. Trocar de provedor troca TODOS os campos abaixo: cada
+                                         provedor guarda os seus (UserAppSettings.Perfis). -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Provedor de IA" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock x:Name="ProvedorAjuda" Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Cada provedor guarda a própria configuração: trocar e voltar não perde nada."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="ProviderComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="ProviderComboBox_SelectionChanged"/>
+                                        </Grid>
+                                    </Border>
+                                    <!-- ── Só Ollama ── -->
+                                    <StackPanel x:Name="PainelOllama">
+
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Endereço do Ollama" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Onde o Ollama responde. Padrão: http://127.0.0.1:11434."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="UrlTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"
+                                                     LostFocus="UrlTextBox_LostFocus"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Modelo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Os modelos instalados neste Ollama. Dá para digitar um que ainda não foi baixado."/>
+                                            </StackPanel>
+                                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                                <ComboBox x:Name="ModelComboBox" IsEditable="True"
+                                                          Style="{StaticResource ControlComboBoxMono}"
+                                                          SelectionChanged="Campo_Mudou"/>                                                <TextBlock x:Name="LoadingProgress" Text="carregando…"
+                                                           FontSize="{StaticResource FontSizeHelp}"
+                                                           FontFamily="{StaticResource MonoFontFamily}"
+                                                           Foreground="{StaticResource TextMutedBrush}"
+                                                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                           Margin="0,0,34,0" Visibility="Collapsed"
+                                                           IsHitTestVisible="False"/>                                            </Grid>
+
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Tempo de Memória da IA (Keep-Alive)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quanto o modelo fica carregado depois da última mensagem. Sem GPU, recarregar custa minutos."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="KeepAliveComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="Campo_Mudou">
+                                                <ComboBoxItem Content="1 Minuto" Tag="1m"/>
+                                                <ComboBoxItem Content="5 Minutos" Tag="5m"/>
+                                                <ComboBoxItem Content="30 Minutos" Tag="30m"/>
+                                                <ComboBoxItem Content="Sempre carregado (Recomendado)" Tag="-1"/>
+                                            </ComboBox>
+                                        </Grid>
+                                    </Border>
+                                    </StackPanel>
+
+                                    <!-- ── Só OpenRouter ── -->
+                                    <StackPanel x:Name="PainelOpenRouter" Visibility="Collapsed">
+
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Endereço" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Fixo: é onde a API do OpenRouter está."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="OpenRouterUrlTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}" IsReadOnly="True"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Chave da API" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock x:Name="ChaveAjuda" Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Guardada no cofre DPAPI desta conta do Windows, só para o OpenRouter. Nunca é exibida."/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox x:Name="KeyTextBox" Style="{StaticResource ControlTextBoxMono}"
+                                                             IsReadOnly="True" Margin="0,0,8,0"/>
+                                                    <Button x:Name="AlterarChaveBotao" Grid.Column="1" Content="Alterar"
+                                                            Style="{StaticResource InlineButton}" Click="AlterarChave_Click"/>
+                                                </Grid>
+                                                <Grid x:Name="NovaChaveLinha" Margin="0,8,0,0" Visibility="Collapsed">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <PasswordBox x:Name="NovaChaveBox" Margin="0,0,8,0"
+                                                                 FontFamily="{StaticResource MonoFontFamily}"
+                                                                 PasswordChanged="NovaChave_Mudou"/>
+                                                    <Button x:Name="GuardarChaveBotao" Grid.Column="1" Content="Guardar" IsEnabled="False"
+                                                            Style="{StaticResource InlineButton}" Margin="0,0,6,0" Click="GuardarChave_Click"/>
+                                                    <Button Grid.Column="2" Content="Cancelar"
+                                                            Style="{StaticResource InlineButton}" Click="CancelarChave_Click"/>
+                                                </Grid>
+                                                <TextBlock x:Name="ChaveErro" Style="{StaticResource FieldHelpText}" Foreground="{StaticResource DangerBrush}"
+                                                           TextWrapping="Wrap" Visibility="Collapsed" Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Modelo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock x:Name="OpenRouterModeloAjuda" Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Só aparecem modelos que aceitam ferramentas — sem elas a IA não lê nem grava nada. Dá para digitar o id."/>
+                                            </StackPanel>
+                                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                                <ComboBox x:Name="OpenRouterModelComboBox" IsEditable="True"
+                                                          Style="{StaticResource ControlComboBoxMono}"
+                                                          SelectionChanged="OpenRouterModelo_Mudou"
+                                                          LostFocus="OpenRouterModelo_Mudou"/>                                                <TextBlock x:Name="OpenRouterLoadingProgress" Text="carregando…"
+                                                           FontSize="{StaticResource FontSizeHelp}"
+                                                           FontFamily="{StaticResource MonoFontFamily}"
+                                                           Foreground="{StaticResource TextMutedBrush}"
+                                                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                           Margin="0,0,34,0" Visibility="Collapsed"
+                                                           IsHitTestVisible="False"/>                                            </Grid>
+
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Só provedores que não guardam dados" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O prompt leva arquivos e e-mails. Desligado, o OpenRouter também usa provedores que guardam ou treinam com ele — às vezes mais baratos ou rápidos."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="SemColetaSwitch" Grid.Column="1" VerticalAlignment="Center"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Provedor preferido" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O cache do prompt fica guardado no provedor que atendeu; trocar de provedor entre voltas paga a conversa inteira de novo. Vazio deixa o OpenRouter escolher. Se ele cair, outro atende."/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <!-- Lista dos provedores DO MODELO na tela, com preço, cache, quantização,
+                                                     disponibilidade e velocidade. A caixa mostra só o nome (TextPath),
+                                                     que é o que vai em provider.order; continua editável. -->
+                                                <ComboBox x:Name="ProvedorFixoComboBox"
+                                                          IsEditable="True" TextSearch.TextPath="Nome"
+                                                          Style="{StaticResource ControlComboBoxMono}"
+                                                          SelectionChanged="ProvedorFixo_Mudou"
+                                                          LostFocus="ProvedorFixo_Mudou">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Margin="0,2">
+                                                                <TextBlock Text="{Binding Rotulo}" FontWeight="SemiBold"/>
+                                                                <TextBlock Text="{Binding Resumo}" FontSize="{StaticResource FontSizeHelp}"
+                                                                           Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" MaxWidth="360"/>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                                <TextBlock x:Name="ProvedorFixoAjuda" Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Margin="0,6,0,0" Visibility="Collapsed"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                    </StackPanel>
+
+                                    <!-- ── Dos dois, com o sentido de cada um ── -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Janela de contexto" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock x:Name="JanelaAjuda" Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text=""/>
+                                            </StackPanel>
+                                            <TextBox x:Name="JanelaTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Janela_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Raciocínio do modelo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock x:Name="RaciocinioAjuda" Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text=""/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="RaciocinioComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      DisplayMemberPath="Rotulo" SelectedValuePath="Valor"
+                                                      SelectionChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Orçamento de histórico do seu nível" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quanto da conversa fica vivo no prompt antes de virar capítulo. Vem do seu nível e da janela acima: começa num quarto dela e chega a três quartos."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MaxHistoryTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}" IsReadOnly="True"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Enviar System Prompt a cada requisição" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Desligar tira o prompt de sistema inteiro — a memória e a alma do personagem vão junto. Ligado, o prefixo repetido aproveita o KV Caching."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="SendSystemPromptSwitch" Grid.Column="1" VerticalAlignment="Center"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    <!-- RESTAURAR — só os campos DESTA página. Um botão único
+                                         para a tela inteira faria quem quer voltar um número
+                                         atrás perder de quebra o provedor e o modelo. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Conexao" Click="Restaurar_Click"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- ─────────── PÁGINA 3 — E-mail (multi-conta) ─────────── -->
+                        <Grid x:Name="PaginaEmail" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="E-mail" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Style="{StaticResource PageSubtitle}"
+                                               Text="A IA lê a caixa de entrada por IMAP, resume e prioriza. Só leitura: nada é enviado, apagado ou movido no servidor."/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,16,24,20">
+
+                                    <!-- §3.12 — LISTA DE CONTAS. ItemsControl, e não ListBox
+                                         nem DataGrid: não existe seleção aqui, cada linha
+                                         carrega as próprias ações. ListBox traria realce,
+                                         foco de item e navegação por setas sem significado. -->
+                                    <ItemsControl x:Name="ListaDeContas">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,0,0,6"
+                                                        Padding="12,11"
+                                                        Background="{StaticResource SurfaceCardBrush}"
+                                                        BorderBrush="{StaticResource BorderCardBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="10">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- Ponto de estado. Sem pulso: §3.12
+                                                             manda não animar. -->
+                                                        <Ellipse Grid.Column="0"
+                                                                 Width="7" Height="7"
+                                                                 Margin="0,0,10,0"
+                                                                 VerticalAlignment="Center"
+                                                                 Fill="{Binding Status, Converter={StaticResource CorDoPonto}}"
+                                                                 ToolTip="{Binding Status, Converter={StaticResource RotuloDoPonto}}"/>
+
+                                                        <StackPanel Grid.Column="1" MinWidth="0"
+                                                                    VerticalAlignment="Center">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <!-- Endereço longo CORTA, nunca
+                                                                     quebra em duas linhas. -->
+                                                                <TextBlock Text="{Binding Address}"
+                                                                           FontFamily="{StaticResource MonoFontFamily}"
+                                                                           FontSize="12"
+                                                                           Foreground="{StaticResource TextStrongBrush}"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           VerticalAlignment="Center"/>
+
+                                                                <!-- Selo "Principal": o MESMO
+                                                                     tratamento do item ativo do
+                                                                     menu. Não inventar outra cor. -->
+                                                                <Border Margin="8,0,0,0"
+                                                                        Padding="6,2"
+                                                                        CornerRadius="5"
+                                                                        Background="{StaticResource AccentFill12Brush}"
+                                                                        BorderBrush="{StaticResource AccentBorderBrush}"
+                                                                        BorderThickness="1"
+                                                                        VerticalAlignment="Center"
+                                                                        Visibility="{Binding IsPrimary, Converter={StaticResource VisibilidadeDoSelo}}">
+                                                                    <TextBlock Text="PRINCIPAL"
+                                                                               FontSize="9.5" FontWeight="SemiBold"
+                                                                               Foreground="{StaticResource AccentLilacBrush}"
+                                                                               ui:LetterSpacing.Em="0.08"/>
+                                                                </Border>
+                                                            </StackPanel>
+
+                                                            <!-- Uma linha só, com ellipsis. O erro
+                                                                 completo vai no ToolTip. -->
+                                                            <TextBlock Text="{Binding StatusText}"
+                                                                       ToolTip="{Binding StatusText}"
+                                                                       FontSize="10.5"
+                                                                       Margin="0,3,0,0"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Foreground="{Binding Status, Converter={StaticResource CorDoTextoDeEstado}}"/>
+                                                        </StackPanel>
+
+                                                        <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                                                    VerticalAlignment="Center">
+                                                            <!-- A estrela é COLAPSADA na conta que já
+                                                                 é principal, não desabilitada e
+                                                                 visível: a linha da principal tem 2
+                                                                 botões, as outras 3. -->
+                                                            <Button Style="{StaticResource AcctButton}"
+                                                                    Margin="0,0,4,0"
+                                                                    Click="TornarPrincipal_Click"
+                                                                    ToolTip="Tornar principal"
+                                                                    Visibility="{Binding IsPrimary, Converter={StaticResource VisibilidadeDaEstrela}}">
+                                                                <Path Style="{StaticResource AcctIcon}"
+                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                      Data="M10,3.5 L12,7.7 L16.5,8.3 L13.2,11.5 L14,16 L10,13.9 L6,16 L6.8,11.5 L3.5,8.3 L8,7.7 Z"/>
+                                                            </Button>
+
+                                                            <Button Style="{StaticResource AcctButton}"
+                                                                    Margin="0,0,4,0"
+                                                                    Click="AlterarSenhaDaConta_Click"
+                                                                    ToolTip="Alterar senha de app">
+                                                                <Path Style="{StaticResource AcctIcon}"
+                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                      Data="M6,9 L14,9 A2,2 0 0 1 16,11 L16,15 A2,2 0 0 1 14,17
+                                                                            L6,17 A2,2 0 0 1 4,15 L4,11 A2,2 0 0 1 6,9 Z
+                                                                            M7,9 L7,6.5 A3,3 0 0 1 13,6.5 L13,9"/>
+                                                            </Button>
+
+                                                            <!-- Seta em circulo: esquecer o que ja
+                                                                 foi lido e voltar ao comeco da
+                                                                 janela. Nao mexe na caixa do
+                                                                 usuario, so no nosso marcador. -->
+                                                            <Button Style="{StaticResource AcctButton}"
+                                                                    Margin="0,0,4,0"
+                                                                    Click="ResetarLeitura_Click"
+                                                                    ToolTip="Esquecer o que ja foi lido e triar tudo de novo">
+                                                                <Path Style="{StaticResource AcctIcon}"
+                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                      Data="M15.5,7.5 A6,6 0 1 0 16,11.2
+                                                                            M15.5,4 L15.5,7.5 L12,7.5"/>
+                                                            </Button>
+
+                                                            <Button x:Name="BotaoRemoverConta"
+                                                                    Style="{StaticResource AcctDangerButton}"
+                                                                    Click="RemoverConta_Click"
+                                                                    ToolTip="Remover conta">
+                                                                <Path Style="{StaticResource AcctIcon}"
+                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                      Data="M4.5,6.5 L15.5,6.5 M8,6.5 L8,5 L12,5 L12,6.5
+                                                                            M6.5,6.5 L7.1,15.5 L12.9,15.5 L13.5,6.5"/>
+                                                            </Button>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- "Adicionar conta". Vira Collapsed enquanto o formulário
+                                         está aberto: uma conta por vez (§3.12). -->
+                                    <Button x:Name="BotaoAdicionarConta"
+                                            Style="{StaticResource AddAccountButton}"
+                                            Click="AdicionarConta_Click">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Width="14" Height="14" Stretch="None"
+                                                  StrokeThickness="1.6"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                  Data="M7,2.5 L7,11.5 M2.5,7 L11.5,7"
+                                                  VerticalAlignment="Center"/>
+                                            <TextBlock Text="Adicionar conta" FontSize="12" FontWeight="SemiBold"
+                                                       Margin="7,0,0,0" VerticalAlignment="Center"
+                                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <!-- FORMULÁRIO DE NOVA CONTA. Aparece NO LUGAR do botão,
+                                         dentro da mesma lista, para o usuário não perder a
+                                         referência das contas já conectadas. Borda lilás =
+                                         "em edição". -->
+                                    <Border x:Name="FormularioDeConta"
+                                            Visibility="Collapsed"
+                                            CornerRadius="10"
+                                            Padding="12,4,12,12"
+                                            Background="{StaticResource SurfaceCardBrush}"
+                                            BorderBrush="{StaticResource AccentEdge28Brush}"
+                                            BorderThickness="1">
+                                        <StackPanel>
+                                            <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                                <Grid Margin="0,13">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                        <TextBlock Text="E-mail" Style="{StaticResource FieldLabelText}"/>
+                                                        <TextBlock Text="O endereço é a identidade da caixa."
+                                                                   Style="{StaticResource FieldHelpText}"/>
+                                                    </StackPanel>
+                                                    <TextBox x:Name="NovaContaEndereco" Grid.Column="1"
+                                                             Style="{StaticResource ControlTextBoxMono}"
+                                                             TextChanged="NovaConta_Mudou"
+                                                             LostFocus="NovaContaEndereco_LostFocus"/>
+                                                </Grid>
+                                            </Border>
+
+                                            <Grid Margin="0,13">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                    <TextBlock Text="Senha de app" Style="{StaticResource FieldLabelText}"/>
+                                                    <TextBlock Text="Não use a senha da sua conta. Gere uma senha de app no seu provedor."
+                                                               Style="{StaticResource FieldHelpText}"/>
+                                                </StackPanel>
+                                                <PasswordBox x:Name="NovaContaSenha" Grid.Column="1"
+                                                             Style="{StaticResource ControlPasswordBox}"
+                                                             PasswordChanged="NovaConta_Mudou"/>
+                                            </Grid>
+
+                                            <!-- Faixa de erro do formulário. Fica ACIMA dos
+                                                 botões e só aparece quando há erro. -->
+                                            <Border x:Name="ErroDaConta"
+                                                    Visibility="Collapsed"
+                                                    Margin="0,0,0,10"
+                                                    Padding="10,7"
+                                                    CornerRadius="8"
+                                                    Background="{StaticResource DangerFill12Brush}"
+                                                    BorderBrush="{StaticResource DangerBorderBrush}"
+                                                    BorderThickness="1">
+                                                <TextBlock x:Name="ErroDaContaTexto"
+                                                           FontSize="11.5" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource DangerTextBrush}"/>
+                                            </Border>
+
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                <Button Content="Cancelar"
+                                                        Style="{StaticResource QuietButton}"
+                                                        Margin="0,0,8,0"
+                                                        Click="CancelarNovaConta_Click"/>
+                                                <Button x:Name="BotaoConectarConta"
+                                                        Content="Conectar conta"
+                                                        Style="{StaticResource SolidSmallButton}"
+                                                        IsEnabled="False"
+                                                        Click="ConectarConta_Click"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Janela de leitura (dias) -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Janela de leitura (dias)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Quantos dias para trás a varredura olha. Triar backlog é trabalho jogado fora." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MailWindowTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Tempo limite por caixa (segundos) -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Tempo limite por caixa (segundos)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Quanto esperar antes de desistir de um servidor mudo." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MailTimeoutTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Dias de diário da triagem -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Guardar o que a triagem leu (dias)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Vale para o que a triagem lê SOZINHA: remetente, assunto e o resumo de uma linha — nunca o corpo. É o que permite perguntar no chat &quot;quantos e-mails hoje&quot; ou &quot;tem algo urgente&quot;. Em 0, esse registro é apagado e o chat deixa de saber da caixa."/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Margin="0,6,0,0"
+                                                           Text="NÃO vale para as conversas que você abre sobre um e-mail: essas são conversas suas e ficam guardadas como as outras, até você descartá-las pelo botão da lixeira na própria leitura."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MailJournalTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+
+                                    <!-- Provedor e modelo da triagem — próprios, não os da conversa. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Provedor da triagem" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock x:Name="TriagemAviso" Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quem lê os e-mails para classificar. Pode ser diferente do provedor da conversa."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="TriagemProvedorComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="TriagemProvedor_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Modelo da triagem" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Vazio usa o modelo configurado para esse provedor em Conexão LLM."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="TriagemModeloComboBox" Grid.Column="1" VerticalAlignment="Center" IsEditable="True"
+                                                      Style="{StaticResource ControlComboBoxMono}"
+                                                      SelectionChanged="Campo_Mudou" LostFocus="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    <!-- Deixar o modelo pensar ao triar -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Deixar o modelo pensar ao triar" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="A triagem é um julgamento de tiro único, que é onde raciocinar mais rende — e o diário deixa medir se rendeu. Cada digest fica mais lento em troca."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="MailTriageThinkingSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. Um botão único
+                                         para a tela inteira faria quem quer voltar um número de
+                                         e-mail atrás perder de quebra o provedor e o modelo. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Email" Click="Restaurar_Click"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- ─────────── PÁGINA 4 — Shadow Assistant ─────────── -->
+                        <Grid x:Name="PaginaShadow" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Shadow Assistant" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="O assistente que fica sobre a área de trabalho."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+
+                                    <!-- CAMPO — o Shadow em si -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Mostrar o Shadow no desktop"
+                                                           Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Fica sempre à vista, fora da janela de conversa. O mesmo interruptor da bandeja."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="ShadowAssistantSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="ShadowSwitch_Mudou"
+                                                          Unchecked="ShadowSwitch_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- CAMPO — a triagem de e-mail.
+                                         Chave SEPARADA da do Shadow, e INDEPENDENTE dela nos
+                                         dois sentidos: querer a bola no desktop não é querer
+                                         que ela abra a caixa de entrada, e não querer a bola
+                                         não é desistir da triagem. O orbe só MOSTRA o digest;
+                                         sem ele o resultado aparece na aba E-mail da conversa e
+                                         num aviso da bandeja.
+
+                                         Por isso a chave fica sempre habilitada. Desabilitada
+                                         com o orbe desligado, ela continuava GRAVADA como
+                                         ligada e a triagem continuava rodando — uma chave que
+                                         esconde o que está acontecendo em vez de decidir. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Deixar a AIB triar os e-mails"
+                                                           Style="{StaticResource FieldLabelText}"/>
+                                                <!-- O texto sai do ESTADO, não é constante: sem
+                                                     caixa conectada, com o orbe na tela e sem
+                                                     ele são três situações diferentes, e uma
+                                                     frase só mentiria em duas delas. -->
+                                                <TextBlock x:Name="ShadowMailAjuda"
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="ShadowMailSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou"
+                                                          Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- E-mails mostrados na fala -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="E-mails mostrados na fala" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Quantos cabem antes de o resto virar uma linha de texto. Uma caixa de entrada inteira sobre o desktop não é o produto." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="ShadowMailPreviewTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- CAMPO — iniciativa. Opt-in: cada vez que ela pondera
+                                         falar é uma requisição paga. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Puxar assunto sozinha"
+                                                           Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Pelo orbe, retoma o que ficou em aberto ou pergunta sobre você. Fala mais quando você conversa com ela e menos quando ignora. Cada vez que ela pensa em falar é uma requisição ao modelo."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                                <!-- O que ela aprendeu, e como esquecer. -->
+                                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                                    <TextBlock x:Name="IniciativaResumo"
+                                                               VerticalAlignment="Center"
+                                                               Style="{StaticResource FieldHelpText}"/>
+                                                    <Button Content="Zerar aprendizado" Margin="10,0,0,0"
+                                                            Style="{StaticResource QuietButton}"
+                                                            Click="ZerarIniciativa_Click"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="IniciativaSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou"
+                                                          Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Teto de mensagens por dia: a trava de custo, escolha do usuário. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Máximo de mensagens por dia" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Cada mensagem é uma requisição ao modelo. O ritmo dela se ajusta abaixo deste teto (1 a 20)."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MensagensPorDiaTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Horário de silêncio -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Horário de silêncio" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="De quando até quando ela não puxa assunto (HH:mm). Lembretes que você pediu chegam mesmo assim."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <Grid Grid.Column="1">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="SilencioInicioTextBox"
+                                                         Style="{StaticResource ControlTextBoxMono}"
+                                                         TextChanged="Campo_Mudou"/>
+                                                <TextBlock Grid.Column="1" Text="até" Margin="8,0"
+                                                           VerticalAlignment="Center"
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                                <TextBox x:Name="SilencioFimTextBox" Grid.Column="2"
+                                                         Style="{StaticResource ControlTextBoxMono}"
+                                                         TextChanged="Campo_Mudou"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. Um botão único
+                                         para a tela inteira faria quem quer voltar um número de
+                                         e-mail atrás perder de quebra o provedor e o modelo. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Shadow" Click="Restaurar_Click"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- ─────────── PÁGINA 5 — Ferramentas ─────────── -->
+                        <Grid x:Name="PaginaFerramentas" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Ferramentas" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="O que a IA pode fazer na sua máquina, e onde."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+
+                                    <!-- Ferramentas inteligentes -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Ferramentas inteligentes" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Desligado, a IA responde sem poder ler, escrever nem executar nada — chat puro, e bem mais rápido." Style="{StaticResource FieldHelpText}"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="IntelligentToolsSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Confirmar comandos perigosos -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Confirmar comandos perigosos" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Abaixo do Nível 7, bloqueia de saída apagar em massa, formatar, desligar e mexer no registro — antes mesmo do cartão." Style="{StaticResource FieldHelpText}"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="ConfirmDangerousSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Filtrar saída de comandos (FiltroDeSaida) -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Enxugar saída de comandos" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Linhas repetidas viram uma, e a saída longa guarda o começo, os erros e o fim. Menos tokens a cada turno." Style="{StaticResource FieldHelpText}"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="FiltrarSaidaSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Máximo de etapas por turno -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Máximo de etapas por turno" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Teto do laço de ferramentas. Ao estourar, a resposta é cortada e o corte aparece na conversa." Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MaxIterationsTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Pastas sem confirmação.
+                                         Esta lista DISPENSA a pergunta, não barra nada: fora
+                                         dela o card aparece igual a sempre. Vazia, tudo
+                                         pergunta. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <StackPanel Margin="0,13">
+                                            <TextBlock Text="Pastas sem confirmação"
+                                                       Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                       Text="Uma pasta por linha, caminho absoluto. Gravar e editar dentro delas executa direto, sem o card. Fora delas o card aparece como sempre — nada é recusado por causa desta lista. Vazio pergunta tudo. NÃO vale para o shell: lá o card sempre aparece, e avisa quando o comando cita caminho fora destas pastas."/>
+                                            <TextBox x:Name="PastasSemConfirmacaoTextBox" Margin="0,8,0,0"
+                                                     Style="{StaticResource ControlTextBoxLista}"
+                                                     TextChanged="PastasSemConfirmacao_Mudou"/>
+                                            <TextBlock x:Name="PastasSemConfirmacaoResumo" Margin="0,6,0,0"
+                                                       Style="{StaticResource FieldHelpText}"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- O que o usuário autorizou nesta sessão.
+                                         Uma allowlist que ele não consegue VER é uma decisão de
+                                         segurança tomada por ele e depois escondida dele. -->
+                                    <Border BorderThickness="0">
+                                        <StackPanel Margin="0,13">
+                                            <TextBlock Text="Autorizações desta sessão"
+                                                       Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                       Text="Os comandos marcados como &quot;Sempre permitir&quot;. Valem só enquanto a AIB estiver aberta, e casam com o texto exato — mudou uma vírgula, o modal pergunta de novo."/>
+                                            <TextBlock x:Name="AutorizacoesTexto" Margin="0,6,0,0"
+                                                       Style="{StaticResource FieldHelpText}"
+                                                       TextWrapping="Wrap"/>
+                                            <Button x:Name="LimparAutorizacoes" Margin="0,10,0,0"
+                                                    HorizontalAlignment="Left"
+                                                    Style="{StaticResource QuietButton}"
+                                                    Content="Esquecer todas"
+                                                    Click="LimparAutorizacoes_Click"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Ferramentas" Click="Restaurar_Click"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- ─────────── PÁGINA 6 — Memória ─────────── -->
+                        <Grid x:Name="PaginaMemoria" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Memória" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="Como a conversa longa é guardada, e quanto disso o modelo escreve."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+
+                                    <!-- Quem escreve a memória: código e modelo, ou só código. O modo só código existe pelo modelo local, onde cada capítulo custava minutos. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Quem escreve a memória" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O código registra o estado dos arquivos e os seus pedidos palavra por palavra. O modelo acrescenta o objetivo e as lições. Com modelo local lento, só o código fecha o capítulo na hora, sem chamar o modelo."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="MemoriaQuemEscreveComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="Campo_Mudou">
+                                                <ComboBoxItem Content="Código e modelo (Recomendado)" Tag="modelo"/>
+                                                <ComboBoxItem Content="Só o código" Tag="codigo"/>
+                                            </ComboBox>
+                                        </Grid>
+                                    </Border>
+                                    <!-- Compactar a partir de (% da conversa) -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Compactar a partir de (% da conversa)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Precisa disparar ANTES do estouro, senão a poda de emergência come o que o capítulo iria resumir."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="CompactionTriggerTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    <!-- Turnos por capítulo -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Turnos por capítulo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quantos turnos cada compactação resume de uma vez (2 a 20). Menos turnos, resumo mais rápido num modelo local; mais turnos, menos compactações."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="TurnosPorCapituloTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Tokens por capítulo.
+                                         O outro teto do mesmo corte: contar turno não mede
+                                         trabalho, e um turno com quarenta ferramentas vale por
+                                         uma conversa inteira. Fecha no primeiro que bater. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Tokens por capítulo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Teto de tokens que cada capítulo resume (4.000 a 60.000). O capítulo fecha no primeiro teto que bater, este ou o de turnos. Sem ele, oito turnos cheios de saída de ferramenta viram um resumo só."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="TokensPorCapituloTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    <!-- Capítulos por ato. Automático segue o provedor (LimitesDoProvedor). -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Teto de capítulos por ato" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="No máximo quantos capítulos se juntam num ato. A hora de juntar quem decide é a cota: enquanto os capítulos couberem na faixa deles, ficam inteiros. Juntar reescreve a memória no começo do prompt — no OpenRouter, fazer isso menos vezes é menos cache perdido."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="CapitulosPorAtoComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="Campo_Mudou">
+                                                <ComboBoxItem Content="Automático (12 no Ollama, 24 no OpenRouter)" Tag="0"/>
+                                                <ComboBoxItem Content="4" Tag="4"/>
+                                                <ComboBoxItem Content="8" Tag="8"/>
+                                                <ComboBoxItem Content="12" Tag="12"/>
+                                                <ComboBoxItem Content="16" Tag="16"/>
+                                                <ComboBoxItem Content="24" Tag="24"/>
+                                            </ComboBox>
+                                        </Grid>
+                                    </Border>
+                                    <!-- Fatia do contexto para memória (%) -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Fatia do contexto para memória (%)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quanto do que sobra é reservado para fatos, atos e capítulos."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MemoryFractionTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    <!-- Esconder resultados antigos de ferramentas (ResultadosAntigos). Só a cópia que vai ao modelo muda. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Esconder resultados antigos de ferramentas" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O conteúdo de arquivos lidos e saídas de comando de turnos antigos sai do que vai ao modelo, e fica uma linha dizendo o que era. Alivia muito o modelo local. No OpenRouter, deixe em Nunca: mudar o meio do prompt perde o cache."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="EsconderResultadosComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      Style="{StaticResource ControlComboBox}"
+                                                      SelectionChanged="Campo_Mudou">
+                                                <ComboBoxItem Content="Nunca" Tag="0"/>
+                                                <ComboBoxItem Content="Depois de 4 turnos" Tag="4"/>
+                                                <ComboBoxItem Content="Depois de 8 turnos" Tag="8"/>
+                                                <ComboBoxItem Content="Depois de 16 turnos" Tag="16"/>
+                                            </ComboBox>
+                                        </Grid>
+                                    </Border>
+                                    <!-- Guardar a fala junto da ferramenta -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Guardar a fala junto da ferramenta" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O que o agente disse antes de chamar uma ferramenta volta para ele na etapa seguinte. Sem isso ele esquece por que escolheu aquele caminho e repete a mesma chamada. Deixe ligado."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="KeepAssistantSpeechSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Onde a conversa fica gravada. Mesmo gesto da aba Logs: uma
+                                         configuração de memória que não diz ONDE a memória mora
+                                         obriga o usuário a procurar. -->
+                                    <Border BorderThickness="0">
+                                        <StackPanel Margin="0,13">
+                                            <TextBlock Text="Onde a conversa fica gravada"
+                                                       Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock x:Name="PastaDeMemoriaTexto" Margin="0,4,0,0"
+                                                       Style="{StaticResource FieldHelpText}"
+                                                       TextWrapping="Wrap"/>
+                                            <Button x:Name="AbrirPastaDeMemoria" Margin="0,10,0,0"
+                                                    HorizontalAlignment="Left"
+                                                    Style="{StaticResource QuietButton}"
+                                                    Content="Abrir a pasta"
+                                                    Click="AbrirPastaDeMemoria_Click"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Memoria" Click="Restaurar_Click"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- ─────────── PÁGINA 7 — Avançado ─────────── -->
+                        <Grid x:Name="PaginaAvancado" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{StaticResource SurfaceCardBrush}"
+                                    BorderBrush="{StaticResource BorderCardBrush}"
+                                    BorderThickness="1" CornerRadius="0" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="Avançado" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="Se o pensamento de cada etapa volta ao modelo ou é descartado."
+                                               Style="{StaticResource PageSubtitle}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Margin="40,0,24,20">
+
+                                    <!-- Devolver o raciocínio ao modelo -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Devolver o raciocínio ao modelo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O pensamento de cada etapa volta ao modelo nas seguintes, em vez de ser descartado. Modelos de raciocínio são treinados esperando o pensamento AUSENTE do histórico — pode melhorar ou piorar. Só faz diferença com o raciocínio ligado."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="ThinkingInHistorySwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. Um botão único
+                                         para a tela inteira faria quem quer voltar um número
+                                         atrás perder de quebra o provedor e o modelo. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Avancado" Click="Restaurar_Click"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- ─────────── PÁGINA 8 — Logs ─────────── -->
+                        <Grid x:Name="PaginaLogs" Visibility="Collapsed">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="40,28,40,28">
+
+                                    <TextBlock Text="Logs" Style="{StaticResource PageTitle}"/>
+                                    <TextBlock Text="O que a AIB registra enquanto trabalha, e onde."
+                                               Style="{StaticResource PageSubtitle}"/>
+
+                                    <Border Height="18" Background="Transparent"/>
+                                    <!-- Logs detalhados no console -->
+                                    <Grid Margin="0,13">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                            <TextBlock Text="Logs detalhados no console"
+                                                       Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock Style="{StaticResource FieldHelpText}">
+                                                <Run Text="Modo "/><Hyperlink x:Name="DebugLink"
+                                                           Foreground="{StaticResource AccentLilacBrush}"
+                                                           TextDecorations="{x:Null}"
+                                                           Click="DebugLink_Click"><Run Text="debug"/></Hyperlink><Run Text="."/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <ToggleButton x:Name="VerboseLoggingSwitch" Grid.Column="1"
+                                                      Style="{StaticResource Switch}"
+                                                      Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                    </Grid>
+
+                                    <!-- Registro de execução em arquivo -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Gravar registro de execução"
+                                                           Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Um arquivo por execução em ~/.AIB/logs/. Grava TUDO o que sai no terminal, inclusive os prompts com o conteúdo dos seus e-mails — confira antes de compartilhar."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="ExecutionLogSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Diário da compactação. Mora na PASTA DA SESSÃO, e não em
+                                         ~/.AIB/logs: um registro de compactação separado da
+                                         conversa que ele compactou obriga a cruzar horário
+                                         à mão. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Gravar diário da compactação"
+                                                           Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quando a memória foi compactada em capítulos e atos, quanto custou e quando falhou. Vai para compactacao.log na pasta da conversa, junto do raw. Grava contagens e tempos, não o texto dos resumos — pode ficar ligado."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="CompactionLogSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Simulação do primeiro envio. Botão, e não chave: roda sob
+                                         demanda. Refaz o processamento de uma conversa nova pelas
+                                         mesmas funções do turno e grava em vez de mandar. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <StackPanel Margin="0,13">
+                                            <TextBlock Text="Simular o primeiro envio"
+                                                       Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                       Text="Monta uma conversa nova com as configurações salvas e processa um primeiro &quot;oi&quot; como se fosse enviá-lo — instruções de sistema, memória, ferramentas e parâmetros —, mas grava o resultado num arquivo em ~/.AIB/logs/ em vez de mandar ao modelo. A conversa aberta não é tocada. Confira antes de compartilhar."/>
+                                            <Button x:Name="ImprimirPrompt" Margin="0,10,0,0"
+                                                    HorizontalAlignment="Left"
+                                                    Style="{StaticResource QuietButton}"
+                                                    Content="Imprimir o prompt"
+                                                    Click="ImprimirPrompt_Click"/>
+                                            <TextBlock x:Name="RetratoDoPromptTexto" Margin="0,6,0,0"
+                                                       Style="{StaticResource FieldHelpText}"
+                                                       TextWrapping="Wrap" Visibility="Collapsed"/>
+                                        </StackPanel>
+                                    </Border>
+
+
+                                    <!-- Onde os arquivos ficam. Uma chave que grava em disco e
+                                         não diz ONDE obriga o usuário a procurar. -->
+                                    <Border BorderThickness="0">
+                                        <StackPanel Margin="0,13">
+                                            <TextBlock Text="Onde os arquivos ficam"
+                                                       Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock x:Name="PastaDeLogsTexto" Margin="0,4,0,0"
+                                                       Style="{StaticResource FieldHelpText}"
+                                                       TextWrapping="Wrap"/>
+                                            <TextBlock Margin="0,6,0,0"
+                                                       Style="{StaticResource FieldHelpText}"
+                                                       TextWrapping="Wrap"
+                                                       Text="O diário da compactação é a exceção: ele fica na pasta de cada conversa, em Configurações › Memória."/>
+                                            <Button x:Name="AbrirPastaDeLogs" Margin="0,10,0,0"
+                                                    HorizontalAlignment="Left"
+                                                    Style="{StaticResource QuietButton}"
+                                                    Content="Abrir a pasta"
+                                                    Click="AbrirPastaDeLogs_Click"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- RESTAURAR — só os campos DESTA página. -->
+                                    <Button HorizontalAlignment="Right" Margin="0,18,0,0"
+                                            Style="{StaticResource QuietButton}"
+                                            Content="Restaurar padrões desta página"
+                                            Tag="Logs" Click="Restaurar_Click"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Grid>
+                </Grid>
+
+                <!-- ══════════════════════════════════════════════════════════
+                     §3.9  RODAPÉ
+                     ══════════════════════════════════════════════════════════ -->
+                <Grid Grid.Row="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Rectangle Height="1" Fill="{StaticResource DividerBrush}"/>
+
+                    <Grid Grid.Row="1" Margin="24,14,24,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" Content="Reset de Fábrica"
+                                Style="{StaticResource DangerOutlineButton}"
+                                Click="WipeData_Click"/>
+
+                        <Button Grid.Column="2" Content="Cancelar"
+                                Style="{StaticResource OutlineButton}"
+                                Click="Cancel_Click" Margin="0,0,10,0"/>
+
+                        <!-- Nasce desabilitado. Sem isso o usuário não sabe se mexeu
+                             em algo. §7 A8. -->
+                        <Button x:Name="SaveButton" Grid.Column="3" Content="Salvar"
+                                Style="{StaticResource PrimaryButton}"
+                                Click="Save_Click" IsEnabled="False"/>
+                    </Grid>
+                </Grid>
+            </Grid>
         </Border>
     </Border>
 </Window>
