@@ -2325,7 +2325,8 @@ namespace AIB.Tests
             await foreach (var _ in orbe.StreamResponseAsync(marca, _ => { })) { }
 
             ChatHistoryService.ConversasDoUsuario().Should().NotContain(c => c.Content.Contains(marca));
-            Path.GetFileName(orbe.SessionMemoryDir).Should().Be("shadow");
+            // Direto em memory/, e não em memory/sessions/: é uma só, não uma sessão entre muitas.
+            orbe.SessionMemoryDir.Should().Be(Path.Combine(_dir, "memory", "shadow"));
             File.ReadAllText(Path.Combine(orbe.SessionMemoryDir, "raw.jsonl")).Should().Contain(marca, "raw.jsonl guarda tudo");
         }
 

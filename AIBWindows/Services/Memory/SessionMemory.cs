@@ -40,7 +40,11 @@ public sealed class SessionMemory
 
     /// <param name="sessionId">Identificador da sessão. Vira nome de pasta.</param>
     /// <param name="rootOverride">Raiz alternativa. Existe para o teste não escrever no ~/.AIB real.</param>
-    public SessionMemory(string sessionId, string? rootOverride = null)
+    /// <param name="naRaiz">
+    /// A pasta fica direto na raiz da memória, e não em <c>sessions/</c>. É a conversa do orbe
+    /// (<c>memory/shadow</c>): uma só para sempre, não uma sessão entre muitas.
+    /// </param>
+    public SessionMemory(string sessionId, string? rootOverride = null, bool naRaiz = false)
     {
         if (string.IsNullOrWhiteSpace(sessionId)) throw new ArgumentException("sessionId vazio", nameof(sessionId));
 
@@ -50,7 +54,7 @@ public sealed class SessionMemory
 
         SessionId = seguro;
         string raiz = rootOverride ?? DirectoryService.MemoryDir;
-        SessionDir = Path.Combine(raiz, "sessions", seguro);
+        SessionDir = naRaiz ? Path.Combine(raiz, seguro) : Path.Combine(raiz, "sessions", seguro);
     }
 
     public string SessionId { get; }

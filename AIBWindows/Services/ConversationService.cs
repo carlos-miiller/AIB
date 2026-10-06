@@ -695,7 +695,8 @@ public sealed class ConversationService : IMessageStore
 
         try
         {
-            var memoria = new SessionMemory(memorySessionId!, _memoryRootOverride);
+            var memoria = new SessionMemory(memorySessionId!, _memoryRootOverride,
+                                            naRaiz: memorySessionId == _sessaoFixa);
 
             // Antes de ler: um turno que ficou em curso quando o AIB caiu entra no registro
             // agora, fechado, e volta com a conversa como qualquer outro.
@@ -795,7 +796,9 @@ public sealed class ConversationService : IMessageStore
     // ─────────────────────────────────────────────────────────────────────────
 
     private SessionMemory NewSessionMemory() =>
-        new(_sessaoFixa ?? SessionMemory.SessionIdFrom(DateTime.Now), _memoryRootOverride);
+        _sessaoFixa != null
+            ? new(_sessaoFixa, _memoryRootOverride, naRaiz: true)
+            : new(SessionMemory.SessionIdFrom(DateTime.Now), _memoryRootOverride);
 
     /// <summary>Pasta desta sessão em disco. Diagnóstico e teste.</summary>
     public string SessionMemoryDir => _sessionMemory.SessionDir;

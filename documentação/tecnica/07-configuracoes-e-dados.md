@@ -49,6 +49,7 @@ O AIB não usa pasta temporária.
 ├── memory/
 │   ├── facts.md                     fatos duráveis (do usuário)
 │   ├── facts.index.jsonl            registro do que já foi promovido (da máquina)
+│   ├── shadow/                      a conversa do orbe, uma só para sempre (mesmos arquivos de uma sessão)
 │   └── sessions/<id>/
 │       ├── raw.jsonl                todos os turnos, crus — nunca apagado
 │       ├── chapters.jsonl           capítulos (resumos de turnos)
