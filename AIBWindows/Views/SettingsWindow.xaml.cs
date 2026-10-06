@@ -194,6 +194,9 @@ public partial class SettingsWindow : Window
             AtualizarAvisoDaTriagem();
 
             ShadowMailPreviewTextBox.Text = _currentSettings.ShadowMailPreviewCount.ToString();
+            IniciativaSwitch.IsChecked = _currentSettings.IniciativaLigada;
+            SilencioInicioTextBox.Text = _currentSettings.SilencioInicio;
+            SilencioFimTextBox.Text = _currentSettings.SilencioFim;
             MailWindowTextBox.Text = _currentSettings.MailWindowDays.ToString();
             MailTimeoutTextBox.Text = _currentSettings.MailTimeoutSeconds.ToString();
         MailJournalTextBox.Text = _currentSettings.MailJournalDays.ToString();
@@ -1315,6 +1318,9 @@ public partial class SettingsWindow : Window
                 ShadowAssistantSwitch.IsChecked = padrao.ShadowAssistantEnabled;
                 ShadowMailSwitch.IsChecked = padrao.ShadowHandlesMail;
                 ShadowMailPreviewTextBox.Text = padrao.ShadowMailPreviewCount.ToString();
+                IniciativaSwitch.IsChecked = padrao.IniciativaLigada;
+                SilencioInicioTextBox.Text = padrao.SilencioInicio;
+                SilencioFimTextBox.Text = padrao.SilencioFim;
                 AtualizarAjudaDoShadow();
                 break;
 
@@ -1923,6 +1929,10 @@ public partial class SettingsWindow : Window
 
         _currentSettings.ShadowAssistantEnabled = ShadowAssistantSwitch.IsChecked ?? false;
         _currentSettings.ShadowHandlesMail = ShadowMailSwitch.IsChecked ?? false;
+        _currentSettings.IniciativaLigada = IniciativaSwitch.IsChecked ?? false;
+        // Hora ilegível volta ao que estava (o Sanear abaixo só cobre o que veio do disco).
+        if (Iniciativa.Hora(SilencioInicioTextBox.Text) != null) _currentSettings.SilencioInicio = SilencioInicioTextBox.Text.Trim();
+        if (Iniciativa.Hora(SilencioFimTextBox.Text) != null) _currentSettings.SilencioFim = SilencioFimTextBox.Text.Trim();
 
         _currentSettings.EnableIntelligentTools = IntelligentToolsSwitch.IsChecked ?? true;
         _currentSettings.ConfirmDangerousCommands = ConfirmDangerousSwitch.IsChecked ?? true;

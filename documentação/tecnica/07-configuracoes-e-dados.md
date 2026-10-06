@@ -39,6 +39,8 @@ O AIB não usa pasta temporária.
 ~/.AIB/
 ├── profile.dat                      configurações (JSON cifrado com DPAPI)
 ├── chat_history.json                conversas arquivadas, para o painel
+├── lembretes.json                   lembretes únicos pendentes (ferramenta remind)
+├── iniciativa.json                  ritmo da iniciativa e contagens do dia
 ├── credentials/
 │   ├── openrouter.bin               chave do OpenRouter (DPAPI)
 │   └── mail/<sha256>.bin            senha de app de cada caixa (DPAPI)
@@ -154,6 +156,7 @@ Os campos `AiProvider`, `ApiUrl`, `ModelName`, `KeepAlive`, `ContextWindow` e `R
 | `MailWindowDays` | 1–30 | 3 |
 | `MailTimeoutSeconds` | 5–120 | 15 |
 | `MailJournalDays` | 0–90 | 7 |
+| `SilencioInicio` / `SilencioFim` | "HH:mm"; ilegível volta ao padrão; iguais desligam o silêncio | 22:00 / 08:00 |
 
 Cada padrão é uma `const` nomeada em `UserAppSettings` (`PadraoDeIteracoes`, `PadraoDoGatilhoDeCompactacao`…), lida pelo inicializador, pelo "Restaurar padrões" da tela e pelos testes. Número digitado em três lugares sai de sincronia na primeira mudança.
 

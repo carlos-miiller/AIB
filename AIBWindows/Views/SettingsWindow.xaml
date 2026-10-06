@@ -1343,6 +1343,58 @@
                                         </Grid>
                                     </Border>
 
+                                    <!-- CAMPO — iniciativa. Opt-in: cada vez que ela pondera
+                                         falar é uma requisição paga. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Puxar assunto sozinha"
+                                                           Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Pelo orbe, retoma o que ficou em aberto ou pergunta sobre você. Fala mais quando você responde e menos quando ignora. Cada vez que ela pensa em falar é uma requisição ao modelo."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="IniciativaSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou"
+                                                          Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Horário de silêncio -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Horário de silêncio" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="De quando até quando ela não puxa assunto (HH:mm). Lembretes que você pediu chegam mesmo assim."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <Grid Grid.Column="1">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="SilencioInicioTextBox"
+                                                         Style="{StaticResource ControlTextBoxMono}"
+                                                         TextChanged="Campo_Mudou"/>
+                                                <TextBlock Grid.Column="1" Text="até" Margin="8,0"
+                                                           VerticalAlignment="Center"
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                                <TextBox x:Name="SilencioFimTextBox" Grid.Column="2"
+                                                         Style="{StaticResource ControlTextBoxMono}"
+                                                         TextChanged="Campo_Mudou"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+
                                     <!-- RESTAURAR — só os campos DESTA página. Um botão único
                                          para a tela inteira faria quem quer voltar um número de
                                          e-mail atrás perder de quebra o provedor e o modelo. -->

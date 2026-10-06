@@ -255,12 +255,78 @@ public partial class App : System.Windows.Application
     private void IniciarAgenda()
     {
         _lembretes = new Lembretes();
+        _iniciativa = new Iniciativa();
+
+        // Qualquer turno é o usuário falando: marca a conversa como recente e, se havia uma
+        // iniciativa esperando, conta como resposta — o ritmo sobe.
+        _chatWindow!.TurnoConcluido += _ =>
+        {
+            _ultimaConversaUtc = DateTime.UtcNow;
+            _iniciativa.Respondeu();
+        };
+
         _agenda = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
-        _agenda.Tick += (_, _) => EntregarLembretes();
+        _agenda.Tick += (_, _) =>
+        {
+            EntregarLembretes();
+            _ = TalvezPuxarAssuntoAsync();
+        };
         _agenda.Start();
         Exit += (_, _) => _agenda?.Stop();
 
         EntregarLembretes();
+    }
+
+    private Iniciativa _iniciativa = null!;
+    private DateTime? _ultimaConversaUtc;
+    private bool _ponderando;
+
+    /// <summary>
+    /// A cada batida, vê se a persona pode puxar assunto; podendo, pergunta ao modelo se ela
+    /// quer, e o quê. As condições são baratas e vêm antes: só a ponderação custa.
+    /// <para>
+    /// Só com o orbe na tela. Sem ele a fala viraria aviso da bandeja com bipe, e conversa solta
+    /// apitando no canto da tela não é companhia, é interrupção. Lembrete pedido não depende disso.
+    /// </para>
+    /// </summary>
+    private async System.Threading.Tasks.Task TalvezPuxarAssuntoAsync()
+    {
+        if (_ponderando || _chatWindow == null) return;
+
+        var s = _settingsService.LoadSettings();
+        if (!s.IniciativaLigada) return;
+
+        var agora = DateTime.Now;
+        var utc = DateTime.UtcNow;
+        _iniciativa.NovoDia(agora);
+        _iniciativa.ConferirPaciencia(utc);
+
+        bool livre = _orbe != null && !_chatWindow.Ocupada && !_chatWindow.IsVisible;
+        string? impedimento = Iniciativa.Impedimento(
+            _iniciativa.Estado, utc, agora.TimeOfDay,
+            Iniciativa.Hora(s.SilencioInicio) ?? TimeSpan.FromHours(22),
+            Iniciativa.Hora(s.SilencioFim) ?? TimeSpan.FromHours(8),
+            livre && Presenca.Disponivel(), livre, _ultimaConversaUtc);
+        if (impedimento != null) return;
+
+        _ponderando = true;
+        try
+        {
+            string? fala = await _conversation.PonderarIniciativaAsync(System.Threading.CancellationToken.None);
+
+            // Enquanto ela pensava, o usuário pode ter aberto a conversa e começado a falar.
+            if (fala != null && _chatWindow.Ocupada) fala = null;
+
+            _iniciativa.Ponderou(DateTime.UtcNow, falou: fala != null);
+            Console.WriteLine($"[INICIATIVA] ponderou: {(fala == null ? "ficou quieta" : "falou")} "
+                              + $"(ritmo {_iniciativa.Estado.Ritmo:0.0}/dia).");
+
+            if (fala != null) FalarPorIniciativa(fala);
+        }
+        finally
+        {
+            _ponderando = false;
+        }
     }
 
     private void EntregarLembretes()

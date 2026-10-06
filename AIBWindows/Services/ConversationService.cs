@@ -2182,6 +2182,108 @@ public sealed class ConversationService : IMessageStore
         }
     }
 
+    /// <summary>
+    /// A persona decide se puxa assunto agora, e o quê (<see cref="Iniciativa"/>). Devolve a
+    /// fala, ou null quando ela escolhe ficar quieta (NADA) ou a chamada falha.
+    /// <para>
+    /// Chamada fora de banda, como a do título: sem ferramentas, sem o prompt de sistema
+    /// inteiro — só a alma, os fatos e as últimas falas. Não entra no histórico; quem põe a fala
+    /// na conversa, se houver, é o App.
+    /// </para>
+    /// </summary>
+    public async Task<string?> PonderarIniciativaAsync(CancellationToken ct)
+    {
+        var settings = _settingsService.LoadSettings();
+
+        string material = MaterialDaIniciativa(
+            LoadActiveCharacterSoul(settings.ActiveCharacter),
+            _facts.ReadFacts(),
+            UltimasFalas(12),
+            DateTime.Now);
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromMinutes(2));
+
+            var resultado = await _providerFactory.GetProvider(settings)
+                .CompleteAsync(new List<ChatMessage> { ChatMessage.CreateUserMessage(material) },
+                               Array.Empty<ChatTool>(),
+                               Ai.ChatRequestOptions.DeServico(300, think: false, temperature: 0.8f),
+                               timeout.Token)
+                .ConfigureAwait(false);
+
+            string texto = ThinkBlockStripper.Strip(resultado.Text).Trim();
+            return Iniciativa.EhSilencio(texto) ? null : texto;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[INICIATIVA] Falha ao ponderar: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// O pedido da ponderação. Puro, para o ensaio ver o que vai ao modelo.
+    /// <para>
+    /// O NADA é a saída de primeira classe, e não a exceção: o usuário pediu que ela escolha
+    /// quando falar. Sem ele, todo pedido terminaria numa fala forçada.
+    /// </para>
+    /// </summary>
+    public static string MaterialDaIniciativa(
+        string? alma, IReadOnlyList<string> fatos, IReadOnlyList<(bool DoUsuario, string Texto)> falas, DateTime agora)
+    {
+        var sb = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(alma)) sb.AppendLine(alma.Trim()).AppendLine().AppendLine("---").AppendLine();
+
+        sb.AppendLine($"Agora: {agora.ToString("dddd, dd/MM, HH:mm", new System.Globalization.CultureInfo("pt-BR"))}.");
+        sb.AppendLine("O usuário está no computador, mas não está conversando com você agora. Você pode puxar "
+                      + "assunto, como uma colega faria — ou não.");
+
+        sb.AppendLine().AppendLine("O que você sabe dele:");
+        if (fatos.Count == 0) sb.AppendLine("(quase nada ainda)");
+        foreach (var f in fatos) sb.AppendLine(f);
+
+        sb.AppendLine().AppendLine("Últimas mensagens da conversa:");
+        if (falas.Count == 0) sb.AppendLine("(nenhuma nesta sessão)");
+        foreach (var (doUsuario, texto) in falas) sb.AppendLine($"{(doUsuario ? "Usuário" : "Você")}: {texto}");
+
+        sb.AppendLine().AppendLine(
+            """
+            Escolha no máximo UMA, só se vier natural:
+            - retomar algo que ficou em aberto (algo que ele ia fazer, um problema sem desfecho);
+            - perguntar algo sobre ele, puxado do que você sabe ou do que ainda não sabe.
+            Não repita o que já perguntou nas últimas mensagens. Uma ou duas frases, na sua voz,
+            sem saudação genérica e sem oferecer ajuda.
+            Se nada vier natural, responda exatamente: NADA
+            """);
+
+        return sb.ToString();
+    }
+
+    /// <summary>As últimas falas de texto (sem ferramentas), aparadas.</summary>
+    private IReadOnlyList<(bool DoUsuario, string Texto)> UltimasFalas(int quantas)
+    {
+        var falas = new List<(bool, string)>();
+        lock (_gate)
+        {
+            foreach (var m in _history)
+            {
+                bool doUsuario = m is UserChatMessage;
+                if (!doUsuario && m is not AssistantChatMessage) continue;
+
+                string texto = string.Concat(m.Content
+                    .Where(p => p.Kind == ChatMessageContentPartKind.Text)
+                    .Select(p => p.Text)).Trim();
+                if (texto.Length == 0) continue;
+
+                texto = QuebraDeFala.Limpar(texto);
+                falas.Add((doUsuario, texto.Length <= 300 ? texto : texto[..297] + "..."));
+            }
+        }
+        return falas.Skip(Math.Max(0, falas.Count - quantas)).ToList();
+    }
+
     private void DefinirTitulo(string? titulo)
     {
         if (string.IsNullOrWhiteSpace(titulo)) return;

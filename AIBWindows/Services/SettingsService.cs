@@ -176,6 +176,20 @@ public sealed class UserAppSettings
     /// </para>
     /// </summary>
     public bool ShadowHandlesMail { get; set; } = false;
+
+    /// <summary>
+    /// Se a persona pode puxar assunto sozinha: retomar algo em aberto, perguntar sobre o
+    /// usuário. Opt-in, como o orbe: cada vez que ela pondera falar é uma requisição paga. O
+    /// ritmo se ajusta ao quanto o usuário responde (<see cref="Iniciativa"/>). Lembretes pedidos
+    /// não dependem desta chave.
+    /// </summary>
+    public bool IniciativaLigada { get; set; } = false;
+
+    /// <summary>Começo do horário de silêncio, "HH:mm". Lembrete pedido fura o silêncio.</summary>
+    public string SilencioInicio { get; set; } = "22:00";
+
+    /// <summary>Fim do horário de silêncio, "HH:mm". Igual ao começo desliga o silêncio.</summary>
+    public string SilencioFim { get; set; } = "08:00";
     // Quando ativo, o console mostra logs detalhados do streaming ReAct
     // (STREAM-DBG, contadores de updates, classificação de chunks).
     // Útil para diagnosticar respostas vazias ou comportamento estranho do modelo.
@@ -520,6 +534,8 @@ public sealed class UserAppSettings
         MailWindowDays = Entre(MailWindowDays, 1, 30);
         MailTimeoutSeconds = Entre(MailTimeoutSeconds, 5, 120);
         MailJournalDays = Entre(MailJournalDays, 0, 90);
+        SilencioInicio = Iniciativa.Hora(SilencioInicio) is { } ini ? ini.ToString(@"hh\:mm") : "22:00";
+        SilencioFim = Iniciativa.Hora(SilencioFim) is { } fim ? fim.ToString(@"hh\:mm") : "08:00";
         return this;
     }
 

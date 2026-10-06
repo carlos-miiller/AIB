@@ -343,6 +343,25 @@ seguinte.
 tela, avisa pelo orbe (`EnfileirarFala`: pulso, texto só no clique) ou, sem orbe, pela bandeja.
 Lembrete não chama o modelo: o texto foi escrito pela persona no pedido.
 
+**Iniciativa** (`Services/Iniciativa.cs`, opt-in `IniciativaLigada`): na mesma batida,
+`TalvezPuxarAssuntoAsync` vê se a persona pode puxar assunto. `Iniciativa.Impedimento` decide,
+sem custo: fora do horário de silêncio (`SilencioInicio`/`SilencioFim`, atravessa a meia-noite);
+orbe na tela, conversa fora da tela e sem turno; usuário presente (`Presenca`: entrada nos
+últimos 5 min e `SHQueryUserNotificationState` aceitando avisos — sem tela cheia nem "não
+perturbe"); 15 min sem conversa; a última fala dela já respondida; o ritmo do dia não cumprido;
+e o espaço que o ritmo pede desde a última fala (horas acordadas ÷ ritmo; meio espaço depois de
+uma ponderação que terminou quieta).
+
+Podendo, `ConversationService.PonderarIniciativaAsync` chama o modelo fora de banda (sem
+ferramentas, temperatura 0,8) com a alma, os fatos e as últimas 12 falas
+(`MaterialDaIniciativa`): retomar algo em aberto, perguntar sobre o usuário, ou `NADA`. NADA é a
+saída de primeira classe — ela escolhe quando falar.
+
+O ritmo é adaptativo e fica em `~/.AIB/iniciativa.json`: começa em 2 falas por dia, sobe 0,5
+quando o usuário responde (qualquer turno depois da fala, `Respondeu`) e cai para 60% quando a
+fala fica 8 h sem resposta (`ConferirPaciencia`), entre 0,5 e 6. Teto de 12 ponderações por dia,
+contando as que terminam em NADA: cada uma é uma requisição paga.
+
 ## MailListItem
 
 O mesmo item nas duas telas (orbe e modo e-mail). As diferenças são propriedades
@@ -387,7 +406,7 @@ A janela abre direto numa página pelo parâmetro do construtor (é o que o modo
 | Identidade | Personagem ativo (pastas de `~/.AIB/character`). |
 | Conexão LLM | Provedor. Cada provedor tem perfil próprio (`PerfilDeProvedor`) guardado em `_perfis`: trocar e voltar não perde nada. Ollama: endereço, modelo, keep-alive. OpenRouter: chave ("Alterar"), modelo (catálogo com janela e preço), "Só provedores que não guardam dados", "Provedor preferido". Comuns: janela de contexto, raciocínio, orçamento do nível (calculado, só leitura), "Enviar System Prompt a cada requisição". |
 | E-mail | Contas (adicionar com endereço e senha de app, principal, trocar senha, zerar leitura, remover), janela de leitura em dias, tempo limite por caixa, dias de diário da triagem, provedor e modelo da triagem, raciocínio na triagem. |
-| Shadow | Mostrar o orbe, deixar o Shadow tratar os e-mails, e-mails mostrados na fala. |
+| Shadow | Mostrar o orbe, deixar o Shadow tratar os e-mails, e-mails mostrados na fala, puxar assunto sozinha (iniciativa), horário de silêncio. |
 | Ferramentas | Ferramentas inteligentes, confirmar comandos perigosos (floor list), máximo de etapas por turno, pastas sem confirmação, autorizações "sempre permitir" da sessão ("Esquecer todas"). |
 | Memória | Quem escreve a memória, gatilho de compactação, turnos e tokens por capítulo, teto de capítulos por ato, fatia de memória, esconder resultados antigos, guardar a fala junto da ferramenta, pasta da conversa. |
 | Avançado | Devolver o raciocínio ao modelo. |
