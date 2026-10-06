@@ -10,7 +10,7 @@ namespace AIB.Services;
 /// O orbe rodava o turno ESCONDIDO dentro da conversa principal: o que se dizia pela barra
 /// aparecia misturado com o trabalho da janela, e entrava no histórico do painel. Agora ele tem
 /// a própria conversa (<see cref="ConversationService"/> em sessão fixa,
-/// <c>memory/sessions/orbe</c>), fora do histórico; as duas se encontram só nos fatos duráveis.
+/// <c>memory/sessions/shadow</c>), fora do histórico; as duas se encontram só nos fatos duráveis.
 /// </para>
 /// <para>
 /// Ela se mantém leve pela compactação: a de sempre (contexto cheio) e mais uma por tempo —
@@ -26,8 +26,11 @@ namespace AIB.Services;
 /// </summary>
 public sealed class ConversaDoOrbe
 {
-    /// <summary>A sessão de memória do orbe, em <c>memory/sessions/</c>.</summary>
-    public const string Sessao = "orbe";
+    /// <summary>
+    /// A sessão de memória do orbe, em <c>memory/sessions/</c>. "shadow", o nome oficial (Shadow
+    /// Assistant); "orbe" é o apelido.
+    /// </summary>
+    public const string Sessao = "shadow";
 
     /// <summary>Parada há mais que isso, o que estiver solto vira capítulo.</summary>
     public static readonly TimeSpan Pausa = TimeSpan.FromHours(2);

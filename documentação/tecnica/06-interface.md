@@ -315,7 +315,7 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   foco volta ao círculo.
 - **Enviar** pela barra dispara `MensagemEnviada`, e o turno roda na **conversa do orbe**
   (`Services/ConversaDoOrbe`), separada da janela: um `ConversationService` em sessão fixa
-  (`memory/sessions/orbe`), reaberto de onde parou no arranque, fora do `chat_history.json` e sem
+  (`memory/sessions/shadow`), reaberto de onde parou no arranque, fora do `chat_history.json` e sem
   título, com laço de agente próprio. As duas conversas se encontram só nos fatos duráveis; os
   guardas de e-mail do registry são SOMADOS (o mais restritivo vale). O orbe mostra o passo
   (`PassoMudou`) e o texto final (`Respondeu` → `ResponderTurno`): com a barra aberta, a
