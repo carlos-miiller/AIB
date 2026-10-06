@@ -410,6 +410,8 @@ public partial class FirstRunWindow : Window
         if (AgentsListBox.SelectedItem is AgentProfile selectedAgent)
             settings.ActiveCharacter = selectedAgent.DirectoryName;
 
+        settings.NomeDoUsuario = NomeDoUsuarioTextBox.Text ?? "";
+
         _settingsService.SaveSettings(settings.Sanear());
 
         // Só os quatro últimos caracteres da chave.
@@ -445,6 +447,7 @@ public partial class FirstRunWindow : Window
         settings.Ativar(ProvedoresDeIa.Ollama, perfil);
         settings.MailTriageProvider = ProvedoresDeIa.Ollama;
         settings.MailTriageModel = selectedModel;
+        settings.NomeDoUsuario = NomeDoUsuarioTextBox.Text ?? "";
         _settingsService.SaveSettings(settings.Sanear());
 
         _ = AuditLogService.AppendAsync(new

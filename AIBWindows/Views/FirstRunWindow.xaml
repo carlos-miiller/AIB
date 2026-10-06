@@ -78,10 +78,20 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="⚠️" FontSize="20" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="1" Text="Esta ferramenta está em fase Beta. Ela tem autonomia para executar ações na sua máquina, portanto revise cuidadosamente os planos antes de aprovar comandos sensíveis." 
+                                    <TextBlock Grid.Column="1" Text="Esta ferramenta está em fase Beta. Ela tem autonomia para executar ações na sua máquina, portanto revise cuidadosamente os planos antes de aprovar comandos sensíveis."
                                                FontSize="13" Foreground="{StaticResource WarnBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/>
                                 </Grid>
                             </Border>
+
+                            <!-- Como chamar o usuário: escolha dele, e opcional. Muda depois em
+                                 Configurações > Identidade. -->
+                            <StackPanel Width="320" HorizontalAlignment="Center" Margin="0,30,0,0">
+                                <TextBlock Text="Como você quer ser chamado?" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextStrongBrush}" Margin="0,0,0,8"/>
+                                <TextBox x:Name="NomeDoUsuarioTextBox" Style="{StaticResource ControlTextBox}" MaxLength="40"/>
+                                <TextBlock Text="Opcional. Dá para mudar depois em Configurações." FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0"/>
+                            </StackPanel>
                         </StackPanel>
                     </Grid>
 

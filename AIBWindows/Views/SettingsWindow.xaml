@@ -548,6 +548,25 @@
                                         </Grid>
                                     </Border>
 
+                                    <!-- Como chamar o usuário: escolha dele. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Como te chamar" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="O nome ou apelido que a Inteligência usa com você. Vazio, ela não usa nome."
+                                                           Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="NomeDoUsuarioTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBox}"
+                                                     MaxLength="40"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
                                     <!-- CAMPO 2 — último da página: sem divisória. -->
                                     <Grid Margin="0,13">
                                         <Grid.ColumnDefinitions>

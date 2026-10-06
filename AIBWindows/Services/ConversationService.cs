@@ -2219,25 +2219,48 @@ public sealed class ConversationService : IMessageStore
     }
 
     /// <summary>
-    /// A persona decide se puxa assunto agora, e o quê (<see cref="Iniciativa"/>). Devolve a
-    /// fala, ou null quando ela escolhe ficar quieta (NADA) ou a chamada falha.
+    /// O que a mensagem por iniciativa precisa saber, montado pelo App.
+    /// </summary>
+    /// <param name="Nome">Como chamar o usuário; vazio é "o usuário".</param>
+    /// <param name="UltimaConversaUtc">Última vez que conversaram, em qualquer das conversas.</param>
+    /// <param name="Proximos">Se eles têm conversado bastante (multiplicador geral alto).</param>
+    /// <param name="Desfecho">Como terminou a última iniciativa, em palavras; vazio na primeira.</param>
+    /// <param name="Recentes">As últimas mensagens por iniciativa, para não repetir.</param>
+    public sealed record ContextoDaIniciativa(
+        string Nome, DateTime? UltimaConversaUtc, bool Proximos, string Desfecho, IReadOnlyList<string> Recentes);
+
+    /// <summary>Os ganchos disponíveis: as pendências de assunto da memória e os fatos sobre o usuário.</summary>
+    public (IReadOnlyList<string> Pendencias, IReadOnlyList<string> Fatos) GanchosDisponiveis()
+    {
+        var pendencias = _memory.PendenciasVivas
+            .Where(p => p.Tipo == Memory.Pendencia.Assunto)
+            .Select(p => p.Texto)
+            .ToList();
+
+        var fatos = _facts.ReadFacts()
+            .Where(f => f.StartsWith(Tools.LembrarTool.Prefixo, StringComparison.Ordinal))
+            .Select(f => f[Tools.LembrarTool.Prefixo.Length..])
+            .ToList();
+
+        return (pendencias, fatos);
+    }
+
+    /// <summary>
+    /// Escreve a mensagem por iniciativa (<see cref="Iniciativa"/>): o algoritmo já decidiu que
+    /// ela fala, e o gancho; o modelo só escreve. Devolve null se a chamada falhar ou vier vazia.
     /// <para>
-    /// Chamada fora de banda, como a do título: sem ferramentas, sem o prompt de sistema
-    /// inteiro — só a alma, os fatos e as últimas falas. Não entra no histórico; quem põe a fala
-    /// na conversa, se houver, é o App.
+    /// Chamada fora de banda, sem ferramentas e SEM A ALMA INTEIRA: só a persona curta do
+    /// info.json (~250 tokens no lugar de ~4.000). Para uma ou duas frases a fala de exemplo
+    /// segura o tom; a alma inteira continua na conversa, quando o usuário responde. Não entra
+    /// no histórico; quem põe a fala na conversa é o App.
     /// </para>
     /// </summary>
-    /// <param name="proximos">Se eles têm conversado bastante (multiplicador geral alto).</param>
-    public async Task<string?> PonderarIniciativaAsync(bool proximos, CancellationToken ct)
+    public async Task<string?> EscreverIniciativaAsync(Gancho? gancho, ContextoDaIniciativa contexto, CancellationToken ct)
     {
         var settings = _settingsService.LoadSettings();
 
         string material = MaterialDaIniciativa(
-            LoadActiveCharacterSoul(settings.ActiveCharacter),
-            _facts.ReadFacts(),
-            UltimasFalas(12),
-            DateTime.Now,
-            proximos);
+            PerfilDoPersonagem(settings.ActiveCharacter), gancho, contexto, UltimasFalas(4), DateTime.UtcNow);
 
         try
         {
@@ -2247,62 +2270,112 @@ public sealed class ConversationService : IMessageStore
             var resultado = await _providerFactory.GetProvider(settings)
                 .CompleteAsync(new List<ChatMessage> { ChatMessage.CreateUserMessage(material) },
                                Array.Empty<ChatTool>(),
-                               Ai.ChatRequestOptions.DeServico(300, think: false, temperature: 0.8f),
+                               Ai.ChatRequestOptions.DeServico(160, think: false, temperature: 0.8f),
                                timeout.Token)
                 .ConfigureAwait(false);
 
-            string texto = ThinkBlockStripper.Strip(resultado.Text).Trim();
+            string texto = ThinkBlockStripper.Strip(resultado.Text).Trim().Trim('"', '“', '”').Trim();
             return Iniciativa.EhSilencio(texto) ? null : texto;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[INICIATIVA] Falha ao ponderar: {ex.Message}");
+            Console.WriteLine($"[INICIATIVA] Falha ao escrever: {ex.Message}");
             return null;
         }
     }
 
+    /// <summary>"há 20 min", "há 3 h", "ontem", "há 4 dias".</summary>
+    public static string HaQuanto(DateTime? quandoUtc, DateTime agoraUtc)
+    {
+        if (quandoUtc is not DateTime q) return "";
+        var d = agoraUtc - q;
+        if (d < TimeSpan.FromHours(1)) return $"há {Math.Max(1, (int)d.TotalMinutes)} min";
+        if (d < TimeSpan.FromHours(24)) return $"há {(int)d.TotalHours} h";
+        if (d < TimeSpan.FromHours(48)) return "ontem";
+        return $"há {(int)d.TotalDays} dias";
+    }
+
     /// <summary>
-    /// O pedido da ponderação. Puro, para o ensaio ver o que vai ao modelo.
+    /// O pedido da mensagem. Puro, para o ensaio ver o que vai ao modelo.
     /// <para>
-    /// O NADA é a saída de primeira classe, e não a exceção: o usuário pediu que ela escolha
-    /// quando falar. Sem ele, todo pedido terminaria numa fala forçada.
+    /// "Você está sem fazer nada, ele está online, você decide mandar uma mensagem": um papel
+    /// a interpretar, e não uma decisão de sim ou não — decisão do usuário. Sem saída NADA: quem
+    /// decide se ela fala é o sorteio, e o gancho é o que dá assunto.
     /// </para>
     /// </summary>
     public static string MaterialDaIniciativa(
-        string? alma, IReadOnlyList<string> fatos, IReadOnlyList<(bool DoUsuario, string Texto)> falas, DateTime agora,
-        bool proximos = false)
+        AgentProfile? perfil, Gancho? gancho, ContextoDaIniciativa c,
+        IReadOnlyList<(bool DoUsuario, string Texto)> falas, DateTime agoraUtc)
     {
+        string quem = string.IsNullOrWhiteSpace(c.Nome) ? "o usuário" : c.Nome.Trim();
+        string Quem = char.ToUpper(quem[0]) + quem[1..];
         var sb = new StringBuilder();
-        if (!string.IsNullOrWhiteSpace(alma)) sb.AppendLine(alma.Trim()).AppendLine().AppendLine("---").AppendLine();
 
-        sb.AppendLine($"Agora: {agora.ToString("dddd, dd/MM, HH:mm", new System.Globalization.CultureInfo("pt-BR"))}.");
-        sb.AppendLine("O usuário está no computador, mas não está conversando com você agora. Você pode puxar "
-                      + "assunto, como uma colega faria — ou não.");
+        if (perfil != null && !string.IsNullOrWhiteSpace(perfil.Name))
+        {
+            sb.AppendLine($"Você é {perfil.Name}. {perfil.Description}".Trim());
+            if (!string.IsNullOrWhiteSpace(perfil.Personality)) sb.AppendLine($"Personalidade: {perfil.Personality}");
+            if (!string.IsNullOrWhiteSpace(perfil.SampleSpeech)) sb.AppendLine($"Um exemplo do seu jeito de falar: {perfil.SampleSpeech}");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine($"Agora: {agoraUtc.ToLocalTime().ToString("dddd, HH:mm", new System.Globalization.CultureInfo("pt-BR"))}.");
+        sb.Append($"Você está sem fazer nada. {Quem} está online.");
+        string ha = HaQuanto(c.UltimaConversaUtc, agoraUtc);
+        if (ha.Length > 0) sb.Append($" Vocês conversaram pela última vez {ha}.");
+        sb.AppendLine($" Você decide mandar uma mensagem para {quem}.");
 
         // O afeto aparece na voz, não só na frequência: com quem conversa muito com ela, a alma
-        // já prevê que ela fique mais solta. Uma frase, e não um número que o modelo não saberia ler.
-        if (proximos)
-            sb.AppendLine("Vocês têm conversado bastante ultimamente, e você se sente à vontade com ele.");
+        // prevê que ela fique mais solta. Uma frase, e não um número que o modelo não saberia ler.
+        if (c.Proximos) sb.AppendLine($"Vocês têm conversado bastante ultimamente, e você se sente à vontade com {quem}.");
+        if (!string.IsNullOrWhiteSpace(c.Desfecho)) sb.AppendLine($"Sua última mensagem assim {c.Desfecho}.");
 
-        sb.AppendLine().AppendLine("O que você sabe dele:");
-        if (fatos.Count == 0) sb.AppendLine("(quase nada ainda)");
-        foreach (var f in fatos) sb.AppendLine(f);
+        sb.AppendLine();
+        sb.AppendLine(gancho switch
+        {
+            { Tipo: "pendência" } => $"Ponto de partida — ficou em aberto: {gancho.Texto}",
+            { } => $"Ponto de partida — você sabe isto sobre {quem}: {gancho.Texto}",
+            null => $"Ponto de partida: você ainda sabe pouco sobre {quem}. Puxe um assunto para conhecer melhor."
+        });
 
-        sb.AppendLine().AppendLine("Últimas mensagens da conversa:");
-        if (falas.Count == 0) sb.AppendLine("(nenhuma nesta sessão)");
-        foreach (var (doUsuario, texto) in falas) sb.AppendLine($"{(doUsuario ? "Usuário" : "Você")}: {texto}");
+        if (falas.Count > 0)
+        {
+            sb.AppendLine().AppendLine("Últimas mensagens entre vocês:");
+            foreach (var (doUsuario, texto) in falas) sb.AppendLine($"{(doUsuario ? Quem : "Você")}: {texto}");
+        }
 
-        sb.AppendLine().AppendLine(
-            """
-            Escolha no máximo UMA, só se vier natural:
-            - retomar algo que ficou em aberto (algo que ele ia fazer, um problema sem desfecho);
-            - perguntar algo sobre ele, puxado do que você sabe ou do que ainda não sabe.
-            Não repita o que já perguntou nas últimas mensagens. Uma ou duas frases, na sua voz,
-            sem saudação genérica e sem oferecer ajuda.
-            Se nada vier natural, responda exatamente: NADA
-            """);
+        if (c.Recentes.Count > 0)
+        {
+            sb.AppendLine().AppendLine("Você já mandou recentemente (não repita):");
+            foreach (var r in c.Recentes) sb.AppendLine($"- {r}");
+        }
 
+        sb.AppendLine().Append("Escreva só a mensagem: uma ou duas frases, na sua voz, sem saudação genérica e sem oferecer ajuda.");
         return sb.ToString();
+    }
+
+    /// <summary>O info.json do personagem ativo, do mesmo lugar que a alma. Nulo sem ele.</summary>
+    private static AgentProfile? PerfilDoPersonagem(string? personagem)
+    {
+        if (string.IsNullOrWhiteSpace(personagem)) return null;
+
+        try
+        {
+            string nome = Path.GetFileName(personagem.Trim());
+            if (string.IsNullOrEmpty(nome)) return null;
+
+            string caminho = Path.Combine(DirectoryService.CharactersDir, nome, "info.json");
+            if (!File.Exists(caminho) && DirectoryService.FailsafeCharactersDir() is string failsafe)
+                caminho = Path.Combine(failsafe, nome, "info.json");
+            if (!File.Exists(caminho)) return null;
+
+            return System.Text.Json.JsonSerializer.Deserialize<AgentProfile>(File.ReadAllText(caminho));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[INICIATIVA] info.json de '{personagem}' ilegível: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>As últimas falas de texto (sem ferramentas), aparadas.</summary>
@@ -3004,6 +3077,11 @@ public sealed class ConversationService : IMessageStore
         // com a data do dia em que começou.
         contextualPrompt += "\n- Data de hoje: "
             + DateTime.Now.ToString("dddd, dd/MM/yyyy", new System.Globalization.CultureInfo("pt-BR"));
+
+        // Como chamar o usuário, escolha dele (Identidade). Só com nome: sem ele o prompt fica
+        // byte a byte o que era, e a medição de antes continua valendo para quem não escolheu.
+        if (!string.IsNullOrWhiteSpace(settings.NomeDoUsuario))
+            contextualPrompt += $"\n- O usuário quer ser chamado de: {settings.NomeDoUsuario.Trim()}";
 
         contextualPrompt += EstadoDoVigia(settings, _diarioDeTriagem, DateTime.Now);
 

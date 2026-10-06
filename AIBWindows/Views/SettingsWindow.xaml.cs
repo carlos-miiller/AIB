@@ -165,6 +165,7 @@ public partial class SettingsWindow : Window
             LoadCharacters();
             TemaComboBox.ItemsSource = OpcoesDeTema;
             TemaComboBox.SelectedValue = AIB.Ui.Tema.Normalizar(_currentSettings.Tema);
+            NomeDoUsuarioTextBox.Text = _currentSettings.NomeDoUsuario;
             LoadProviders();
 
             SendSystemPromptSwitch.IsChecked = _currentSettings.SendSystemPrompt;
@@ -1290,6 +1291,7 @@ public partial class SettingsWindow : Window
                         if (string.Equals(item?.ToString(), padrao.ActiveCharacter, StringComparison.Ordinal))
                             CharacterComboBox.SelectedItem = item;
                 TemaComboBox.SelectedValue = padrao.Tema;
+                NomeDoUsuarioTextBox.Text = padrao.NomeDoUsuario;
                 break;
 
             case PaginaDeConfiguracoes.Conexao:
@@ -1920,6 +1922,7 @@ public partial class SettingsWindow : Window
     {
         _currentSettings.ActiveCharacter = CharacterComboBox.SelectedItem?.ToString() ?? "Ayano";
         _currentSettings.Tema = TemaComboBox.SelectedValue as string ?? AIB.Ui.Tema.Escuro;
+        _currentSettings.NomeDoUsuario = NomeDoUsuarioTextBox.Text ?? "";
         // O perfil na tela, os guardados, e o escolhido vira o ativo. A chave NÃO passa por aqui:
         // foi guardada no cofre pelo "Guardar" da própria linha.
         // AplicarPerfis ativa ANTES de gravar os outros: na ordem inversa, trocar de provedor

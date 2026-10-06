@@ -157,6 +157,7 @@ Os campos `AiProvider`, `ApiUrl`, `ModelName`, `KeepAlive`, `ContextWindow` e `R
 | `MailWindowDays` | 1–30 | 3 |
 | `MailTimeoutSeconds` | 5–120 | 15 |
 | `MailJournalDays` | 0–90 | 7 |
+| `NomeDoUsuario` | espaços repetidos juntados; até 40 caracteres | vazio |
 | `SilencioInicio` / `SilencioFim` | "HH:mm"; ilegível volta ao padrão; iguais desligam o silêncio | 22:00 / 08:00 |
 
 Cada padrão é uma `const` nomeada em `UserAppSettings` (`PadraoDeIteracoes`, `PadraoDoGatilhoDeCompactacao`…), lida pelo inicializador, pelo "Restaurar padrões" da tela e pelos testes. Número digitado em três lugares sai de sincronia na primeira mudança.

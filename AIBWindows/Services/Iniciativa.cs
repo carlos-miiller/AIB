@@ -49,16 +49,32 @@ public sealed class EstadoDaIniciativa
     /// <summary>O dia local das contagens e do esquecimento, "yyyy-MM-dd".</summary>
     public string Dia { get; set; } = "";
 
-    public int PonderacoesHoje { get; set; }
+    public int MensagensHoje { get; set; }
+
+    /// <summary>As últimas mensagens por iniciativa, para ela não repetir. Sobrevive ao arranque.</summary>
+    public System.Collections.Generic.List<string> Recentes { get; set; } = new();
+
+    /// <summary>Os últimos ganchos usados, para o sorteio variar o assunto.</summary>
+    public System.Collections.Generic.List<string> GanchosRecentes { get; set; } = new();
+
+    /// <summary>Como terminou a última iniciativa, em palavras: "virou conversa", "foi ignorada".</summary>
+    public string UltimoDesfecho { get; set; } = "";
 }
+
+/// <summary>O ponto de partida de uma mensagem por iniciativa, escolhido pelo código.</summary>
+/// <param name="Tipo">"pendência" ou "fato".</param>
+public sealed record Gancho(string Tipo, string Texto);
 
 /// <summary>
 /// A persona puxa assunto sozinha: retoma algo que ficou em aberto, pergunta sobre o usuário.
 /// <para>
-/// POR SORTEIO, por decisão do usuário: de 10 em 10 min, nas batidas em que ela poderia falar,
-/// sorteia <c>chance = 2,5% × geral × faixa</c>. Acertando, o modelo decide se fala e o quê — ou
-/// NADA. Sem número fixo por dia e sem intervalo mínimo: às vezes ela fala duas vezes numa manhã
-/// e depois some, como gente.
+/// O ALGORITMO DECIDE QUANDO, ELA SÓ ESCREVE — decisão do usuário. De 10 em 10 min, nas batidas
+/// em que ela poderia falar, sorteia <c>chance = 1,5% × geral × faixa</c>; acertando, o código
+/// escolhe também o gancho (<see cref="EscolherGancho"/>) e o modelo recebe "você está sem
+/// fazer nada, ele está online, você decide mandar uma mensagem". Não há saída NADA: cada
+/// chamada é uma mensagem, e o custo é o das mensagens. O gancho é o que evita o "oi, como vai?"
+/// de quem foi mandado falar sem ter assunto. Sem número fixo por dia e sem intervalo mínimo:
+/// às vezes ela fala duas vezes numa manhã e depois some, como gente.
 /// </para>
 /// <para>
 /// OS MULTIPLICADORES SÃO O APRENDIZADO. Cada fala é classificada uma vez — 30 min depois da
@@ -69,24 +85,30 @@ public sealed class EstadoDaIniciativa
 /// voltam 10% na direção de 1: uma semana ruim não a cala para sempre.
 /// </para>
 /// <para>
-/// Travas que não aprendem: com uma fala sem resposta ela não sorteia; teto de 12 ponderações
-/// por dia (cada uma é paga, mesmo terminando em NADA); silêncio, presença e "não perturbe".
+/// Travas que não aprendem: com uma fala sem resposta ela não sorteia; teto de 6 mensagens por
+/// dia (cada uma é uma requisição paga); silêncio, presença e "não perturbe".
 /// </para>
 /// </summary>
 public sealed class Iniciativa
 {
     public const int NumeroDeFaixas = 12;
 
-    /// <summary>A chance por sorteio com tudo neutro: ~2 ponderações num dia de 14 h.</summary>
-    public const double ChanceBase = 0.025;
+    /// <summary>
+    /// A chance por sorteio com tudo neutro: ~1,3 mensagem num dia de 14 h (84 sorteios). Era
+    /// 2,5% quando o modelo ainda podia responder NADA; agora todo acerto é mensagem.
+    /// </summary>
+    public const double ChanceBase = 0.015;
 
     public static readonly TimeSpan Cadencia = TimeSpan.FromMinutes(10);
 
     public const double Minimo = 0.2;
     public const double Maximo = 3.0;
 
-    /// <summary>Teto de ponderações por dia, contando as que terminam em NADA.</summary>
-    public const int PonderacoesPorDia = 12;
+    /// <summary>Teto de mensagens por iniciativa num dia: é o que limita o custo.</summary>
+    public const int MensagensPorDia = 6;
+
+    /// <summary>Quantas mensagens e ganchos recentes ela lembra, para não repetir.</summary>
+    public const int Memoria = 5;
 
     /// <summary>Sem resposta depois disso, a fala é classificada como não respondida.</summary>
     public static readonly TimeSpan Paciencia = TimeSpan.FromHours(8);
@@ -158,7 +180,7 @@ public sealed class Iniciativa
         if (!livre) return "turno ou conversa aberta";
         if (ultimaConversaUtc is DateTime c && agoraUtc - c < Calma) return "conversa recente";
         if (e.FalaUtc != null && e.RespostaUtc == null) return "esperando resposta";
-        if (e.PonderacoesHoje >= PonderacoesPorDia) return "teto de ponderações";
+        if (e.MensagensHoje >= MensagensPorDia) return "teto de mensagens";
         if (e.SorteioUtc is DateTime s && agoraUtc - s < Cadencia) return "sorteou há pouco";
         return null;
     }
@@ -182,12 +204,49 @@ public sealed class Iniciativa
     /// <summary>Se a resposta é um "agora não".</summary>
     public static bool EhRecusa(string? texto) => Recusa.IsMatch(texto ?? "");
 
-    /// <summary>Se o texto do modelo é a escolha de ficar quieta.</summary>
+    /// <summary>
+    /// Se o texto do modelo não serve como mensagem. Não há mais saída NADA no pedido, mas um
+    /// modelo pode devolver vazio ou insistir nela; aí não se manda nada.
+    /// </summary>
     public static bool EhSilencio(string? texto)
     {
         string t = (texto ?? "").Trim().Trim('.', '!', '"', '*', ' ').Trim();
         return t.Length == 0 || t.Equals("NADA", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// O gancho da mensagem: uma pendência de assunto ou um fato sobre o usuário, COM O MESMO
+    /// PESO — decisão do usuário: ela não está ajudando no trabalho naquela hora, e quando a
+    /// mensagem chega ele talvez nem esteja lidando com aquilo, então a pendência não vale mais
+    /// que o resto. Os usados há pouco ficam de fora enquanto houver outro. Nulo quando não há
+    /// nenhum: aí o pedido é para conhecê-lo melhor.
+    /// </summary>
+    public static Gancho? EscolherGancho(
+        System.Collections.Generic.IReadOnlyList<string> pendencias,
+        System.Collections.Generic.IReadOnlyList<string> fatos,
+        System.Collections.Generic.IReadOnlyCollection<string> recentes,
+        Random sorte)
+    {
+        var todos = pendencias.Select(p => new Gancho("pendência", p.Trim()))
+            .Concat(fatos.Select(f => new Gancho("fato", f.Trim())))
+            .Where(g => g.Texto.Length > 0)
+            .ToList();
+        if (todos.Count == 0) return null;
+
+        var novos = todos.Where(g => !recentes.Contains(g.Texto)).ToList();
+        var escolha = novos.Count > 0 ? novos : todos;
+        return escolha[sorte.Next(escolha.Count)];
+    }
+
+    /// <summary>O fator em palavras, para ela saber como foi a última vez.</summary>
+    public static string Desfecho(double fator) => fator switch
+    {
+        <= 0.5 => "recebeu um \"agora não\"",
+        < 0.8 => "ficou sem resposta",
+        < 1.0 => "foi lida, mas ficou sem resposta",
+        < 1.08 => "teve uma resposta rápida",
+        _ => "virou conversa"
+    };
 
     private static double Preso(double m) => Math.Clamp(m, Minimo, Maximo);
 
@@ -206,7 +265,7 @@ public sealed class Iniciativa
 
             bool primeiraVez = Estado.Dia.Length == 0;
             Estado.Dia = hoje;
-            Estado.PonderacoesHoje = 0;
+            Estado.MensagensHoje = 0;
             if (!primeiraVez)
             {
                 Estado.Geral = Esquecer(Estado.Geral);
@@ -227,14 +286,20 @@ public sealed class Iniciativa
         }
     }
 
-    /// <summary>Registra uma ponderação, e a fala, se houve.</summary>
-    public void Ponderou(DateTime agoraUtc, TimeSpan horaLocal, bool falou)
+    /// <summary>
+    /// Registra uma mensagem pedida ao modelo. Conta no teto mesmo sem texto (a requisição foi
+    /// paga); com texto, abre a fala que vai ser classificada e guarda para não repetir.
+    /// </summary>
+    public void Falou(DateTime agoraUtc, TimeSpan horaLocal, string? texto, Gancho? gancho)
     {
         lock (_gate)
         {
-            Estado.PonderacoesHoje++;
-            if (falou)
+            Estado.MensagensHoje++;
+            if (gancho != null) Lembrar(Estado.GanchosRecentes, gancho.Texto);
+
+            if (!string.IsNullOrWhiteSpace(texto))
             {
+                Lembrar(Estado.Recentes, texto.Trim());
                 Estado.FalaUtc = agoraUtc;
                 Estado.FaixaDaFala = FaixaDe(horaLocal);
                 Estado.Leu = false;
@@ -244,6 +309,13 @@ public sealed class Iniciativa
             }
             Gravar();
         }
+    }
+
+    private static void Lembrar(System.Collections.Generic.List<string> lista, string item)
+    {
+        lista.Remove(item);
+        lista.Add(item);
+        while (lista.Count > Memoria) lista.RemoveAt(0);
     }
 
     /// <summary>Ele abriu o pulso.</summary>
@@ -317,6 +389,7 @@ public sealed class Iniciativa
     /// <summary>O fator inteiro na faixa da fala, e a raiz dele no geral.</summary>
     private void Aplicar(double fator)
     {
+        Estado.UltimoDesfecho = Desfecho(fator);
         int f = Math.Clamp(Estado.FaixaDaFala, 0, NumeroDeFaixas - 1);
         Estado.Faixas[f] = Preso(Estado.Faixas[f] * fator);
         Estado.Geral = Preso(Estado.Geral * Math.Sqrt(fator));
@@ -356,7 +429,7 @@ public sealed class Iniciativa
     {
         lock (_gate)
         {
-            Estado = new EstadoDaIniciativa { Dia = Estado.Dia, PonderacoesHoje = Estado.PonderacoesHoje };
+            Estado = new EstadoDaIniciativa { Dia = Estado.Dia, MensagensHoje = Estado.MensagensHoje };
             Gravar();
         }
     }

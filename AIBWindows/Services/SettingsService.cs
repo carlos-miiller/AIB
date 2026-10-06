@@ -161,6 +161,15 @@ public sealed class UserAppSettings
     public string Tema { get; set; } = AIB.Ui.Tema.Escuro;
 
     /// <summary>
+    /// Como o usuário quer ser chamado. Escolha dele, na primeira inicialização ou em
+    /// Identidade; vazio é "o usuário". Vai ao prompt e à fala por iniciativa.
+    /// </summary>
+    public string NomeDoUsuario { get; set; } = "";
+
+    /// <summary>Um nome, não uma frase: acima disso é cortado.</summary>
+    public const int TetoDoNome = 40;
+
+    /// <summary>
     /// Altura da janela de conversa escolhida pelo usuário (puxador da borda de cima), em DIPs.
     /// 0 é a altura padrão.
     /// </summary>
@@ -535,6 +544,8 @@ public sealed class UserAppSettings
         MailWindowDays = Entre(MailWindowDays, 1, 30);
         MailTimeoutSeconds = Entre(MailTimeoutSeconds, 5, 120);
         MailJournalDays = Entre(MailJournalDays, 0, 90);
+        NomeDoUsuario = string.Join(" ", (NomeDoUsuario ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (NomeDoUsuario.Length > TetoDoNome) NomeDoUsuario = NomeDoUsuario[..TetoDoNome].Trim();
         SilencioInicio = Iniciativa.Hora(SilencioInicio) is { } ini ? ini.ToString(@"hh\:mm") : "22:00";
         SilencioFim = Iniciativa.Hora(SilencioFim) is { } fim ? fim.ToString(@"hh\:mm") : "08:00";
         return this;

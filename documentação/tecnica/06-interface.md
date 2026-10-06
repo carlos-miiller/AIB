@@ -357,15 +357,29 @@ sem custo: fora do horário de silêncio (`SilencioInicio`/`SilencioFim`, atrave
 orbe na tela, conversa fora da tela e sem turno; usuário presente (`Presenca`: entrada nos
 últimos 5 min e `SHQueryUserNotificationState` aceitando avisos — sem tela cheia nem "não
 perturbe"); 15 min sem conversa; fora da pausa pedida; a última fala dela já respondida; menos
-de 12 ponderações no dia (cada uma é paga, mesmo terminando em NADA). Podendo, **sorteia** de 10
-em 10 min: `chance = 2,5% × geral × faixa` (`Iniciativa.Chance`; ~2 ponderações num dia de 14 h
-com tudo neutro). Sem número fixo de falas por dia e sem intervalo mínimo, por decisão do usuário.
+de 6 mensagens no dia (cada uma é uma requisição paga). Podendo, **sorteia** de 10 em 10 min:
+`chance = 1,5% × geral × faixa` (`Iniciativa.Chance`; ~1,3 mensagem num dia de 14 h com tudo
+neutro). Sem número fixo de falas por dia e sem intervalo mínimo, por decisão do usuário.
 
-Acertando, `ConversationService.PonderarIniciativaAsync` chama o modelo fora de banda (sem
-ferramentas, temperatura 0,8) com a alma, os fatos e as últimas 12 falas da conversa do orbe
-(`MaterialDaIniciativa`): retomar algo em aberto, perguntar sobre o usuário, ou `NADA`. NADA é a
-saída de primeira classe — ela escolhe quando falar. Com o geral ≥ 1,5, o pedido ganha "vocês têm
-conversado bastante ultimamente": o afeto aparece na voz, não só na frequência.
+**O algoritmo decide quando; ela só escreve** (decisão do usuário). Acertando o sorteio, o código
+escolhe o **gancho** (`Iniciativa.EscolherGancho`): uma pendência de assunto da memória da
+conversa do orbe ou um fato "sobre o usuário", sorteados com o mesmo peso — ela não está ajudando
+no trabalho naquela hora, então a pendência não vale mais que o resto —, evitando os 5 usados por
+último; sem nenhum, "puxe um assunto para conhecer melhor". O gancho é o que evita o "oi, como
+vai?" de quem foi mandado falar sem assunto.
+
+`ConversationService.EscreverIniciativaAsync` chama o modelo fora de banda (sem ferramentas,
+temperatura 0,8, até 160 tokens) com um papel, não uma decisão (`MaterialDaIniciativa`): a
+**persona curta** do `info.json` (nome, descrição, personalidade, fala de exemplo — ~250 tokens no
+lugar dos ~4.000 da alma, que segue inteira na conversa de verdade), "Você está sem fazer nada.
+Carlo está online. Vocês conversaram pela última vez há 3 h. Você decide mandar uma mensagem para
+Carlo.", como terminou a última iniciativa (`UltimoDesfecho`), o gancho, as últimas 4 falas e as
+últimas 5 mensagens por iniciativa ("não repita", `Recentes`, sobrevive ao arranque). Sem saída
+NADA: o pedido custa ~600–800 tokens e toda chamada é uma mensagem. Com o geral ≥ 1,5, ganha
+"vocês têm conversado bastante ultimamente": o afeto aparece na voz, não só na frequência.
+
+O nome vem de `NomeDoUsuario` (Configurações > Identidade, e o primeiro passo da primeira
+inicialização); vazio é "o usuário".
 
 **Aprendizado** (`~/.AIB/iniciativa.json`): multiplicador geral e um por faixa de 2 h, entre 0,2 e
 3. Cada fala é classificada uma vez — 30 min depois da primeira resposta na conversa do orbe, ou
@@ -426,7 +440,7 @@ A janela abre direto numa página pelo parâmetro do construtor (é o que o modo
 
 | Página | O que configura |
 |---|---|
-| Identidade | Personagem ativo (pastas de `~/.AIB/character`). |
+| Identidade | Personagem ativo (pastas de `~/.AIB/character`), como te chamar (`NomeDoUsuario`), tema. |
 | Conexão LLM | Provedor. Cada provedor tem perfil próprio (`PerfilDeProvedor`) guardado em `_perfis`: trocar e voltar não perde nada. Ollama: endereço, modelo, keep-alive. OpenRouter: chave ("Alterar"), modelo (catálogo com janela e preço), "Só provedores que não guardam dados", "Provedor preferido". Comuns: janela de contexto, raciocínio, orçamento do nível (calculado, só leitura), "Enviar System Prompt a cada requisição". |
 | E-mail | Contas (adicionar com endereço e senha de app, principal, trocar senha, zerar leitura, remover), janela de leitura em dias, tempo limite por caixa, dias de diário da triagem, provedor e modelo da triagem, raciocínio na triagem. |
 | Shadow | Mostrar o orbe, deixar o Shadow tratar os e-mails, e-mails mostrados na fala, puxar assunto sozinha (iniciativa), horário de silêncio. |

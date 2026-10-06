@@ -357,16 +357,27 @@ public partial class App : System.Windows.Application
         _ponderando = true;
         try
         {
-            string? fala = await _conversaDoOrbe.Conversa.PonderarIniciativaAsync(
-                proximos: _iniciativa.Estado.Geral >= Iniciativa.Proximidade,
-                System.Threading.CancellationToken.None);
+            // O sorteio decidiu que ela fala; o código escolhe o gancho, e ela só escreve.
+            var conversa = _conversaDoOrbe.Conversa;
+            var (pendencias, fatos) = conversa.GanchosDisponiveis();
+            var gancho = Iniciativa.EscolherGancho(pendencias, fatos, _iniciativa.Estado.GanchosRecentes, Random.Shared);
 
-            // Enquanto ela pensava, o usuário pode ter começado a falar com ela.
+            var contexto = new ConversationService.ContextoDaIniciativa(
+                s.NomeDoUsuario,
+                new[] { _ultimaConversaUtc, _conversaDoOrbe.UltimaAtividadeUtc }.Max(),
+                Proximos: _iniciativa.Estado.Geral >= Iniciativa.Proximidade,
+                _iniciativa.Estado.UltimoDesfecho,
+                _iniciativa.Estado.Recentes.ToList());
+
+            string? fala = await conversa.EscreverIniciativaAsync(gancho, contexto, System.Threading.CancellationToken.None);
+
+            // Enquanto ela escrevia, o usuário pode ter começado a falar com ela.
             if (fala != null && _conversaDoOrbe.Ocupada) fala = null;
 
-            _iniciativa.Ponderou(DateTime.UtcNow, DateTime.Now.TimeOfDay, falou: fala != null);
-            Console.WriteLine($"[INICIATIVA] ponderou: {(fala == null ? "ficou quieta" : "falou")} "
-                              + $"(geral {_iniciativa.Estado.Geral:0.00}, chance {Iniciativa.Chance(_iniciativa.Estado, agora.TimeOfDay):P1}).");
+            _iniciativa.Falou(DateTime.UtcNow, DateTime.Now.TimeOfDay, fala, gancho);
+            Console.WriteLine($"[INICIATIVA] {(fala == null ? "sem mensagem" : "falou")} "
+                              + $"(gancho: {gancho?.Tipo ?? "conhecer"}; geral {_iniciativa.Estado.Geral:0.00}, "
+                              + $"chance {Iniciativa.Chance(_iniciativa.Estado, agora.TimeOfDay):P1}).");
 
             if (fala != null) FalarPorIniciativa(fala);
         }
