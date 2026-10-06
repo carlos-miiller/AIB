@@ -197,6 +197,7 @@ public partial class SettingsWindow : Window
             ShadowMailPreviewTextBox.Text = _currentSettings.ShadowMailPreviewCount.ToString();
             IniciativaSwitch.IsChecked = _currentSettings.IniciativaLigada;
             IniciativaResumo.Text = App.ResumoDaIniciativa();
+            MensagensPorDiaTextBox.Text = _currentSettings.MensagensPorDia.ToString();
             SilencioInicioTextBox.Text = _currentSettings.SilencioInicio;
             SilencioFimTextBox.Text = _currentSettings.SilencioFim;
             MailWindowTextBox.Text = _currentSettings.MailWindowDays.ToString();
@@ -1332,6 +1333,7 @@ public partial class SettingsWindow : Window
                 ShadowMailSwitch.IsChecked = padrao.ShadowHandlesMail;
                 ShadowMailPreviewTextBox.Text = padrao.ShadowMailPreviewCount.ToString();
                 IniciativaSwitch.IsChecked = padrao.IniciativaLigada;
+                MensagensPorDiaTextBox.Text = padrao.MensagensPorDia.ToString();
                 SilencioInicioTextBox.Text = padrao.SilencioInicio;
                 SilencioFimTextBox.Text = padrao.SilencioFim;
                 AtualizarAjudaDoShadow();
@@ -1944,6 +1946,7 @@ public partial class SettingsWindow : Window
         _currentSettings.ShadowAssistantEnabled = ShadowAssistantSwitch.IsChecked ?? false;
         _currentSettings.ShadowHandlesMail = ShadowMailSwitch.IsChecked ?? false;
         _currentSettings.IniciativaLigada = IniciativaSwitch.IsChecked ?? false;
+        _currentSettings.MensagensPorDia = Numero(MensagensPorDiaTextBox, _currentSettings.MensagensPorDia);
         // Hora ilegível volta ao que estava (o Sanear abaixo só cobre o que veio do disco).
         if (Iniciativa.Hora(SilencioInicioTextBox.Text) != null) _currentSettings.SilencioInicio = SilencioInicioTextBox.Text.Trim();
         if (Iniciativa.Hora(SilencioFimTextBox.Text) != null) _currentSettings.SilencioFim = SilencioFimTextBox.Text.Trim();

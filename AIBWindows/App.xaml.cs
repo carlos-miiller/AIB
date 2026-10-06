@@ -349,7 +349,7 @@ public partial class App : System.Windows.Application
             _iniciativa.Estado, utc, agora.TimeOfDay,
             Iniciativa.Hora(s.SilencioInicio) ?? TimeSpan.FromHours(22),
             Iniciativa.Hora(s.SilencioFim) ?? TimeSpan.FromHours(8),
-            livre && Presenca.Disponivel(), livre, _ultimaConversaUtc);
+            livre && Presenca.Disponivel(), livre, _ultimaConversaUtc, s.MensagensPorDia);
         if (impedimento != null) return;
 
         if (!_iniciativa.Sortear(utc, agora.TimeOfDay, Random.Shared.NextDouble())) return;

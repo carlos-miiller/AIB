@@ -73,11 +73,24 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void SorteiaDeDezEmDezMinutos_ETemTetoDePonderacoes()
+        public void SorteiaDeDezEmDezMinutos_ETemTetoDeMensagens()
         {
             Impede(new EstadoDaIniciativa { SorteioUtc = Agora.AddMinutes(-4) }).Should().Be("sorteou há pouco");
             Impede(new EstadoDaIniciativa { SorteioUtc = Agora.AddMinutes(-10) }).Should().BeNull();
-            Impede(new EstadoDaIniciativa { MensagensHoje = Iniciativa.MensagensPorDia }).Should().Be("teto de mensagens");
+            Impede(new EstadoDaIniciativa { MensagensHoje = Iniciativa.PadraoDeMensagensPorDia }).Should().Be("teto de mensagens");
+        }
+
+        [Fact]
+        public void OTeto_EhOQueOUsuarioEscolheu()
+        {
+            // Pedido: "faz isso ser configurável" — o teto é a trava de custo, e o dinheiro é dele.
+            var e = new EstadoDaIniciativa { MensagensHoje = 6 };
+            Iniciativa.Impedimento(e, Agora, Dez, Ini, Fim, true, true, null, tetoDoDia: 10).Should().BeNull();
+            Iniciativa.Impedimento(e, Agora, Dez, Ini, Fim, true, true, null, tetoDoDia: 3).Should().Be("teto de mensagens");
+
+            new UserAppSettings().MensagensPorDia.Should().Be(6);
+            new UserAppSettings { MensagensPorDia = 99 }.Sanear().MensagensPorDia.Should().Be(20);
+            new UserAppSettings { MensagensPorDia = 0 }.Sanear().MensagensPorDia.Should().Be(1);
         }
 
         [Fact]

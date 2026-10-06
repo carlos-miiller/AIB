@@ -157,6 +157,7 @@ Os campos `AiProvider`, `ApiUrl`, `ModelName`, `KeepAlive`, `ContextWindow` e `R
 | `MailWindowDays` | 1–30 | 3 |
 | `MailTimeoutSeconds` | 5–120 | 15 |
 | `MailJournalDays` | 0–90 | 7 |
+| `MensagensPorDia` | 1–20 | 6 |
 | `NomeDoUsuario` | espaços repetidos juntados; até 40 caracteres | vazio |
 | `SilencioInicio` / `SilencioFim` | "HH:mm"; ilegível volta ao padrão; iguais desligam o silêncio | 22:00 / 08:00 |
 

@@ -194,6 +194,12 @@ public sealed class UserAppSettings
     /// </summary>
     public bool IniciativaLigada { get; set; } = false;
 
+    /// <summary>
+    /// Teto de mensagens por iniciativa num dia. É a trava de CUSTO, fora do aprendizado: o
+    /// ritmo se ajusta abaixo dela, e quanto gastar é escolha do usuário.
+    /// </summary>
+    public int MensagensPorDia { get; set; } = Iniciativa.PadraoDeMensagensPorDia;
+
     /// <summary>Começo do horário de silêncio, "HH:mm". Lembrete pedido fura o silêncio.</summary>
     public string SilencioInicio { get; set; } = "22:00";
 
@@ -544,6 +550,7 @@ public sealed class UserAppSettings
         MailWindowDays = Entre(MailWindowDays, 1, 30);
         MailTimeoutSeconds = Entre(MailTimeoutSeconds, 5, 120);
         MailJournalDays = Entre(MailJournalDays, 0, 90);
+        MensagensPorDia = Entre(MensagensPorDia, 1, 20);
         NomeDoUsuario = string.Join(" ", (NomeDoUsuario ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         if (NomeDoUsuario.Length > TetoDoNome) NomeDoUsuario = NomeDoUsuario[..TetoDoNome].Trim();
         SilencioInicio = Iniciativa.Hora(SilencioInicio) is { } ini ? ini.ToString(@"hh\:mm") : "22:00";

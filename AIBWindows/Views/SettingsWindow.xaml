@@ -1392,6 +1392,24 @@
                                         </Grid>
                                     </Border>
 
+                                    <!-- Teto de mensagens por dia: a trava de custo, escolha do usuário. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Máximo de mensagens por dia" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Text="Cada mensagem é uma requisição ao modelo. O ritmo dela se ajusta abaixo deste teto (1 a 20)."
+                                                           Style="{StaticResource FieldHelpText}"/>
+                                            </StackPanel>
+                                            <TextBox x:Name="MensagensPorDiaTextBox" Grid.Column="1"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
                                     <!-- Horário de silêncio -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">

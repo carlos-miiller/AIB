@@ -85,8 +85,9 @@ public sealed record Gancho(string Tipo, string Texto);
 /// voltam 10% na direção de 1: uma semana ruim não a cala para sempre.
 /// </para>
 /// <para>
-/// Travas que não aprendem: com uma fala sem resposta ela não sorteia; teto de 6 mensagens por
-/// dia (cada uma é uma requisição paga); silêncio, presença e "não perturbe".
+/// Travas que não aprendem: com uma fala sem resposta ela não sorteia; teto de mensagens por dia
+/// escolhido pelo usuário (padrão 6; cada uma é uma requisição paga); silêncio, presença e "não
+/// perturbe".
 /// </para>
 /// </summary>
 public sealed class Iniciativa
@@ -104,8 +105,11 @@ public sealed class Iniciativa
     public const double Minimo = 0.2;
     public const double Maximo = 3.0;
 
-    /// <summary>Teto de mensagens por iniciativa num dia: é o que limita o custo.</summary>
-    public const int MensagensPorDia = 6;
+    /// <summary>
+    /// Teto padrão de mensagens por iniciativa num dia: é o que limita o custo. O usuário
+    /// escolhe o dele (<see cref="UserAppSettings.MensagensPorDia"/>).
+    /// </summary>
+    public const int PadraoDeMensagensPorDia = 6;
 
     /// <summary>Quantas mensagens e ganchos recentes ela lembra, para não repetir.</summary>
     public const int Memoria = 5;
@@ -172,7 +176,7 @@ public sealed class Iniciativa
     /// <summary>O que impede de sortear agora, ou null quando pode.</summary>
     public static string? Impedimento(
         EstadoDaIniciativa e, DateTime agoraUtc, TimeSpan horaLocal, TimeSpan silencioInicio, TimeSpan silencioFim,
-        bool presente, bool livre, DateTime? ultimaConversaUtc)
+        bool presente, bool livre, DateTime? ultimaConversaUtc, int tetoDoDia = PadraoDeMensagensPorDia)
     {
         if (EmSilencio(horaLocal, silencioInicio, silencioFim)) return "silêncio";
         if (e.PausaAteUtc is DateTime p && agoraUtc < p) return "pausa pedida";
@@ -180,7 +184,7 @@ public sealed class Iniciativa
         if (!livre) return "turno ou conversa aberta";
         if (ultimaConversaUtc is DateTime c && agoraUtc - c < Calma) return "conversa recente";
         if (e.FalaUtc != null && e.RespostaUtc == null) return "esperando resposta";
-        if (e.MensagensHoje >= MensagensPorDia) return "teto de mensagens";
+        if (e.MensagensHoje >= tetoDoDia) return "teto de mensagens";
         if (e.SorteioUtc is DateTime s && agoraUtc - s < Cadencia) return "sorteou há pouco";
         return null;
     }

@@ -357,7 +357,7 @@ sem custo: fora do horário de silêncio (`SilencioInicio`/`SilencioFim`, atrave
 orbe na tela, conversa fora da tela e sem turno; usuário presente (`Presenca`: entrada nos
 últimos 5 min e `SHQueryUserNotificationState` aceitando avisos — sem tela cheia nem "não
 perturbe"); 15 min sem conversa; fora da pausa pedida; a última fala dela já respondida; menos
-de 6 mensagens no dia (cada uma é uma requisição paga). Podendo, **sorteia** de 10 em 10 min:
+do teto de mensagens do dia (`MensagensPorDia`, configurável de 1 a 20, padrão 6; cada uma é uma requisição paga). Podendo, **sorteia** de 10 em 10 min:
 `chance = 1,5% × geral × faixa` (`Iniciativa.Chance`; ~1,3 mensagem num dia de 14 h com tudo
 neutro). Sem número fixo de falas por dia e sem intervalo mínimo, por decisão do usuário.
 
@@ -444,7 +444,7 @@ A janela abre direto numa página pelo parâmetro do construtor (é o que o modo
 | Identidade | Personagem ativo (pastas de `~/.AIB/character`), como te chamar (`NomeDoUsuario`), tema. |
 | Conexão LLM | Provedor. Cada provedor tem perfil próprio (`PerfilDeProvedor`) guardado em `_perfis`: trocar e voltar não perde nada. Ollama: endereço, modelo, keep-alive. OpenRouter: chave ("Alterar"), modelo (catálogo com janela e preço), "Só provedores que não guardam dados", "Provedor preferido". Comuns: janela de contexto, raciocínio, orçamento do nível (calculado, só leitura), "Enviar System Prompt a cada requisição". |
 | E-mail | Contas (adicionar com endereço e senha de app, principal, trocar senha, zerar leitura, remover), janela de leitura em dias, tempo limite por caixa, dias de diário da triagem, provedor e modelo da triagem, raciocínio na triagem. |
-| Shadow | Mostrar o orbe, deixar o Shadow tratar os e-mails, e-mails mostrados na fala, puxar assunto sozinha (iniciativa), horário de silêncio. |
+| Shadow | Mostrar o orbe, deixar o Shadow tratar os e-mails, e-mails mostrados na fala, puxar assunto sozinha (iniciativa), máximo de mensagens por dia, horário de silêncio. |
 | Ferramentas | Ferramentas inteligentes, confirmar comandos perigosos (floor list), máximo de etapas por turno, pastas sem confirmação, autorizações "sempre permitir" da sessão ("Esquecer todas"). |
 | Memória | Quem escreve a memória, gatilho de compactação, turnos e tokens por capítulo, teto de capítulos por ato, fatia de memória, esconder resultados antigos, guardar a fala junto da ferramenta, pasta da conversa. |
 | Avançado | Devolver o raciocínio ao modelo. |
