@@ -2201,7 +2201,7 @@ namespace AIB.Tests
             var capitulo = conversation.Chapters[0];
             int turnosCobertos = capitulo.LastTurn - capitulo.FirstTurn + 1;
 
-            turnosCobertos.Should().BeLessThanOrEqualTo(8);
+            turnosCobertos.Should().BeLessThanOrEqualTo(UserAppSettings.PadraoDeTurnosPorCapitulo);
         }
 
  

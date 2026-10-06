@@ -314,7 +314,8 @@ public sealed class UserAppSettings
     /// </summary>
     public bool MemoriaComModelo { get; set; } = PadraoDaMemoriaComModelo;
 
-    public const int PadraoDeTurnosPorCapitulo = 8;
+    /// <summary>Era 8; o usuário subiu para 15: capítulos maiores, menos compactações.</summary>
+    public const int PadraoDeTurnosPorCapitulo = 15;
 
     /// <summary>
     /// Teto de turnos resumidos numa chamada. Menos turnos, prompt do resumidor menor: num modelo
