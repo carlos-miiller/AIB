@@ -44,6 +44,7 @@ public partial class App : System.Windows.Application
     private IChatProviderFactory _providerFactory = null!;
     private AgentLoop _agentLoop = null!;
     private ConversationService _conversation = null!;
+    private ConversaDoOrbe _conversaDoOrbe = null!;
 
     /// <summary>
     /// Liga e desliga o orbe, gravando a escolha. É a porta da bandeja; a outra é a página
@@ -117,7 +118,7 @@ public partial class App : System.Windows.Application
         // fechado, que continuava recebendo o fim de cada turno e mexendo numa janela morta.
         SoltarOrbe();
 
-        if (_chatWindow != null) _soltarOrbe = LigarOrbe(_chatWindow, orbe);
+        if (_chatWindow != null) _soltarOrbe = LigarOrbe(_chatWindow, orbe, _conversaDoOrbe);
 
         return orbe;
     }
@@ -154,9 +155,27 @@ public partial class App : System.Windows.Application
     /// não-duplicação sem subir o App inteiro.
     /// </para>
     /// </summary>
-    public static Action LigarOrbe(ChatWindow conversa, ShadowAssistantWindow orbe)
+    /// <param name="doOrbe">
+    /// A conversa própria do orbe. Com ela, a barra fala com ela, e não com a janela. Nula nos
+    /// ensaios antigos: aí a barra cai na conversa principal, escondida, como era antes.
+    /// </param>
+    public static Action LigarOrbe(ChatWindow conversa, ShadowAssistantWindow orbe, ConversaDoOrbe? doOrbe = null)
     {
-        void Enviou(string texto) => conversa.AbrirComMensagem(texto, mostrarJanela: false);
+        void Enviou(string texto)
+        {
+            if (doOrbe != null) _ = doOrbe.EnviarAsync(texto);
+            else conversa.AbrirComMensagem(texto, mostrarJanela: false);
+        }
+
+        // O turno da conversa do orbe: o passo acende o anel, e a resposta volta para a barra.
+        void AndouNoOrbe(string passo, string? ferramenta) => orbe.MostrarEstado(passo, ferramenta);
+        void RespondeuNoOrbe(string texto) => orbe.ResponderTurno(texto);
+
+        if (doOrbe != null)
+        {
+            doOrbe.PassoMudou += AndouNoOrbe;
+            doOrbe.Respondeu += RespondeuNoOrbe;
+        }
 
         // O clique num item da pilha leva ao MESMO lugar que a lista da área central: o e-mail
         // entra na conversa, e a janela vem à frente. Antes o item era desenho — clicar nele
@@ -180,6 +199,11 @@ public partial class App : System.Windows.Application
 
         return () =>
         {
+            if (doOrbe != null)
+            {
+                doOrbe.PassoMudou -= AndouNoOrbe;
+                doOrbe.Respondeu -= RespondeuNoOrbe;
+            }
             orbe.MensagemEnviada -= Enviou;
             orbe.EmailEscolhido -= EscolheuEmail;
             conversa.PassoDoTurnoMudou -= Andou;
@@ -257,9 +281,12 @@ public partial class App : System.Windows.Application
         _lembretes = new Lembretes();
         _iniciativa = new Iniciativa();
 
-        // Qualquer turno é o usuário falando: marca a conversa como recente e, se havia uma
-        // iniciativa esperando, conta como resposta — o ritmo sobe.
-        _chatWindow!.TurnoConcluido += _ =>
+        // Conversa na janela: só deixa a hora como recente — ele está ocupado com outra coisa,
+        // não respondendo a ela.
+        _chatWindow!.TurnoConcluido += _ => _ultimaConversaUtc = DateTime.UtcNow;
+
+        // Conversa no orbe: é a resposta à iniciativa, se havia uma esperando.
+        _conversaDoOrbe.UsuarioFalou += _ =>
         {
             _ultimaConversaUtc = DateTime.UtcNow;
             _iniciativa.Respondeu();
@@ -270,6 +297,7 @@ public partial class App : System.Windows.Application
         {
             EntregarLembretes();
             _ = TalvezPuxarAssuntoAsync();
+            _ = _conversaDoOrbe.CompactarSeParadaAsync(DateTime.UtcNow);
         };
         _agenda.Start();
         Exit += (_, _) => _agenda?.Stop();
@@ -301,7 +329,7 @@ public partial class App : System.Windows.Application
         _iniciativa.NovoDia(agora);
         _iniciativa.ConferirPaciencia(utc);
 
-        bool livre = _orbe != null && !_chatWindow.Ocupada && !_chatWindow.IsVisible;
+        bool livre = _orbe != null && !_chatWindow.Ocupada && !_chatWindow.IsVisible && !_conversaDoOrbe.Ocupada;
         string? impedimento = Iniciativa.Impedimento(
             _iniciativa.Estado, utc, agora.TimeOfDay,
             Iniciativa.Hora(s.SilencioInicio) ?? TimeSpan.FromHours(22),
@@ -312,10 +340,10 @@ public partial class App : System.Windows.Application
         _ponderando = true;
         try
         {
-            string? fala = await _conversation.PonderarIniciativaAsync(System.Threading.CancellationToken.None);
+            string? fala = await _conversaDoOrbe.Conversa.PonderarIniciativaAsync(System.Threading.CancellationToken.None);
 
-            // Enquanto ela pensava, o usuário pode ter aberto a conversa e começado a falar.
-            if (fala != null && _chatWindow.Ocupada) fala = null;
+            // Enquanto ela pensava, o usuário pode ter começado a falar com ela.
+            if (fala != null && _conversaDoOrbe.Ocupada) fala = null;
 
             _iniciativa.Ponderou(DateTime.UtcNow, falou: fala != null);
             Console.WriteLine($"[INICIATIVA] ponderou: {(fala == null ? "ficou quieta" : "falou")} "
@@ -333,7 +361,7 @@ public partial class App : System.Windows.Application
     {
         // Com turno rodando, espera a próxima batida: a fala entraria no histórico no meio do
         // turno, entre a chamada de uma ferramenta e o resultado dela.
-        if (_chatWindow == null || _chatWindow.Ocupada) return;
+        if (_chatWindow == null || _chatWindow.Ocupada || _conversaDoOrbe.Ocupada) return;
 
         var agora = DateTime.UtcNow;
         foreach (var lembrete in _lembretes.Retirar(agora))
@@ -349,12 +377,20 @@ public partial class App : System.Windows.Application
     {
         if (_chatWindow == null || string.IsNullOrWhiteSpace(texto)) return;
 
-        _chatWindow.ReceberIniciativa(texto);
-        if (_chatWindow.IsVisible) return;
+        // Com orbe: a fala é da conversa DELE, e espera no pulso. A responder pela barra
+        // continua o assunto ali.
+        if (_orbe != null)
+        {
+            _conversaDoOrbe.ReceberFalaPropria(texto);
+            _orbe.EnfileirarFala(QuebraDeFala.Limpar(texto));
+            return;
+        }
 
-        string limpo = QuebraDeFala.Limpar(texto);
-        if (_orbe != null) _orbe.EnfileirarFala(limpo);
-        else ShowNotification(_settingsService.LoadSettings().ActiveCharacter ?? "AIB", limpo);
+        // Sem orbe (só lembrete chega aqui): na conversa da janela, e pela bandeja se ela
+        // estiver fechada.
+        _chatWindow.ReceberIniciativa(texto);
+        if (!_chatWindow.IsVisible)
+            ShowNotification(_settingsService.LoadSettings().ActiveCharacter ?? "AIB", QuebraDeFala.Limpar(texto));
     }
 
     public void ShowNotification(string title, string message)
@@ -423,6 +459,14 @@ public partial class App : System.Windows.Application
             _agentLoop = new AgentLoop(_toolRegistry, _providerFactory, _settingsService, _tokenCounter);
             _conversation = new ConversationService(_settingsService, _toolRegistry, _agentLoop,
                                                     _tokenCounter, _providerFactory);
+
+            // A conversa do orbe: separada da janela, uma só para sempre (ConversaDoOrbe). Laço
+            // de agente próprio — o rastreador de prefixo dele é por conversa.
+            _conversaDoOrbe = new ConversaDoOrbe(
+                new ConversationService(_settingsService, _toolRegistry,
+                    new AgentLoop(_toolRegistry, _providerFactory, _settingsService, _tokenCounter),
+                    _tokenCounter, _providerFactory, sessaoFixa: ConversaDoOrbe.Sessao),
+                _settingsService);
 
             _chatWindow = new ChatWindow(_conversation, _settingsService);
 

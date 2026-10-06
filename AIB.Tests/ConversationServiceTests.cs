@@ -2301,6 +2301,61 @@ namespace AIB.Tests
                 .Should().NotContain(c => c.MailThreadKey == chave);
         }
 
+        // ──────────────────────────────────────────────────────────
+        // A conversa do orbe — sessão fixa, fora do painel, reaberta
+        // ──────────────────────────────────────────────────────────
+
+        private ConversationService ConversaDoOrbe(SettingsService settings, IChatProvider provider, ToolRegistry? registry = null)
+        {
+            registry ??= new ToolRegistry();
+            var counter = new TokenCounter();
+            var factory = new FixedProviderFactory(provider);
+            return new ConversationService(
+                settings, registry, new AgentLoop(registry, factory, settings, counter), counter, factory,
+                memoryRootOverride: Path.Combine(_dir, "memory"), sessaoFixa: AIB.Services.ConversaDoOrbe.Sessao);
+        }
+
+        [Fact]
+        public async Task AConversaDoOrbe_NAO_ApareceNoPainel_EGravaNaSessaoFixa()
+        {
+            // Pedido: "a conversa do orbe volta a ser apartada, sem item no histórico de chats".
+            string marca = "pelo orbe " + Guid.NewGuid().ToString("N");
+            var orbe = ConversaDoOrbe(BuildSettings(sendSystemPrompt: false), new FakeProvider());
+
+            await foreach (var _ in orbe.StreamResponseAsync(marca, _ => { })) { }
+
+            ChatHistoryService.ConversasDoUsuario().Should().NotContain(c => c.Content.Contains(marca));
+            Path.GetFileName(orbe.SessionMemoryDir).Should().Be("orbe");
+            File.ReadAllText(Path.Combine(orbe.SessionMemoryDir, "raw.jsonl")).Should().Contain(marca, "raw.jsonl guarda tudo");
+        }
+
+        [Fact]
+        public async Task AConversaDoOrbe_ContinuaDeOndeParou_NoArranqueSeguinte()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var primeira = ConversaDoOrbe(settings, new FakeProvider());
+            await foreach (var _ in primeira.StreamResponseAsync("meu servidor caiu", _ => { })) { }
+
+            var reaberta = ConversaDoOrbe(settings, new FakeProvider());
+
+            reaberta.SnapshotHistory().OfType<UserChatMessage>().Select(TextOf)
+                .Should().Contain(t => t.Contains("meu servidor caiu"), "uma conversa só, que nunca termina");
+        }
+
+        [Fact]
+        public void AConversaDoOrbe_SOMA_OsGuardasDeEmail_SemTirarOsDaPrincipal()
+        {
+            // Trocar faria o e-mail na conversa principal deixar de suspender o "sempre permitir".
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var principal = BuildConversation(settings, new FakeProvider(), out var registry);
+            principal.VincularAEmail("eu@x.com|thr:1");
+
+            ConversaDoOrbe(settings, new FakeProvider(), registry);
+
+            registry.ChaveDaConversaDeEmail!().Should().Be("eu@x.com|thr:1", "a chave continua sendo da principal");
+            registry.ConteudoDeEmailNoContexto.Should().NotBeNull();
+        }
+
         [Fact]
         public async Task AConversaCOMUM_APARECE_NaListaDoPainel()
         {

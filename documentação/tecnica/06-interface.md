@@ -313,10 +313,16 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
 - **Clique** transforma o círculo em barra de texto (`AbrirBarra`, morph de 0,28 s; o raio segue a
   altura por `Ui/AlturaParaRaioConverter`, porque WPF não anima `CornerRadius`). `Esc` ou perder o
   foco volta ao círculo.
-- **Enviar** pela barra dispara `MensagemEnviada`; o `App` chama
-  `ChatWindow.AbrirComMensagem(texto, mostrarJanela: false)`. O turno inteiro roda na conversa,
-  escondida. O orbe só mostra o texto final (`ResponderTurno`): com a barra aberta, a resposta
-  entra na pilha de falas (`Ui/FalaDoOrbe`); fechada, ela é enfileirada e o orbe pulsa.
+- **Enviar** pela barra dispara `MensagemEnviada`, e o turno roda na **conversa do orbe**
+  (`Services/ConversaDoOrbe`), separada da janela: um `ConversationService` em sessão fixa
+  (`memory/sessions/orbe`), reaberto de onde parou no arranque, fora do `chat_history.json` e sem
+  título, com laço de agente próprio. As duas conversas se encontram só nos fatos duráveis; os
+  guardas de e-mail do registry são SOMADOS (o mais restritivo vale). O orbe mostra o passo
+  (`PassoMudou`) e o texto final (`Respondeu` → `ResponderTurno`): com a barra aberta, a
+  resposta entra na pilha de falas (`Ui/FalaDoOrbe`); fechada, ela é enfileirada e o orbe pulsa.
+  Ela se mantém leve pela compactação de sempre e por mais uma: parada há 2 h (`Pausa`), com algo
+  novo desde a última, roda `ForcarCompactacaoAsync` — rajadas curtas ao longo do dia quase nunca
+  enchem o contexto sozinhas. Lembretes e iniciativas, com orbe, caem nesta conversa.
 - **Pulso** (`Pulsar`): anel lilás, ou vermelho quando urgente. Não expira sozinho e não abre
   balão: o texto só aparece quando o usuário clica.
 - **Passo do turno** (`ChatWindow.PassoDoTurnoMudou` → `MostrarEstado(passo, ferramenta)`): o
@@ -338,9 +344,11 @@ primeiro passe é no arranque, para os que venceram com o app fechado, que chega
 15:00.)" (`Lembretes.Atrasado`). Com turno em andamento (`ChatWindow.Ocupada`), espera a batida
 seguinte.
 
-`FalarPorIniciativa` põe a fala na conversa (`ChatWindow.ReceberIniciativa`: balão e
-`AppendAssistantText`, para a resposta do usuário continuar o assunto) e, com a conversa fora da
-tela, avisa pelo orbe (`EnfileirarFala`: pulso, texto só no clique) ou, sem orbe, pela bandeja.
+`FalarPorIniciativa`, com orbe, põe a fala na conversa do orbe (`ReceberFalaPropria`, para a
+resposta pela barra continuar o assunto) e pulsa (`EnfileirarFala`, texto só no clique). Sem
+orbe (só lembrete chega aqui), vai para a conversa da janela (`ChatWindow.ReceberIniciativa`) e,
+com ela fechada, para a bandeja. A fala por iniciativa entra no histórico vivo, mas não no
+`raw.jsonl`, que só grava dentro de um turno.
 Lembrete não chama o modelo: o texto foi escrito pela persona no pedido.
 
 **Iniciativa** (`Services/Iniciativa.cs`, opt-in `IniciativaLigada`): na mesma batida,

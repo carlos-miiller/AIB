@@ -376,16 +376,32 @@ public sealed class ConversationService : IMessageStore
         AgentLoop agentLoop,
         TokenCounter tokenCounter,
         IChatProviderFactory providerFactory,
-        string? memoryRootOverride = null)
+        string? memoryRootOverride = null,
+        string? sessaoFixa = null)
     {
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         _toolRegistry = toolRegistry ?? throw new ArgumentNullException(nameof(toolRegistry));
+        _sessaoFixa = string.IsNullOrWhiteSpace(sessaoFixa) ? null : sessaoFixa.Trim();
 
-        // A leitura do e-mail pertence à conversa DE um e-mail, e o aviso do card, ao contexto
-        // desta conversa. O registry é de todo o app; quem sabe das duas coisas é esta classe.
-        _toolRegistry.ChaveDaConversaDeEmail = () => ChaveDoEmail;
-        _toolRegistry.ConteudoDeEmailNoContexto = HaConteudoDeEmailNoContexto;
-        _toolRegistry.EmailNoContexto = HaEmailNoContexto;
+        if (_sessaoFixa == null)
+        {
+            // A leitura do e-mail pertence à conversa DE um e-mail, e o aviso do card, ao contexto
+            // desta conversa. O registry é de todo o app; quem sabe das duas coisas é esta classe.
+            _toolRegistry.ChaveDaConversaDeEmail = () => ChaveDoEmail;
+            _toolRegistry.ConteudoDeEmailNoContexto = HaConteudoDeEmailNoContexto;
+            _toolRegistry.EmailNoContexto = HaEmailNoContexto;
+        }
+        else
+        {
+            // A conversa do orbe divide o registry com a principal. SOMA ao que já está ligado,
+            // em vez de trocar: trocar faria o texto de e-mail da conversa principal deixar de
+            // suspender o "sempre permitir" — o guarda valeria só para a última a nascer. Na
+            // dúvida entre as duas, vale o mais restritivo.
+            var conteudoAnterior = _toolRegistry.ConteudoDeEmailNoContexto;
+            var emailAnterior = _toolRegistry.EmailNoContexto;
+            _toolRegistry.ConteudoDeEmailNoContexto = () => (conteudoAnterior?.Invoke() ?? false) || HaConteudoDeEmailNoContexto();
+            _toolRegistry.EmailNoContexto = () => (emailAnterior?.Invoke() ?? false) || HaEmailNoContexto();
+        }
         _agentLoop = agentLoop ?? throw new ArgumentNullException(nameof(agentLoop));
         _tokenCounter = tokenCounter ?? throw new ArgumentNullException(nameof(tokenCounter));
         _providerFactory = providerFactory ?? throw new ArgumentNullException(nameof(providerFactory));
@@ -415,7 +431,22 @@ public sealed class ConversationService : IMessageStore
         // Popula o histórico inicial (System Prompt / SOUL) para já termos a métrica de
         // tokens. Nenhuma tarefa de fundo nasce daqui: o aquecimento é explícito.
         ResetHistory();
+
+        // A sessão fixa continua de onde parou: capítulos, atos e os turnos ainda não resumidos.
+        if (_sessaoFixa != null && RestaurarMemoria(_sessaoFixa))
+            RefreshMemoryMessage(CurrentQuota(LevelService.GetLevel(_settingsService.LoadSettings().MessageCount)));
     }
+
+    /// <summary>
+    /// A sessão de memória desta conversa, quando ela é UMA SÓ para sempre — a do orbe. Nula na
+    /// conversa principal, que abre sessão nova a cada conversa nova.
+    /// <para>
+    /// Conversa de sessão fixa não entra no histórico do painel (não tem começo nem fim para
+    /// listar), não ganha título, e se mantém leve pela compactação: os turnos antigos viram
+    /// capítulos, e o raw.jsonl da sessão guarda tudo.
+    /// </para>
+    /// </summary>
+    private readonly string? _sessaoFixa;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Eventos e superfície pública
@@ -764,7 +795,7 @@ public sealed class ConversationService : IMessageStore
     // ─────────────────────────────────────────────────────────────────────────
 
     private SessionMemory NewSessionMemory() =>
-        new(SessionMemory.SessionIdFrom(DateTime.Now), _memoryRootOverride);
+        new(_sessaoFixa ?? SessionMemory.SessionIdFrom(DateTime.Now), _memoryRootOverride);
 
     /// <summary>Pasta desta sessão em disco. Diagnóstico e teste.</summary>
     public string SessionMemoryDir => _sessionMemory.SessionDir;
@@ -2082,6 +2113,8 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private void ArquivarConversaViva()
     {
+        if (_sessaoFixa != null) return;
+
         try
         {
             List<ChatMessage> transcricao;
@@ -2122,7 +2155,7 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private async Task TitularSeNecessarioAsync()
     {
-        if (Title != null || _turnsRecorded != 1) return;
+        if (_sessaoFixa != null || Title != null || _turnsRecorded != 1) return;
 
         try
         {
