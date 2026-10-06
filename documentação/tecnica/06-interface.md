@@ -125,7 +125,7 @@ O que aparece durante o turno:
 | Item do stream | Efeito na tela |
 |---|---|
 | `Thinking` | Mostra os três pontos (`AddTypingIndicator`). É o primeiro sinal real de que há token saindo. |
-| `Text` | Acumula em `fullText`; mostra os três pontos se ainda não estiverem. |
+| `Text` | Acumula em `fullText`; mostra os três pontos se ainda não estiverem. Se o acumulado já tem a marca `⁂` (`QuebraDeFala`), o que veio antes dela vira balão na hora. |
 | `ToolStarted` / `ToolFinished` | Alimenta a `ToolChainView` e o registro de ações (`RegistrarAcao`). |
 | `SegmentBreak` | A IA terminou uma fala e vai usar ferramenta: a fala acumulada vira balão e a cadeia seguinte começa abaixo dela. |
 
@@ -134,6 +134,13 @@ Os três pontos somem depois de 3 s sem novidade (`idleTimer`) e voltam com o pr
 sucesso.*". Erros viram balão com "❌ **Erro:**". Com a janela escondida ou sem foco, o fim do
 turno gera uma notificação da bandeja (`App.ShowNotification`) com até 200 caracteres. O evento
 `TurnoConcluido` entrega o texto final ao orbe.
+
+**Falas separadas.** A persona pode dividir uma resposta em mensagens (a reação a uma piada, depois
+o resultado) com uma linha só com `⁂`; a instrução está na alma do personagem (a Ellen, §3.D), não
+no prompt de sistema. `QuebraDeFala.Dividir` faz um balão por parte, no streaming, no `finally` e ao
+restaurar uma conversa gravada. A marca fica no histórico, para o modelo ver o próprio padrão, e
+sai do texto do orbe e da notificação (`QuebraDeFala.Limpar`). Símbolo raro de propósito: `---` e
+linha em branco são Markdown comum e partiriam uma explicação no meio.
 
 Enquanto o turno roda, o botão de enviar vira **parar** (`_isSending` → `CancelGeneration`).
 

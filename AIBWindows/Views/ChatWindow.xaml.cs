@@ -1212,6 +1212,32 @@ public partial class ChatWindow : Window
             idleTimer.Stop();
         };
 
+        // Fecha uma fala em balão(ões): um por parte separada pela QuebraDeFala. A fala nova
+        // fecha a cadeia anterior: as ferramentas que vierem depois abrem uma cadeia própria,
+        // LOGO ABAIXO do balão. Sem isto todas as ferramentas do turno iam para o chip da
+        // primeira fala, lá em cima, e "Script criado. Executando agora:" aparecia sem nada
+        // embaixo. Ferramentas seguidas sem fala entre elas continuam no mesmo chip.
+        void FecharFala(IReadOnlyList<string> partes)
+        {
+            if (partes.Count == 0) return;
+
+            if (typingBubble != null)
+            {
+                typingTimer?.Stop();
+                RemoverLinha(typingBubble);
+                typingBubble = null;
+                typingTimer = null;
+            }
+
+            foreach (var parte in partes) AddAgentBubble(parte);
+            ChatScrollViewer.ScrollToEnd();
+
+            allText += string.Join("\n\n", partes) + "\n\n";
+
+            _cadeiaAtual?.RecolherFalhaPendente();
+            _cadeiaAtual = null;
+        }
+
         try
         {
             // O log técnico volta a ser só log. A cadeia de ações é desenhada a partir dos
@@ -1283,30 +1309,8 @@ public partial class ChatWindow : Window
                 // balão continua sendo renderizado só quando completo, como sempre foi.
                 if (item is ChatStreamItem.SegmentBreak)
                 {
-                    if (!string.IsNullOrWhiteSpace(fullText))
-                    {
-                        if (typingBubble != null)
-                        {
-                            typingTimer?.Stop();
-                            RemoverLinha(typingBubble);
-                            typingBubble = null;
-                            typingTimer = null;
-                        }
-
-                        AddAgentBubble(fullText);
-                        ChatScrollViewer.ScrollToEnd();
-
-                        allText += fullText;
-                        fullText = "";
-
-                        // A fala nova fecha a cadeia anterior: as ferramentas que ela anuncia
-                        // abrem uma cadeia própria, LOGO ABAIXO do balão. Sem isto todas as
-                        // ferramentas do turno iam para o chip da primeira fala, lá em cima, e
-                        // "Script criado. Executando agora:" aparecia sem nada embaixo.
-                        // Ferramentas seguidas sem fala entre elas continuam no mesmo chip.
-                        _cadeiaAtual?.RecolherFalhaPendente();
-                        _cadeiaAtual = null;
-                    }
+                    FecharFala(QuebraDeFala.Dividir(fullText));
+                    fullText = "";
                     continue;
                 }
 
@@ -1314,6 +1318,16 @@ public partial class ChatWindow : Window
                 string chunk = textItem.Value;
 
                 fullText += chunk;
+
+                // A persona separou uma fala com a marca: o que veio antes já é balão, sem
+                // esperar o fim do turno. O tempo de escrever a fala seguinte é a pausa
+                // natural entre os dois, com os três pontos de volta logo abaixo.
+                var (prontas, resto) = QuebraDeFala.Separar(fullText);
+                if (prontas.Count > 0)
+                {
+                    FecharFala(prontas);
+                    fullText = resto;
+                }
 
                 // Os três pontos, quando o modelo não raciocina — aí a primeira palavra é
                 // mesmo o primeiro sinal. Repõe também o indicador retirado pelos 3 segundos
@@ -1363,7 +1377,7 @@ public partial class ChatWindow : Window
             }
             else if (!string.IsNullOrWhiteSpace(fullText))
             {
-                AddAgentBubble(fullText);
+                foreach (var parte in QuebraDeFala.Dividir(fullText)) AddAgentBubble(parte);
             }
             else if (string.IsNullOrWhiteSpace(allText))
             {
@@ -1390,7 +1404,8 @@ public partial class ChatWindow : Window
             // fala aparecer deixaria o orbe um instante falando e trabalhando ao mesmo tempo.
             PassoDoTurnoMudou?.Invoke("", null);
 
-            string textoDoTurno = (allText + fullText).Trim();
+            // Sem a marca: o orbe e a notificação mostram o turno inteiro de uma vez.
+            string textoDoTurno = QuebraDeFala.Limpar(allText + fullText).Trim();
             TurnoConcluido?.Invoke(errorText ?? textoDoTurno);
 
             // Se a janela estiver invisível ou sem foco (usuário fazendo outra coisa), emite notificação
@@ -2406,7 +2421,7 @@ public partial class ChatWindow : Window
             primeira = false;
 
             if (fala.DoUsuario) AddUserBubble(fala.Texto);
-            else AddAgentBubble(fala.Texto);
+            else foreach (var parte in QuebraDeFala.Dividir(fala.Texto)) AddAgentBubble(parte);
         }
 
         ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
