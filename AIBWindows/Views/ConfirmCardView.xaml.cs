@@ -134,6 +134,27 @@ public partial class ConfirmCardView : UserControl
         SempreCheck.Visibility = shell || navegador ? Visibility.Visible : Visibility.Collapsed;
         if (navegador) SempreCheck.Content = "Sempre permitir neste site (até fechar o AIB)";
 
+        if (navegador && contexto.SempreSegurando)
+        {
+            _segurar = true;
+            SempreCheck.Content = RotuloDeSegurar;
+            SempreCheck.PreviewMouseLeftButtonDown += (_, e) =>
+            {
+                if (SempreCheck.IsChecked == true) return; // desmarcar é um clique só
+                e.Handled = true;
+                SempreCheck.CaptureMouse();
+                ApertouSempre();
+            };
+            SempreCheck.PreviewMouseLeftButtonUp += (_, _) => SoltouSempre();
+            SempreCheck.LostMouseCapture += (_, _) => SoltouSempre();
+
+            // Espaço marcaria na hora, sem os 5 s.
+            SempreCheck.PreviewKeyDown += (_, e) =>
+            {
+                if (SempreCheck.IsChecked != true) e.Handled = true;
+            };
+        }
+
         // No navegador, o texto de terceiros é quase sempre a própria página: o aviso só entra se
         // houver e-mail. Repetir em todo clique ensinaria a não ler o aviso.
         if (ferramenta == Ferramentas.Navegador && !contexto.EmailNoContexto)
@@ -162,8 +183,66 @@ public partial class ConfirmCardView : UserControl
         PermitirButton.IsEnabled = false;
         RecusarButton.IsEnabled = false;
         SempreCheck.IsEnabled = false;
+        _relogio?.Stop();
 
         _resposta.TrySetResult((permitido, permitido && SempreCheck.IsChecked == true));
+    }
+
+    // ── "Sempre" que se marca segurando ───────────────────────────────────
+
+    /// <summary>Quanto tempo o clique tem de ficar na caixa para ela marcar.</summary>
+    public static readonly TimeSpan EsperaDoSempre = TimeSpan.FromSeconds(5);
+
+    private const string RotuloDeSegurar = "Sempre permitir este botão neste site (segure 5 s)";
+
+    private bool _segurar;
+    private DateTime _apertou;
+    private System.Windows.Threading.DispatcherTimer? _relogio;
+
+    /// <summary>O clique desceu na caixa: começa a contagem.</summary>
+    public void ApertouSempre()
+    {
+        if (!_segurar || SempreCheck.IsChecked == true || !SempreCheck.IsEnabled) return;
+
+        _apertou = DateTime.UtcNow;
+        _relogio ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _relogio.Tick -= Batida;
+        _relogio.Tick += Batida;
+        _relogio.Start();
+        SegurandoSempre(TimeSpan.Zero);
+    }
+
+    private void Batida(object? sender, EventArgs e) => SegurandoSempre(DateTime.UtcNow - _apertou);
+
+    /// <summary>
+    /// O clique continua na caixa há <paramref name="decorrido"/>: mostra quanto falta e, aos
+    /// 5 s, marca.
+    /// </summary>
+    public void SegurandoSempre(TimeSpan decorrido)
+    {
+        if (!_segurar || SempreCheck.IsChecked == true) return;
+
+        if (decorrido >= EsperaDoSempre)
+        {
+            _relogio?.Stop();
+            SempreCheck.IsChecked = true;
+            SempreCheck.Content = "Sempre permitir este botão neste site (até fechar o AIB)";
+            if (SempreCheck.IsMouseCaptured) SempreCheck.ReleaseMouseCapture();
+            return;
+        }
+
+        int falta = (int)Math.Ceiling((EsperaDoSempre - decorrido).TotalSeconds);
+        SempreCheck.Content = $"Continue segurando... {falta}";
+    }
+
+    /// <summary>O clique saiu antes da hora: nada marca, e a contagem recomeça do zero.</summary>
+    public void SoltouSempre()
+    {
+        if (!_segurar) return;
+
+        _relogio?.Stop();
+        if (SempreCheck.IsMouseCaptured) SempreCheck.ReleaseMouseCapture();
+        if (SempreCheck.IsChecked != true) SempreCheck.Content = RotuloDeSegurar;
     }
 
     private void Permitir_Click(object sender, RoutedEventArgs e) => Encerrar(true);

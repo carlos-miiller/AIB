@@ -23,8 +23,9 @@ são invioláveis; o mecanismo está em `documentação/tecnica/03-ferramentas-e
   `fs`, `shell`, `skill`; o `browser` decide por ação (`ITool.PedeConfirmacao`): ler não pergunta,
   clicar, digitar, abrir site novo e anotar perguntam.
 - **"Sempre permitir"** vale só na sessão (em memória), e só para `shell` (casa o comando exato) e
-  `browser` (vale para o site, e nunca para ação decisiva: envio de formulário, abrir site novo,
-  anotar).
+  `browser` (vale para o site). Botão do navegador que decide algo (aprovar, salvar, enviar,
+  apagar…) fica fora do "sempre" do site: só entra num "sempre" próprio, daquele botão naquele
+  site, marcado segurando a caixa por 5 s. Abrir site novo e anotar perguntam sempre.
 - **Nível**: ferramenta acima do nível do usuário some do schema (`GetActiveTools`) e é negada na
   execução. Ferramenta nova e perigosa pede `RequiredLevel` alto.
 

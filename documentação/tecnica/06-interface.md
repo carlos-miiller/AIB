@@ -265,7 +265,9 @@ O cartão mostra a pill "Ação destrutiva", o alvo literal, a prévia do conte�
 trocado (`ScriptBody`) e, quando cabem, três avisos: motivo de bloqueio, "Há texto de um e-mail
 nesta conversa..." e o aviso de caminho fora das pastas sem confirmação. Botões: **Permitir**
 (`DangerFilledButton`) e **Recusar**. A caixa "Sempre permitir este comando" só aparece para `shell`
-e some quando há e-mail no contexto.
+e `browser`, e some quando há e-mail no contexto. Em botão do navegador que decide algo
+(`SempreSegurando`) ela diz "Sempre permitir este botão neste site (segure 5 s)" e só marca com o
+clique segurado por 5 s (contagem no rótulo; soltar antes zera; Espaço não marca).
 
 Regras que o código garante: o foco nasce em "Recusar" (Enter sem ler não executa nada); a
 resposta é negativa por omissão (`Descartar` devolve recusa); decidir trava os botões.

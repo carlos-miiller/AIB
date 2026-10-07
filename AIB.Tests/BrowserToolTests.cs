@@ -221,11 +221,39 @@ namespace AIB.Tests
             await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "e2" }), 2);
             prompt.Vistos.Should().HaveCount(1);
 
-            // "Concluir tarefa" decide algo: pergunta toda vez.
+            // "Concluir tarefa" decide algo: o "sempre" do site não o cobre.
             await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "e3" }), 2);
+            prompt.Vistos.Should().HaveCount(2);
+        }
+
+        // Caso real: um ciclo de Analisar → "Aprovar solicitação" → "Aprovar" num sistema interno,
+        // 120+ cliques. "Analisar" aceitava "sempre"; os dois "Aprovar" perguntavam toda vez.
+        [Fact]
+        public async Task BotaoQueDecide_AceitaSempre_SoParaAqueleBotao_ESoSegurando()
+        {
+            _nav.JaAberta();
+            var (registry, prompt) = Registry(sempre: true);
+
+            await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "s1e3" }), 2);
+            var cartao = prompt.Vistos.Should().ContainSingle().Subject;
+            cartao.SemSempre.Should().BeFalse();
+            cartao.SempreSegurando.Should().BeTrue("decisão só entra no sempre com o gesto de 5 s");
+            cartao.ChaveDeSempre.Should().Be("site:cpaps.bitrix24.com|botão Concluir tarefa");
+
+            // O mesmo botão de novo: já foi liberado.
+            await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "e3" }), 2);
+            prompt.Vistos.Should().HaveCount(1);
+
+            // Outro botão do site NÃO foi: o sempre era daquele rótulo.
+            await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "e2" }), 2);
+            prompt.Vistos.Should().HaveCount(2);
+            prompt.Vistos[^1].SempreSegurando.Should().BeFalse();
+
+            // Com e-mail no contexto, nem o botão liberado passa.
+            registry.ConteudoDeEmailNoContexto = () => true;
+            registry.EmailNoContexto = () => true;
             await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "e3" }), 2);
             prompt.Vistos.Should().HaveCount(3);
-            prompt.Vistos[^1].SemSempre.Should().BeTrue();
         }
 
         [Fact]
