@@ -299,7 +299,8 @@ public partial class App : System.Windows.Application
         _chatWindow!.TurnoConcluido += _ => _ultimaConversaUtc = DateTime.UtcNow;
 
         // Conversa no orbe: é a resposta à iniciativa, se havia uma esperando — e quanto ele
-        // conversou, e se foi um "agora não", é o que ela aprende.
+        // conversou, e se foi um "agora não", é o que ela aprende. Sem fala esperando, é ele
+        // puxando conversa, e isso também sobe a chance.
         _conversaDoOrbe.UsuarioFalou += texto =>
         {
             _ultimaConversaUtc = DateTime.UtcNow;

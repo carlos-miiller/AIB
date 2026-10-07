@@ -396,6 +396,12 @@ e pela raiz para o geral:
 | Não abriu em 8 h | 0,75 |
 | "Agora não" (`EhRecusa`, na primeira resposta) | 0,50, e pausa de 4 h ou até o fim do dia |
 
+Ele puxar conversa também conta: mensagem dele na conversa do orbe sem fala dela esperando abre
+uma conversa espontânea (`ConversaUtc`), fechada 30 min depois de começar. O fator
+(`FatorEspontaneo`) vai para a faixa em que ele começou e pela raiz para o geral: 1,02 com uma
+mensagem, 1,05 com duas, +0,02 por turno a mais, até 1,20. Só sobe, sobe menos que a resposta a
+uma iniciativa (boa parte do que ele manda ali é pedido de trabalho) e não olha "agora não".
+
 A cada dia os multiplicadores voltam 10% para 1 no logaritmo (`Esquecer`). A página Shadow mostra
 o resumo (`Iniciativa.Resumo`: geral e a melhor e a pior faixa) e "Zerar aprendizado", que vale na
 hora pela instância viva do `App`.

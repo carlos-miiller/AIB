@@ -40,6 +40,18 @@ public sealed class EstadoDaIniciativa
     /// <summary>Palavras da primeira resposta.</summary>
     public int Palavras { get; set; }
 
+    /// <summary>
+    /// Quando ele começou, por conta própria, a conversa do orbe que ainda está sendo contada.
+    /// Nula: não há conversa espontânea aberta.
+    /// </summary>
+    public DateTime? ConversaUtc { get; set; }
+
+    /// <summary>A faixa em que ele puxou a conversa.</summary>
+    public int FaixaDaConversa { get; set; }
+
+    /// <summary>Turnos dele na conversa espontânea.</summary>
+    public int TurnosDaConversa { get; set; }
+
     /// <summary>Depois de um "agora não", ela não puxa assunto até aqui.</summary>
     public DateTime? PausaAteUtc { get; set; }
 
@@ -83,6 +95,13 @@ public sealed record Gancho(string Tipo, string Texto);
 /// afetuosa e quem conversa muito com ela a deixa mais inclinada a puxar assunto; ignorar desce
 /// 0,75; "agora não" desce 0,5 e cala até o fim do dia ou por 4 h. Todo dia os multiplicadores
 /// voltam 10% na direção de 1: uma semana ruim não a cala para sempre.
+/// </para>
+/// <para>
+/// ELE PUXAR CONVERSA TAMBÉM CONTA — pedido do usuário: "que tal nós mandarmos mensagem no
+/// shadow e isso também contabilizar no algoritmo?". Mensagem dele no orbe sem fala dela
+/// esperando abre uma conversa espontânea de 30 min, que só sobe (<see cref="FatorEspontaneo"/>)
+/// e sobe menos que a resposta a uma iniciativa: boa parte do que ele manda ali é pedido de
+/// trabalho, não vontade de conversar.
 /// </para>
 /// <para>
 /// Travas que não aprendem: com uma fala sem resposta ela não sorteia; teto de mensagens por dia
@@ -200,6 +219,14 @@ public sealed class Iniciativa
         if (turnos >= 2) return Math.Min(1.70, 1.10 + 0.05 * (turnos - 2));
         return palavras >= 12 ? 1.10 : 1.05;
     }
+
+    /// <summary>
+    /// O fator de uma conversa que ele puxou no orbe: 1,02 com uma mensagem só, 1,05 com duas,
+    /// +0,02 por turno a mais, até 1,20. Nunca desce, e não olha "agora não": numa mensagem que
+    /// não responde a ela, "para de rodar o build" é trabalho, não recusa.
+    /// </summary>
+    public static double FatorEspontaneo(int turnos) =>
+        turnos >= 2 ? Math.Min(1.20, 1.05 + 0.02 * (turnos - 2)) : 1.02;
 
     private static readonly Regex Recusa = new(
         @"\b(agora n[aã]o|depois a gente|depois falamos|para de|pare de|chega|n[aã]o quero conversar|me deixa|fala menos|menos mensage)",
@@ -335,13 +362,27 @@ public sealed class Iniciativa
 
     /// <summary>
     /// Ele falou na conversa do orbe. A primeira resposta depois da fala: se for "agora não",
-    /// classifica na hora e pausa; senão abre a janela de 30 min em que os turnos contam.
+    /// classifica na hora e pausa; senão abre a janela de 30 min em que os turnos contam. Sem
+    /// fala dela esperando, é ele puxando conversa: abre (ou soma a) uma conversa espontânea.
     /// </summary>
-    public void UsuarioFalou(DateTime agoraUtc, string texto)
+    /// <param name="horaLocal">A hora local da mensagem. Existe para o teste não depender do fuso.</param>
+    public void UsuarioFalou(DateTime agoraUtc, string texto, TimeSpan? horaLocal = null)
     {
         lock (_gate)
         {
-            if (Estado.FalaUtc == null) return;
+            if (Estado.FalaUtc == null)
+            {
+                if (Estado.ConversaUtc is DateTime c && agoraUtc - c > JanelaDaConversa) FecharConversa();
+                if (Estado.ConversaUtc == null)
+                {
+                    Estado.ConversaUtc = agoraUtc;
+                    Estado.FaixaDaConversa = FaixaDe(horaLocal ?? agoraUtc.ToLocalTime().TimeOfDay);
+                    Estado.TurnosDaConversa = 0;
+                }
+                Estado.TurnosDaConversa++;
+                Gravar();
+                return;
+            }
 
             if (Estado.RespostaUtc == null)
             {
@@ -366,12 +407,19 @@ public sealed class Iniciativa
 
     /// <summary>
     /// Fecha a fala que já pode ser julgada: 30 min depois da primeira resposta, ou 8 h sem
-    /// resposta. Chamado a cada batida.
+    /// resposta. Fecha também a conversa espontânea, 30 min depois de ele a ter começado.
+    /// Chamado a cada batida.
     /// </summary>
     public void Classificar(DateTime agoraUtc)
     {
         lock (_gate)
         {
+            if (Estado.ConversaUtc is DateTime c && agoraUtc - c >= JanelaDaConversa)
+            {
+                FecharConversa();
+                Gravar();
+            }
+
             if (Estado.FalaUtc is not DateTime fala) return;
 
             if (Estado.RespostaUtc is DateTime r)
@@ -394,9 +442,25 @@ public sealed class Iniciativa
     private void Aplicar(double fator)
     {
         Estado.UltimoDesfecho = Desfecho(fator);
-        int f = Math.Clamp(Estado.FaixaDaFala, 0, NumeroDeFaixas - 1);
+        Multiplicar(Estado.FaixaDaFala, fator);
+    }
+
+    private void Multiplicar(int faixa, double fator)
+    {
+        int f = Math.Clamp(faixa, 0, NumeroDeFaixas - 1);
         Estado.Faixas[f] = Preso(Estado.Faixas[f] * fator);
         Estado.Geral = Preso(Estado.Geral * Math.Sqrt(fator));
+    }
+
+    /// <summary>
+    /// Fecha a conversa espontânea. Não mexe no desfecho: ele é de como terminou a última
+    /// iniciativa DELA, e é o que ela lê no próximo pedido.
+    /// </summary>
+    private void FecharConversa()
+    {
+        if (Estado.TurnosDaConversa > 0) Multiplicar(Estado.FaixaDaConversa, FatorEspontaneo(Estado.TurnosDaConversa));
+        Estado.ConversaUtc = null;
+        Estado.TurnosDaConversa = 0;
     }
 
     private void Encerrar()

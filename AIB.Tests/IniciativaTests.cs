@@ -184,6 +184,67 @@ namespace AIB.Tests
             i.Estado.Faixas[0].Should().Be(1, "só a faixa em que ela falou aprende");
         }
 
+        // Pedido: "que tal nós mandarmos mensagem no shadow e isso também contabilizar no
+        // algoritmo?". Antes, mensagem dele no orbe sem fala dela esperando era descartada.
+        [Fact]
+        public void ElePuxarConversaNoOrbe_SobeAFaixaEOGeral_MenosQueResponderAEla()
+        {
+            var i = new Iniciativa(_raiz);
+            for (int t = 0; t < 4; t++) i.UsuarioFalou(Agora.AddMinutes(t), "e outra coisa", Dez);
+
+            i.Classificar(Agora.AddMinutes(20));
+            i.Estado.ConversaUtc.Should().NotBeNull("a janela de 30 min ainda está aberta");
+
+            i.Classificar(Agora.AddMinutes(30));
+            i.Estado.ConversaUtc.Should().BeNull();
+
+            double fator = 1.05 + 0.02 * 2; // 4 turnos
+            i.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().BeApproximately(fator, 1e-9);
+            i.Estado.Geral.Should().BeApproximately(Math.Sqrt(fator), 1e-9);
+            i.Estado.UltimoDesfecho.Should().BeEmpty("o desfecho é das iniciativas dela");
+            fator.Should().BeLessThan(Iniciativa.Fator(false, true, 4, 0, true));
+        }
+
+        [Theory]
+        [InlineData(1, 1.02)]
+        [InlineData(2, 1.05)]
+        [InlineData(5, 1.11)]
+        [InlineData(40, 1.20)]
+        public void ConversaEspontanea_SoSobe_AteO120(int turnos, double fator) =>
+            Iniciativa.FatorEspontaneo(turnos).Should().BeApproximately(fator, 1e-9);
+
+        // "para de rodar o build" numa mensagem que não responde a ela é trabalho, não recusa.
+        [Fact]
+        public void ConversaEspontanea_NaoViraRecusaNemPausa()
+        {
+            var i = new Iniciativa(_raiz);
+            i.UsuarioFalou(Agora, "para de rodar o build", Dez);
+            i.Classificar(Agora.AddMinutes(31));
+
+            i.Estado.PausaAteUtc.Should().BeNull();
+            i.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().BeApproximately(1.02, 1e-9);
+        }
+
+        [Fact]
+        public void MensagemDepoisDaJanela_FechaAConversaEAbreOutra()
+        {
+            var i = new Iniciativa(_raiz);
+            i.UsuarioFalou(Agora, "oi", Dez);
+            i.UsuarioFalou(Agora.AddMinutes(45), "voltei", Dez);
+
+            i.Estado.ConversaUtc.Should().Be(Agora.AddMinutes(45));
+            i.Estado.TurnosDaConversa.Should().Be(1);
+            i.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().BeApproximately(1.02, 1e-9, "a primeira já contou");
+        }
+
+        [Fact]
+        public void RespostaAFalaDela_NaoContaComoConversaEspontanea()
+        {
+            var i = FalouAs10();
+            i.UsuarioFalou(Agora.AddMinutes(1), "oi! resolvi sim", Dez);
+            i.Estado.ConversaUtc.Should().BeNull();
+        }
+
         [Fact]
         public void Ignorada_DepoisDaPaciencia_Desce()
         {
