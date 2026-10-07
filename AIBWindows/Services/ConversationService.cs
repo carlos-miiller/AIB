@@ -2382,8 +2382,11 @@ public sealed class ConversationService : IMessageStore
         }
     }
 
-    /// <summary>As últimas falas de texto (sem ferramentas), aparadas.</summary>
-    private IReadOnlyList<(bool DoUsuario, string Texto)> UltimasFalas(int quantas)
+    /// <summary>
+    /// As últimas falas de texto do contexto vivo (sem ferramentas nem raciocínio), aparadas
+    /// em <paramref name="teto"/> caracteres. É também o que o orbe redesenha ao reabrir.
+    /// </summary>
+    public IReadOnlyList<(bool DoUsuario, string Texto)> UltimasFalas(int quantas, int teto = 300)
     {
         var falas = new List<(bool, string)>();
         lock (_gate)
@@ -2398,8 +2401,10 @@ public sealed class ConversationService : IMessageStore
                     .Select(p => p.Text)).Trim();
                 if (texto.Length == 0) continue;
 
-                texto = QuebraDeFala.Limpar(texto);
-                falas.Add((doUsuario, texto.Length <= 300 ? texto : texto[..297] + "..."));
+                texto = QuebraDeFala.Limpar(Memory.ThinkBlockStripper.Strip(texto)).Trim();
+                if (texto.Length == 0) continue;
+
+                falas.Add((doUsuario, texto.Length <= teto ? texto : texto[..(teto - 3)] + "..."));
             }
         }
         return falas.Skip(Math.Max(0, falas.Count - quantas)).ToList();

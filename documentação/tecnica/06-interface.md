@@ -320,6 +320,9 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   guardas de e-mail do registry são SOMADOS (o mais restritivo vale). O orbe mostra o passo
   (`PassoMudou`) e o texto final (`Respondeu` → `ResponderTurno`): com a barra aberta, a
   resposta entra na pilha de falas (`Ui/FalaDoOrbe`); fechada, ela é enfileirada e o orbe pulsa.
+  No arranque (e ao religar o orbe), `LigarOrbe` devolve à pilha as últimas 12 falas do contexto
+  vivo (`ConversationService.UltimasFalas` → `RestaurarFalas`), escondidas até a barra abrir; o
+  que já virou capítulo não volta como bolha.
   Ela se mantém leve pela compactação de sempre e por mais uma: parada há 2 h (`Pausa`), com algo
   novo desde a última, roda `ForcarCompactacaoAsync` — rajadas curtas ao longo do dia quase nunca
   enchem o contexto sozinhas. Lembretes e iniciativas, com orbe, caem nesta conversa.

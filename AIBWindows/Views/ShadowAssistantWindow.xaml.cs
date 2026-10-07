@@ -845,6 +845,22 @@ public partial class ShadowAssistantWindow : Window
     }
 
     /// <summary>
+    /// Devolve à pilha as falas da conversa do orbe que veio do disco, SEM mostrar: elas
+    /// aparecem quando a barra abrir, como qualquer pilha escondida. Só numa pilha vazia —
+    /// religar o orbe com a conversa na tela não a duplica.
+    /// </summary>
+    public void RestaurarFalas(IEnumerable<(bool DoUsuario, string Texto)> falas)
+    {
+        if (_falas.Count > 0) return;
+
+        foreach (var (doUsuario, texto) in falas)
+        {
+            if (string.IsNullOrWhiteSpace(texto)) continue;
+            _falas.Add(doUsuario ? new FalaDoUsuario(texto) : new FalaDaIA(texto));
+        }
+    }
+
+    /// <summary>
     /// Empilha mais uma bolha, mostra a pilha e desce para o fim dela.
     /// <para>
     /// A pilha NÃO tem teto de bolhas: o que a limita é a ALTURA do rolo. Um teto de

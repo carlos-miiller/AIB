@@ -2343,6 +2343,23 @@ namespace AIB.Tests
                 .Should().Contain(t => t.Contains("meu servidor caiu"), "uma conversa só, que nunca termina");
         }
 
+        // Bug: reiniciado o AIB, a barra do orbe abria vazia. O modelo lembrava (o teste acima),
+        // mas ninguém devolvia as falas à pilha. É daqui que o orbe as tira no arranque.
+        [Fact]
+        public async Task AConversaDoOrbe_DevolveAsFalasParaAPilha_NoArranqueSeguinte()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var primeira = ConversaDoOrbe(settings, new FakeProvider());
+            await foreach (var _ in primeira.StreamResponseAsync("meu servidor caiu", _ => { })) { }
+
+            var falas = ConversaDoOrbe(settings, new FakeProvider()).UltimasFalas(12, int.MaxValue);
+
+            falas.Should().HaveCount(2);
+            falas[0].Should().Be((true, "meu servidor caiu"));
+            falas[1].DoUsuario.Should().BeFalse();
+            falas[1].Texto.Should().NotBeEmpty().And.NotContain("<think>");
+        }
+
         [Fact]
         public void AConversaDoOrbe_SOMA_OsGuardasDeEmail_SemTirarOsDaPrincipal()
         {

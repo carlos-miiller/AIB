@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -64,6 +65,36 @@ namespace AIB.Tests
                 janela.ResizeMode.Should().Be(ResizeMode.NoResize);
                 janela.WindowStyle.Should().Be(WindowStyle.None);
                 janela.AllowsTransparency.Should().BeTrue();
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void FalasRestauradas_FicamEscondidasAteABarraAbrir_ENaoDuplicam()
+        {
+            // Bug: reiniciado o AIB, a barra do orbe abria vazia, embora a conversa estivesse
+            // inteira em memory/shadow. As falas voltam à pilha no arranque, sem balão solto
+            // sobre o desktop: só aparecem quando a barra abre.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+                var falas = new[] { (true, "meu servidor caiu"), (false, "Qual deles?"), (true, "  ") };
+
+                janela.RestaurarFalas(falas);
+
+                janela.Falas.Select(f => f.Texto).Should().Equal("meu servidor caiu", "Qual deles?");
+                janela.Falas[0].Should().BeOfType<AIB.Ui.FalaDoUsuario>();
+                janela.Falas[1].Should().BeOfType<AIB.Ui.FalaDaIA>();
+                janela.BalaoVisivel.Should().BeFalse("a barra está fechada");
+                janela.Pulsando.Should().BeFalse("fala antiga não é aviso novo");
+
+                janela.AbrirBarra();
+                janela.BalaoVisivel.Should().BeTrue();
+
+                janela.RestaurarFalas(falas);
+                janela.Falas.Should().HaveCount(2, "religar o orbe não duplica a pilha");
 
                 janela.Close();
             });

@@ -168,6 +168,9 @@ public partial class App : System.Windows.Application
     /// não-duplicação sem subir o App inteiro.
     /// </para>
     /// </summary>
+    /// <summary>Quantas falas da conversa do orbe voltam à pilha no arranque.</summary>
+    public const int FalasAoReabrir = 12;
+
     /// <param name="doOrbe">
     /// A conversa própria do orbe. Com ela, a barra fala com ela, e não com a janela. Nula nos
     /// ensaios antigos: aí a barra cai na conversa principal, escondida, como era antes.
@@ -188,6 +191,10 @@ public partial class App : System.Windows.Application
         {
             doOrbe.PassoMudou += AndouNoOrbe;
             doOrbe.Respondeu += RespondeuNoOrbe;
+
+            // A conversa do orbe continua de onde parou, e a pilha também: reiniciado o AIB, o
+            // modelo lembrava de tudo e a barra abria vazia, como se a conversa tivesse sumido.
+            orbe.RestaurarFalas(doOrbe.Conversa.UltimasFalas(FalasAoReabrir, int.MaxValue));
         }
 
         // O clique num item da pilha leva ao MESMO lugar que a lista da área central: o e-mail
