@@ -60,6 +60,9 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Navegador when alvo.StartsWith("DIGITAR ", StringComparison.Ordinal) => "Digitar nesta página?",
             Ferramentas.Navegador when alvo.StartsWith("ANOTAR ", StringComparison.Ordinal) => "Guardar esta anotação?",
             Ferramentas.Navegador => "Clicar nesta página?",
+            Ferramentas.Lembrar => "Guardar isto na memória?",
+            Ferramentas.Lembrete when alvo.StartsWith("CANCELAR ", StringComparison.Ordinal) => "Cancelar este lembrete?",
+            Ferramentas.Lembrete => "Agendar este lembrete?",
             _ => "Autorizar esta ação?"
         };
 
@@ -91,6 +94,13 @@ public partial class ConfirmCardView : UserControl
                 + "~/.AIB/navegador/notas, e dá para editar ou apagar à mão.",
             Ferramentas.Navegador =>
                 "A ação acontece no site, com o seu login. O AIB não desfaz o que o site fizer.",
+            Ferramentas.Lembrar =>
+                "Fica valendo em todas as próximas conversas. Guardado em ~/.AIB/memory/facts.md, "
+                + "e dá para apagar à mão.",
+            Ferramentas.Lembrete when alvo.StartsWith("CANCELAR ", StringComparison.Ordinal) =>
+                "O lembrete sai da lista e não avisa mais.",
+            Ferramentas.Lembrete =>
+                "Na hora marcada, a fala acima chega pelo orbe ou pela bandeja.",
             _ => "Esta ação altera o seu sistema e não pode ser desfeita pelo AIB."
         };
 

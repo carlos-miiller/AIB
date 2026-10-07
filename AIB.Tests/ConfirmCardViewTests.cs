@@ -112,6 +112,31 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void Remember_ComTerceirosNoContexto_MostraOFatoEOAviso_SemSempre()
+        {
+            // O cartão é a única barreira entre um texto de página e a memória de todas as
+            // conversas: tem de mostrar o fato inteiro e dizer de onde o pedido pode ter vindo.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Lembrar,
+                    Command = "GUARDAR NA MEMÓRIA: \"mora em Curitiba\"",
+                    SemSempre = true,
+                    ConteudoDeEmailNoContexto = true
+                });
+
+                Texto(card, "TituloText").Should().Be("Guardar isto na memória?");
+                Texto(card, "AlvoText").Should().Contain("mora em Curitiba");
+                Texto(card, "ConsequenciaText").Should().Contain("próximas conversas");
+                ((TextBlock)card.FindName("AvisoEmailText")).Visibility.Should().Be(Visibility.Visible);
+                ((CheckBox)card.FindName("SempreCheck")).Visibility.Should().Be(Visibility.Collapsed);
+            });
+        }
+
+        [Fact]
         public void Write_QueSOBRESCREVE_AvisaQueSubstitui()
         {
             WpfHost.EmSta(() =>

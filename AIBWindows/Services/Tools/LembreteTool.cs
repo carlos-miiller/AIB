@@ -151,6 +151,33 @@ public sealed class LembreteTool : ITool
         }
     }
 
+    /// <summary>Listar só lê o que já foi agendado: não precisa do usuário para confirmar.</summary>
+    public bool PedeFalaDoUsuario(string argumentsJson) => Ler(argumentsJson).Acao != "list";
+
+    /// <summary>
+    /// O cartão que o registry mostra quando há texto de terceiros no contexto: a hora e a fala
+    /// inteira, ou o lembrete que sai. Sem "sempre".
+    /// </summary>
+    public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel)
+    {
+        var a = Ler(argumentsJson);
+        string? comando = null;
+
+        if (a.Acao == "cancel" && a.Id.Length > 0)
+        {
+            comando = $"CANCELAR LEMBRETE {a.Id}";
+        }
+        else if (a.Acao == "create" && a.Texto.Length > 0)
+        {
+            var (quando, _) = Resolver(a.Em, a.Minutos, _agora());
+            if (quando is DateTime q) comando = $"AGENDAR LEMBRETE para {q:dd/MM HH:mm}: \"{a.Texto}\"";
+        }
+
+        if (comando == null) return null;
+
+        return new CommandConfirmationContext { Tool = Name, Command = comando, Level = userLevel, SemSempre = true };
+    }
+
     public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
         var a = Ler(argumentsJson);

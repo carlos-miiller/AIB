@@ -110,15 +110,15 @@ public class ToolRegistry
                 return recusa;
             }
 
-            // A memória sobre o usuário não aceita pedido que pode ter vindo de um e-mail ou de
-            // uma página: "anote que o usuário quer X" valeria em todas as conversas seguintes.
-            if (tool.SoComFalaDoUsuario && ConteudoDeEmailNoContexto?.Invoke() == true)
-            {
-                Console.WriteLine($"[REGISTRY] {toolName} recusada: texto de terceiros no contexto.");
-                aoDecidir?.Invoke("recusada_no_pre_voo");
-                return $"ACESSO NEGADO: '{toolName}' não roda com texto de e-mail ou de página no contexto. "
-                       + "Se o usuário contou isso, guarde numa próxima conversa.";
-            }
+            // A memória sobre o usuário não aceita, sem ele ver, pedido que pode ter vindo de um
+            // e-mail ou de uma página: "anote que o usuário quer X" valeria em todas as conversas
+            // seguintes. Com texto de terceiros no contexto, a chamada vai ao cartão.
+            // Era recusa direta, e pegava também o que ele mesmo tinha ditado: depois de navegar,
+            // "lembre que <frase>" foi negado cinco vezes seguidas, e a conversa inteira ficava
+            // sem memória.
+            bool terceiros = false;
+            try { terceiros = tool.PedeFalaDoUsuario(argumentsJson) && ConteudoDeEmailNoContexto?.Invoke() == true; }
+            catch { terceiros = true; }
 
             // O que foi autorizado viaja até a execução: a ferramenta confere se ainda é aquilo.
             // Ver ITool.ExecutarAutorizadoAsync.
@@ -126,12 +126,12 @@ public class ToolRegistry
 
             // Na dúvida, pergunta: exceção ao decidir é pedir confirmação, nunca pular.
             bool pede;
-            try { pede = tool.PedeConfirmacao(argumentsJson); }
+            try { pede = terceiros || tool.PedeConfirmacao(argumentsJson); }
             catch { pede = true; }
 
             if (pede)
             {
-                if (DispensaPelaPasta(tool, argumentsJson))
+                if (!terceiros && DispensaPelaPasta(tool, argumentsJson))
                 {
                     var (liberado, motivo, ctxDispensa) = await DispensarAsync(tool, argumentsJson, userLevel, aoDecidir);
                     if (!liberado) return motivo!;
