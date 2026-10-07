@@ -66,6 +66,34 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ComConversaPropria_ARespostaDaJanela_NaoEntraNaPilhaDoOrbe()
+        {
+            // Bug: "quando se manda algo na tela principal e fecha ela, a resposta ainda é
+            // carregada para o shadow". A conversa do orbe é apartada; a resposta da janela
+            // caía na pilha dele, no meio de outra conversa.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var conversa = JanelaDeEnsaio.Nova();
+                var orbe = new ShadowAssistantWindow();
+                var servico = JanelaDeEnsaio.Servico();
+                var doOrbe = new ConversaDoOrbe(JanelaDeEnsaio.Conversa(servico), servico);
+
+                App.LigarOrbe(conversa, orbe, doOrbe);
+
+                // A janela de ensaio está escondida: é o caso de quem mandou e fechou.
+                Disparar(conversa, nameof(ChatWindow.TurnoConcluido), "o ramal é 4275");
+
+                orbe.FalasPendentes.Should().Be(0);
+                orbe.Pulsando.Should().BeFalse();
+                orbe.Falas.Should().BeEmpty();
+
+                orbe.Close();
+                conversa.Close();
+            });
+        }
+
+        [Fact]
         public void ComAConversaNA_TELA_OOrbeNaoREPETE_AFala()
         {
             // Este era o defeito: a mesma frase em dois lugares ao mesmo tempo, e a segunda

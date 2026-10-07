@@ -323,6 +323,9 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   No arranque (e ao religar o orbe), `LigarOrbe` devolve à pilha as últimas 12 falas do contexto
   vivo (`ConversationService.UltimasFalas` → `RestaurarFalas`), escondidas até a barra abrir; o
   que já virou capítulo não volta como bolha.
+  A resposta de um turno da JANELA não entra nessa pilha, nem com a janela fechada no meio do
+  turno: o orbe só acende o anel do passo (`PassoDoTurnoMudou`). `OrbeDeveFalar` vale só para a
+  ligação sem conversa própria (ensaios).
   Ela se mantém leve pela compactação de sempre e por mais uma: parada há 2 h (`Pausa`), com algo
   novo desde a última, roda `ForcarCompactacaoAsync` — rajadas curtas ao longo do dia quase nunca
   enchem o contexto sozinhas. Lembretes e iniciativas, com orbe, caem nesta conversa.

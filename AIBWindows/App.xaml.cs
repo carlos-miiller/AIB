@@ -158,7 +158,8 @@ public partial class App : System.Windows.Application
     /// Da conversa para o orbe: o orbe é a JANELA DO QUE A AIB ESTÁ FAZENDO. Ele acende o anel
     /// no passo corrente de qualquer turno — inclusive dos digitados na conversa — e só REPETE
     /// a fala quando ela não tem outro lugar onde aparecer (ver
-    /// <see cref="ShadowAssistantWindow.OrbeDeveFalar"/>).
+    /// <see cref="ShadowAssistantWindow.OrbeDeveFalar"/>). Com a conversa do orbe ligada, ele
+    /// não repete NENHUMA fala da janela: as duas conversas são apartadas, e a pilha é só da dele.
     /// </para>
     /// <para>
     /// Devolve o desfazer, e é estático, porque a conversa VIVE MAIS que o orbe: ela nasce no
@@ -206,6 +207,11 @@ public partial class App : System.Windows.Application
 
         void Concluiu(string texto)
         {
+            // Com conversa própria, a pilha do orbe é DELA: a resposta da janela entrava ali
+            // quando a janela era fechada no meio do turno, misturada a outra conversa — e
+            // responder a ela pela barra ia para um modelo que nunca a tinha dito.
+            if (doOrbe != null) return;
+
             // O anel já parou: o passo vazio chega imediatamente antes deste evento. O que
             // sobra decidir aqui é só se a resposta tem de ser DITA outra vez no orbe.
             if (ShadowAssistantWindow.OrbeDeveFalar(conversa.TurnoVeioDoOrbe, conversa.IsVisible))
