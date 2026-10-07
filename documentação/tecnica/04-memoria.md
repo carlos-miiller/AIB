@@ -72,7 +72,9 @@ Exemplo: nível 1, janela 32.768, prefixo de 3.000 tokens → disponível 5.192;
 ### 2.3 Gatilho e alvo
 
 - **Gatilho** (`MemoryBudget.CompactionThreshold`): `viva × CompactionTrigger`, padrão 0,85 (saneado entre 0,50 e 0,99). Não é 1,0 de propósito: tem de disparar antes de a poda de emergência entrar e comer as mensagens que o capítulo iria resumir. No exemplo acima: 3.309.
-- **Alvo** (`LimitesDoProvedor.AlvoDepoisDeCompactar`): depois de compactar, a conversa viva cai para 0,5 da cota viva no Ollama e 0,3 no OpenRouter. Compactar só até encostar no gatilho faria a próxima compactação disparar quase junto — e cada compactação reescreve o começo do prompt (prefill frio no Ollama, cache perdido e pago no OpenRouter).
+- **Teto de tokens soltos** (`TokensSoltos`, padrão 100.000, saneado 8.000–1.000.000): o gatilho de tokens é o MENOR entre a fração acima e este teto (`CompactionThreshold(quota, fração, tokensSoltos)`). A fração protege a janela pequena; o teto, o custo em janela grande — num modelo de 1 M de janela os 85% nunca chegavam, e uma sessão de navegador reenviou 165 mil tokens a cada requisição.
+- **Turnos soltos** (`TurnosSoltos`, padrão 20, saneado 4–200): com este tanto de turnos fechados fora de capítulo (`TurnosSoltosAgora`), fecha UM capítulo, mesmo com a conversa leve.
+- **Alvo** (`LimitesDoProvedor.AlvoDepoisDeCompactar`): depois de compactar por tokens, a conversa viva cai para 0,5 (Ollama) ou 0,3 (OpenRouter) do menor entre a cota viva e `TokensSoltos`. Compactar só até encostar no gatilho faria a próxima compactação disparar quase junto — e cada compactação reescreve o começo do prompt (prefill frio no Ollama, cache perdido e pago no OpenRouter).
 
 ---
 

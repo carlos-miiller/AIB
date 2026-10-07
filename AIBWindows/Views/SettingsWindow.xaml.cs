@@ -544,6 +544,8 @@ public partial class SettingsWindow : Window
     private void MostrarMemoria(UserAppSettings s)
     {
         SelecionarPorTag(MemoriaQuemEscreveComboBox, s.MemoriaComModelo ? "modelo" : "codigo");
+        TurnosSoltosTextBox.Text = s.TurnosSoltos.ToString();
+        TokensSoltosTextBox.Text = s.TokensSoltos.ToString();
         TurnosPorCapituloTextBox.Text = s.TurnosPorCapitulo.ToString();
         TokensPorCapituloTextBox.Text = s.TokensPorCapitulo.ToString();
         SelecionarPorTag(CapitulosPorAtoComboBox, s.CapitulosPorAto.ToString(), n => n);
@@ -1970,6 +1972,8 @@ public partial class SettingsWindow : Window
         _currentSettings.CompactionTrigger = DePorcento(CompactionTriggerTextBox, _currentSettings.CompactionTrigger);
         _currentSettings.MemoryFraction = DePorcento(MemoryFractionTextBox, _currentSettings.MemoryFraction);
         _currentSettings.MemoriaComModelo = TagDe(MemoriaQuemEscreveComboBox) != "codigo";
+        _currentSettings.TurnosSoltos = Numero(TurnosSoltosTextBox, _currentSettings.TurnosSoltos);
+        _currentSettings.TokensSoltos = Numero(TokensSoltosTextBox, _currentSettings.TokensSoltos);
         _currentSettings.TurnosPorCapitulo = int.TryParse(TurnosPorCapituloTextBox.Text, out int turnosPorCapitulo)
             ? turnosPorCapitulo : _currentSettings.TurnosPorCapitulo;
         _currentSettings.TokensPorCapitulo = int.TryParse(TokensPorCapituloTextBox.Text, out int tokensPorCapitulo)

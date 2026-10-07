@@ -1166,7 +1166,8 @@ public sealed class ConversationService : IMessageStore
             var quota = CurrentQuota(userLevel);
             if (quota.IsOff) return;
 
-            double fracao = _settingsService.LoadSettings().CompactionTrigger;
+            var ajustes = _settingsService.LoadSettings();
+            double fracao = ajustes.CompactionTrigger;
             int fechados = 0;
 
             // Linkado ao token do turno: cancelar o turno segue cancelando a compactação. O que
@@ -1181,12 +1182,20 @@ public sealed class ConversationService : IMessageStore
             while (fechados < MaxCapitulosPorPassada)
             {
                 int vivo = LiveTokens();
-                int gatilho = MemoryBudget.CompactionThreshold(quota, fracao);
-                if (vivo <= gatilho) break;
+                int gatilho = MemoryBudget.CompactionThreshold(quota, fracao, ajustes.TokensSoltos);
 
-                var candidatos = SelectTurnsToCompact(quota, vivo);
+                // Dois gatilhos, o que bater primeiro: tokens soltos (o menor entre a fração da
+                // cota e o teto absoluto) ou turnos soltos. O de turnos fecha UM capítulo, mesmo
+                // com a conversa leve; o de tokens fecha quantos forem precisos até o alvo.
+                bool porTokens = vivo > gatilho;
+                int soltos = porTokens ? 0 : TurnosSoltosAgora();
+                if (!porTokens && soltos < ajustes.TurnosSoltos) break;
+
+                var candidatos = SelectTurnsToCompact(quota, vivo, forcado: !porTokens);
                 if (candidatos.Count == 0)
                 {
+                    if (!porTokens) break;
+
                     // "Passou do gatilho e nao compactou" tem causa, e a causa e sempre a mesma:
                     // os turnos recentes ficam fora e nao sobrou turno fechado antes deles. Sem
                     // esta linha o diario mostraria um silencio inexplicavel.
@@ -1196,7 +1205,9 @@ public sealed class ConversationService : IMessageStore
                     break;
                 }
 
-                Console.WriteLine($"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > gatilho={gatilho}.");
+                Console.WriteLine(porTokens
+                    ? $"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > gatilho={gatilho}."
+                    : $"[MEMORIA] Compactando {candidatos.Count} turno(s): {soltos} turnos soltos >= {ajustes.TurnosSoltos}.");
                 _registroDaCompactacao.Gatilho(vivo, gatilho, quota.Live, candidatos.Count);
 
                 CompactacaoAndou?.Invoke(new PassoDaCompactacao(
@@ -1679,6 +1690,15 @@ public sealed class ConversationService : IMessageStore
     }
 
     /// <summary>Tokens da conversa viva: tudo menos as mensagens de sistema do começo.</summary>
+    /// <summary>Quantos turnos fechados estão fora de capítulo, no contexto vivo.</summary>
+    private int TurnosSoltosAgora()
+    {
+        List<ChatMessage> vivos;
+        lock (_gate) { vivos = _history.Skip(FirstRemovableIndex()).ToList(); }
+
+        return TurnSplitter.Split(vivos).Count(TurnSplitter.IsClosed);
+    }
+
     private int LiveTokens()
     {
         lock (_gate)
@@ -1720,7 +1740,11 @@ public sealed class ConversationService : IMessageStore
 
         // Provedor DESTA conversa, como em CapitulosPorAto e no Compactor — não o Atual global.
         var settings = _settingsService.LoadSettings();
-        int alvo = (int)(quota.Live * LimitesDoProvedor.Para(settings.AiProvider).AlvoDepoisDeCompactar);
+        // O alvo acompanha o gatilho: a mesma fração, da cota ou do teto de tokens soltos, a
+        // que for menor. Com o teto em 100 mil e a cota em 800 mil, mirar 30% da cota seria
+        // nunca compactar nada.
+        double queda = LimitesDoProvedor.Para(settings.AiProvider).AlvoDepoisDeCompactar;
+        int alvo = (int)(Math.Min(quota.Live, settings.TokensSoltos) * queda);
         var escolhidos = new List<Turn>();
         int restante = vivo;
 

@@ -363,6 +363,42 @@ namespace AIB.Tests
                 "uma passada fecha quantos forem precisos, e não um por turno");
         }
 
+        // Pedido: "no lugar de ser % do modelo, que tal fazermos em 20 turnos ou 100k de tokens
+        // soltos (fora de capítulos)". Caso real: numa sessão de navegador com modelo de janela
+        // enorme, os 85% da cota nunca chegaram e cada requisição reenviava 165 mil tokens.
+        [Fact]
+        public async Task VinteTurnosSoltos_FechamUmCapitulo_MesmoComAConversaLeve()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = new FakeProvider { CompleteReply = "Resumo do trecho." };
+            var conversation = BuildConversation(settings, provider, out _);
+
+            // Turnos de poucas palavras: longe de qualquer gatilho de tokens.
+            for (int i = 0; i < UserAppSettings.PadraoDeTurnosSoltos - 1; i++)
+                conversation.AppendRecoveredContext($"pedido {i}", "ok");
+
+            await conversation.CompactIfNeededAsync(userLevel: 1);
+            conversation.Chapters.Should().BeEmpty("dezenove turnos ainda não são vinte");
+
+            conversation.AppendRecoveredContext("pedido 19", "ok");
+            await conversation.CompactIfNeededAsync(userLevel: 1);
+
+            var capitulo = conversation.Chapters.Should().ContainSingle("o gatilho de turnos fecha um capítulo só").Subject;
+            (capitulo.LastTurn - capitulo.FirstTurn + 1).Should().BeLessThanOrEqualTo(UserAppSettings.PadraoDeTurnosPorCapitulo);
+        }
+
+        [Fact]
+        public void OGatilhoDeTokens_EhOMenorEntreAFracaoDaCotaEOTetoDeSoltos()
+        {
+            // Janela grande: 85% de 800 mil nunca chega; o teto de 100 mil manda.
+            var grande = new AIB.Services.Memory.MemoryQuota(0, 0, 0, 800_000);
+            AIB.Services.Memory.MemoryBudget.CompactionThreshold(grande, 0.85, 100_000).Should().Be(100_000);
+
+            // Janela pequena: o teto absoluto não pode empurrar o gatilho para depois do estouro.
+            var pequena = new AIB.Services.Memory.MemoryQuota(0, 0, 0, 4_000);
+            AIB.Services.Memory.MemoryBudget.CompactionThreshold(pequena, 0.85, 100_000).Should().Be(3_400);
+        }
+
         [Fact]
         public async Task OCapitulo_FECHA_NoTetoDeTOKENS_AntesDoTetoDeTurnos()
         {
@@ -1357,6 +1393,9 @@ namespace AIB.Tests
             // número é 2 para o ensaio exercitar a promoção sem depender do padrão do provedor.
             var s = settings.LoadSettings();
             s.CapitulosPorAto = 2;
+            // Sem o gatilho de turnos soltos: aos 20 ele fecharia um capítulo no caminho, e o
+            // ensaio é do COMANDO fechando vários de uma vez.
+            s.TurnosSoltos = 200;
             settings.SaveSettings(s.Sanear());
 
             var conversation = BuildConversation(settings, provider, out _);

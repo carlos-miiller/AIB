@@ -1650,6 +1650,40 @@
                                                      TextChanged="Campo_Mudou"/>
                                         </Grid>
                                     </Border>
+                                    <!-- Turnos soltos: o gatilho que não depende da janela do modelo. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Compactar com (turnos soltos)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Com este tanto de turnos fora de capítulo, fecha um capítulo, mesmo com a conversa leve (4 a 200)."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="TurnosSoltosTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    <!-- Tokens soltos -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Compactar com (tokens soltos)" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Teto de tokens fora de capítulo (8.000 a 1.000.000). Vale o menor entre este e a % acima: num modelo de janela grande, é ele que impede a conversa de reenviar centenas de milhares de tokens a cada mensagem."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="TokensSoltosTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
                                     <!-- Turnos por capítulo -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">
