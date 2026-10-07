@@ -477,6 +477,29 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ABarraEAsBolhas_SaoVintePorCentoMaisLargas()
+        {
+            // Pedido: "deixe ele 20% mais largo também (a caixa de texto também)". Eram 520 de
+            // barra, 380 e 440 de bolha. O palco tem a largura da barra; a janela tem de
+            // acompanhar, e isso quem confere é o ensaio seguinte.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                ((Grid)janela.FindName("Palco")).Width.Should().Be(624);
+
+                janela.AbrirBarra();
+                janela.RestaurarFalas(new[] { (true, "pergunta"), (false, "resposta") });
+                janela.MostrarFala("outra");
+                janela.UpdateLayout();
+                janela.ElementoDaFala(1, "Balao")!.MaxWidth.Should().Be(528, "a bolha dela");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void AJanela_CabeOPalcoInteiro()
         {
             // O defeito: a margem do palco subiu de 40 para 48 e a largura da janela ficou em

@@ -4,7 +4,7 @@
         xmlns:ui="clr-namespace:AIB.Ui"
         xmlns:v="clr-namespace:AIB.Views"
         Title="AIB"
-        Width="640"
+        Width="744"
         SizeToContent="Height"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -34,7 +34,9 @@
           orbShadow  28 de blur                       -> ~28 em volta do orbe
           onda do pulso  64/2 x 2,34                  -> ~75 do centro do orbe
 
-        Daí MargemDaSombra = 56 e Width = 640: 520 + 56 + 56 = 632, com folga.
+        Daí MargemDaSombra = 56 e Width = 744: 624 + 56 + 56 = 736, com folga.
+        (A barra era de 520, a da spec; o usuário pediu 20% a mais de largura, na
+        barra e nas bolhas: 624, 456 e 528.)
         A LARGURA DA JANELA PRECISA ACOMPANHAR A MARGEM. Mexer numa e esquecer a
         outra corta a sombra e a onda em linha reta nas laterais — foi exatamente o
         que aconteceu quando a margem subiu para 48 e a largura ficou em 600.
@@ -67,12 +69,12 @@
 
     <Grid x:Name="Raiz" Background="{x:Null}">
 
-        <!-- LARGURA FIXA de 520 (a da barra, a maior das duas formas). Sem isto o
-             balão de fala, que pode ter 440, mudaria a largura do palco e deslocaria
+        <!-- LARGURA FIXA de 624 (a da barra, a maior das duas formas). Sem isto o
+             balão de fala, que pode ter 528, mudaria a largura do palco e deslocaria
              o orbe do centro toda vez que aparecesse — a armadilha A8, agora pelo
              eixo do conteúdo em vez do da janela. -->
         <Grid x:Name="Palco"
-              Width="520"
+              Width="624"
               Margin="56"
               HorizontalAlignment="Center"
               VerticalAlignment="Bottom"
@@ -131,12 +133,12 @@
                         </Storyboard>
                     </VisualState>
 
-                    <!-- §5.3 COMPOSING — a mesma casca, agora pílula de 520x52. -->
+                    <!-- §5.3 COMPOSING — a mesma casca, agora pílula de 624x52. -->
                     <VisualState x:Name="Barra">
                         <Storyboard>
                             <DoubleAnimation Storyboard.TargetName="Casca"
                                              Storyboard.TargetProperty="Width"
-                                             To="520" Duration="0:0:0.28">
+                                             To="624" Duration="0:0:0.28">
                                 <DoubleAnimation.EasingFunction>
                                     <CubicEase EasingMode="EaseOut"/>
                                 </DoubleAnimation.EasingFunction>
@@ -230,7 +232,7 @@
                          se sustenta sobre o desktop sem ajuste. -->
                     <DataTemplate DataType="{x:Type ui:FalaDoUsuario}">
                         <Border Style="{StaticResource UserBubble}"
-                                MaxWidth="380"
+                                MaxWidth="456"
                                 Margin="0,0,0,8">
                             <Border.RenderTransform>
                                 <TranslateTransform x:Name="EntradaDoUsuario" Y="8"/>
@@ -271,7 +273,7 @@
                          balão flutua sozinho e precisa ser o próprio vidro (§0 O6). -->
                     <DataTemplate DataType="{x:Type ui:FalaDaIA}">
                         <Border x:Name="Balao"
-                                MaxWidth="440"
+                                MaxWidth="528"
                                 HorizontalAlignment="Left"
                                 Margin="0,0,0,8"
                                 Padding="14,14,16,14"
