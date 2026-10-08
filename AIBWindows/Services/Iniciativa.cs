@@ -137,8 +137,9 @@ public sealed class Vinculo
 }
 
 /// <summary>
-/// O temperamento de um personagem na iniciativa, do <c>info.json</c> dele
-/// (<see cref="AgentTemperament"/>). O padrão é o que valia para todos.
+/// O temperamento de um personagem na iniciativa: os <see cref="Atributos"/> dele (1 a 5, do
+/// arquivo de status) já traduzidos nos números da conta. O padrão é o nível 3 em tudo, o que
+/// valia para todos.
 /// </summary>
 /// <param name="Chance">Multiplica a chance base do sorteio. 1 é o padrão; menos, mais calado.</param>
 /// <param name="Apego">
@@ -147,12 +148,43 @@ public sealed class Vinculo
 /// </param>
 public readonly record struct Temperamento(double Chance, double Apego)
 {
+    /// <summary>O fator de uma fala que ficou sem resposta e sem ser lida.</summary>
+    public double Ignorada { get; init; } = Iniciativa.FatorIgnorada;
+
+    /// <summary>O fator de um "agora não".</summary>
+    public double Recusada { get; init; } = Iniciativa.FatorRecusada;
+
+    /// <summary>Quanto o geral dele volta para 1 por dia.</summary>
+    public double Esquecimento { get; init; } = Iniciativa.Esquecimento;
+
+    /// <summary>A chance de, tendo assunto para retomar, ele preferir perguntar sobre o usuário.</summary>
+    public double Curiosidade { get; init; } = CuriosidadePorNivel[Atributos.Neutro - 1];
+
+    // O que cada nível vale, do 1 ao 5. O do meio é o comportamento de antes dos atributos —
+    // menos na curiosidade, que não existia: antes ele só perguntava sem ter assunto nenhum.
+    private static readonly double[] ChancePorNivel = { 0.5, 0.75, 1, 1.3, 1.6 };
+    private static readonly double[] ApegoPorNivel = { 1.30, 1.50, Iniciativa.TetoDaConversa, 1.90, 2.10 };
+    private static readonly double[] IgnoradaPorNivel = { 0.60, 0.68, Iniciativa.FatorIgnorada, 0.83, 0.90 };
+    private static readonly double[] RecusadaPorNivel = { 0.35, 0.42, Iniciativa.FatorRecusada, 0.60, 0.70 };
+    private static readonly double[] EsquecimentoPorNivel = { 0.20, 0.15, Iniciativa.Esquecimento, 0.07, 0.05 };
+    private static readonly double[] CuriosidadePorNivel = { 0, 0.10, 0.20, 0.35, 0.50 };
+
+    // Depois das escalas: o inicializador da curiosidade lê uma delas.
     public static readonly Temperamento Padrao = new(1, Iniciativa.TetoDaConversa);
 
-    public static Temperamento De(AgentTemperament? t) => t == null
+    /// <summary>Nível fora de 1–5 (zero de um campo ausente, erro de digitação) vale o neutro ou a ponta.</summary>
+    private static double Nivel(double[] escala, int nivel) =>
+        escala[Math.Clamp(nivel <= 0 ? Atributos.Neutro : nivel, 1, escala.Length) - 1];
+
+    public static Temperamento De(Atributos? a) => a == null
         ? Padrao
-        : new(Math.Clamp(t.Initiative <= 0 ? 1 : t.Initiative, 0.1, 3),
-              Math.Clamp(t.Attachment <= 0 ? Iniciativa.TetoDaConversa : t.Attachment, 1.10, 2.50));
+        : new(Nivel(ChancePorNivel, a.Iniciativa), Nivel(ApegoPorNivel, a.Apego))
+        {
+            Ignorada = Nivel(IgnoradaPorNivel, a.Resiliencia),
+            Recusada = Nivel(RecusadaPorNivel, a.Resiliencia),
+            Esquecimento = Nivel(EsquecimentoPorNivel, a.Constancia),
+            Curiosidade = Nivel(CuriosidadePorNivel, a.Curiosidade)
+        };
 }
 
 /// <summary>O ponto de partida de uma mensagem por iniciativa, escolhido pelo código.</summary>
@@ -179,6 +211,11 @@ public sealed record Gancho(string Tipo, string Texto);
 /// voltam 10% na direção de 1: uma semana ruim não a cala para sempre.
 /// </para>
 /// <para>
+/// ESSES NÚMEROS SÃO OS DO PERSONAGEM NEUTRO. Cada personagem tem cinco atributos de 1 a 5 no
+/// arquivo de status (<see cref="StatusDosPersonagens"/>), e <see cref="Temperamento.De"/> os
+/// traduz: chance, teto da conversa, peso de ser ignorada ou recusada, esquecimento, curiosidade.
+/// </para>
+/// <para>
 /// ELE PUXAR CONVERSA TAMBÉM CONTA — pedido do usuário: "que tal nós mandarmos mensagem no
 /// shadow e isso também contabilizar no algoritmo?". Mensagem dele no orbe sem fala dela
 /// esperando abre uma conversa espontânea de 30 min, que só sobe (<see cref="FatorEspontaneo"/>)
@@ -197,6 +234,15 @@ public sealed class Iniciativa
 
     /// <summary>O teto padrão do fator de conversa (<see cref="Temperamento.Apego"/>).</summary>
     public const double TetoDaConversa = 1.70;
+
+    /// <summary>O fator padrão da fala sem resposta e sem leitura (<see cref="Temperamento.Ignorada"/>).</summary>
+    public const double FatorIgnorada = 0.75;
+
+    /// <summary>O fator padrão do "agora não" (<see cref="Temperamento.Recusada"/>).</summary>
+    public const double FatorRecusada = 0.5;
+
+    /// <summary>O fator da fala lida e não respondida. Não desce abaixo do da ignorada.</summary>
+    public const double FatorLida = 0.9;
 
     /// <summary>
     /// A chance por sorteio com tudo neutro: ~1,3 mensagem num dia de 14 h (84 sorteios). Era
@@ -279,6 +325,9 @@ public sealed class Iniciativa
     /// <summary>O personagem cujo vínculo está carregado. Vazio: nenhum.</summary>
     public string Personagem { get; private set; }
 
+    /// <summary>O temperamento do personagem carregado.</summary>
+    public Temperamento Temperamento { get { lock (_gate) return _temperamento; } }
+
     private static string Seguro(string? nome)
     {
         string n = Path.GetFileName((nome ?? "").Trim());
@@ -349,11 +398,14 @@ public sealed class Iniciativa
     /// até 1,70 — decisão do usuário, pela alma afetuosa dela.
     /// </summary>
     /// <param name="teto">O teto da conversa: o apego do personagem (<see cref="Temperamento.Apego"/>).</param>
+    /// <param name="ignorada">O fator da fala ignorada: a resiliência do personagem.</param>
+    /// <param name="recusada">O fator do "agora não": também a resiliência.</param>
     public static double Fator(bool recusou, bool respondeu, int turnos, int palavras, bool leu,
-                               double teto = TetoDaConversa)
+                               double teto = TetoDaConversa, double ignorada = FatorIgnorada,
+                               double recusada = FatorRecusada)
     {
-        if (recusou) return 0.5;
-        if (!respondeu) return leu ? 0.9 : 0.75;
+        if (recusou) return recusada;
+        if (!respondeu) return leu ? Math.Max(FatorLida, ignorada) : ignorada;
         if (turnos >= 2) return Math.Min(teto, 1.10 + 0.05 * (turnos - 2));
         return palavras >= 12 ? 1.10 : 1.05;
     }
@@ -391,17 +443,23 @@ public sealed class Iniciativa
     /// que o resto. Os usados há pouco ficam de fora enquanto houver outro. Nulo quando não há
     /// nenhum: aí o pedido é para conhecê-lo melhor.
     /// </summary>
+    /// <param name="curiosidade">
+    /// A chance de, mesmo havendo gancho, o pedido ser para conhecê-lo melhor
+    /// (<see cref="Temperamento.Curiosidade"/>).
+    /// </param>
     public static Gancho? EscolherGancho(
         System.Collections.Generic.IReadOnlyList<string> pendencias,
         System.Collections.Generic.IReadOnlyList<string> fatos,
         System.Collections.Generic.IReadOnlyCollection<string> recentes,
-        Random sorte)
+        Random sorte,
+        double curiosidade = 0)
     {
         var todos = pendencias.Select(p => new Gancho("pendência", p.Trim()))
             .Concat(fatos.Select(f => new Gancho("fato", f.Trim())))
             .Where(g => g.Texto.Length > 0)
             .ToList();
         if (todos.Count == 0) return null;
+        if (curiosidade > 0 && sorte.NextDouble() < curiosidade) return null;
 
         var novos = todos.Where(g => !recentes.Contains(g.Texto)).ToList();
         var escolha = novos.Count > 0 ? novos : todos;
@@ -418,10 +476,22 @@ public sealed class Iniciativa
         _ => "virou conversa"
     };
 
+    /// <summary>
+    /// O desfecho pelo que aconteceu. Com a resiliência o fator deixou de dizer sozinho: o
+    /// "agora não" de um personagem resiliente vale 0,70, que pelo número seria "sem resposta".
+    /// </summary>
+    public static string Desfecho(bool recusou, bool respondeu, bool leu, double fator)
+    {
+        if (recusou) return Desfecho(FatorRecusada);
+        if (!respondeu) return Desfecho(leu ? FatorLida : FatorIgnorada);
+        return Desfecho(Math.Max(1, fator));
+    }
+
     private static double Preso(double m) => Math.Clamp(m, Minimo, Maximo);
 
-    /// <summary>Um multiplicador andando <see cref="Esquecimento"/> na direção de 1.</summary>
-    public static double Esquecer(double m) => Preso(Math.Exp(Math.Log(m) * (1 - Esquecimento)));
+    /// <summary>Um multiplicador andando <paramref name="taxa"/> na direção de 1.</summary>
+    public static double Esquecer(double m, double taxa = Esquecimento) =>
+        Preso(Math.Exp(Math.Log(m) * (1 - taxa)));
 
     // ── Transições ────────────────────────────────────────────────────────
 
@@ -438,7 +508,8 @@ public sealed class Iniciativa
             Estado.MensagensHoje = 0;
             if (!primeiraVez)
             {
-                Estado.Geral = Esquecer(Estado.Geral);
+                // O geral é do personagem e esquece no ritmo dele; as faixas são do usuário.
+                Estado.Geral = Esquecer(Estado.Geral, _temperamento.Esquecimento);
                 for (int i = 0; i < Estado.Faixas.Length; i++) Estado.Faixas[i] = Esquecer(Estado.Faixas[i]);
             }
             Gravar();
@@ -530,7 +601,7 @@ public sealed class Iniciativa
 
                 if (EhRecusa(texto))
                 {
-                    Aplicar(Fator(recusou: true, true, 1, Estado.Palavras, Estado.Leu));
+                    Aplicar(_temperamento.Recusada, Desfecho(recusou: true, true, Estado.Leu, 0));
                     var fimDoDia = agoraUtc.ToLocalTime().Date.AddDays(1).ToUniversalTime();
                     Estado.PausaAteUtc = agoraUtc + PausaDaRecusa < fimDoDia ? agoraUtc + PausaDaRecusa : fimDoDia;
                     Encerrar();
@@ -564,12 +635,14 @@ public sealed class Iniciativa
             if (Estado.RespostaUtc is DateTime r)
             {
                 if (agoraUtc - r < JanelaDaConversa) return;
-                Aplicar(Fator(false, respondeu: true, Estado.Turnos, Estado.Palavras, Estado.Leu, _temperamento.Apego));
+                double fator = Fator(false, respondeu: true, Estado.Turnos, Estado.Palavras, Estado.Leu, _temperamento.Apego);
+                Aplicar(fator, Desfecho(false, respondeu: true, Estado.Leu, fator));
             }
             else
             {
                 if (agoraUtc - fala < Paciencia) return;
-                Aplicar(Fator(false, respondeu: false, 0, 0, Estado.Leu));
+                Aplicar(Fator(false, respondeu: false, 0, 0, Estado.Leu, ignorada: _temperamento.Ignorada),
+                        Desfecho(false, respondeu: false, Estado.Leu, 0));
             }
 
             Encerrar();
@@ -578,9 +651,9 @@ public sealed class Iniciativa
     }
 
     /// <summary>O fator inteiro na faixa da fala, e a raiz dele no geral.</summary>
-    private void Aplicar(double fator)
+    private void Aplicar(double fator, string desfecho)
     {
-        Estado.UltimoDesfecho = Desfecho(fator);
+        Estado.UltimoDesfecho = desfecho;
         Multiplicar(Estado.FaixaDaFala, fator);
     }
 

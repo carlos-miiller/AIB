@@ -307,6 +307,7 @@ public partial class App : System.Windows.Application
         _lembretes = new Lembretes();
         string personagem = _settingsService.LoadSettings().ActiveCharacter;
         _iniciativa = new Iniciativa(personagem: personagem, temperamento: TemperamentoDe(personagem));
+        _statusLidoUtc = _status.AlteradoUtc;
 
         // Conversa na janela: só deixa a hora como recente — ele está ocupado com outra coisa,
         // não respondendo a ela.
@@ -339,17 +340,24 @@ public partial class App : System.Windows.Application
     private DateTime? _ultimaConversaUtc;
     private bool _ponderando;
 
-    private static Temperamento TemperamentoDe(string? personagem) =>
-        Temperamento.De(ConversationService.PerfilDoPersonagem(personagem)?.Temperament);
+    private readonly StatusDosPersonagens _status = new();
+    private DateTime _statusLidoUtc;
+
+    /// <summary>Os atributos do arquivo de status; o personagem que não está lá entra no neutro.</summary>
+    private Temperamento TemperamentoDe(string? personagem) => Temperamento.De(_status.De(personagem));
 
     /// <summary>
     /// O vínculo é por personagem: trocado nas configurações, a iniciativa passa a usar o do
-    /// novo, com o temperamento dele. Só lê o info.json quando o nome muda.
+    /// novo, com o temperamento dele. Só lê o arquivo de status quando o nome muda ou o arquivo
+    /// foi mexido: a edição à mão passa a valer na batida seguinte, sem reiniciar.
     /// </summary>
     private void AcompanharPersonagem(string? personagem)
     {
         string nome = (personagem ?? "").Trim();
-        if (nome != _iniciativa.Personagem) _iniciativa.Trocar(nome, TemperamentoDe(nome));
+        if (nome == _iniciativa.Personagem && _status.AlteradoUtc == _statusLidoUtc) return;
+
+        _iniciativa.Trocar(nome, TemperamentoDe(nome));
+        _statusLidoUtc = _status.AlteradoUtc;
     }
 
     /// <summary>
@@ -391,7 +399,8 @@ public partial class App : System.Windows.Application
             // O sorteio decidiu que ela fala; o código escolhe o gancho, e ela só escreve.
             var conversa = _conversaDoOrbe.Conversa;
             var (pendencias, fatos) = conversa.GanchosDisponiveis();
-            var gancho = Iniciativa.EscolherGancho(pendencias, fatos, _iniciativa.Estado.GanchosRecentes, Random.Shared);
+            var gancho = Iniciativa.EscolherGancho(pendencias, fatos, _iniciativa.Estado.GanchosRecentes, Random.Shared,
+                                                   _iniciativa.Temperamento.Curiosidade);
 
             var contexto = new ConversationService.ContextoDaIniciativa(
                 s.NomeDoUsuario,

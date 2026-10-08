@@ -44,6 +44,7 @@ O AIB não usa pasta temporária.
 ├── credentials/
 │   ├── openrouter.bin               chave do OpenRouter (DPAPI)
 │   └── mail/<sha256>.bin            senha de app de cada caixa (DPAPI)
+├── character/status.json            atributos dos personagens (1 a 5); nasce vazio, ganha cada personagem quando ele aparece
 ├── character/<Nome>/                personagens: SOUL.MD, info.json, vinculo.dat (o vínculo com ele, DPAPI)
 ├── skills/<skill>/SKILL.md          skills instaladas
 ├── memory/
@@ -273,7 +274,7 @@ O comando `/unlock_level N` no chat ajusta `MessageCount` para o piso do nível 
 Cada personagem é uma pasta `character/<Nome>/` com:
 
 - `SOUL.MD` — a persona, em texto. O marcador `{{usuario}}` é trocado pelo nome de usuário do Windows ao carregar.
-- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`), e o opcional `Temperament` (`Initiative`, `Attachment`), que ajusta a iniciativa daquele personagem.
+- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`). As estrelas são só da tela de escolha; o que ajusta a iniciativa do personagem são os atributos do `character/status.json` (ver "Iniciativa" em `06-interface.md`).
 
 Os de fábrica estão em `AIBWindows/character/` (`Ayano`, `Ellen`, `Kai`, `Sora`). O ativo é `UserAppSettings.ActiveCharacter` (padrão `Ayano`).
 

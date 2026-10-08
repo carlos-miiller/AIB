@@ -402,9 +402,27 @@ estado só (`EstadoDaIniciativa`); no disco são dois arquivos cifrados (`Arquiv
 `Iniciativa.Trocar` grava o vínculo do personagem que sai e carrega o do que entra (ou começa do
 zero); o `App` chama a cada batida e a cada mensagem no orbe (`AcompanharPersonagem`). O
 `iniciativa.json` em texto claro de antes é lido uma vez, vira o vínculo do personagem ativo e é
-apagado. O **temperamento** vem do `info.json` do personagem (`Temperament`: `Initiative`
-multiplica a chance base, 0,1–3; `Attachment` é o teto do fator de conversa, 1,10–2,50); sem o
-campo valem 1 e 1,70.
+apagado.
+
+**Atributos** (`Atributos`, `StatusDosPersonagens`, `Temperamento.De`): cada personagem tem cinco
+atributos de 1 a 5 no arquivo de status, `~/.AIB/character/status.json` (texto claro, editável à
+mão). O arquivo **nasce vazio**: o personagem entra na primeira vez em que é o ativo, com tudo
+em 3, e dali em diante o AIB só acrescenta quem falta. O 3 é o comportamento de antes dos
+atributos. Arquivo ilegível não é sobrescrito (valem os neutros); a edição passa a valer na
+batida seguinte. Não são as estrelas da tela de escolha (`AgentStats`, no `info.json`).
+
+| Atributo | O que muda | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| `Iniciativa` | multiplica a chance base do sorteio | ×0,5 | ×0,75 | ×1 | ×1,3 | ×1,6 |
+| `Apego` | teto do fator de conversa | 1,30 | 1,50 | 1,70 | 1,90 | 2,10 |
+| `Resiliencia` | fator da fala ignorada / do "agora não" | 0,60 / 0,35 | 0,68 / 0,42 | 0,75 / 0,50 | 0,83 / 0,60 | 0,90 / 0,70 |
+| `Constancia` | quanto o geral volta para 1 por dia | 20% | 15% | 10% | 7% | 5% |
+| `Curiosidade` | chance de, tendo gancho, pedir para conhecer o usuário | 0% | 10% | 20% | 35% | 50% |
+
+A constância só mexe no **geral**, que é do personagem; as faixas de horário são do usuário e
+esquecem sempre 10%. A curiosidade é a única em que o 3 muda algo: antes o pedido de conhecer o
+usuário só saía sem gancho nenhum. O desfecho dito à persona vem do que aconteceu, não do fator
+(`Desfecho(recusou, respondeu, leu, fator)`): o "agora não" de um resiliente vale 0,70.
 
  Cada fala é classificada uma vez — 30 min depois da primeira resposta na conversa do orbe, ou
 8 h sem resposta (`Classificar`) — e o fator (`Fator`) vai inteiro para a faixa em que ela falou

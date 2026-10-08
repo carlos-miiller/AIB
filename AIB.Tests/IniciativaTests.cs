@@ -371,15 +371,116 @@ namespace AIB.Tests
             Iniciativa.FatorEspontaneo(40, apego: 1.10).Should().BeApproximately(1.10, 1e-9);
 
             Temperamento.De(null).Should().Be(Temperamento.Padrao);
-            Temperamento.De(new AgentTemperament { Initiative = 0, Attachment = 0 }).Should().Be(Temperamento.Padrao,
-                "info.json sem o campo desserializa zero, e zero é o padrão");
-            Temperamento.De(new AgentTemperament { Initiative = 99, Attachment = 99 }).Should().Be(new Temperamento(3, 2.50));
 
             var seco = new Iniciativa(_raiz, "Ren", new Temperamento(1, 1.30));
             seco.Falou(Agora, Dez, "E o relatório?", null);
             for (int t = 0; t < 10; t++) seco.UsuarioFalou(Agora.AddMinutes(1 + t), "mais uma");
             seco.Classificar(Agora.AddMinutes(40));
             seco.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().BeApproximately(1.30, 1e-9);
+        }
+
+        // ── Atributos e arquivo de status ──────────────────────────────
+
+        [Fact]
+        public void OArquivoDeStatus_NasceVazio_EGanhaOPersonagemQuandoEleAparece()
+        {
+            // Pedido: "não vamos trazer o arquivo já com a info dos personagens preenchida, ele
+            // deve ser vazio... em qualquer momento podemos introduzir outro personagem e ele ser
+            // adicionado no arquivo de status".
+            var status = new StatusDosPersonagens(_raiz);
+            File.Exists(status.Arquivo).Should().BeFalse("ninguém vem preenchido");
+            status.Arquivo.Should().Be(Path.Combine(_raiz, "character", "status.json"));
+
+            status.De("Ellen").Apego.Should().Be(Atributos.Neutro);
+            File.ReadAllText(status.Arquivo).Should().Contain("\"Ellen\"").And.NotContain("Sora");
+
+            // Editado à mão, o AIB não desfaz; e o personagem novo entra ao lado.
+            File.WriteAllText(status.Arquivo, "{ \"Ellen\": { \"Iniciativa\": 3, \"Apego\": 5, \"Resiliencia\": 2 } }");
+            new StatusDosPersonagens(_raiz).De("ellen").Apego.Should().Be(5);
+            new StatusDosPersonagens(_raiz).De("Sora").Curiosidade.Should().Be(Atributos.Neutro);
+
+            File.ReadAllText(status.Arquivo).Should().Contain("\"Sora\"");
+            new StatusDosPersonagens(_raiz).De("Ellen").Apego.Should().Be(5, "quem já estava não é mexido");
+            new StatusDosPersonagens(_raiz).De("Ellen").Resiliencia.Should().Be(2);
+        }
+
+        [Fact]
+        public void OArquivoDeStatusIlegivel_NaoEhSobrescrito()
+        {
+            // Vírgula esquecida numa edição à mão não pode custar os outros personagens.
+            var status = new StatusDosPersonagens(_raiz);
+            Directory.CreateDirectory(Path.GetDirectoryName(status.Arquivo)!);
+            File.WriteAllText(status.Arquivo, "{ \"Ellen\": { \"Apego\": 5 ");
+
+            status.De("Sora").Iniciativa.Should().Be(Atributos.Neutro);
+            File.ReadAllText(status.Arquivo).Should().Be("{ \"Ellen\": { \"Apego\": 5 ");
+        }
+
+        [Fact]
+        public void ONivelTres_EhOComportamentoDeAntes_EAsPontasMudamAConta()
+        {
+            Temperamento.De(new Atributos()).Should().Be(Temperamento.Padrao);
+            Temperamento.De(new Atributos { Iniciativa = 0, Apego = 0 }).Should().Be(Temperamento.Padrao,
+                "zero não é nível: vale o neutro");
+
+            var frio = Temperamento.De(new Atributos { Iniciativa = 1, Apego = 1, Resiliencia = 1, Constancia = 1, Curiosidade = 1 });
+            var quente = Temperamento.De(new Atributos { Iniciativa = 5, Apego = 9, Resiliencia = 5, Constancia = 5, Curiosidade = 5 });
+
+            (frio.Chance, quente.Chance).Should().Be((0.5, 1.6));
+            (frio.Apego, quente.Apego).Should().Be((1.30, 2.10), "nível acima de 5 vale 5");
+            (frio.Ignorada, quente.Ignorada).Should().Be((0.60, 0.90));
+            (frio.Recusada, quente.Recusada).Should().Be((0.35, 0.70));
+            (frio.Esquecimento, quente.Esquecimento).Should().Be((0.20, 0.05));
+            (frio.Curiosidade, quente.Curiosidade).Should().Be((0, 0.50));
+        }
+
+        [Fact]
+        public void AResiliencia_MudaOQuantoIgnorarERecusarPesam_SemTrocarODesfecho()
+        {
+            var resiliente = Temperamento.De(new Atributos { Resiliencia = 5 });
+
+            var ignorada = new Iniciativa(_raiz, "Kai", resiliente);
+            ignorada.Falou(Agora, Dez, "E o relatório?", null);
+            ignorada.Classificar(Agora + Iniciativa.Paciencia);
+            ignorada.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().BeApproximately(0.90, 1e-9);
+            ignorada.Estado.UltimoDesfecho.Should().Be("ficou sem resposta");
+
+            // O "agora não" dele vale 0,70: pelo número seria "sem resposta", e ela leria errado
+            // como foi a última vez.
+            var recusada = new Iniciativa(Path.Combine(_raiz, "r"), "Kai", resiliente);
+            recusada.Falou(Agora, Dez, "E o relatório?", null);
+            recusada.UsuarioFalou(Agora.AddMinutes(1), "agora não");
+            recusada.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().BeApproximately(0.70, 1e-9);
+            recusada.Estado.UltimoDesfecho.Should().Be("recebeu um \"agora não\"");
+        }
+
+        [Fact]
+        public void AConstancia_MudaOEsquecimentoDoGeral_ENaoODasFaixas()
+        {
+            // As faixas são de quando o usuário gosta de conversa, com quem for.
+            var i = new Iniciativa(_raiz, "Ayano", Temperamento.De(new Atributos { Constancia = 1 }));
+            i.NovoDia(new DateTime(2026, 10, 6, 9, 0, 0));
+            i.Estado.Geral = 2.0;
+            i.Estado.Faixas[4] = 2.0;
+
+            i.NovoDia(new DateTime(2026, 10, 7, 9, 0, 0));
+
+            i.Estado.Geral.Should().BeApproximately(Math.Pow(2.0, 0.80), 1e-9);
+            i.Estado.Faixas[4].Should().BeApproximately(Math.Pow(2.0, 0.90), 1e-9);
+        }
+
+        [Fact]
+        public void ACuriosidade_TrocaOGanchoPorConhecerOUsuario()
+        {
+            var pend = new[] { "o relatório" };
+            var sorte = new Random(7);
+
+            int semGancho = Enumerable.Range(0, 400)
+                .Count(_ => Iniciativa.EscolherGancho(pend, Array.Empty<string>(), Array.Empty<string>(), sorte, 0.50) == null);
+
+            semGancho.Should().BeInRange(150, 250);
+            Iniciativa.EscolherGancho(pend, Array.Empty<string>(), Array.Empty<string>(), sorte)
+                .Should().NotBeNull("sem curiosidade, havendo gancho ele é usado");
         }
 
         [Fact]
