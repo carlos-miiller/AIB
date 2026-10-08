@@ -142,7 +142,7 @@ public sealed class LembrarTool : ITool
         if (jaGuardados >= Teto)
             return Task.FromResult(
                 $"ERRO: já há {Teto} fatos sobre o usuário. Não guardei; se for importante, diga a ele "
-                + "que pode revisar a lista em ~/.AIB/memory/facts.md.");
+                + "que pode revisar a lista em Configurações > Memória.");
 
         int entraram = _fatos.Promote(new[] { new FactCandidate(chave, Prefixo + fato) });
 

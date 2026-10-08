@@ -128,7 +128,7 @@ public sealed class Lembretes
         try
         {
             if (!File.Exists(_arquivo)) return new List<Lembrete>();
-            return JsonSerializer.Deserialize<List<Lembrete>>(File.ReadAllText(_arquivo, Encoding.UTF8), Json)
+            return JsonSerializer.Deserialize<List<Lembrete>>(ArquivoCifrado.Ler(_arquivo) ?? "[]", Json)
                    ?? new List<Lembrete>();
         }
         catch (Exception ex)
@@ -141,9 +141,7 @@ public sealed class Lembretes
 
     private void Gravar(List<Lembrete> todos)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_arquivo)!);
-        string temporario = _arquivo + ".tmp";
-        File.WriteAllText(temporario, JsonSerializer.Serialize(todos, Json), new UTF8Encoding(false));
-        File.Move(temporario, _arquivo, overwrite: true);
+        // Cifrado: o texto do lembrete é fala sobre a vida do usuário.
+        ArquivoCifrado.GravarTexto(_arquivo, JsonSerializer.Serialize(todos, Json));
     }
 }

@@ -38,8 +38,8 @@ O AIB não usa pasta temporária.
 ```
 ~/.AIB/
 ├── profile.dat                      configurações (JSON cifrado com DPAPI)
-├── chat_history.json                conversas arquivadas, para o painel
-├── lembretes.json                   lembretes únicos pendentes (ferramenta remind)
+├── chat_history.json                conversas arquivadas, para o painel (cifrado)
+├── lembretes.json                   lembretes únicos pendentes (ferramenta remind; cifrado)
 ├── iniciativa.dat                   iniciativa: faixas de horário e contagens do dia (DPAPI)
 ├── credentials/
 │   ├── openrouter.bin               chave do OpenRouter (DPAPI)
@@ -47,14 +47,14 @@ O AIB não usa pasta temporária.
 ├── character/<Nome>/                personagens: SOUL.MD, info.json, vinculo.dat (o vínculo com ele, DPAPI)
 ├── skills/<skill>/SKILL.md          skills instaladas
 ├── memory/
-│   ├── facts.md                     fatos duráveis (do usuário)
-│   ├── facts.index.jsonl            registro do que já foi promovido (da máquina)
+│   ├── facts.md                     fatos duráveis (do usuário; cifrado por linha, editado na aba Memória)
+│   ├── facts.index.jsonl            registro do que já foi promovido (da máquina; cifrado por linha)
 │   ├── shadow/                      a conversa do orbe, uma só para sempre (mesmos arquivos de uma sessão)
 │   └── sessions/<id>/
-│       ├── raw.jsonl                todos os turnos, crus — nunca apagado
-│       ├── chapters.jsonl           capítulos (resumos de turnos)
-│       ├── acts.jsonl               atos (resumos de capítulos)
-│       ├── turno-aberto.json        o turno em curso, regravado a cada passo
+│       ├── raw.jsonl                todos os turnos, crus — nunca apagado (cifrado por linha)
+│       ├── chapters.jsonl           capítulos (resumos de turnos; cifrado por linha)
+│       ├── acts.jsonl               atos (resumos de capítulos; cifrado por linha)
+│       ├── turno-aberto.json        o turno em curso, regravado a cada passo (cifrado)
 │       └── compactacao.log          diário da compactação (opt-in)
 ├── email/
 │   ├── estado.json                  por caixa: validade, último UID, quando
@@ -86,6 +86,39 @@ Detalhes que importam:
 - **`logs/audit-*.jsonl`** (`AuditLogService`): append-only, um arquivo por dia (data UTC), sem BOM, gravado **antes** da execução da ação auditada. Falha ao auditar vai para o console e não derruba a conversa. Nos testes, `AuditLogService.LogDirectoryOverride` desvia tudo para uma pasta temporária.
 - **`logs/execucao-*.log`** (`RegistroDeExecucao`): só com `ExecutionLogging` ligado. Espelha o console, que inclui os prompts inteiros — e o da triagem leva assunto e remetente dos e-mails. O **corpo, não**: ele desce para o prompt embrulhado por `ConteudoDeTerceiros` e `RegistroDeExecucao.Redigir` o troca pelo aviso de omissão antes de a linha chegar ao arquivo (era a última exceção documentada à regra 3, e deixou de ser). Ainda assim nasce desligado, e o cabeçalho do arquivo diz o que ele contém. Guarda os 20 mais recentes e só apaga arquivos com o próprio prefixo, porque a pasta também guarda a auditoria.
 - **`logs/prompt-*.txt`** (`RetratoDoEnvio.Gravar`): prefixo diferente de propósito, para a poda do registro de execução não apagá-lo.
+
+### Cifra dos dados (`ArquivoCifrado`, `CifraDaMemoria`)
+
+Conversas, fatos e lembretes são gravados cifrados pelo DPAPI da conta do Windows, como o
+`profile.dat` e os cofres. Protege do disco copiado, do backup e do outro usuário da máquina;
+**não** protege de programa rodando na mesma conta.
+
+- **Binário** (`ArquivoCifrado.Gravar`): arquivo novo, extensão `.dat` — `iniciativa.dat`,
+  `character/<Nome>/vinculo.dat`.
+- **Por linha** (`ArquivoCifrado.Cifrar`/`Acrescentar`/`Linhas`): cada linha vira
+  `aib1:<base64>`. É o dos arquivos em que só se acrescenta (`raw.jsonl`, `chapters.jsonl`,
+  `acts.jsonl`, `facts.md`, `facts.index.jsonl`): continuam arquivos de linhas, e linha em texto
+  claro (de antes da cifra) convive com linha cifrada. Linha que não abre — outra conta, ou
+  cortada — é pulada.
+- **Inteiro** (`ArquivoCifrado.GravarTexto`): o arquivo todo numa linha cifrada, por temporário —
+  `chat_history.json`, `lembretes.json`, `turno-aberto.json`.
+- `ArquivoCifrado.Ler` abre os três e o texto claro.
+
+**Migração** (`CifraDaMemoria.Migrar`, no arranque, antes de qualquer serviço abrir a memória):
+regrava cifrado o que ainda tem texto claro. É a única vez que o AIB reescreve um `raw.jsonl`:
+escreve num `.cifrando`, confere que ele aberto dá as mesmas linhas do original e só então troca;
+se não der, o original fica. Depois da primeira vez, só confere.
+
+**Exportação** (`CifraDaMemoria.Exportar`, botão "Exportar em texto claro…" na aba Memória): a
+cifra é da conta do Windows e **não sobrevive a reinstalação nem a troca de máquina**. A
+exportação copia tudo em texto claro, com a mesma árvore, para a pasta escolhida; é o backup.
+
+`read` e `grep` abrem a linha cifrada (a leitura dentro de `~/.AIB/memory` já passou pelo cartão
+de `DadosProtegidos`). O `facts.md` deixou de ser editável no bloco de notas: a edição é o campo
+"Fatos guardados" da aba Memória (`FactStore.Texto`/`Regravar`).
+
+Continuam em texto claro: os logs e a auditoria, as anotações de site do navegador, os arquivos
+de e-mail e o `compactacao.log`.
 
 ### Reset de fábrica
 

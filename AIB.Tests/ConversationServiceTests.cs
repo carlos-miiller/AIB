@@ -777,7 +777,7 @@ namespace AIB.Tests
 
             await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
 
             linhas.Should().ContainSingle();
             linhas[0].Should().Contain("oi").And.Contain("olá");
@@ -797,7 +797,7 @@ namespace AIB.Tests
             await foreach (var _ in conversation.StreamResponseAsync("primeira")) { }
             await foreach (var _ in conversation.StreamResponseAsync("segunda")) { }
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
 
             linhas.Should().HaveCount(2);
             linhas[0].Should().Contain("\"Index\":0");
@@ -825,7 +825,7 @@ namespace AIB.Tests
             string caminho = Path.Combine(conversation.SessionMemoryDir, "raw.jsonl");
             File.Exists(caminho).Should().BeTrue("o turno aconteceu, e o registro é do que aconteceu");
 
-            string linha = File.ReadAllText(caminho);
+            string linha = Claro.Texto(caminho);
             linha.Should().Contain("oi");
             linha.Should().Contain("turno encerrado sem resposta",
                 "a marca diz POR QUE não houve fala, em vez de deixar um usuário sem resposta");
@@ -915,7 +915,7 @@ namespace AIB.Tests
             // O que saiu do contexto vivo continua em disco.
             var turnosVivos = conversation.SnapshotHistory().Count(m => m is UserChatMessage);
             turnosVivos.Should().BeLessThan(turnos, "os turnos antigos viraram capítulo");
-            File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
+            Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
                 .Should().HaveCount(turnos, "raw.jsonl nunca perde turno");
         }
 
@@ -992,7 +992,7 @@ namespace AIB.Tests
 
             await ConversarAteCompactar(conversation);
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"));
 
             linhas.Should().ContainSingle();
             linhas[0].Should().Contain("\"Index\":0");
@@ -1657,7 +1657,7 @@ namespace AIB.Tests
             fala.TokensDoCache.Should().BeNull("o Ollama não relata cache, e previsão não é medida");
             fala.Provedor.Should().BeNull();
             conversation.MemoriaEmTexto(1).Should().NotContain("cache").And.NotContain("Provedores");
-            File.ReadAllText(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
+            Claro.Texto(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
                 .Should().NotContainEquivalentOf("TokensDoCache").And.NotContainEquivalentOf("\"Provedor\"");
         }
 
@@ -1732,7 +1732,7 @@ namespace AIB.Tests
 
             string arquivo = Path.Combine(conversation.SessionMemoryDir, "turno-aberto.json");
             File.Exists(arquivo).Should().BeTrue("se o AIB cair agora, é o que sobra do turno");
-            File.ReadAllText(arquivo).Should().Contain("pergunta demorada");
+            Claro.Texto(arquivo).Should().Contain("pergunta demorada");
 
             provider.Liberar.SetResult();
             await turno.WaitAsync(TimeSpan.FromSeconds(10));
@@ -1871,7 +1871,7 @@ namespace AIB.Tests
             string arquivo = System.IO.Path.Combine(conversation.SessionMemoryDir, "raw.jsonl");
             System.IO.File.Exists(arquivo).Should().BeTrue();
 
-            string bruto = System.IO.File.ReadAllText(arquivo);
+            string bruto = Claro.Texto(arquivo);
             bruto.Should().Contain("primeira pergunta");
             bruto.Should().Contain("segunda pergunta", "o turno pulado não pode levar os outros junto");
         }
@@ -2036,7 +2036,7 @@ namespace AIB.Tests
 
             await ConversarAteFecharAto(conversation);
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "acts.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "acts.jsonl"));
 
             linhas.Should().ContainSingle();
             linhas[0].Should().Contain("\"Index\":0");
@@ -2052,7 +2052,7 @@ namespace AIB.Tests
 
             await ConversarAteFecharAto(conversation);
 
-            File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"))
+            Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"))
                 .Length.Should().BeGreaterThanOrEqualTo(
                     conversation.Acts[0].LastChapter + 1,
                     "todo capítulo coberto pelo ato continua gravado");
@@ -2366,7 +2366,7 @@ namespace AIB.Tests
             ChatHistoryService.ConversasDoUsuario().Should().NotContain(c => c.Content.Contains(marca));
             // Direto em memory/, e não em memory/sessions/: é uma só, não uma sessão entre muitas.
             orbe.SessionMemoryDir.Should().Be(Path.Combine(_dir, "memory", "shadow"));
-            File.ReadAllText(Path.Combine(orbe.SessionMemoryDir, "raw.jsonl")).Should().Contain(marca, "raw.jsonl guarda tudo");
+            Claro.Texto(Path.Combine(orbe.SessionMemoryDir, "raw.jsonl")).Should().Contain(marca, "raw.jsonl guarda tudo");
         }
 
         [Fact]

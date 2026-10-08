@@ -95,8 +95,8 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Navegador =>
                 "A ação acontece no site, com o seu login. O AIB não desfaz o que o site fizer.",
             Ferramentas.Lembrar =>
-                "Fica valendo em todas as próximas conversas. Guardado em ~/.AIB/memory/facts.md, "
-                + "e dá para apagar à mão.",
+                "Fica valendo em todas as próximas conversas. Dá para rever e apagar em "
+                + "Configurações > Memória.",
             Ferramentas.Lembrete when alvo.StartsWith("CANCELAR ", StringComparison.Ordinal) =>
                 "O lembrete sai da lista e não avisa mais.",
             Ferramentas.Lembrete =>

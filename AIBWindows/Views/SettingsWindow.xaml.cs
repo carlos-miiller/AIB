@@ -207,6 +207,8 @@ public partial class SettingsWindow : Window
             CompactionTriggerTextBox.Text = ParaPorcento(_currentSettings.CompactionTrigger);
             MemoryFractionTextBox.Text = ParaPorcento(_currentSettings.MemoryFraction);
             MostrarMemoria(_currentSettings);
+            _fatosAbertos = new AIB.Services.Memory.FactStore().Texto();
+            FatosTextBox.Text = _fatosAbertos;
 
             RefreshKeyTextBoxLabel();
             CarregarContas();
@@ -1567,6 +1569,37 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>Abre a pasta no Explorer, como na aba Logs.</summary>
+    /// <summary>O texto dos fatos como foi carregado: só regrava o arquivo se o usuário mexeu.</summary>
+    private string _fatosAbertos = "";
+
+    /// <summary>
+    /// Copia conversas, fatos e lembretes em texto claro para a pasta escolhida. A cifra é da
+    /// conta do Windows; esta cópia é o que sobrevive a uma reinstalação ou troca de máquina.
+    /// </summary>
+    private void ExportarMemoria_Click(object sender, RoutedEventArgs e)
+    {
+        using var dialogo = new System.Windows.Forms.FolderBrowserDialog
+        {
+            Description = "Onde gravar a cópia em texto claro da memória do AIB",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = true
+        };
+        if (dialogo.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+        try
+        {
+            string destino = System.IO.Path.Combine(
+                dialogo.SelectedPath, "AIB-memoria-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+            int arquivos = AIB.Services.Memory.CifraDaMemoria.Exportar(destino);
+            ExportarMemoriaResultado.Text =
+                $"{arquivos} arquivo(s) copiados em texto claro para {destino}. Guarde em lugar seguro: qualquer um que abrir a pasta lê tudo.";
+        }
+        catch (Exception ex)
+        {
+            ExportarMemoriaResultado.Text = "Não consegui exportar: " + ex.Message;
+        }
+    }
+
     private void AbrirPastaDeMemoria_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -1960,6 +1993,10 @@ public partial class SettingsWindow : Window
         _currentSettings.ExecutionLogging = ExecutionLogSwitch.IsChecked ?? false;
         _currentSettings.CompactionLogging = CompactionLogSwitch.IsChecked ?? false;
         _currentSettings.KeepAssistantSpeech = KeepAssistantSpeechSwitch.IsChecked ?? true;
+
+        // Os fatos não são configuração: vão para o facts.md, e só quando o texto mudou.
+        string fatos = FatosTextBox.Text ?? "";
+        if (fatos != _fatosAbertos && new AIB.Services.Memory.FactStore().Regravar(fatos)) _fatosAbertos = fatos;
         _currentSettings.ThinkingInHistory = ThinkingInHistorySwitch.IsChecked ?? false;
         _currentSettings.MailTriageThinking = MailTriageThinkingSwitch.IsChecked ?? false;
 

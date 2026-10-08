@@ -1803,6 +1803,22 @@
                                         </Grid>
                                     </Border>
 
+                                    <!-- Os fatos duráveis. O facts.md é cifrado e não abre mais no
+                                         bloco de notas: a edição à mão passou a ser aqui. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <StackPanel Margin="0,13">
+                                            <TextBlock Text="Fatos guardados"
+                                                       Style="{StaticResource FieldLabelText}"/>
+                                            <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                       Text="O que a AIB lembra entre conversas. Só as linhas que começam com &quot;- &quot; entram no prompt, e as de cima têm prioridade. Edite, reordene ou apague: o que você apagar não volta. Vale ao salvar."/>
+                                            <TextBox x:Name="FatosTextBox" Margin="0,8,0,0"
+                                                     Style="{StaticResource ControlTextBoxLista}"
+                                                     MaxHeight="260"
+                                                     VerticalScrollBarVisibility="Auto"
+                                                     TextChanged="Campo_Mudou"/>
+                                        </StackPanel>
+                                    </Border>
+
                                     <!-- Onde a conversa fica gravada. Mesmo gesto da aba Logs: uma
                                          configuração de memória que não diz ONDE a memória mora
                                          obriga o usuário a procurar. -->
@@ -1818,6 +1834,17 @@
                                                     Style="{StaticResource QuietButton}"
                                                     Content="Abrir a pasta"
                                                     Click="AbrirPastaDeMemoria_Click"/>
+                                            <TextBlock Margin="0,14,0,0"
+                                                       Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                       Text="Conversas, fatos e lembretes são gravados cifrados para a sua conta do Windows: não abrem em outra máquina, nem depois de reinstalar o sistema. Para backup ou para levar a outro computador, exporte uma cópia em texto claro."/>
+                                            <Button x:Name="ExportarMemoria" Margin="0,10,0,0"
+                                                    HorizontalAlignment="Left"
+                                                    Style="{StaticResource QuietButton}"
+                                                    Content="Exportar em texto claro…"
+                                                    Click="ExportarMemoria_Click"/>
+                                            <TextBlock x:Name="ExportarMemoriaResultado" Margin="0,6,0,0"
+                                                       Style="{StaticResource FieldHelpText}"
+                                                       TextWrapping="Wrap"/>
                                         </StackPanel>
                                     </Border>
 

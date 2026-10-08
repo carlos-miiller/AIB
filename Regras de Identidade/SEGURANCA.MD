@@ -88,6 +88,11 @@ são invioláveis; o mecanismo está em `documentação/tecnica/03-ferramentas-e
 ## 5. Dados e registros
 
 - Todo dado do usuário fica em `~/.AIB` (`DirectoryService.DataDir`).
+- **Conversa, fato e lembrete só vão para o disco cifrados** (`ArquivoCifrado`, DPAPI da conta):
+  `raw.jsonl`, capítulos, atos, `facts.md` e seu índice, `chat_history.json`, `lembretes.json`,
+  `turno-aberto.json`, e o estado da iniciativa. Arquivo novo com esse tipo de conteúdo grava e lê
+  por `ArquivoCifrado`, nunca por `File.WriteAllText`. A cifra não sobrevive a reinstalação do
+  Windows: o backup é a exportação em texto claro da aba Memória (`CifraDaMemoria.Exportar`).
 - **Ler dentro de `~/.AIB` não é livre** (`DadosProtegidos`, valendo para `read`, `grep` e `glob`):
   `credentials/`, `profile.dat` e `navegador/perfil/` são **negados**, sem cartão; `skills/`,
   `character/` e `navegador/notas/` são livres; todo o resto (memória, logs, e-mail) **pede

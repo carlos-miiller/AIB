@@ -140,7 +140,7 @@ namespace AIB.Tests
                 registro!.Dispose();
             }
 
-            string gravado = File.ReadAllText(registro!.Caminho);
+            string gravado = Claro.Texto(registro!.Caminho);
 
             gravado.Should().NotContain(Segredo, "o corpo do e-mail não vai para disco");
             gravado.Should().Contain(ConteudoDeTerceiros.Omitido);
@@ -172,7 +172,7 @@ namespace AIB.Tests
 
             memoria.AppendTurn(TurnoQueLeuOEmail()[0]).Should().BeTrue();
 
-            string gravado = File.ReadAllText(memoria.RawPath);
+            string gravado = Claro.Texto(memoria.RawPath);
             gravado.Should().NotContain(Segredo, "o raw.jsonl nunca é apagado");
             gravado.Should().Contain(ConteudoDeTerceiros.Omitido);
             gravado.Should().Contain("Contrato Vertex", "o assunto é veredito e diz qual mensagem foi lida");

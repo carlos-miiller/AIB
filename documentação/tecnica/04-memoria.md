@@ -11,6 +11,11 @@ fatos duráveis (facts.md) — atravessam conversas
 
 O que sai do prompt **não sai do disco**: `raw.jsonl` guarda todos os turnos, para sempre.
 
+Os arquivos da memória são **cifrados por linha** (`ArquivoCifrado`, DPAPI da conta do Windows):
+`raw.jsonl`, `chapters.jsonl`, `acts.jsonl`, `facts.md`, `facts.index.jsonl` e o
+`turno-aberto.json`. Ver "Cifra dos dados" em `07-configuracoes-e-dados.md`, inclusive a
+exportação em texto claro, que é o backup.
+
 Arquivos (todos em `AIBWindows/Services/Memory/`, salvo indicação):
 
 | Papel | Arquivo |

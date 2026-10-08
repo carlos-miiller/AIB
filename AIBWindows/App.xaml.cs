@@ -497,6 +497,10 @@ public partial class App : System.Windows.Application
             // ApplyFromSettings pode ter movido o diretório de dados: o cache aponta para o caminho antigo.
             _settingsService.InvalidateCache();
 
+            // Antes de qualquer serviço abrir a memória: o que ainda está em texto claro (os
+            // arquivos de antes da cifra) é regravado cifrado. Depois da primeira vez, só confere.
+            AIB.Services.Memory.CifraDaMemoria.Migrar();
+
             // Portão humano ligado aqui: é o único lugar do app onde existe UI para pedir
             // autorização. Sem este argumento o registry recusa toda ferramenta destrutiva.
             //
