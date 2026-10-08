@@ -469,6 +469,48 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ASaudade_CresceComOTempoSemContato_EMaisComAfetoAlto()
+        {
+            // Visto no uso: um dia inteiro de orbe na tela sem ela dizer nada, a 1,6% por sorteio.
+            // Pedido: a saudade, e "quanto maior o afeto, ele sobe levemente mais".
+            Iniciativa.Saudade(TimeSpan.FromHours(1)).Should().Be(1, "o dia normal fica como era");
+            Iniciativa.Saudade(TimeSpan.FromHours(5)).Should().BeApproximately(1.5, 1e-9);
+            Iniciativa.Saudade(TimeSpan.FromHours(8)).Should().BeApproximately(2, 1e-9);
+            Iniciativa.Saudade(TimeSpan.FromHours(24)).Should().BeApproximately(3, 1e-9);
+            Iniciativa.Saudade(TimeSpan.FromDays(9)).Should().BeApproximately(3, 1e-9, "daí não passa");
+
+            double sora = Temperamento.De(new Atributos { Afeto = 4 }).Saudade;
+            double kai = Temperamento.De(new Atributos { Afeto = -2 }).Saudade;
+            (kai, Temperamento.De(new Atributos()).Saudade, sora).Should().Be((0.88, 1.0, 1.24));
+            Iniciativa.Saudade(TimeSpan.FromHours(24), sora).Should().BeApproximately(3.48, 1e-9);
+            Iniciativa.Saudade(TimeSpan.FromHours(24), kai).Should().BeApproximately(2.76, 1e-9);
+        }
+
+        [Fact]
+        public void OSorteio_UsaASaudade_EQualquerContatoAZera()
+        {
+            var i = new Iniciativa(_raiz, "Ayano", Temperamento.De(new Atributos()));
+            double dado = Iniciativa.ChanceBase * 2.5;
+
+            i.Sortear(Agora, Dez, dado).Should().BeFalse("sem contato registrado, conta a partir de agora");
+            i.Sortear(Agora.AddHours(7), Dez, dado).Should().BeFalse("7 h: 1,83");
+            i.Sortear(Agora.AddHours(24), Dez, dado).Should().BeTrue("um dia: 3");
+
+            // Conversa na janela não ensina nada, mas é contato.
+            i.Contato(Agora.AddHours(24));
+            i.Sortear(Agora.AddHours(25), Dez, dado).Should().BeFalse();
+
+            // Mensagem no orbe e fala dela também.
+            i.UsuarioFalou(Agora.AddHours(50), "oi");
+            i.Estado.ContatoUtc.Should().Be(Agora.AddHours(50));
+            i.Falou(Agora.AddHours(80), Dez, "E o relatório?", null);
+            i.Estado.ContatoUtc.Should().Be(Agora.AddHours(80));
+
+            // E sobrevive ao arranque, no vínculo do personagem.
+            new Iniciativa(_raiz, "Ayano").Estado.ContatoUtc.Should().Be(Agora.AddHours(80));
+        }
+
+        [Fact]
         public void ComAfetoMinimo_ConversaNaoFazPuxarMaisAssunto()
         {
             // Pedido: "-5 o personagem é totalmente direto e evita interações prolongadas".

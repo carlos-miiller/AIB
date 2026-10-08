@@ -432,6 +432,13 @@ arquivo de status — conversa +0,10, resposta rápida +0,03, conversa puxada pe
 ou mais) +0,05, lida sem resposta -0,02, ignorada -0,05, "agora não" -0,15. Fica entre -5 e 5 e a
 no máximo 2 pontos do afeto de fábrica do `info.json` (`Atributos.FolgaDoAfeto`).
 
+**Saudade** (`Iniciativa.Saudade`): a chance do sorteio é multiplicada pelo tempo sem contato —
+1 até 2 h, 2 com 8 h, 3 com 24 h, e daí não passa. Contato é mensagem do usuário no orbe, turno
+concluído na janela (`Iniciativa.Contato`) ou fala dela; fica no vínculo (`ContatoUtc`). O
+crescimento é multiplicado pelo afeto, 6% por ponto (`Temperamento.SaudadeDoAfeto`): com um dia,
+×2,76 no afeto -2 e ×3,48 no +4. Existe porque, a 1,6% por sorteio, um dia inteiro de orbe na
+tela passava sem mensagem quase metade das vezes.
+
 A constância só mexe no **geral**, que é do personagem; as faixas de horário são do usuário e
 esquecem sempre 10%. A curiosidade é a única em que o 3 muda algo: antes o pedido de conhecer o
 usuário só saía sem gancho nenhum. O desfecho dito à persona vem do que aconteceu, não do fator

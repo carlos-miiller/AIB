@@ -317,7 +317,11 @@ public partial class App : System.Windows.Application
 
         // Conversa na janela: só deixa a hora como recente — ele está ocupado com outra coisa,
         // não respondendo a ela.
-        _chatWindow!.TurnoConcluido += _ => _ultimaConversaUtc = DateTime.UtcNow;
+        _chatWindow!.TurnoConcluido += _ =>
+        {
+            _ultimaConversaUtc = DateTime.UtcNow;
+            _iniciativa.Contato(DateTime.UtcNow);
+        };
 
         // Conversa no orbe: é a resposta à iniciativa, se havia uma esperando — e quanto ele
         // conversou, e se foi um "agora não", é o que ela aprende. Sem fala esperando, é ele

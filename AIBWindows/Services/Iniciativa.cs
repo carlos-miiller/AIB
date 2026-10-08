@@ -55,6 +55,12 @@ public sealed class EstadoDaIniciativa
     /// <summary>Turnos dele na conversa espontânea.</summary>
     public int TurnosDaConversa { get; set; }
 
+    /// <summary>
+    /// A última vez que os dois se falaram, no orbe ou na janela, ou que ela falou. É de onde a
+    /// saudade conta (<see cref="Iniciativa.Saudade"/>). Nula: ainda não se sabe.
+    /// </summary>
+    public DateTime? ContatoUtc { get; set; }
+
     /// <summary>Depois de um "agora não", ela não puxa assunto até aqui.</summary>
     public DateTime? PausaAteUtc { get; set; }
 
@@ -97,6 +103,7 @@ public sealed class Vinculo
     public DateTime? ConversaUtc { get; set; }
     public int FaixaDaConversa { get; set; }
     public int TurnosDaConversa { get; set; }
+    public DateTime? ContatoUtc { get; set; }
     public System.Collections.Generic.List<string> Recentes { get; set; } = new();
     public System.Collections.Generic.List<string> GanchosRecentes { get; set; } = new();
     public string UltimoDesfecho { get; set; } = "";
@@ -113,6 +120,7 @@ public sealed class Vinculo
         ConversaUtc = e.ConversaUtc,
         FaixaDaConversa = e.FaixaDaConversa,
         TurnosDaConversa = e.TurnosDaConversa,
+        ContatoUtc = e.ContatoUtc,
         Recentes = e.Recentes.ToList(),
         GanchosRecentes = e.GanchosRecentes.ToList(),
         UltimoDesfecho = e.UltimoDesfecho
@@ -130,6 +138,7 @@ public sealed class Vinculo
         e.ConversaUtc = ConversaUtc;
         e.FaixaDaConversa = FaixaDaConversa;
         e.TurnosDaConversa = TurnosDaConversa;
+        e.ContatoUtc = ContatoUtc;
         e.Recentes = (Recentes ?? new()).ToList();
         e.GanchosRecentes = (GanchosRecentes ?? new()).ToList();
         e.UltimoDesfecho = UltimoDesfecho ?? "";
@@ -157,6 +166,12 @@ public readonly record struct Temperamento(double Chance, double Apego)
     /// <summary>Quanto o geral dele volta para 1 por dia.</summary>
     public double Esquecimento { get; init; } = Iniciativa.Esquecimento;
 
+    /// <summary>
+    /// O quanto a saudade dele cresce com o tempo sem contato (<see cref="Iniciativa.Saudade"/>):
+    /// 1 no afeto neutro, um pouco mais com afeto alto. O padrão é o do afeto +2.
+    /// </summary>
+    public double Saudade { get; init; } = SaudadeDoAfeto(2);
+
     /// <summary>A chance de, tendo assunto para retomar, ele preferir perguntar sobre o usuário.</summary>
     public double Curiosidade { get; init; } = CuriosidadePorNivel[Atributos.Neutro - 1];
 
@@ -183,10 +198,18 @@ public readonly record struct Temperamento(double Chance, double Apego)
     public static double TetoDoAfeto(double afeto) =>
         Math.Round(1.50 + 0.10 * Math.Clamp(afeto, Atributos.AfetoMinimo, Atributos.AfetoMaximo), 4);
 
+    /// <summary>
+    /// O afeto na saudade — pedido do usuário: "quanto maior o afeto, ele sobe levemente mais".
+    /// 6% por ponto: 0,70 com -5, 1,12 com +2, 1,30 com +5.
+    /// </summary>
+    public static double SaudadeDoAfeto(double afeto) =>
+        Math.Round(1 + 0.06 * Math.Clamp(afeto, Atributos.AfetoMinimo, Atributos.AfetoMaximo), 4);
+
     public static Temperamento De(Atributos? a) => a == null
         ? Padrao
         : new(Nivel(ChancePorNivel, a.Iniciativa), TetoDoAfeto(a.Afeto))
         {
+            Saudade = SaudadeDoAfeto(a.Afeto),
             Ignorada = Nivel(IgnoradaPorNivel, a.Resiliencia),
             Recusada = Nivel(RecusadaPorNivel, a.Resiliencia),
             Esquecimento = Nivel(EsquecimentoPorNivel, a.Constancia),
@@ -216,6 +239,10 @@ public sealed record Gancho(string Tipo, string Texto);
 /// afetuosa e quem conversa muito com ela a deixa mais inclinada a puxar assunto; ignorar desce
 /// 0,75; "agora não" desce 0,5 e cala até o fim do dia ou por 4 h. Todo dia os multiplicadores
 /// voltam 10% na direção de 1: uma semana ruim não a cala para sempre.
+/// </para>
+/// <para>
+/// SAUDADE: a chance cresce com o tempo sem contato (<see cref="Saudade"/>), até triplicar com
+/// um dia. É o que impede o dia inteiro de silêncio que o sorteio puro deixava acontecer.
 /// </para>
 /// <para>
 /// ESSES NÚMEROS SÃO OS DO PERSONAGEM NEUTRO. Cada personagem tem cinco atributos de 1 a 5 no
@@ -380,9 +407,41 @@ public sealed class Iniciativa
 
     public static int FaixaDe(TimeSpan hora) => Math.Clamp((int)(hora.TotalHours / 2), 0, NumeroDeFaixas - 1);
 
-    /// <summary>A chance deste sorteio. <paramref name="temperamento"/> é a do personagem (1 é o padrão).</summary>
-    public static double Chance(EstadoDaIniciativa e, TimeSpan hora, double temperamento = 1) =>
-        ChanceBase * temperamento * e.Geral * e.Faixas[FaixaDe(hora)];
+    /// <summary>
+    /// A chance deste sorteio. <paramref name="temperamento"/> é a do personagem (1 é o padrão) e
+    /// <paramref name="saudade"/>, o quanto o tempo sem contato a aumenta (<see cref="Saudade"/>).
+    /// </summary>
+    public static double Chance(EstadoDaIniciativa e, TimeSpan hora, double temperamento = 1, double saudade = 1) =>
+        ChanceBase * temperamento * saudade * e.Geral * e.Faixas[FaixaDe(hora)];
+
+    /// <summary>Sem contato há menos que isso, ainda não há saudade.</summary>
+    public static readonly TimeSpan SaudadeComeca = TimeSpan.FromHours(2);
+
+    /// <summary>Sem contato há isso, a chance dobra (no afeto neutro).</summary>
+    public static readonly TimeSpan SaudadeDobra = TimeSpan.FromHours(8);
+
+    /// <summary>Sem contato há isso, a chance triplica, e daí não passa.</summary>
+    public static readonly TimeSpan SaudadeTriplica = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// O multiplicador da saudade: 1 até 2 h sem contato, sobe até 2 com 8 h e até 3 com 24 h.
+    /// <para>
+    /// Visto no uso: um dia inteiro com o orbe na tela e nenhuma mensagem dela. Não era defeito
+    /// — a 1,6% por sorteio, um dia de 8 h no PC passa em branco quase metade das vezes. Com a
+    /// saudade o dia normal fica igual (ela só conta depois de 2 h) e o silêncio longo fica raro.
+    /// </para>
+    /// </summary>
+    /// <param name="afeto">Multiplica o crescimento (<see cref="Temperamento.Saudade"/>).</param>
+    public static double Saudade(TimeSpan semContato, double afeto = 1)
+    {
+        double ganho;
+        if (semContato <= SaudadeComeca) ganho = 0;
+        else if (semContato <= SaudadeDobra) ganho = (semContato - SaudadeComeca) / (SaudadeDobra - SaudadeComeca);
+        else if (semContato <= SaudadeTriplica) ganho = 1 + (semContato - SaudadeDobra) / (SaudadeTriplica - SaudadeDobra);
+        else ganho = 2;
+
+        return 1 + ganho * Math.Max(0, afeto);
+    }
 
     /// <summary>O que impede de sortear agora, ou null quando pode.</summary>
     public static string? Impedimento(
@@ -554,8 +613,14 @@ public sealed class Iniciativa
         lock (_gate)
         {
             Estado.SorteioUtc = agoraUtc;
+
+            // Sem contato registrado (estado de antes da saudade, ou personagem novo), ela conta
+            // a partir de agora.
+            Estado.ContatoUtc ??= agoraUtc;
             Gravar();
-            return dado < Chance(Estado, horaLocal, _temperamento.Chance);
+
+            double saudade = Saudade(agoraUtc - Estado.ContatoUtc.Value, _temperamento.Saudade);
+            return dado < Chance(Estado, horaLocal, _temperamento.Chance, saudade);
         }
     }
 
@@ -573,6 +638,7 @@ public sealed class Iniciativa
             if (!string.IsNullOrWhiteSpace(texto))
             {
                 Lembrar(Estado.Recentes, texto.Trim());
+                Estado.ContatoUtc = agoraUtc;
                 Estado.FalaUtc = agoraUtc;
                 Estado.FaixaDaFala = FaixaDe(horaLocal);
                 Estado.Leu = false;
@@ -603,6 +669,19 @@ public sealed class Iniciativa
     }
 
     /// <summary>
+    /// Os dois se falaram na janela. Não conta para o aprendizado — ali ele está trabalhando,
+    /// não respondendo a ela —, mas zera a saudade.
+    /// </summary>
+    public void Contato(DateTime agoraUtc)
+    {
+        lock (_gate)
+        {
+            Estado.ContatoUtc = agoraUtc;
+            Gravar();
+        }
+    }
+
+    /// <summary>
     /// Ele falou na conversa do orbe. A primeira resposta depois da fala: se for "agora não",
     /// classifica na hora e pausa; senão abre a janela de 30 min em que os turnos contam. Sem
     /// fala dela esperando, é ele puxando conversa: abre (ou soma a) uma conversa espontânea.
@@ -612,6 +691,8 @@ public sealed class Iniciativa
     {
         lock (_gate)
         {
+            Estado.ContatoUtc = agoraUtc;
+
             if (Estado.FalaUtc == null)
             {
                 if (Estado.ConversaUtc is DateTime c && agoraUtc - c > JanelaDaConversa) FecharConversa();
