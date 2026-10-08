@@ -8,8 +8,9 @@ using System.Text.Json;
 namespace AIB.Services;
 
 /// <summary>
-/// Os atributos de um personagem, de 1 a 5. O 3 é o neutro: o comportamento que valia para todos
-/// antes de haver atributo. O que cada nível vale está em <see cref="Temperamento.De"/>.
+/// Os atributos de um personagem. Quatro vão de 1 a 5, com o 3 de neutro: o comportamento que
+/// valia para todos antes de haver atributo. O afeto vai de -5 a 5, com o 0 de neutro. O que
+/// cada nível vale está em <see cref="Temperamento.De"/>.
 /// <para>
 /// Não são as estrelas da tela de escolha (<see cref="AgentStats"/>): aquelas descrevem o
 /// personagem para quem escolhe, estas mexem na conta da iniciativa.
@@ -22,8 +23,18 @@ public sealed class Atributos
     /// <summary>O quanto ele puxa assunto por conta própria.</summary>
     public int Iniciativa { get; set; } = Neutro;
 
-    /// <summary>O quanto uma boa conversa o deixa mais inclinado a voltar.</summary>
-    public int Apego { get; set; } = Neutro;
+    public const double AfetoMinimo = -5;
+    public const double AfetoMaximo = 5;
+
+    /// <summary>O quanto o afeto de agora pode se afastar do de fábrica: a Kai nunca vira a Sora.</summary>
+    public const double FolgaDoAfeto = 2;
+
+    /// <summary>
+    /// De -5 a 5 — decisão do usuário: "-5 o personagem é totalmente direto e evita interações
+    /// prolongadas, e 5 é extremamente expressivo, apegado e adora interagir". É o único que
+    /// anda sozinho (<see cref="StatusDosPersonagens.Mover"/>), e por isso tem fração.
+    /// </summary>
+    public double Afeto { get; set; }
 
     /// <summary>O quanto ele aguenta ser ignorado ou ouvir um "agora não" sem se retrair.</summary>
     public int Resiliencia { get; set; } = Neutro;
@@ -84,7 +95,7 @@ public sealed class StatusDosPersonagens
         var inicial = new Atributos
         {
             Iniciativa = padrao?.Iniciativa ?? Atributos.Neutro,
-            Apego = padrao?.Apego ?? Atributos.Neutro,
+            Afeto = padrao?.Afeto ?? 0,
             Resiliencia = padrao?.Resiliencia ?? Atributos.Neutro,
             Constancia = padrao?.Constancia ?? Atributos.Neutro,
             Curiosidade = padrao?.Curiosidade ?? Atributos.Neutro
@@ -109,6 +120,43 @@ public sealed class StatusDosPersonagens
             {
                 Console.WriteLine($"[STATUS] {_arquivo} não foi lido, valem os atributos padrão: {ex.Message}");
                 return inicial;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Anda o afeto de agora do personagem: sobe com conversa boa, desce quando ele é ignorado
+    /// ou recusado (<see cref="Iniciativa.AfetoMoveu"/>). Fica entre -5 e 5 e a no máximo
+    /// <see cref="Atributos.FolgaDoAfeto"/> do afeto de fábrica. Quem não está no arquivo, ou
+    /// arquivo ilegível: nada acontece.
+    /// </summary>
+    /// <param name="fabrica">O afeto do info.json do personagem.</param>
+    public void Mover(string? personagem, double passo, double fabrica)
+    {
+        string nome = (personagem ?? "").Trim();
+        if (nome.Length == 0 || passo == 0) return;
+
+        lock (_gate)
+        {
+            try
+            {
+                var todos = Ler();
+                string? chave = todos.Keys.FirstOrDefault(k => string.Equals(k, nome, StringComparison.OrdinalIgnoreCase));
+                if (chave == null || todos[chave] is not Atributos a) return;
+
+                double centro = Math.Clamp(fabrica, Atributos.AfetoMinimo, Atributos.AfetoMaximo);
+                double piso = Math.Max(Atributos.AfetoMinimo, centro - Atributos.FolgaDoAfeto);
+                double teto = Math.Min(Atributos.AfetoMaximo, centro + Atributos.FolgaDoAfeto);
+
+                double novo = Math.Round(Math.Clamp(a.Afeto + passo, piso, teto), 2);
+                if (novo == a.Afeto) return;
+
+                a.Afeto = novo;
+                Gravar(todos);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[STATUS] O afeto de {nome} não foi gravado: {ex.Message}");
             }
         }
     }

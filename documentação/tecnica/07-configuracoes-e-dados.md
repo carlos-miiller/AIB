@@ -274,7 +274,7 @@ O comando `/unlock_level N` no chat ajusta `MessageCount` para o piso do nível 
 Cada personagem é uma pasta `character/<Nome>/` com:
 
 - `SOUL.MD` — a persona, em texto. O marcador `{{usuario}}` é trocado pelo nome de usuário do Windows ao carregar.
-- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`), e `Atributos` (`Iniciativa`, `Apego`, `Resiliencia`, `Constancia`, `Curiosidade`, de 1 a 5). As estrelas são só da tela de escolha; os atributos são os padrões de fábrica do personagem, copiados para o `memory/shadow/status.json` quando ele aparece (ver "Iniciativa" em `06-interface.md`).
+- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`), e `Atributos` (`Iniciativa`, `Resiliencia`, `Constancia`, `Curiosidade`, de 1 a 5, e `Afeto`, de -5 a 5). As estrelas são só da tela de escolha; os atributos são os padrões de fábrica do personagem, copiados para o `memory/shadow/status.json` quando ele aparece (ver "Iniciativa" em `06-interface.md`).
 
 Os de fábrica estão em `AIBWindows/character/` (`Ayano`, `Ellen`, `Kai`, `Sora`). O ativo é `UserAppSettings.ActiveCharacter` (padrão `Ayano`).
 

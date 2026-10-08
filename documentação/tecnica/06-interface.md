@@ -405,7 +405,7 @@ zero); o `App` chama a cada batida e a cada mensagem no orbe (`AcompanharPersona
 apagado.
 
 **Atributos** (`Atributos`, `StatusDosPersonagens`, `Temperamento.De`): cada personagem tem cinco
-atributos de 1 a 5. Os **de fábrica** ficam no `info.json` dele (`Atributos`); os **que valem
+atributos: quatro de 1 a 5 (tabela abaixo) e o afeto. Os **de fábrica** ficam no `info.json` dele (`Atributos`); os **que valem
 agora** ficam no arquivo de status, `~/.AIB/memory/shadow/status.json` (texto claro, editável à
 mão). O arquivo **nasce vazio**: o personagem entra na primeira vez em que é o ativo, com os
 padrões do `info.json` (sem eles, tudo em 3), e dali em diante vale o que está no arquivo — o AIB
@@ -416,10 +416,21 @@ batida seguinte. Não são as estrelas da tela de escolha (`AgentStats`, no `inf
 | Atributo | O que muda | 1 | 2 | 3 | 4 | 5 |
 |---|---|---|---|---|---|---|
 | `Iniciativa` | multiplica a chance base do sorteio | ×0,5 | ×0,75 | ×1 | ×1,3 | ×1,6 |
-| `Apego` | teto do fator de conversa | 1,30 | 1,50 | 1,70 | 1,90 | 2,10 |
 | `Resiliencia` | fator da fala ignorada / do "agora não" | 0,60 / 0,35 | 0,68 / 0,42 | 0,75 / 0,50 | 0,83 / 0,60 | 0,90 / 0,70 |
 | `Constancia` | quanto o geral volta para 1 por dia | 20% | 15% | 10% | 7% | 5% |
 | `Curiosidade` | chance de, tendo gancho, pedir para conhecer o usuário | 0% | 10% | 20% | 35% | 50% |
+
+O **afeto** (`Afeto`) é o quinto e tem escala própria, de **-5 a 5**, com 0 de neutro: -5 é o
+personagem direto, que evita conversa longa; 5, o expressivo e apegado. Na conta ele é o teto do
+fator de conversa, `1,50 + 0,10 × afeto` (`Temperamento.TetoDoAfeto`): 1,00 com -5 (conversa não
+o faz puxar mais assunto), 1,70 com +2 (o valor que nasceu com a Ellen), 2,00 com +5. O jeito de
+falar ainda não muda com o afeto: isso é texto de prompt, e entra depois de medido.
+
+O afeto é o único atributo que **anda sozinho**: a cada iniciativa classificada ou conversa
+espontânea encerrada, `Iniciativa.AfetoMoveu` dá o passo e `StatusDosPersonagens.Mover` grava no
+arquivo de status — conversa +0,10, resposta rápida +0,03, conversa puxada pelo usuário (2 turnos
+ou mais) +0,05, lida sem resposta -0,02, ignorada -0,05, "agora não" -0,15. Fica entre -5 e 5 e a
+no máximo 2 pontos do afeto de fábrica do `info.json` (`Atributos.FolgaDoAfeto`).
 
 A constância só mexe no **geral**, que é do personagem; as faixas de horário são do usuário e
 esquecem sempre 10%. A curiosidade é a única em que o 3 muda algo: antes o pedido de conhecer o

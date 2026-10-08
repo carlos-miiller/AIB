@@ -137,9 +137,9 @@ public sealed class Vinculo
 }
 
 /// <summary>
-/// O temperamento de um personagem na iniciativa: os <see cref="Atributos"/> dele (1 a 5, do
-/// arquivo de status) já traduzidos nos números da conta. O padrão é o nível 3 em tudo, o que
-/// valia para todos.
+/// O temperamento de um personagem na iniciativa: os <see cref="Atributos"/> dele (do arquivo
+/// de status) já traduzidos nos números da conta. O padrão é o de quando não há personagem: o
+/// que valia para todos antes dos atributos.
 /// </summary>
 /// <param name="Chance">Multiplica a chance base do sorteio. 1 é o padrão; menos, mais calado.</param>
 /// <param name="Apego">
@@ -162,8 +162,8 @@ public readonly record struct Temperamento(double Chance, double Apego)
 
     // O que cada nível vale, do 1 ao 5. O do meio é o comportamento de antes dos atributos —
     // menos na curiosidade, que não existia: antes ele só perguntava sem ter assunto nenhum.
+    // O afeto não tem tabela: é uma conta (TetoDoAfeto).
     private static readonly double[] ChancePorNivel = { 0.5, 0.75, 1, 1.3, 1.6 };
-    private static readonly double[] ApegoPorNivel = { 1.30, 1.50, Iniciativa.TetoDaConversa, 1.90, 2.10 };
     private static readonly double[] IgnoradaPorNivel = { 0.60, 0.68, Iniciativa.FatorIgnorada, 0.83, 0.90 };
     private static readonly double[] RecusadaPorNivel = { 0.35, 0.42, Iniciativa.FatorRecusada, 0.60, 0.70 };
     private static readonly double[] EsquecimentoPorNivel = { 0.20, 0.15, Iniciativa.Esquecimento, 0.07, 0.05 };
@@ -176,9 +176,16 @@ public readonly record struct Temperamento(double Chance, double Apego)
     private static double Nivel(double[] escala, int nivel) =>
         escala[Math.Clamp(nivel <= 0 ? Atributos.Neutro : nivel, 1, escala.Length) - 1];
 
+    /// <summary>
+    /// O teto da conversa pelo afeto: 1,50 no neutro e 0,10 por ponto. Com -5 dá 1,00 — conversa
+    /// longa não o faz puxar mais assunto; com +2, o 1,70 que nasceu com a Ellen; com +5, 2,00.
+    /// </summary>
+    public static double TetoDoAfeto(double afeto) =>
+        Math.Round(1.50 + 0.10 * Math.Clamp(afeto, Atributos.AfetoMinimo, Atributos.AfetoMaximo), 4);
+
     public static Temperamento De(Atributos? a) => a == null
         ? Padrao
-        : new(Nivel(ChancePorNivel, a.Iniciativa), Nivel(ApegoPorNivel, a.Apego))
+        : new(Nivel(ChancePorNivel, a.Iniciativa), TetoDoAfeto(a.Afeto))
         {
             Ignorada = Nivel(IgnoradaPorNivel, a.Resiliencia),
             Recusada = Nivel(RecusadaPorNivel, a.Resiliencia),
@@ -406,8 +413,9 @@ public sealed class Iniciativa
     {
         if (recusou) return recusada;
         if (!respondeu) return leu ? Math.Max(FatorLida, ignorada) : ignorada;
+        // O teto vale também para a resposta curta: com afeto -5 ele é 1,00, e nada sobe.
         if (turnos >= 2) return Math.Min(teto, 1.10 + 0.05 * (turnos - 2));
-        return palavras >= 12 ? 1.10 : 1.05;
+        return Math.Min(teto, palavras >= 12 ? 1.10 : 1.05);
     }
 
     /// <summary>
@@ -417,7 +425,7 @@ public sealed class Iniciativa
     /// </summary>
     /// <param name="apego">O apego do personagem: a conversa puxada não sobe mais que ele.</param>
     public static double FatorEspontaneo(int turnos, double apego = TetoDaConversa) =>
-        turnos >= 2 ? Math.Min(Math.Min(1.20, apego), 1.05 + 0.02 * (turnos - 2)) : 1.02;
+        Math.Min(apego, turnos >= 2 ? Math.Min(1.20, 1.05 + 0.02 * (turnos - 2)) : 1.02);
 
     private static readonly Regex Recusa = new(
         @"\b(agora n[aã]o|depois a gente|depois falamos|para de|pare de|chega|n[aã]o quero conversar|me deixa|fala menos|menos mensage)",
@@ -486,6 +494,30 @@ public sealed class Iniciativa
         if (!respondeu) return Desfecho(leu ? FatorLida : FatorIgnorada);
         return Desfecho(Math.Max(1, fator));
     }
+
+    // ── O afeto anda ──────────────────────────────────────────────────────
+    // Devagar: vinte conversas boas para subir os 2 pontos de folga. Recusa pesa mais que
+    // conversa, e ser lida sem resposta quase não pesa.
+    public const double PassoDaConversa = 0.10;
+    public const double PassoDaResposta = 0.03;
+    public const double PassoDaEspontanea = 0.05;
+    public const double PassoDaLida = -0.02;
+    public const double PassoDaIgnorada = -0.05;
+    public const double PassoDaRecusa = -0.15;
+
+    /// <summary>Quanto o afeto anda com o desfecho de uma iniciativa.</summary>
+    public static double PassoDoAfeto(bool recusou, bool respondeu, bool leu, double fator)
+    {
+        if (recusou) return PassoDaRecusa;
+        if (!respondeu) return leu ? PassoDaLida : PassoDaIgnorada;
+        return fator >= 1.08 ? PassoDaConversa : PassoDaResposta;
+    }
+
+    /// <summary>
+    /// Uma iniciativa ou conversa espontânea foi encerrada, e o afeto do personagem carregado
+    /// anda este passo. Quem grava é o arquivo de status (<see cref="StatusDosPersonagens.Mover"/>).
+    /// </summary>
+    public event Action<double>? AfetoMoveu;
 
     private static double Preso(double m) => Math.Clamp(m, Minimo, Maximo);
 
@@ -601,7 +633,7 @@ public sealed class Iniciativa
 
                 if (EhRecusa(texto))
                 {
-                    Aplicar(_temperamento.Recusada, Desfecho(recusou: true, true, Estado.Leu, 0));
+                    Aplicar(_temperamento.Recusada, Desfecho(recusou: true, true, Estado.Leu, 0), PassoDaRecusa);
                     var fimDoDia = agoraUtc.ToLocalTime().Date.AddDays(1).ToUniversalTime();
                     Estado.PausaAteUtc = agoraUtc + PausaDaRecusa < fimDoDia ? agoraUtc + PausaDaRecusa : fimDoDia;
                     Encerrar();
@@ -636,13 +668,15 @@ public sealed class Iniciativa
             {
                 if (agoraUtc - r < JanelaDaConversa) return;
                 double fator = Fator(false, respondeu: true, Estado.Turnos, Estado.Palavras, Estado.Leu, _temperamento.Apego);
-                Aplicar(fator, Desfecho(false, respondeu: true, Estado.Leu, fator));
+                Aplicar(fator, Desfecho(false, respondeu: true, Estado.Leu, fator),
+                        PassoDoAfeto(false, respondeu: true, Estado.Leu, Fator(false, true, Estado.Turnos, Estado.Palavras, Estado.Leu)));
             }
             else
             {
                 if (agoraUtc - fala < Paciencia) return;
                 Aplicar(Fator(false, respondeu: false, 0, 0, Estado.Leu, ignorada: _temperamento.Ignorada),
-                        Desfecho(false, respondeu: false, Estado.Leu, 0));
+                        Desfecho(false, respondeu: false, Estado.Leu, 0),
+                        PassoDoAfeto(false, respondeu: false, Estado.Leu, 0));
             }
 
             Encerrar();
@@ -651,10 +685,11 @@ public sealed class Iniciativa
     }
 
     /// <summary>O fator inteiro na faixa da fala, e a raiz dele no geral.</summary>
-    private void Aplicar(double fator, string desfecho)
+    private void Aplicar(double fator, string desfecho, double passo)
     {
         Estado.UltimoDesfecho = desfecho;
         Multiplicar(Estado.FaixaDaFala, fator);
+        AfetoMoveu?.Invoke(passo);
     }
 
     private void Multiplicar(int faixa, double fator)
@@ -672,6 +707,9 @@ public sealed class Iniciativa
     {
         if (Estado.TurnosDaConversa > 0)
             Multiplicar(Estado.FaixaDaConversa, FatorEspontaneo(Estado.TurnosDaConversa, _temperamento.Apego));
+
+        // Uma mensagem só é pedido de trabalho; a partir de duas, ele quis conversar.
+        if (Estado.TurnosDaConversa >= 2) AfetoMoveu?.Invoke(PassoDaEspontanea);
         Estado.ConversaUtc = null;
         Estado.TurnosDaConversa = 0;
     }

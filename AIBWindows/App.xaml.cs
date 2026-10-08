@@ -309,6 +309,12 @@ public partial class App : System.Windows.Application
         _iniciativa = new Iniciativa(personagem: personagem, temperamento: TemperamentoDe(personagem));
         _statusLidoUtc = _status.AlteradoUtc;
 
+        // O afeto anda com o desfecho de cada conversa. O arquivo de status muda, e a batida
+        // seguinte relê o temperamento (AcompanharPersonagem).
+        _iniciativa.AfetoMoveu += passo => _status.Mover(
+            _iniciativa.Personagem, passo,
+            ConversationService.PerfilDoPersonagem(_iniciativa.Personagem)?.Atributos?.Afeto ?? 0);
+
         // Conversa na janela: só deixa a hora como recente — ele está ocupado com outra coisa,
         // não respondendo a ela.
         _chatWindow!.TurnoConcluido += _ => _ultimaConversaUtc = DateTime.UtcNow;

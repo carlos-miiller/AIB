@@ -391,16 +391,16 @@ namespace AIB.Tests
             File.Exists(status.Arquivo).Should().BeFalse("ninguém vem preenchido");
             status.Arquivo.Should().Be(Path.Combine(_raiz, "memory", "shadow", "status.json"));
 
-            status.De("Ellen").Apego.Should().Be(Atributos.Neutro);
+            status.De("Ellen").Afeto.Should().Be(0);
             File.ReadAllText(status.Arquivo).Should().Contain("\"Ellen\"").And.NotContain("Sora");
 
             // Editado à mão, o AIB não desfaz; e o personagem novo entra ao lado.
-            File.WriteAllText(status.Arquivo, "{ \"Ellen\": { \"Iniciativa\": 3, \"Apego\": 5, \"Resiliencia\": 2 } }");
-            new StatusDosPersonagens(_raiz).De("ellen").Apego.Should().Be(5);
+            File.WriteAllText(status.Arquivo, "{ \"Ellen\": { \"Iniciativa\": 3, \"Afeto\": 5, \"Resiliencia\": 2 } }");
+            new StatusDosPersonagens(_raiz).De("ellen").Afeto.Should().Be(5);
             new StatusDosPersonagens(_raiz).De("Sora").Curiosidade.Should().Be(Atributos.Neutro);
 
             File.ReadAllText(status.Arquivo).Should().Contain("\"Sora\"");
-            new StatusDosPersonagens(_raiz).De("Ellen").Apego.Should().Be(5, "quem já estava não é mexido");
+            new StatusDosPersonagens(_raiz).De("Ellen").Afeto.Should().Be(5, "quem já estava não é mexido");
             new StatusDosPersonagens(_raiz).De("Ellen").Resiliencia.Should().Be(2);
         }
 
@@ -410,15 +410,15 @@ namespace AIB.Tests
             // Pedido: "vamos salvar no info os stats padrões; em memory/shadow ficarão os
             // modificados".
             var status = new StatusDosPersonagens(_raiz);
-            var doInfo = new Atributos { Apego = 5, Resiliencia = 2 };
+            var doInfo = new Atributos { Afeto = 4, Resiliencia = 2 };
 
-            status.De("Ellen", doInfo).Apego.Should().Be(5);
+            status.De("Ellen", doInfo).Afeto.Should().Be(4);
 
             // Modificado no arquivo de status: o info.json deixa de mandar.
-            File.WriteAllText(status.Arquivo, File.ReadAllText(status.Arquivo).Replace("\"Apego\": 5", "\"Apego\": 1"));
-            status.De("Ellen", doInfo).Apego.Should().Be(1);
+            File.WriteAllText(status.Arquivo, File.ReadAllText(status.Arquivo).Replace("\"Afeto\": 4", "\"Afeto\": -3"));
+            status.De("Ellen", doInfo).Afeto.Should().Be(-3);
             status.De("Ellen", doInfo).Resiliencia.Should().Be(2);
-            doInfo.Apego.Should().Be(5, "o padrão não é o mesmo objeto do registro");
+            doInfo.Afeto.Should().Be(4, "o padrão não é o mesmo objeto do registro");
         }
 
         [Fact]
@@ -429,7 +429,8 @@ namespace AIB.Tests
             {
                 var perfil = System.Text.Json.JsonSerializer.Deserialize<AgentProfile>(File.ReadAllText(info))!;
                 perfil.Atributos.Should().NotBeNull(info);
-                new[] { perfil.Atributos!.Iniciativa, perfil.Atributos.Apego, perfil.Atributos.Resiliencia,
+                perfil.Atributos!.Afeto.Should().BeInRange(Atributos.AfetoMinimo, Atributos.AfetoMaximo, info);
+                new[] { perfil.Atributos.Iniciativa, perfil.Atributos.Resiliencia,
                         perfil.Atributos.Constancia, perfil.Atributos.Curiosidade }
                     .Should().OnlyContain(n => n >= 1 && n <= 5, info);
             }
@@ -450,19 +451,74 @@ namespace AIB.Tests
         [Fact]
         public void ONivelTres_EhOComportamentoDeAntes_EAsPontasMudamAConta()
         {
-            Temperamento.De(new Atributos()).Should().Be(Temperamento.Padrao);
-            Temperamento.De(new Atributos { Iniciativa = 0, Apego = 0 }).Should().Be(Temperamento.Padrao,
+            // O afeto 2 é o teto 1,70 que valia para todos, nascido com a Ellen.
+            Temperamento.De(new Atributos { Afeto = 2 }).Should().Be(Temperamento.Padrao);
+            Temperamento.De(new Atributos { Afeto = 2, Iniciativa = 0, Constancia = 0 }).Should().Be(Temperamento.Padrao,
                 "zero não é nível: vale o neutro");
 
-            var frio = Temperamento.De(new Atributos { Iniciativa = 1, Apego = 1, Resiliencia = 1, Constancia = 1, Curiosidade = 1 });
-            var quente = Temperamento.De(new Atributos { Iniciativa = 5, Apego = 9, Resiliencia = 5, Constancia = 5, Curiosidade = 5 });
+            var frio = Temperamento.De(new Atributos { Iniciativa = 1, Afeto = -5, Resiliencia = 1, Constancia = 1, Curiosidade = 1 });
+            var quente = Temperamento.De(new Atributos { Iniciativa = 9, Afeto = 9, Resiliencia = 5, Constancia = 5, Curiosidade = 5 });
 
             (frio.Chance, quente.Chance).Should().Be((0.5, 1.6));
-            (frio.Apego, quente.Apego).Should().Be((1.30, 2.10), "nível acima de 5 vale 5");
+            (frio.Apego, quente.Apego).Should().Be((1.00, 2.00), "afeto acima de 5 vale 5");
+            Temperamento.De(new Atributos()).Apego.Should().Be(1.50, "o afeto neutro");
             (frio.Ignorada, quente.Ignorada).Should().Be((0.60, 0.90));
             (frio.Recusada, quente.Recusada).Should().Be((0.35, 0.70));
             (frio.Esquecimento, quente.Esquecimento).Should().Be((0.20, 0.05));
             (frio.Curiosidade, quente.Curiosidade).Should().Be((0, 0.50));
+        }
+
+        [Fact]
+        public void ComAfetoMinimo_ConversaNaoFazPuxarMaisAssunto()
+        {
+            // Pedido: "-5 o personagem é totalmente direto e evita interações prolongadas".
+            double teto = Temperamento.TetoDoAfeto(-5);
+
+            Iniciativa.Fator(false, true, 10, 0, true, teto).Should().Be(1.00);
+            Iniciativa.Fator(false, true, 1, 30, true, teto).Should().Be(1.00, "nem a resposta longa sobe");
+            Iniciativa.FatorEspontaneo(1, teto).Should().Be(1.00);
+            Iniciativa.FatorEspontaneo(9, teto).Should().Be(1.00);
+        }
+
+        [Fact]
+        public void OAfeto_AndaComODesfecho_ENaoPassaDaFolga()
+        {
+            // Decisão: o afeto de agora sobe com conversa boa e desce com recusa, devagar, e a
+            // no máximo 2 pontos do de fábrica — "para a Kai nunca virar a Sora".
+            var status = new StatusDosPersonagens(_raiz);
+            var fabrica = new Atributos { Afeto = -2 };
+            status.De("Kai", fabrica);
+
+            var i = new Iniciativa(_raiz, "Kai", Temperamento.De(fabrica));
+            i.AfetoMoveu += passo => status.Mover(i.Personagem, passo, fabrica.Afeto);
+
+            // Uma iniciativa que virou conversa: +0,10.
+            i.Falou(Agora, Dez, "E o relatório?", null);
+            for (int t = 0; t < 4; t++) i.UsuarioFalou(Agora.AddMinutes(1 + t), "mais uma");
+            i.Classificar(Agora.AddMinutes(40));
+            status.De("Kai").Afeto.Should().BeApproximately(-1.90, 1e-9);
+
+            // Um "agora não": -0,15.
+            i.Falou(Agora.AddHours(1), Dez, "E o deploy?", null);
+            i.UsuarioFalou(Agora.AddHours(1).AddMinutes(1), "agora não");
+            status.De("Kai").Afeto.Should().BeApproximately(-2.05, 1e-9);
+
+            // Conversa puxada por ele, com dois turnos: +0,05. Com um só, nada.
+            i.UsuarioFalou(Agora.AddHours(2), "oi");
+            i.UsuarioFalou(Agora.AddHours(2).AddMinutes(1), "tudo bem?");
+            i.Classificar(Agora.AddHours(3));
+            status.De("Kai").Afeto.Should().BeApproximately(-2.00, 1e-9);
+
+            // A folga: por mais que conversem, não passa de 0; por mais que recuse, de -4.
+            status.Mover("Kai", 50, fabrica.Afeto);
+            status.De("Kai").Afeto.Should().Be(0);
+            status.Mover("Kai", -50, fabrica.Afeto);
+            status.De("Kai").Afeto.Should().Be(-4);
+
+            // E quem tem +4 de fábrica para no 5, não no 6.
+            status.De("Sora", new Atributos { Afeto = 4 });
+            status.Mover("Sora", 50, 4);
+            status.De("Sora").Afeto.Should().Be(5);
         }
 
         [Fact]
