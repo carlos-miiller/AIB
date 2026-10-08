@@ -36,16 +36,19 @@ public sealed class Atributos
 }
 
 /// <summary>
-/// O arquivo de status: <c>~/.AIB/character/status.json</c>, um registro por personagem.
+/// O arquivo de status: <c>~/.AIB/memory/shadow/status.json</c>, um registro por personagem,
+/// com os atributos como estão AGORA. Os de fábrica ficam no <c>info.json</c> de cada um
+/// (<see cref="AgentProfile.Atributos"/>) — decisão do usuário: "vamos salvar no info os stats
+/// padrões; em memory/shadow ficarão os modificados".
 /// <para>
-/// NASCE VAZIO — decisão do usuário: "não vamos trazer o arquivo já com a info dos personagens
-/// preenchida... em qualquer momento podemos introduzir outro personagem e ele ser adicionado".
-/// O personagem entra na primeira vez em que é o ativo, com tudo no neutro, e dali em diante o
-/// arquivo é de quem o edita: o AIB só acrescenta quem falta, nunca mexe em quem já está.
+/// NASCE VAZIO: "em qualquer momento podemos introduzir outro personagem e ele ser adicionado
+/// no arquivo de status". O personagem entra na primeira vez em que é o ativo, com os padrões
+/// do <c>info.json</c> dele (ou tudo no neutro, se não tiver), e dali em diante o que vale é o
+/// que está aqui: o AIB só acrescenta quem falta, nunca mexe em quem já está.
 /// </para>
 /// <para>
-/// Texto claro, como o <c>info.json</c>: é configuração do personagem, não conversa nem fato do
-/// usuário, e precisa ser editável à mão.
+/// Texto claro: são cinco números do personagem, não conversa nem fato do usuário, e precisam
+/// ser editáveis à mão.
 /// </para>
 /// </summary>
 public sealed class StatusDosPersonagens
@@ -62,7 +65,7 @@ public sealed class StatusDosPersonagens
 
     /// <param name="raiz">Pasta alternativa. Existe para o teste não escrever no ~/.AIB real.</param>
     public StatusDosPersonagens(string? raiz = null) =>
-        _arquivo = Path.Combine(raiz ?? DirectoryService.DataDir, "character", "status.json");
+        _arquivo = Path.Combine(raiz ?? DirectoryService.DataDir, "memory", ConversaDoOrbe.Sessao, "status.json");
 
     public string Arquivo => _arquivo;
 
@@ -71,13 +74,24 @@ public sealed class StatusDosPersonagens
 
     /// <summary>
     /// Os atributos do personagem, lidos do arquivo agora.
-    /// Quem não está lá é acrescentado no neutro. Sem nome, ou com o arquivo ilegível, o neutro —
-    /// e o arquivo ilegível fica como está, para a edição do usuário não se perder.
+    /// Quem não está lá é acrescentado com <paramref name="padrao"/> (os do info.json dele; sem
+    /// eles, o neutro). Sem nome, ou com o arquivo ilegível, vale o padrão — e o arquivo
+    /// ilegível fica como está, para a edição do usuário não se perder.
     /// </summary>
-    public Atributos De(string? personagem)
+    public Atributos De(string? personagem, Atributos? padrao = null)
     {
+        // Cópia: o registro do arquivo não pode ser o mesmo objeto do perfil lido do info.json.
+        var inicial = new Atributos
+        {
+            Iniciativa = padrao?.Iniciativa ?? Atributos.Neutro,
+            Apego = padrao?.Apego ?? Atributos.Neutro,
+            Resiliencia = padrao?.Resiliencia ?? Atributos.Neutro,
+            Constancia = padrao?.Constancia ?? Atributos.Neutro,
+            Curiosidade = padrao?.Curiosidade ?? Atributos.Neutro
+        };
+
         string nome = (personagem ?? "").Trim();
-        if (nome.Length == 0) return new Atributos();
+        if (nome.Length == 0) return inicial;
 
         lock (_gate)
         {
@@ -85,16 +99,16 @@ public sealed class StatusDosPersonagens
             {
                 var todos = Ler();
                 string? chave = todos.Keys.FirstOrDefault(k => string.Equals(k, nome, StringComparison.OrdinalIgnoreCase));
-                if (chave != null) return todos[chave] ?? new Atributos();
+                if (chave != null) return todos[chave] ?? inicial;
 
-                todos[nome] = new Atributos();
+                todos[nome] = inicial;
                 Gravar(todos);
-                return todos[nome];
+                return inicial;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[STATUS] {_arquivo} não foi lido, valem os atributos neutros: {ex.Message}");
-                return new Atributos();
+                Console.WriteLine($"[STATUS] {_arquivo} não foi lido, valem os atributos padrão: {ex.Message}");
+                return inicial;
             }
         }
     }

@@ -343,8 +343,12 @@ public partial class App : System.Windows.Application
     private readonly StatusDosPersonagens _status = new();
     private DateTime _statusLidoUtc;
 
-    /// <summary>Os atributos do arquivo de status; o personagem que não está lá entra no neutro.</summary>
-    private Temperamento TemperamentoDe(string? personagem) => Temperamento.De(_status.De(personagem));
+    /// <summary>
+    /// Os atributos do arquivo de status; o personagem que não está lá entra com os padrões do
+    /// info.json dele.
+    /// </summary>
+    private Temperamento TemperamentoDe(string? personagem) =>
+        Temperamento.De(_status.De(personagem, ConversationService.PerfilDoPersonagem(personagem)?.Atributos));
 
     /// <summary>
     /// O vínculo é por personagem: trocado nas configurações, a iniciativa passa a usar o do

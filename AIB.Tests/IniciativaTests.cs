@@ -389,7 +389,7 @@ namespace AIB.Tests
             // adicionado no arquivo de status".
             var status = new StatusDosPersonagens(_raiz);
             File.Exists(status.Arquivo).Should().BeFalse("ninguém vem preenchido");
-            status.Arquivo.Should().Be(Path.Combine(_raiz, "character", "status.json"));
+            status.Arquivo.Should().Be(Path.Combine(_raiz, "memory", "shadow", "status.json"));
 
             status.De("Ellen").Apego.Should().Be(Atributos.Neutro);
             File.ReadAllText(status.Arquivo).Should().Contain("\"Ellen\"").And.NotContain("Sora");
@@ -402,6 +402,37 @@ namespace AIB.Tests
             File.ReadAllText(status.Arquivo).Should().Contain("\"Sora\"");
             new StatusDosPersonagens(_raiz).De("Ellen").Apego.Should().Be(5, "quem já estava não é mexido");
             new StatusDosPersonagens(_raiz).De("Ellen").Resiliencia.Should().Be(2);
+        }
+
+        [Fact]
+        public void OPersonagemNovo_EntraComOsPadroesDoInfo_EDepoisValeOArquivo()
+        {
+            // Pedido: "vamos salvar no info os stats padrões; em memory/shadow ficarão os
+            // modificados".
+            var status = new StatusDosPersonagens(_raiz);
+            var doInfo = new Atributos { Apego = 5, Resiliencia = 2 };
+
+            status.De("Ellen", doInfo).Apego.Should().Be(5);
+
+            // Modificado no arquivo de status: o info.json deixa de mandar.
+            File.WriteAllText(status.Arquivo, File.ReadAllText(status.Arquivo).Replace("\"Apego\": 5", "\"Apego\": 1"));
+            status.De("Ellen", doInfo).Apego.Should().Be(1);
+            status.De("Ellen", doInfo).Resiliencia.Should().Be(2);
+            doInfo.Apego.Should().Be(5, "o padrão não é o mesmo objeto do registro");
+        }
+
+        [Fact]
+        public void OInfoDosPersonagensDeFabrica_TrazOsCincoAtributos()
+        {
+            string pasta = DirectoryService.FailsafeCharactersDir()!;
+            foreach (string info in Directory.GetFiles(pasta, "info.json", SearchOption.AllDirectories))
+            {
+                var perfil = System.Text.Json.JsonSerializer.Deserialize<AgentProfile>(File.ReadAllText(info))!;
+                perfil.Atributos.Should().NotBeNull(info);
+                new[] { perfil.Atributos!.Iniciativa, perfil.Atributos.Apego, perfil.Atributos.Resiliencia,
+                        perfil.Atributos.Constancia, perfil.Atributos.Curiosidade }
+                    .Should().OnlyContain(n => n >= 1 && n <= 5, info);
+            }
         }
 
         [Fact]

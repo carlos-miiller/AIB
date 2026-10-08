@@ -44,13 +44,13 @@ O AIB não usa pasta temporária.
 ├── credentials/
 │   ├── openrouter.bin               chave do OpenRouter (DPAPI)
 │   └── mail/<sha256>.bin            senha de app de cada caixa (DPAPI)
-├── character/status.json            atributos dos personagens (1 a 5); nasce vazio, ganha cada personagem quando ele aparece
 ├── character/<Nome>/                personagens: SOUL.MD, info.json, vinculo.dat (o vínculo com ele, DPAPI)
 ├── skills/<skill>/SKILL.md          skills instaladas
 ├── memory/
 │   ├── facts.md                     fatos duráveis (do usuário; cifrado por linha, editado na aba Memória)
 │   ├── facts.index.jsonl            registro do que já foi promovido (da máquina; cifrado por linha)
 │   ├── shadow/                      a conversa do orbe, uma só para sempre (mesmos arquivos de uma sessão)
+│   │   └── status.json              atributos dos personagens como estão agora; nasce vazio, ganha cada um quando aparece
 │   └── sessions/<id>/
 │       ├── raw.jsonl                todos os turnos, crus — nunca apagado (cifrado por linha)
 │       ├── chapters.jsonl           capítulos (resumos de turnos; cifrado por linha)
@@ -274,7 +274,7 @@ O comando `/unlock_level N` no chat ajusta `MessageCount` para o piso do nível 
 Cada personagem é uma pasta `character/<Nome>/` com:
 
 - `SOUL.MD` — a persona, em texto. O marcador `{{usuario}}` é trocado pelo nome de usuário do Windows ao carregar.
-- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`). As estrelas são só da tela de escolha; o que ajusta a iniciativa do personagem são os atributos do `character/status.json` (ver "Iniciativa" em `06-interface.md`).
+- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`), e `Atributos` (`Iniciativa`, `Apego`, `Resiliencia`, `Constancia`, `Curiosidade`, de 1 a 5). As estrelas são só da tela de escolha; os atributos são os padrões de fábrica do personagem, copiados para o `memory/shadow/status.json` quando ele aparece (ver "Iniciativa" em `06-interface.md`).
 
 Os de fábrica estão em `AIBWindows/character/` (`Ayano`, `Ellen`, `Kai`, `Sora`). O ativo é `UserAppSettings.ActiveCharacter` (padrão `Ayano`).
 

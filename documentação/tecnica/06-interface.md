@@ -405,9 +405,11 @@ zero); o `App` chama a cada batida e a cada mensagem no orbe (`AcompanharPersona
 apagado.
 
 **Atributos** (`Atributos`, `StatusDosPersonagens`, `Temperamento.De`): cada personagem tem cinco
-atributos de 1 a 5 no arquivo de status, `~/.AIB/character/status.json` (texto claro, editável à
-mão). O arquivo **nasce vazio**: o personagem entra na primeira vez em que é o ativo, com tudo
-em 3, e dali em diante o AIB só acrescenta quem falta. O 3 é o comportamento de antes dos
+atributos de 1 a 5. Os **de fábrica** ficam no `info.json` dele (`Atributos`); os **que valem
+agora** ficam no arquivo de status, `~/.AIB/memory/shadow/status.json` (texto claro, editável à
+mão). O arquivo **nasce vazio**: o personagem entra na primeira vez em que é o ativo, com os
+padrões do `info.json` (sem eles, tudo em 3), e dali em diante vale o que está no arquivo — o AIB
+só acrescenta quem falta. O 3 é o comportamento de antes dos
 atributos. Arquivo ilegível não é sobrescrito (valem os neutros); a edição passa a valer na
 batida seguinte. Não são as estrelas da tela de escolha (`AgentStats`, no `info.json`).
 
