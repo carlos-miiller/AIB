@@ -303,6 +303,85 @@ namespace AIB.Tests
             i.Estado.MensagensHoje.Should().Be(0);
         }
 
+        // ── Por personagem ─────────────────────────────────────────────
+
+        // Pedido: "separarmos essas mudanças comportamentais e intensidade de iniciativa por
+        // personagem". Era um arquivo só: trocar a Ellen por outro herdava o ritmo dela.
+        [Fact]
+        public void OVinculo_EhDeCadaPersonagem_EAsFaixasSaoDoUsuario()
+        {
+            var i = new Iniciativa(_raiz, "Ellen");
+            i.Falou(Agora, Dez, "Conseguiu testar o backup?", null);
+            i.UsuarioFalou(Agora.AddMinutes(1), "oi! resolvi sim");
+            i.UsuarioFalou(Agora.AddMinutes(2), "e mais uma coisa");
+            i.Classificar(Agora.AddMinutes(32));
+
+            double geralDaEllen = i.Estado.Geral;
+            double faixa = i.Estado.Faixas[Iniciativa.FaixaDe(Dez)];
+            geralDaEllen.Should().BeGreaterThan(1);
+            i.Estado.UltimoDesfecho.Should().NotBeEmpty();
+
+            i.Trocar("Kai");
+            i.Estado.Geral.Should().Be(1, "o Kai nunca conversou");
+            i.Estado.UltimoDesfecho.Should().BeEmpty();
+            i.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().Be(faixa, "o horário bom é do usuário, não do personagem");
+
+            i.Trocar("Ellen");
+            i.Estado.Geral.Should().Be(geralDaEllen);
+
+            // E sobrevive ao arranque, cada um no seu arquivo.
+            new Iniciativa(_raiz, "Ellen").Estado.Geral.Should().Be(geralDaEllen);
+            new Iniciativa(_raiz, "Kai").Estado.Geral.Should().Be(1);
+            File.Exists(Path.Combine(_raiz, "character", "Ellen", "vinculo.dat")).Should().BeTrue();
+        }
+
+        [Fact]
+        public void OArquivoUnicoDeAntes_ViraOVinculoDoPersonagemAtivo_ESaiDoTextoClaro()
+        {
+            // O iniciativa.json em texto claro guardava tudo. No primeiro arranque o que ele
+            // aprendeu fica com o personagem ativo, e o arquivo é regravado cifrado.
+            Directory.CreateDirectory(_raiz);
+            var antigo = new EstadoDaIniciativa { Geral = 1.4, UltimoDesfecho = "virou conversa" };
+            antigo.Faixas[5] = 1.3;
+            File.WriteAllText(Path.Combine(_raiz, "iniciativa.json"), System.Text.Json.JsonSerializer.Serialize(antigo));
+
+            var i = new Iniciativa(_raiz, "Ellen");
+
+            i.Estado.Geral.Should().Be(1.4);
+            i.Estado.Faixas[5].Should().Be(1.3);
+            File.Exists(Path.Combine(_raiz, "iniciativa.json")).Should().BeFalse("o texto claro não fica para trás");
+
+            foreach (string arquivo in new[] { "iniciativa.dat", Path.Combine("character", "Ellen", "vinculo.dat") })
+                System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(Path.Combine(_raiz, arquivo)))
+                    .Should().NotContain("Geral", "o arquivo é cifrado");
+
+            // Só o ativo herda: o seguinte começa do zero.
+            new Iniciativa(_raiz, "Kai").Estado.Geral.Should().Be(1);
+        }
+
+        [Fact]
+        public void OTemperamento_MudaAChance_EOTetoDaConversa()
+        {
+            var e = new EstadoDaIniciativa();
+            Iniciativa.Chance(e, Dez, 0.5).Should().BeApproximately(Iniciativa.ChanceBase * 0.5, 1e-12);
+
+            // Dez turnos: 1,50 no padrão, mas um personagem mais seco para em 1,30.
+            Iniciativa.Fator(false, true, 10, 0, true).Should().BeApproximately(1.50, 1e-9);
+            Iniciativa.Fator(false, true, 10, 0, true, teto: 1.30).Should().BeApproximately(1.30, 1e-9);
+            Iniciativa.FatorEspontaneo(40, apego: 1.10).Should().BeApproximately(1.10, 1e-9);
+
+            Temperamento.De(null).Should().Be(Temperamento.Padrao);
+            Temperamento.De(new AgentTemperament { Initiative = 0, Attachment = 0 }).Should().Be(Temperamento.Padrao,
+                "info.json sem o campo desserializa zero, e zero é o padrão");
+            Temperamento.De(new AgentTemperament { Initiative = 99, Attachment = 99 }).Should().Be(new Temperamento(3, 2.50));
+
+            var seco = new Iniciativa(_raiz, "Ren", new Temperamento(1, 1.30));
+            seco.Falou(Agora, Dez, "E o relatório?", null);
+            for (int t = 0; t < 10; t++) seco.UsuarioFalou(Agora.AddMinutes(1 + t), "mais uma");
+            seco.Classificar(Agora.AddMinutes(40));
+            seco.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().BeApproximately(1.30, 1e-9);
+        }
+
         [Fact]
         public void OAprendizado_SobreviveAoArranque_EZeraPeloBotao()
         {

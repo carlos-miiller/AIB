@@ -11,8 +11,11 @@ using System.Text.RegularExpressions;
 namespace AIB.Services;
 
 /// <summary>
-/// O que a iniciativa aprendeu, gravado em <c>~/.AIB/iniciativa.json</c> para sobreviver ao
-/// arranque.
+/// O que a iniciativa aprendeu, para sobreviver ao arranque. Na memória é um estado só; no
+/// disco são dois arquivos cifrados (<see cref="ArquivoCifrado"/>): o que é do USUÁRIO fica em
+/// <c>~/.AIB/iniciativa.dat</c> (faixas de horário, pausa, sorteio, contagem do dia), e o que é
+/// da relação com UM personagem, em <c>~/.AIB/character/&lt;Nome&gt;/vinculo.dat</c>
+/// (<see cref="Vinculo"/>). Ver <see cref="Iniciativa.Trocar"/>.
 /// </summary>
 public sealed class EstadoDaIniciativa
 {
@@ -73,6 +76,85 @@ public sealed class EstadoDaIniciativa
     public string UltimoDesfecho { get; set; } = "";
 }
 
+/// <summary>
+/// A parte do estado que é da relação com UM personagem: o quanto o usuário conversa com ele,
+/// a fala dele que espera resposta, a conversa que o usuário puxou, o que ele já disse.
+/// <para>
+/// Era tudo um arquivo só, e trocar de personagem herdava o ritmo que o anterior tinha
+/// construído. As faixas de horário NÃO vêm para cá: quando o usuário gosta de ser interrompido
+/// não muda com quem fala.
+/// </para>
+/// </summary>
+public sealed class Vinculo
+{
+    public double Geral { get; set; } = 1;
+    public DateTime? FalaUtc { get; set; }
+    public int FaixaDaFala { get; set; }
+    public bool Leu { get; set; }
+    public DateTime? RespostaUtc { get; set; }
+    public int Turnos { get; set; }
+    public int Palavras { get; set; }
+    public DateTime? ConversaUtc { get; set; }
+    public int FaixaDaConversa { get; set; }
+    public int TurnosDaConversa { get; set; }
+    public System.Collections.Generic.List<string> Recentes { get; set; } = new();
+    public System.Collections.Generic.List<string> GanchosRecentes { get; set; } = new();
+    public string UltimoDesfecho { get; set; } = "";
+
+    public static Vinculo De(EstadoDaIniciativa e) => new()
+    {
+        Geral = e.Geral,
+        FalaUtc = e.FalaUtc,
+        FaixaDaFala = e.FaixaDaFala,
+        Leu = e.Leu,
+        RespostaUtc = e.RespostaUtc,
+        Turnos = e.Turnos,
+        Palavras = e.Palavras,
+        ConversaUtc = e.ConversaUtc,
+        FaixaDaConversa = e.FaixaDaConversa,
+        TurnosDaConversa = e.TurnosDaConversa,
+        Recentes = e.Recentes.ToList(),
+        GanchosRecentes = e.GanchosRecentes.ToList(),
+        UltimoDesfecho = e.UltimoDesfecho
+    };
+
+    public void Para(EstadoDaIniciativa e)
+    {
+        e.Geral = Geral;
+        e.FalaUtc = FalaUtc;
+        e.FaixaDaFala = FaixaDaFala;
+        e.Leu = Leu;
+        e.RespostaUtc = RespostaUtc;
+        e.Turnos = Turnos;
+        e.Palavras = Palavras;
+        e.ConversaUtc = ConversaUtc;
+        e.FaixaDaConversa = FaixaDaConversa;
+        e.TurnosDaConversa = TurnosDaConversa;
+        e.Recentes = (Recentes ?? new()).ToList();
+        e.GanchosRecentes = (GanchosRecentes ?? new()).ToList();
+        e.UltimoDesfecho = UltimoDesfecho ?? "";
+    }
+}
+
+/// <summary>
+/// O temperamento de um personagem na iniciativa, do <c>info.json</c> dele
+/// (<see cref="AgentTemperament"/>). O padrão é o que valia para todos.
+/// </summary>
+/// <param name="Chance">Multiplica a chance base do sorteio. 1 é o padrão; menos, mais calado.</param>
+/// <param name="Apego">
+/// O teto do fator de conversa. 1,70 nasceu da alma afetuosa da Ellen; um personagem mais seco
+/// sobe menos com a mesma conversa.
+/// </param>
+public readonly record struct Temperamento(double Chance, double Apego)
+{
+    public static readonly Temperamento Padrao = new(1, Iniciativa.TetoDaConversa);
+
+    public static Temperamento De(AgentTemperament? t) => t == null
+        ? Padrao
+        : new(Math.Clamp(t.Initiative <= 0 ? 1 : t.Initiative, 0.1, 3),
+              Math.Clamp(t.Attachment <= 0 ? Iniciativa.TetoDaConversa : t.Attachment, 1.10, 2.50));
+}
+
 /// <summary>O ponto de partida de uma mensagem por iniciativa, escolhido pelo código.</summary>
 /// <param name="Tipo">"pendência" ou "fato".</param>
 public sealed record Gancho(string Tipo, string Texto);
@@ -112,6 +194,9 @@ public sealed record Gancho(string Tipo, string Texto);
 public sealed class Iniciativa
 {
     public const int NumeroDeFaixas = 12;
+
+    /// <summary>O teto padrão do fator de conversa (<see cref="Temperamento.Apego"/>).</summary>
+    public const double TetoDaConversa = 1.70;
 
     /// <summary>
     /// A chance por sorteio com tudo neutro: ~1,3 mensagem num dia de 14 h (84 sorteios). Era
@@ -160,17 +245,68 @@ public sealed class Iniciativa
         WriteIndented = true
     };
 
+    private readonly string _raiz;
     private readonly string _arquivo;
+    private readonly string _legado;
     private readonly object _gate = new();
+    private Temperamento _temperamento = Temperamento.Padrao;
 
     /// <param name="raiz">Pasta alternativa. Existe para o teste não escrever no ~/.AIB real.</param>
-    public Iniciativa(string? raiz = null)
+    /// <param name="personagem">
+    /// O personagem ativo. Vazio: um arquivo só, com tudo, como era antes de o vínculo ser por
+    /// personagem.
+    /// </param>
+    public Iniciativa(string? raiz = null, string? personagem = null, Temperamento? temperamento = null)
     {
-        _arquivo = Path.Combine(raiz ?? DirectoryService.DataDir, "iniciativa.json");
+        _raiz = raiz ?? DirectoryService.DataDir;
+        _arquivo = Path.Combine(_raiz, "iniciativa.dat");
+        _legado = Path.Combine(_raiz, "iniciativa.json");
         Estado = Ler();
+        _temperamento = temperamento ?? Temperamento.Padrao;
+
+        // No arranque, personagem sem vínculo gravado fica com o que o arquivo geral trazia: é a
+        // migração do arquivo único, em que tudo o que se aprendeu era do personagem ativo.
+        Personagem = Seguro(personagem);
+        if (Personagem.Length > 0)
+        {
+            LerVinculo()?.Para(Estado);
+            Gravar();
+        }
     }
 
     public EstadoDaIniciativa Estado { get; private set; }
+
+    /// <summary>O personagem cujo vínculo está carregado. Vazio: nenhum.</summary>
+    public string Personagem { get; private set; }
+
+    private static string Seguro(string? nome)
+    {
+        string n = Path.GetFileName((nome ?? "").Trim());
+        return n.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ? "" : n;
+    }
+
+    private string ArquivoDoVinculo => Path.Combine(_raiz, "character", Personagem, "vinculo.dat");
+
+    /// <summary>
+    /// Passa a valer o vínculo de outro personagem: grava o do que sai e carrega o do que entra
+    /// (ou começa do zero, se ele nunca conversou). O que é do usuário — faixas, pausa, contagem
+    /// do dia — continua.
+    /// </summary>
+    public void Trocar(string? personagem, Temperamento? temperamento = null)
+    {
+        lock (_gate)
+        {
+            _temperamento = temperamento ?? Temperamento.Padrao;
+
+            string novo = Seguro(personagem);
+            if (novo == Personagem) return;
+
+            Gravar();
+            Personagem = novo;
+            (LerVinculo() ?? new Vinculo()).Para(Estado);
+            Gravar();
+        }
+    }
 
     // ── Decisões puras ────────────────────────────────────────────────────
 
@@ -188,9 +324,9 @@ public sealed class Iniciativa
 
     public static int FaixaDe(TimeSpan hora) => Math.Clamp((int)(hora.TotalHours / 2), 0, NumeroDeFaixas - 1);
 
-    /// <summary>A chance deste sorteio.</summary>
-    public static double Chance(EstadoDaIniciativa e, TimeSpan hora) =>
-        ChanceBase * e.Geral * e.Faixas[FaixaDe(hora)];
+    /// <summary>A chance deste sorteio. <paramref name="temperamento"/> é a do personagem (1 é o padrão).</summary>
+    public static double Chance(EstadoDaIniciativa e, TimeSpan hora, double temperamento = 1) =>
+        ChanceBase * temperamento * e.Geral * e.Faixas[FaixaDe(hora)];
 
     /// <summary>O que impede de sortear agora, ou null quando pode.</summary>
     public static string? Impedimento(
@@ -212,11 +348,13 @@ public sealed class Iniciativa
     /// O fator de uma fala já encerrada. Conversa: 1,10 com 2 turnos, +0,05 por turno a mais,
     /// até 1,70 — decisão do usuário, pela alma afetuosa dela.
     /// </summary>
-    public static double Fator(bool recusou, bool respondeu, int turnos, int palavras, bool leu)
+    /// <param name="teto">O teto da conversa: o apego do personagem (<see cref="Temperamento.Apego"/>).</param>
+    public static double Fator(bool recusou, bool respondeu, int turnos, int palavras, bool leu,
+                               double teto = TetoDaConversa)
     {
         if (recusou) return 0.5;
         if (!respondeu) return leu ? 0.9 : 0.75;
-        if (turnos >= 2) return Math.Min(1.70, 1.10 + 0.05 * (turnos - 2));
+        if (turnos >= 2) return Math.Min(teto, 1.10 + 0.05 * (turnos - 2));
         return palavras >= 12 ? 1.10 : 1.05;
     }
 
@@ -225,8 +363,9 @@ public sealed class Iniciativa
     /// +0,02 por turno a mais, até 1,20. Nunca desce, e não olha "agora não": numa mensagem que
     /// não responde a ela, "para de rodar o build" é trabalho, não recusa.
     /// </summary>
-    public static double FatorEspontaneo(int turnos) =>
-        turnos >= 2 ? Math.Min(1.20, 1.05 + 0.02 * (turnos - 2)) : 1.02;
+    /// <param name="apego">O apego do personagem: a conversa puxada não sobe mais que ele.</param>
+    public static double FatorEspontaneo(int turnos, double apego = TetoDaConversa) =>
+        turnos >= 2 ? Math.Min(Math.Min(1.20, apego), 1.05 + 0.02 * (turnos - 2)) : 1.02;
 
     private static readonly Regex Recusa = new(
         @"\b(agora n[aã]o|depois a gente|depois falamos|para de|pare de|chega|n[aã]o quero conversar|me deixa|fala menos|menos mensage)",
@@ -313,7 +452,7 @@ public sealed class Iniciativa
         {
             Estado.SorteioUtc = agoraUtc;
             Gravar();
-            return dado < Chance(Estado, horaLocal);
+            return dado < Chance(Estado, horaLocal, _temperamento.Chance);
         }
     }
 
@@ -425,7 +564,7 @@ public sealed class Iniciativa
             if (Estado.RespostaUtc is DateTime r)
             {
                 if (agoraUtc - r < JanelaDaConversa) return;
-                Aplicar(Fator(false, respondeu: true, Estado.Turnos, Estado.Palavras, Estado.Leu));
+                Aplicar(Fator(false, respondeu: true, Estado.Turnos, Estado.Palavras, Estado.Leu, _temperamento.Apego));
             }
             else
             {
@@ -458,7 +597,8 @@ public sealed class Iniciativa
     /// </summary>
     private void FecharConversa()
     {
-        if (Estado.TurnosDaConversa > 0) Multiplicar(Estado.FaixaDaConversa, FatorEspontaneo(Estado.TurnosDaConversa));
+        if (Estado.TurnosDaConversa > 0)
+            Multiplicar(Estado.FaixaDaConversa, FatorEspontaneo(Estado.TurnosDaConversa, _temperamento.Apego));
         Estado.ConversaUtc = null;
         Estado.TurnosDaConversa = 0;
     }
@@ -502,13 +642,15 @@ public sealed class Iniciativa
         }
     }
 
+    /// <summary>O arquivo geral, ou o <c>iniciativa.json</c> em texto claro de antes da cifra.</summary>
     private EstadoDaIniciativa Ler()
     {
         try
         {
-            if (File.Exists(_arquivo))
+            string? json = ArquivoCifrado.Ler(File.Exists(_arquivo) ? _arquivo : _legado);
+            if (json != null)
             {
-                var e = JsonSerializer.Deserialize<EstadoDaIniciativa>(File.ReadAllText(_arquivo, Encoding.UTF8), Json);
+                var e = JsonSerializer.Deserialize<EstadoDaIniciativa>(json, Json);
                 if (e != null && e.Faixas?.Length == NumeroDeFaixas) return e;
             }
         }
@@ -519,12 +661,46 @@ public sealed class Iniciativa
         return new EstadoDaIniciativa();
     }
 
+    private Vinculo? LerVinculo()
+    {
+        try
+        {
+            string? json = ArquivoCifrado.Ler(ArquivoDoVinculo);
+            return json == null ? null : JsonSerializer.Deserialize<Vinculo>(json, Json);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[INICIATIVA] Falha ao ler {ArquivoDoVinculo}: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Com personagem, grava em dois: o vínculo na pasta dele, e no geral só o que é do usuário
+    /// (o resto vai em branco, para outro personagem não herdar). Sem personagem, tudo no geral.
+    /// </summary>
     private void Gravar()
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_arquivo)!);
-            File.WriteAllText(_arquivo, JsonSerializer.Serialize(Estado, Json), new UTF8Encoding(false));
+            var geral = Estado;
+            if (Personagem.Length > 0)
+            {
+                ArquivoCifrado.Gravar(ArquivoDoVinculo, JsonSerializer.Serialize(Vinculo.De(Estado), Json));
+                geral = new EstadoDaIniciativa
+                {
+                    Faixas = Estado.Faixas,
+                    PausaAteUtc = Estado.PausaAteUtc,
+                    SorteioUtc = Estado.SorteioUtc,
+                    Dia = Estado.Dia,
+                    MensagensHoje = Estado.MensagensHoje
+                };
+            }
+
+            ArquivoCifrado.Gravar(_arquivo, JsonSerializer.Serialize(geral, Json));
+
+            // O texto claro de antes da cifra já foi lido e regravado cifrado: não fica para trás.
+            if (File.Exists(_legado)) File.Delete(_legado);
         }
         catch (Exception ex)
         {

@@ -40,11 +40,11 @@ O AIB não usa pasta temporária.
 ├── profile.dat                      configurações (JSON cifrado com DPAPI)
 ├── chat_history.json                conversas arquivadas, para o painel
 ├── lembretes.json                   lembretes únicos pendentes (ferramenta remind)
-├── iniciativa.json                  ritmo da iniciativa e contagens do dia
+├── iniciativa.dat                   iniciativa: faixas de horário e contagens do dia (DPAPI)
 ├── credentials/
 │   ├── openrouter.bin               chave do OpenRouter (DPAPI)
 │   └── mail/<sha256>.bin            senha de app de cada caixa (DPAPI)
-├── character/<Nome>/                personagens: SOUL.MD, info.json
+├── character/<Nome>/                personagens: SOUL.MD, info.json, vinculo.dat (o vínculo com ele, DPAPI)
 ├── skills/<skill>/SKILL.md          skills instaladas
 ├── memory/
 │   ├── facts.md                     fatos duráveis (do usuário)
@@ -240,7 +240,7 @@ O comando `/unlock_level N` no chat ajusta `MessageCount` para o piso do nível 
 Cada personagem é uma pasta `character/<Nome>/` com:
 
 - `SOUL.MD` — a persona, em texto. O marcador `{{usuario}}` é trocado pelo nome de usuário do Windows ao carregar.
-- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`).
+- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`), e o opcional `Temperament` (`Initiative`, `Attachment`), que ajusta a iniciativa daquele personagem.
 
 Os de fábrica estão em `AIBWindows/character/` (`Ayano`, `Ellen`, `Kai`, `Sora`). O ativo é `UserAppSettings.ActiveCharacter` (padrão `Ayano`).
 

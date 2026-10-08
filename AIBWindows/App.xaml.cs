@@ -305,7 +305,8 @@ public partial class App : System.Windows.Application
     private void IniciarAgenda()
     {
         _lembretes = new Lembretes();
-        _iniciativa = new Iniciativa();
+        string personagem = _settingsService.LoadSettings().ActiveCharacter;
+        _iniciativa = new Iniciativa(personagem: personagem, temperamento: TemperamentoDe(personagem));
 
         // Conversa na janela: só deixa a hora como recente — ele está ocupado com outra coisa,
         // não respondendo a ela.
@@ -317,6 +318,7 @@ public partial class App : System.Windows.Application
         _conversaDoOrbe.UsuarioFalou += texto =>
         {
             _ultimaConversaUtc = DateTime.UtcNow;
+            AcompanharPersonagem(_settingsService.LoadSettings().ActiveCharacter);
             _iniciativa.UsuarioFalou(DateTime.UtcNow, texto);
         };
 
@@ -337,6 +339,19 @@ public partial class App : System.Windows.Application
     private DateTime? _ultimaConversaUtc;
     private bool _ponderando;
 
+    private static Temperamento TemperamentoDe(string? personagem) =>
+        Temperamento.De(ConversationService.PerfilDoPersonagem(personagem)?.Temperament);
+
+    /// <summary>
+    /// O vínculo é por personagem: trocado nas configurações, a iniciativa passa a usar o do
+    /// novo, com o temperamento dele. Só lê o info.json quando o nome muda.
+    /// </summary>
+    private void AcompanharPersonagem(string? personagem)
+    {
+        string nome = (personagem ?? "").Trim();
+        if (nome != _iniciativa.Personagem) _iniciativa.Trocar(nome, TemperamentoDe(nome));
+    }
+
     /// <summary>
     /// A cada batida, vê se a persona pode puxar assunto; podendo, sorteia (de 10 em 10 min) e,
     /// acertando, pergunta ao modelo se ela quer, e o quê. As condições e o sorteio são baratos e
@@ -352,6 +367,8 @@ public partial class App : System.Windows.Application
 
         var s = _settingsService.LoadSettings();
         if (!s.IniciativaLigada) return;
+
+        AcompanharPersonagem(s.ActiveCharacter);
 
         var agora = DateTime.Now;
         var utc = DateTime.UtcNow;

@@ -390,8 +390,23 @@ NADA: o pedido custa ~4.500–5.000 tokens (a alma é quase tudo) e toda chamada
 O nome vem de `NomeDoUsuario` (Configurações > Identidade, e o primeiro passo da primeira
 inicialização); vazio é "o usuário".
 
-**Aprendizado** (`~/.AIB/iniciativa.json`): multiplicador geral e um por faixa de 2 h, entre 0,2 e
-3. Cada fala é classificada uma vez — 30 min depois da primeira resposta na conversa do orbe, ou
+**Aprendizado**: multiplicador geral e um por faixa de 2 h, entre 0,2 e 3. Na memória é um
+estado só (`EstadoDaIniciativa`); no disco são dois arquivos cifrados (`ArquivoCifrado`, DPAPI):
+
+- `~/.AIB/iniciativa.dat` — o que é do **usuário**: as faixas de horário, a pausa do "agora
+  não", o último sorteio e a contagem do dia;
+- `~/.AIB/character/<Nome>/vinculo.dat` — o que é da relação com **um personagem** (`Vinculo`):
+  o geral, a fala que espera resposta, a conversa espontânea aberta, as mensagens e ganchos
+  recentes e o último desfecho.
+
+`Iniciativa.Trocar` grava o vínculo do personagem que sai e carrega o do que entra (ou começa do
+zero); o `App` chama a cada batida e a cada mensagem no orbe (`AcompanharPersonagem`). O
+`iniciativa.json` em texto claro de antes é lido uma vez, vira o vínculo do personagem ativo e é
+apagado. O **temperamento** vem do `info.json` do personagem (`Temperament`: `Initiative`
+multiplica a chance base, 0,1–3; `Attachment` é o teto do fator de conversa, 1,10–2,50); sem o
+campo valem 1 e 1,70.
+
+ Cada fala é classificada uma vez — 30 min depois da primeira resposta na conversa do orbe, ou
 8 h sem resposta (`Classificar`) — e o fator (`Fator`) vai inteiro para a faixa em que ela falou
 e pela raiz para o geral:
 

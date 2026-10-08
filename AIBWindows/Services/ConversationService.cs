@@ -2383,7 +2383,7 @@ public sealed class ConversationService : IMessageStore
     }
 
     /// <summary>O info.json do personagem ativo, do mesmo lugar que a alma. Nulo sem ele.</summary>
-    private static AgentProfile? PerfilDoPersonagem(string? personagem)
+    public static AgentProfile? PerfilDoPersonagem(string? personagem)
     {
         if (string.IsNullOrWhiteSpace(personagem)) return null;
 
