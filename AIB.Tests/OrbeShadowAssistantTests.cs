@@ -403,6 +403,52 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void AbrirEFecharABarra_NaoMudamAAlturaDoPalco()
+        {
+            // Visto no uso: ao abrir, as bolhas apareciam todas de uma vez; ao fechar, o desenho
+            // inteiro ficava espremido na base até a barra terminar de encolher. A janela é
+            // SizeToContent, e duas coisas mudavam a altura dela no meio do morph: a linha da
+            // casca (Auto, com a casca animando de 56 para 52) e a pilha, que sumia Collapsed.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+                var palco = (Grid)janela.FindName("Palco");
+                var casca = (Border)janela.FindName("Casca");
+                var rolo = (ScrollViewer)janela.FindName("RoloDasFalas");
+                var infinito = new Size(double.PositiveInfinity, double.PositiveInfinity);
+
+                double Altura() { palco.Measure(infinito); return palco.DesiredSize.Height; }
+
+                // A casca na altura da barra não encolhe a linha.
+                double orbe = Altura();
+                casca.BeginAnimation(FrameworkElement.HeightProperty, null);
+                casca.Height = 52;
+                Altura().Should().Be(orbe);
+                casca.Height = 56;
+
+                janela.AbrirBarra();
+                janela.MostrarFala("o ramal é 4275");
+                double aberta = Altura();
+                aberta.Should().BeGreaterThan(orbe);
+
+                janela.FecharBarra();
+
+                janela.BalaoVisivel.Should().BeFalse();
+                rolo.Visibility.Should().NotBe(Visibility.Collapsed, "fechada, a pilha guarda o lugar");
+                Altura().Should().Be(aberta);
+
+                janela.AbrirBarra();
+
+                janela.BalaoVisivel.Should().BeTrue();
+                rolo.Visibility.Should().Be(Visibility.Visible);
+                Altura().Should().Be(aberta);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void FecharABarra_GuardaOQueFoiDigitadoENaoEnviado()
         {
             // Visto no uso: digitar algo no orbe, clicar fora (ou Esc) e abrir de novo dava um

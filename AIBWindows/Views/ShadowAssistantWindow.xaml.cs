@@ -169,7 +169,11 @@ public partial class ShadowAssistantWindow : Window
     public bool EmTurno => _passoAtual != null;
 
     /// <summary>Se há fala na tela. Diagnóstico e ensaio.</summary>
-    public bool BalaoVisivel => RoloDasFalas.Visibility == Visibility.Visible && _falas.Count > 0;
+    public bool BalaoVisivel => _pilhaAMostra && _falas.Count > 0;
+
+    // Se a pilha está à mostra. Não é a Visibility do rolo: ao fechar a barra ele some por
+    // opacidade e só depois fica Hidden, e fechado guarda o lugar (ver MostrarPilha).
+    private bool _pilhaAMostra;
 
     /// <summary>Texto da ÚLTIMA fala da IA. Diagnóstico e ensaio.</summary>
     public string TextoDaFala
@@ -341,7 +345,8 @@ public partial class ShadowAssistantWindow : Window
         // A pilha volta com o que já estava nela. Fechar a barra ESCONDE as bolhas; só o X
         // descarta. Sem isto, sair da barra por um clique fora apagava a resposta que o
         // usuário tinha acabado de pedir, e reabrir dava uma barra vazia.
-        if (_falas.Count > 0) RoloDasFalas.Visibility = Visibility.Visible;
+        if (_falas.Count > 0) MostrarPilha(true);
+        Surgir(Contador);
 
         // §5.4 — clicar num orbe que estava pulsando faz as duas coisas de uma vez: a barra
         // abre E a fala aparece acima dela. É o único caminho pelo qual uma fala proativa
@@ -386,8 +391,55 @@ public partial class ShadowAssistantWindow : Window
         // As bolhas são ancoradas na barra: sem ela ficariam flutuando sozinhas sobre o
         // desktop, apontando para nada. Some a PILHA, e não o conteúdo dela — reabrir a
         // barra devolve a conversa onde estava.
-        RoloDasFalas.Visibility = Visibility.Collapsed;
+        MostrarPilha(false);
     }
+
+    /// <summary>
+    /// Mostra ou esconde a pilha de falas junto com o morph da barra, sem mexer no tamanho da
+    /// janela.
+    /// <para>
+    /// A pilha aparecia e sumia por <c>Visibility</c>, de uma vez, enquanto a barra ainda
+    /// animava. E sumir era <c>Collapsed</c>: a janela encolhia centenas de pixels no meio do
+    /// morph e era reposicionada em seguida. Visto no uso: ao abrir, as bolhas surgiam todas de
+    /// uma vez; ao fechar, o desenho inteiro aparecia espremido na base até a barra terminar.
+    /// </para>
+    /// <para>
+    /// Agora ela surge e some por opacidade, no tempo do morph, e fechada fica <c>Hidden</c>:
+    /// continua ocupando o lugar, então a janela não muda de tamanho ao abrir nem ao fechar.
+    /// A área é transparente e não participa do hit-test: o clique continua indo ao desktop.
+    /// </para>
+    /// </summary>
+    private void MostrarPilha(bool mostrar)
+    {
+        _pilhaAMostra = mostrar;
+
+        if (mostrar)
+        {
+            RoloDasFalas.Visibility = Visibility.Visible;
+            Surgir(RoloDasFalas);
+            return;
+        }
+
+        if (RoloDasFalas.Visibility != Visibility.Visible) return;
+
+        var sumico = new DoubleAnimation(0, TimeSpan.FromSeconds(0.12));
+        sumico.Completed += (_, _) =>
+        {
+            // Reaberta no meio do sumiço: a pilha é de quem abriu.
+            if (!_pilhaAMostra) RoloDasFalas.Visibility = Visibility.Hidden;
+        };
+        RoloDasFalas.BeginAnimation(OpacityProperty, sumico);
+    }
+
+    /// <summary>
+    /// Aparece junto com o conteúdo da barra: começa aos 0,10 s do morph, como o cross-fade do
+    /// campo, e termina com ele.
+    /// </summary>
+    private static void Surgir(UIElement elemento) =>
+        elemento.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.18))
+        {
+            BeginTime = TimeSpan.FromSeconds(0.10)
+        });
 
     // ─────────────────────────────────────────────────────────────────────────
     // §4.7  Barra de input
@@ -938,6 +990,10 @@ public partial class ShadowAssistantWindow : Window
             if (string.IsNullOrWhiteSpace(texto)) continue;
             _falas.Add(doUsuario ? new FalaDoUsuario(texto) : new FalaDaIA(texto));
         }
+
+        // Hidden, e não Collapsed: a janela já nasce do tamanho que terá com a barra aberta, e
+        // o primeiro clique não a redimensiona no meio do morph.
+        if (_falas.Count > 0) RoloDasFalas.Visibility = Visibility.Hidden;
     }
 
     /// <summary>
@@ -952,7 +1008,11 @@ public partial class ShadowAssistantWindow : Window
     private void AdicionarFala(FalaDoOrbe fala)
     {
         _falas.Add(fala);
+        _pilhaAMostra = true;
         RoloDasFalas.Visibility = Visibility.Visible;
+
+        // Solta o que o abrir ou o fechar da barra deixou animando: a bolha nova aparece já.
+        RoloDasFalas.BeginAnimation(OpacityProperty, null);
 
         // O layout precisa acontecer ANTES do ScrollToEnd: sem ele o rolo ainda não sabe que
         // ficou mais alto e desce para o fim ANTIGO, deixando a bolha recém-chegada fora da
@@ -1000,6 +1060,7 @@ public partial class ShadowAssistantWindow : Window
     public void DispensarFala()
     {
         _falas.Clear();
+        _pilhaAMostra = false;
         RoloDasFalas.Visibility = Visibility.Collapsed;
     }
 

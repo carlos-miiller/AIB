@@ -80,9 +80,13 @@
               VerticalAlignment="Bottom"
               Background="{x:Null}">
 
+            <!-- A linha da casca tem altura FIXA, a do orbe. Era Auto, e a casca anima a altura
+                 entre 56 e 52 no morph: a cada quadro a linha mudava, a janela
+                 (SizeToContent) era redimensionada e reposicionada, e o desenho inteiro
+                 saltava até a animação acabar. -->
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="56"/>
             </Grid.RowDefinitions>
 
             <VisualStateManager.VisualStateGroups>
@@ -387,6 +391,7 @@
             <Border x:Name="Casca"
                     Grid.Row="1"
                     Width="56" Height="56"
+                    VerticalAlignment="Bottom"
                     Background="{StaticResource NeonBrush}"
                     Padding="1.5"
                     Cursor="Hand"

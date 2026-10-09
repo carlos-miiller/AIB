@@ -318,7 +318,10 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   fechado, para não perder as falas.
 - **Clique** transforma o círculo em barra de texto (`AbrirBarra`, morph de 0,28 s; o raio segue a
   altura por `Ui/AlturaParaRaioConverter`, porque WPF não anima `CornerRadius`). `Esc` ou perder o
-  foco volta ao círculo; o que estava digitado e não foi enviado fica no campo para a próxima
+  foco volta ao círculo. A janela não muda de tamanho no morph: a linha da casca tem altura fixa
+  (56) e a pilha de falas, fechada, fica `Hidden` em vez de `Collapsed`, surgindo e sumindo por
+  opacidade no tempo da barra (`MostrarPilha`). Com `SizeToContent`, cada mudança de altura era
+  um redimensionar e reposicionar da janela, visível como salto. Ao fechar, o que estava digitado e não foi enviado fica no campo para a próxima
   abertura (só enviar o esvazia).
 - **Contador de tokens** (`MostrarTokens`), só com a conversa própria do orbe e com a barra
   aberta: abaixo da barra, à direita, como no rodapé da janela. O texto é o mesmo do rodapé
