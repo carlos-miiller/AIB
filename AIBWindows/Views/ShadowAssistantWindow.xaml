@@ -80,13 +80,14 @@
               VerticalAlignment="Bottom"
               Background="{x:Null}">
 
-            <!-- A linha da casca tem altura FIXA, a do orbe. Era Auto, e a casca anima a altura
-                 entre 56 e 52 no morph: a cada quadro a linha mudava, a janela
+            <!-- A linha da casca tem PISO de 56, a altura do orbe. Era Auto sem piso, e a casca
+                 anima a altura entre 56 e 52 no morph: a cada quadro a linha mudava, a janela
                  (SizeToContent) era redimensionada e reposicionada, e o desenho inteiro
-                 saltava até a animação acabar. -->
+                 saltava até a animação acabar. Acima do piso ela cresce: é a barra com texto
+                 de várias linhas. -->
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="56"/>
+                <RowDefinition Height="Auto" MinHeight="56"/>
             </Grid.RowDefinitions>
 
             <VisualStateManager.VisualStateGroups>
@@ -517,8 +518,10 @@
                                      SelectionBrush="{StaticResource AccentLilacBrush}"
                                      FontSize="14"
                                      VerticalContentAlignment="Center"
-                                     AcceptsReturn="False"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
                                      TextChanged="Campo_TextChanged"
+                                     SizeChanged="Campo_SizeChanged"
                                      PreviewKeyDown="Campo_PreviewKeyDown">
                                 <TextBox.Style>
                                     <Style TargetType="TextBox">

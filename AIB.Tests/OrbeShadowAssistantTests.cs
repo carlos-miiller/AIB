@@ -402,6 +402,61 @@ namespace AIB.Tests
             });
         }
 
+        [Theory]
+        [InlineData(1, 52)]
+        [InlineData(2, 71)]
+        [InlineData(5, 128)]
+        [InlineData(9, 128)]   // passando de cinco linhas o campo rola, a barra não cresce mais
+        [InlineData(0, 52)]
+        public void ABarraCresceUmaLinhaPorLinha_AteOTeto(int linhas, double esperada)
+        {
+            ShadowAssistantWindow.AlturaDaBarra(linhas, 19).Should().Be(esperada);
+        }
+
+        [Fact]
+        public void OCampoQuebraOTexto_EABarraCresceComEle()
+        {
+            // Visto no uso: o campo do orbe era de uma linha só, sem quebra. Um texto maior que
+            // a barra corria para fora da vista, e não havia como quebrar a linha.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+                var campo = (TextBox)janela.FindName("Campo");
+
+                campo.TextWrapping.Should().Be(TextWrapping.Wrap);
+                campo.AcceptsReturn.Should().BeTrue("Shift+Enter quebra a linha");
+
+                janela.AbrirBarra();
+                janela.AjustarAltura();
+                janela.AlturaPedidaDaBarra.Should().Be(52);
+
+                campo.Text = "primeira linha\nsegunda linha\nterceira";
+                janela.AjustarAltura();
+                janela.AlturaPedidaDaBarra.Should().BeGreaterThan(52 + 2 * 14, "três linhas");
+
+                // A cápsula não vira um ovo: o raio para no do orbe.
+                Raio(janela.AlturaPedidaDaBarra).TopLeft.Should().Be(AlturaParaRaioConverter.RaioMaximo);
+
+                campo.Text = "curto";
+                janela.AjustarAltura();
+                janela.AlturaPedidaDaBarra.Should().Be(52);
+
+                // Fechada, a altura volta a ser do morph; o rascunho de várias linhas faz a
+                // barra crescer de novo ao reabrir.
+                campo.Text = "um\ndois";
+                janela.AjustarAltura();
+                janela.FecharBarra();
+                janela.AlturaPedidaDaBarra.Should().Be(52);
+
+                janela.AbrirBarra();
+                janela.AjustarAltura();
+                janela.AlturaPedidaDaBarra.Should().BeGreaterThan(52);
+
+                janela.Close();
+            });
+        }
+
         [Fact]
         public void AbrirEFecharABarra_NaoMudamAAlturaDoPalco()
         {

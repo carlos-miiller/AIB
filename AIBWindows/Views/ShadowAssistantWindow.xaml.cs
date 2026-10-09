@@ -364,6 +364,9 @@ public partial class ShadowAssistantWindow : Window
             // O cursor vai para o fim: reabrir com texto guardado é continuar a frase.
             Campo.Focus();
             Campo.CaretIndex = Campo.Text.Length;
+
+            // O rascunho guardado pode ter várias linhas: a barra abre em 52 e cresce aqui.
+            AjustarAltura();
         };
         relogio.Start();
 
@@ -379,6 +382,7 @@ public partial class ShadowAssistantWindow : Window
         if (!_emModoBarra) return;
 
         _emModoBarra = false;
+        AlturaPedidaDaBarra = AlturaDaBarraDeUmaLinha;
         VisualStateManager.GoToElementState(Palco, "Orbe", true);
         AnimarMargemDaCelula(MargemQueCentraliza(LarguraDaCelula()), TimeSpan.FromSeconds(0.22), EasingMode.EaseIn);
         AtualizarAnelDeProgresso();
@@ -445,16 +449,74 @@ public partial class ShadowAssistantWindow : Window
     // §4.7  Barra de input
     // ─────────────────────────────────────────────────────────────────────────
 
-    private void Campo_TextChanged(object sender, TextChangedEventArgs e) => AtualizarDica();
+    private void Campo_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        AtualizarDica();
+        AjustarAlturaDepois();
+    }
+
+    // A largura do campo muda no morph, e com ela onde o texto quebra.
+    private void Campo_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.WidthChanged) AjustarAlturaDepois();
+    }
+
+    /// <summary>A altura da barra de uma linha — §2.</summary>
+    public const double AlturaDaBarraDeUmaLinha = 52;
+
+    /// <summary>Até quantas linhas a barra cresce; passando disso o campo rola.</summary>
+    public const int LinhasDaBarra = 5;
+
+    /// <summary>
+    /// A altura da barra para um texto de <paramref name="linhas"/> linhas: a de uma linha mais
+    /// uma altura de linha por linha a mais, até <see cref="LinhasDaBarra"/>.
+    /// </summary>
+    public static double AlturaDaBarra(int linhas, double alturaDaLinha) =>
+        AlturaDaBarraDeUmaLinha + (Math.Clamp(linhas, 1, LinhasDaBarra) - 1) * alturaDaLinha;
+
+    /// <summary>A altura que a barra tem (ou para a qual está indo). Diagnóstico e ensaio.</summary>
+    public double AlturaPedidaDaBarra { get; private set; } = AlturaDaBarraDeUmaLinha;
+
+    // Depois do layout: só então o campo sabe em quantas linhas o texto quebrou.
+    private void AjustarAlturaDepois() =>
+        Dispatcher.BeginInvoke(new Action(AjustarAltura), DispatcherPriority.Loaded);
+
+    /// <summary>
+    /// Faz a barra acompanhar o texto: ele quebra na largura do campo e a barra cresce para
+    /// cima, linha a linha. Visto no uso: o campo era de uma linha só, sem quebra, e um texto
+    /// maior que a barra corria para fora da vista.
+    /// <para>
+    /// A altura da casca é do morph (o storyboard a segura em 52). Uma animação curta por cima
+    /// a leva à altura nova; ao fechar, o storyboard do orbe a retoma de onde estiver.
+    /// </para>
+    /// </summary>
+    public void AjustarAltura()
+    {
+        if (!_emModoBarra || _fechando) return;
+
+        // No meio do morph o campo ainda é estreito e o texto quebra em linhas demais: a barra
+        // daria um pulo para cima e voltaria. O fim do morph chama de novo.
+        if (IsVisible && Casca.ActualWidth < Palco.Width - 1) return;
+
+        // LineCount é -1 sem layout válido; as quebras digitadas valem de piso.
+        int digitadas = 1;
+        foreach (char c in Campo.Text) if (c == '\n') digitadas++;
+        int linhas = Math.Max(Campo.LineCount, digitadas);
+
+        double altura = AlturaDaBarra(linhas, Math.Ceiling(Campo.FontFamily.LineSpacing * Campo.FontSize));
+        if (Math.Abs(altura - AlturaPedidaDaBarra) < 0.5) return;
+
+        AlturaPedidaDaBarra = altura;
+        Casca.BeginAnimation(HeightProperty, new DoubleAnimation(altura, TimeSpan.FromSeconds(0.10)));
+    }
 
     private void AtualizarDica() =>
         Dica.Visibility = string.IsNullOrEmpty(Campo.Text) ? Visibility.Visible : Visibility.Collapsed;
 
     private void Campo_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // Shift+Enter quebraria linha, mas a barra é de uma linha só: o campo tem
-        // AcceptsReturn=False, então aqui só o Enter puro tem efeito. Quem quer escrever um
-        // parágrafo faz isso na janela de chat, que é onde a conversa acontece.
+        // Enter envia; Shift+Enter passa adiante e quebra a linha (AcceptsReturn), como na
+        // janela de chat. A barra cresce com o texto — ver AjustarAltura.
         if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
         {
             Enviar();

@@ -323,6 +323,10 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   opacidade no tempo da barra (`MostrarPilha`). Com `SizeToContent`, cada mudança de altura era
   um redimensionar e reposicionar da janela, visível como salto. Ao fechar, o que estava digitado e não foi enviado fica no campo para a próxima
   abertura (só enviar o esvazia).
+- **Campo de várias linhas:** o texto quebra na largura do campo e Shift+Enter quebra a linha
+  (Enter envia). A barra cresce para cima, uma altura de linha por linha, até `LinhasDaBarra` = 5;
+  depois o campo rola (`AjustarAltura`, `AlturaDaBarra`). O raio dos cantos é metade da altura
+  até o do orbe (`AlturaParaRaioConverter.RaioMaximo` = 28).
 - **Contador de tokens** (`MostrarTokens`), só com a conversa própria do orbe e com a barra
   aberta: abaixo da barra, à direita, como no rodapé da janela. O texto é o mesmo do rodapé
   (`Ui/ContadorDeTokens`): custo cru riscado e seta quando há compactação, contexto, teto do
