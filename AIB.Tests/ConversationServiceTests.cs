@@ -363,6 +363,35 @@ namespace AIB.Tests
                 "uma passada fecha quantos forem precisos, e não um por turno");
         }
 
+        [Fact]
+        public async Task PassadoOGatilho_APassadaDesceAteOAlvo_ENaoSoAteOGatilho()
+        {
+            // Visto no orbe: 102.919 tokens vivos contra o gatilho de 100 mil. O capítulo fechou
+            // no teto de tokens com um turno só, a conversa ficou em 93.747 — abaixo do gatilho —
+            // e a passada parou. Os dois turnos seguintes compactaram de novo, cada um perdendo
+            // o cache do prompt inteiro. O alvo era 30% do teto.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var s = settings.LoadSettings();
+            s.TurnosPorCapitulo = 2;
+            settings.SaveSettings(s.Sanear());
+
+            var provider = new FakeProvider { CompleteReply = "Resumo do trecho." };
+            var conversation = BuildConversation(settings, provider, out _);
+
+            // No nível 1 a cota viva fica perto de 7 mil tokens: gatilho em uns 5.900 (85%) e
+            // alvo em uns 3.500 (metade). Quinze turnos de uns 430 tokens passam do gatilho, e
+            // cada capítulo só leva dois: o primeiro já deixa a conversa abaixo dele.
+            for (int i = 0; i < 15; i++)
+                conversation.AppendRecoveredContext($"pedido {i}", Filler(3200));
+
+            await conversation.CompactIfNeededAsync(userLevel: 1);
+
+            conversation.Chapters.Count.Should().BeGreaterThan(1,
+                "um capítulo só deixa a conversa encostada no gatilho, e o turno seguinte compacta de novo");
+            conversation.CurrentTokenReport.Contexto.Should().BeLessThan(4_600,
+                "a passada desce até perto do alvo, e não só até abaixo do gatilho");
+        }
+
         // Pedido: "no lugar de ser % do modelo, que tal fazermos em 20 turnos ou 100k de tokens
         // soltos (fora de capítulos)". Caso real: numa sessão de navegador com modelo de janela
         // enorme, os 85% da cota nunca chegaram e cada requisição reenviava 165 mil tokens.

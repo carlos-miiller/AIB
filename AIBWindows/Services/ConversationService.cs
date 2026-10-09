@@ -1170,6 +1170,14 @@ public sealed class ConversationService : IMessageStore
             double fracao = ajustes.CompactionTrigger;
             int fechados = 0;
 
+            // Disparado o gatilho de tokens, a passada DESCE até o alvo. Ela conferia o gatilho
+            // de novo a cada capítulo e parava assim que ficava abaixo dele. Visto no orbe: com
+            // 102.919 tokens vivos e gatilho de 100 mil, fechou um capítulo de um turno só,
+            // parou em 93.747 e voltou a compactar nos dois turnos seguintes. Cada compactação
+            // reescreve o começo do prompt e perde o cache, justamente com o prompt mais caro.
+            bool descendo = false;
+            int alvo = AlvoDeTokens(quota, ajustes);
+
             // Linkado ao token do turno: cancelar o turno segue cancelando a compactação. O que
             // este acrescenta é a desistência avulsa, sem derrubar o turno junto.
             _desistencia?.Dispose();
@@ -1187,14 +1195,16 @@ public sealed class ConversationService : IMessageStore
                 // Dois gatilhos, o que bater primeiro: tokens soltos (o menor entre a fração da
                 // cota e o teto absoluto) ou turnos soltos. O de turnos fecha UM capítulo, mesmo
                 // com a conversa leve; o de tokens fecha quantos forem precisos até o alvo.
-                bool porTokens = vivo > gatilho;
+                bool porTokens = vivo > gatilho || (descendo && vivo > alvo);
                 int soltos = porTokens ? 0 : TurnosSoltosAgora();
                 if (!porTokens && soltos < ajustes.TurnosSoltos) break;
 
                 var candidatos = SelectTurnsToCompact(quota, vivo, forcado: !porTokens);
                 if (candidatos.Count == 0)
                 {
-                    if (!porTokens) break;
+                    // Já fechou capítulo nesta passada e não sobrou turno elegível antes do
+                    // alvo: os recentes ficam, e não há o que registrar como pulo.
+                    if (!porTokens || fechados > 0) break;
 
                     // "Passou do gatilho e nao compactou" tem causa, e a causa e sempre a mesma:
                     // os turnos recentes ficam fora e nao sobrou turno fechado antes deles. Sem
@@ -1205,10 +1215,17 @@ public sealed class ConversationService : IMessageStore
                     break;
                 }
 
+                // O limite que valeu: o gatilho na primeira volta, o alvo nas seguintes.
+                int limite = descendo ? alvo : gatilho;
+
                 Console.WriteLine(porTokens
-                    ? $"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > gatilho={gatilho}."
+                    ? $"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > {(descendo ? "alvo" : "gatilho")}={limite}."
                     : $"[MEMORIA] Compactando {candidatos.Count} turno(s): {soltos} turnos soltos >= {ajustes.TurnosSoltos}.");
-                _registroDaCompactacao.Gatilho(vivo, gatilho, quota.Live, candidatos.Count);
+
+                if (porTokens) _registroDaCompactacao.Gatilho(vivo, limite, quota.Live, candidatos.Count);
+                else _registroDaCompactacao.GatilhoDeTurnos(soltos, ajustes.TurnosSoltos, vivo, quota.Live, candidatos.Count);
+
+                descendo = porTokens;
 
                 CompactacaoAndou?.Invoke(new PassoDaCompactacao(
                     "capítulo", _memory.NextChapterIndex, fechados));
@@ -1709,6 +1726,16 @@ public sealed class ConversationService : IMessageStore
     }
 
     /// <summary>
+    /// Até onde a conversa viva desce numa compactação por tokens: a fração do provedor
+    /// (<see cref="LimitesDoProvedor.AlvoDepoisDeCompactar"/>) sobre o mesmo teto do gatilho.
+    /// Um número só para quem escolhe os turnos e para o laço que decide se fecha mais um
+    /// capítulo.
+    /// </summary>
+    private static int AlvoDeTokens(MemoryQuota quota, UserAppSettings settings) =>
+        (int)(Math.Min(quota.Live, settings.TokensSoltos)
+              * LimitesDoProvedor.Para(settings.AiProvider).AlvoDepoisDeCompactar);
+
+    /// <summary>
     /// Turnos mais antigos a compactar: os suficientes para a conversa viva cair ao alvo
     /// (<see cref="LimitesDoProvedor.AlvoDepoisDeCompactar"/> da cota — 0,5 no Ollama, 0,3 no
     /// OpenRouter). Nunca os recentes que cabem na fatia deles (<see cref="RecentesQueFicam"/>),
@@ -1743,8 +1770,7 @@ public sealed class ConversationService : IMessageStore
         // O alvo acompanha o gatilho: a mesma fração, da cota ou do teto de tokens soltos, a
         // que for menor. Com o teto em 100 mil e a cota em 800 mil, mirar 30% da cota seria
         // nunca compactar nada.
-        double queda = LimitesDoProvedor.Para(settings.AiProvider).AlvoDepoisDeCompactar;
-        int alvo = (int)(Math.Min(quota.Live, settings.TokensSoltos) * queda);
+        int alvo = AlvoDeTokens(quota, settings);
         var escolhidos = new List<Turn>();
         int restante = vivo;
 
