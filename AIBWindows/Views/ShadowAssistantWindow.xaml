@@ -304,11 +304,10 @@
                             </Border.Triggers>
 
                             <StackPanel>
-                                <TextBlock x:Name="TextoDoBalao"
-                                           Text="{Binding Texto}"
-                                           FontSize="13.5" LineHeight="20.25"
-                                           TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextBodyBrush}"/>
+                                <!-- Markdown, como a bolha da janela de chat (o mesmo
+                                     visualizador). Era um TextBlock, e a resposta aparecia
+                                     com os asteriscos e as cercas de código crus. -->
+                                <ui:TextoDaIA x:Name="TextoDoBalao" Texto="{Binding Texto}"/>
 
                                 <!-- §4.8 — a lista de e-mails vive DENTRO do mesmo
                                      balão, abaixo do texto. Nunca um segundo balão.

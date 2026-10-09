@@ -326,6 +326,10 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   guardas de e-mail do registry são SOMADOS (o mais restritivo vale). O orbe mostra o passo
   (`PassoMudou`) e o texto final (`Respondeu` → `ResponderTurno`): com a barra aberta, a
   resposta entra na pilha de falas (`Ui/FalaDoOrbe`); fechada, ela é enfileirada e o orbe pulsa.
+  A fala da IA é desenhada em Markdown pelo mesmo visualizador da janela de chat
+  (`Ui/VisorDeMarkdown`, usado no orbe pelo controle `Ui/TextoDaIA`): interpretador, cores de
+  código e margem moram num lugar só. O fundo do balão continua sendo o vidro (`GlassBrush`) e
+  não o `SurfaceCardBrush` da janela, porque o balão flutua sobre a área de trabalho.
   No arranque (e ao religar o orbe), `LigarOrbe` devolve à pilha as últimas 12 falas do contexto
   vivo (`ConversationService.UltimasFalas` → `RestaurarFalas`), escondidas até a barra abrir; o
   que já virou capítulo não volta como bolha.
