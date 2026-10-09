@@ -318,7 +318,8 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   fechado, para não perder as falas.
 - **Clique** transforma o círculo em barra de texto (`AbrirBarra`, morph de 0,28 s; o raio segue a
   altura por `Ui/AlturaParaRaioConverter`, porque WPF não anima `CornerRadius`). `Esc` ou perder o
-  foco volta ao círculo.
+  foco volta ao círculo; o que estava digitado e não foi enviado fica no campo para a próxima
+  abertura (só enviar o esvazia).
 - **Enviar** pela barra dispara `MensagemEnviada`, e o turno roda na **conversa do orbe**
   (`Services/ConversaDoOrbe`), separada da janela: um `ConversationService` em sessão fixa
   (`memory/shadow`, fora de `sessions/`: é uma só), reaberto de onde parou no arranque, fora do `chat_history.json` e sem

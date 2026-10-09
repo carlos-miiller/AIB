@@ -340,7 +340,11 @@ public partial class ShadowAssistantWindow : Window
         relogio.Tick += (s, _) =>
         {
             relogio.Stop();
-            if (_emModoBarra && !_fechando) Campo.Focus();
+            if (!_emModoBarra || _fechando) return;
+
+            // O cursor vai para o fim: reabrir com texto guardado é continuar a frase.
+            Campo.Focus();
+            Campo.CaretIndex = Campo.Text.Length;
         };
         relogio.Start();
 
@@ -360,12 +364,9 @@ public partial class ShadowAssistantWindow : Window
         AnimarMargemDaCelula(MargemQueCentraliza(LarguraDaCelula()), TimeSpan.FromSeconds(0.22), EasingMode.EaseIn);
         AtualizarAnelDeProgresso();
 
-        // §6 — o rascunho curto é descartado ao fechar; o longo sobrevive para a próxima
-        // abertura, porque perder um parágrafo digitado por causa de um clique fora seria
-        // pior que a barra reabrir com texto velho.
-        if (Campo.Text.Trim().Length <= RascunhoPreservadoAcimaDe) Campo.Clear();
-
-        AtualizarDica();
+        // O que foi digitado e não enviado fica no campo, qualquer que seja o tamanho: só
+        // Enviar o esvazia. Antes o rascunho de até 40 caracteres era descartado aqui, e um
+        // clique fora ou um Esc no meio da frase apagava o que a pessoa estava escrevendo.
 
         // As bolhas são ancoradas na barra: sem ela ficariam flutuando sozinhas sobre o
         // desktop, apontando para nada. Some a PILHA, e não o conteúdo dela — reabrir a
@@ -376,9 +377,6 @@ public partial class ShadowAssistantWindow : Window
     // ─────────────────────────────────────────────────────────────────────────
     // §4.7  Barra de input
     // ─────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Acima disto o rascunho sobrevive ao fechamento — §6.</summary>
-    private const int RascunhoPreservadoAcimaDe = 40;
 
     private void Campo_TextChanged(object sender, TextChangedEventArgs e) => AtualizarDica();
 

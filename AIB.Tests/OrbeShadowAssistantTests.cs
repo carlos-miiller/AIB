@@ -403,6 +403,35 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void FecharABarra_GuardaOQueFoiDigitadoENaoEnviado()
+        {
+            // Visto no uso: digitar algo no orbe, clicar fora (ou Esc) e abrir de novo dava um
+            // campo vazio. O texto curto era descartado de propósito ao fechar a barra.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+                var campo = (TextBox)janela.FindName("Campo");
+
+                janela.AbrirBarra();
+                campo.Text = "lembra de";
+                janela.FecharBarra();
+                janela.AbrirBarra();
+
+                campo.Text.Should().Be("lembra de");
+
+                // Enviar continua esvaziando: o que foi mandado não volta ao campo.
+                janela.Enviar();
+                janela.FecharBarra();
+                janela.AbrirBarra();
+
+                campo.Text.Should().BeEmpty();
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void Enviar_MantemABarraAbertaEMostraQueEstaTrabalhando()
         {
             // Antes a barra fechava ao enviar. Isso obrigava o usuario a clicar de novo para
