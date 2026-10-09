@@ -320,6 +320,10 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   altura por `Ui/AlturaParaRaioConverter`, porque WPF não anima `CornerRadius`). `Esc` ou perder o
   foco volta ao círculo; o que estava digitado e não foi enviado fica no campo para a próxima
   abertura (só enviar o esvazia).
+- **Parar:** com um turno rodando (`EmTurno`, pelo passo anunciado), o botão de enviar vira o
+  quadrado vermelho de parar e dispara `ParadaPedida`; `App.LigarOrbe` cancela o turno de quem
+  estiver rodando (`ConversaDoOrbe.Parar` ou `ChatWindow.PararTurno`). A barra recebe o que já
+  tinha sido dito, ou "Parei.".
 - **Enviar** pela barra dispara `MensagemEnviada`, e o turno roda na **conversa do orbe**
   (`Services/ConversaDoOrbe`), separada da janela: um `ConversationService` em sessão fixa
   (`memory/shadow`, fora de `sessions/`: é uma só), reaberto de onde parou no arranque, fora do `chat_history.json` e sem

@@ -94,6 +94,48 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ComTurnoRodando_OBotaoDaBarra_ViraParar_ENaoEnvia()
+        {
+            // Visto no uso: no orbe o botão de enviar nunca virava parar. Com a IA em laço, a
+            // única forma de pará-la era encerrar o programa.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var orbe = new ShadowAssistantWindow();
+                var botao = (Button)orbe.FindName("BotaoEnviar");
+                var aviao = botao.Content;
+                int paradas = 0, envios = 0;
+                orbe.ParadaPedida += () => paradas++;
+                orbe.MensagemEnviada += _ => envios++;
+
+                orbe.AbrirBarra();
+                ((TextBox)orbe.FindName("Campo")).Text = "outra coisa";
+
+                orbe.MostrarEstado("Pensando");
+                orbe.MostrarEstado("Navegando", Ferramentas.Navegador);
+
+                botao.Content.Should().BeOfType<Border>("é o quadrado de parar da janela de chat");
+                botao.ToolTip.Should().Be("Parar");
+
+                botao.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+                paradas.Should().Be(1);
+                envios.Should().Be(0, "com turno rodando o botão para, não envia");
+
+                // O passo vazio é o fim do turno: o aviãozinho volta, o mesmo desenho.
+                orbe.MostrarEstado("");
+
+                botao.Content.Should().BeSameAs(aviao);
+                botao.ToolTip.Should().Be("Enviar");
+
+                botao.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                envios.Should().Be(1);
+
+                orbe.Close();
+            });
+        }
+
+        [Fact]
         public void ComAConversaNA_TELA_OOrbeNaoREPETE_AFala()
         {
             // Este era o defeito: a mesma frase em dois lugares ao mesmo tempo, e a segunda

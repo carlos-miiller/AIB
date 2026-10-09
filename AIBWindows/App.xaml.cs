@@ -184,6 +184,14 @@ public partial class App : System.Windows.Application
             else conversa.AbrirComMensagem(texto, mostrarJanela: false);
         }
 
+        // O botão de parar da barra para o turno que está rodando, seja de quem for: o da
+        // conversa do orbe ou o da janela, que roda escondida e também acende o anel.
+        void Parou()
+        {
+            if (doOrbe is { Ocupada: true }) doOrbe.Parar();
+            else conversa.PararTurno();
+        }
+
         // O turno da conversa do orbe: o passo acende o anel, e a resposta volta para a barra.
         void AndouNoOrbe(string passo, string? ferramenta) => orbe.MostrarEstado(passo, ferramenta);
         void RespondeuNoOrbe(string texto) => orbe.ResponderTurno(texto);
@@ -219,6 +227,7 @@ public partial class App : System.Windows.Application
         }
 
         orbe.MensagemEnviada += Enviou;
+        orbe.ParadaPedida += Parou;
         orbe.EmailEscolhido += EscolheuEmail;
         conversa.PassoDoTurnoMudou += Andou;
         conversa.TurnoConcluido += Concluiu;
@@ -231,6 +240,7 @@ public partial class App : System.Windows.Application
                 doOrbe.Respondeu -= RespondeuNoOrbe;
             }
             orbe.MensagemEnviada -= Enviou;
+            orbe.ParadaPedida -= Parou;
             orbe.EmailEscolhido -= EscolheuEmail;
             conversa.PassoDoTurnoMudou -= Andou;
             conversa.TurnoConcluido -= Concluiu;

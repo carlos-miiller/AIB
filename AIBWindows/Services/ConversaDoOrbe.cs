@@ -64,12 +64,27 @@ public sealed class ConversaDoOrbe
 
     private int Nivel => LevelService.GetLevel(_settings.LoadSettings().MessageCount);
 
+    private bool _parou;
+
+    /// <summary>
+    /// Para o turno em andamento, a pedido do usuário. O turno fecha como cancelado (a conversa
+    /// cuida disso) e a barra recebe o que já tinha sido dito, ou "Parei.".
+    /// </summary>
+    public void Parar()
+    {
+        if (!Ocupada) return;
+
+        _parou = true;
+        Conversa.CancelGeneration();
+    }
+
     /// <summary>Roda um turno com o que o usuário escreveu na barra.</summary>
     public async Task EnviarAsync(string texto)
     {
         if (string.IsNullOrWhiteSpace(texto) || Ocupada) return;
 
         Ocupada = true;
+        _parou = false;
         Marcar();
         string fala = "";
         string? erro = null;
@@ -98,6 +113,10 @@ public sealed class ConversaDoOrbe
                 }
             }
         }
+        catch (OperationCanceledException) when (_parou)
+        {
+            // Parar não é erro: a barra não mostra "algo deu errado" para o que o usuário pediu.
+        }
         catch (Exception ex)
         {
             Console.WriteLine($"[ORBE] turno falhou: {ex.Message}");
@@ -113,7 +132,7 @@ public sealed class ConversaDoOrbe
         UsuarioFalou?.Invoke(texto);
 
         string final = erro ?? QuebraDeFala.Limpar(fala).Trim();
-        Respondeu?.Invoke(final.Length > 0 ? final : "Feito.");
+        Respondeu?.Invoke(final.Length > 0 ? final : _parou ? "Parei." : "Feito.");
     }
 
     /// <summary>

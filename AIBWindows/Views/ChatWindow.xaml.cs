@@ -282,6 +282,12 @@ public partial class ChatWindow : Window
     /// <summary>Se há turno em andamento. A fala por iniciativa espera ele acabar.</summary>
     public bool Ocupada => _isSending;
 
+    /// <summary>Para o turno em andamento, como o botão de parar. É o que o orbe chama.</summary>
+    public void PararTurno()
+    {
+        if (_isSending) _conversation.CancelGeneration();
+    }
+
     /// <summary>
     /// Uma fala que a persona puxa sozinha (lembrete, iniciativa): entra na conversa como fala
     /// dela, em balão e no histórico, para que a resposta do usuário continue o assunto. Quem

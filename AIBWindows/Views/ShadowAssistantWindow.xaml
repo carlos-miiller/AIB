@@ -553,7 +553,8 @@
                                     Margin="4,0,0,0"
                                     Click="BotaoEnviar_Click"
                                     ToolTip="Enviar">
-                                <Path Data="M2,9 L16,2.5 L10.4,15.5 L8.6,10.4 Z"
+                                <Path x:Name="IconeDeEnviar"
+                                      Data="M2,9 L16,2.5 L10.4,15.5 L8.6,10.4 Z"
                                       Stroke="White" StrokeThickness="1.6"
                                       StrokeLineJoin="Round" StrokeStartLineCap="Round"
                                       StrokeEndLineCap="Round" Width="18" Height="18" Stretch="None"/>

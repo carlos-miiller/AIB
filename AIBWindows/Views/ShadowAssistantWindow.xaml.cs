@@ -155,6 +155,19 @@ public partial class ShadowAssistantWindow : Window
     /// <summary>Se há um turno em andamento disparado por esta barra.</summary>
     public bool Trabalhando { get; private set; }
 
+    /// <summary>
+    /// O usuário pediu para parar o turno em andamento (o botão da barra, que vira "parar"
+    /// enquanto a AIB trabalha). Quem cancela é o dono do turno; o orbe só avisa.
+    /// </summary>
+    public event Action? ParadaPedida;
+
+    /// <summary>
+    /// Se há um turno de conversa rodando, pelo passo que a conversa anuncia. Não é
+    /// <see cref="Trabalhando"/>: o anel também gira na varredura de e-mail, que não se para
+    /// por aqui.
+    /// </summary>
+    public bool EmTurno => _passoAtual != null;
+
     /// <summary>Se há fala na tela. Diagnóstico e ensaio.</summary>
     public bool BalaoVisivel => RoloDasFalas.Visibility == Visibility.Visible && _falas.Count > 0;
 
@@ -395,7 +408,33 @@ public partial class ShadowAssistantWindow : Window
         }
     }
 
-    private void BotaoEnviar_Click(object sender, RoutedEventArgs e) => Enviar();
+    private void BotaoEnviar_Click(object sender, RoutedEventArgs e)
+    {
+        // Com turno em andamento o botão é PARAR, como na janela de chat.
+        if (EmTurno) ParadaPedida?.Invoke();
+        else Enviar();
+    }
+
+    /// <summary>
+    /// O botão da barra: aviãozinho parado, quadrado vermelho com turno rodando (o mesmo
+    /// desenho do "parar" da janela de chat). Visto no uso: o orbe não tinha como parar, e com
+    /// a IA em laço a única saída era encerrar o programa.
+    /// </summary>
+    private void AtualizarBotao()
+    {
+        if (EmTurno == BotaoEnviar.Content is Border) return;
+
+        BotaoEnviar.Content = EmTurno
+            ? new Border
+            {
+                Width = 13,
+                Height = 13,
+                CornerRadius = new CornerRadius(3),
+                Background = (System.Windows.Media.Brush)FindResource("DangerBrush")
+            }
+            : IconeDeEnviar;
+        BotaoEnviar.ToolTip = EmTurno ? "Parar" : "Enviar";
+    }
 
     /// <summary>
     /// §5.3 — manda o texto para a janela de chat e volta ao orbe. A barra não responde nada:
@@ -700,6 +739,7 @@ public partial class ShadowAssistantWindow : Window
             _passoAtual = null;
             _ferramentaAtual = null;
             MostrarSimbolo();
+            AtualizarBotao();
 
             // A varredura de e-mail tem o estado DELA — ícone de inbox e tooltip próprios — e
             // roda em paralelo com o turno. Deixar o fim de um turno apagar o anel dela é o
@@ -715,6 +755,7 @@ public partial class ShadowAssistantWindow : Window
         _passoAtual = passo;
         _ferramentaAtual = string.IsNullOrWhiteSpace(ferramenta) ? null : ferramenta;
         MostrarSimbolo();
+        AtualizarBotao();
 
         // Durante a varredura o tooltip é dela; o do turno volta quando ela acabar.
         if (!ProcessandoEmail) Casca.ToolTip = passo;
