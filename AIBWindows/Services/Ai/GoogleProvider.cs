@@ -32,8 +32,11 @@ namespace AIB.Services.Ai;
 /// chamadas em paralelo, que o Gemini pode mandar inteiras, sem id e com o mesmo índice.
 /// </para>
 /// <para>
-/// Escrito pela documentação, sem ensaio contra a API real: o formato do stream e o do
-/// <c>extra_content</c> estão nos testes como a AIB os entende, não como foram vistos na rede.
+/// Escrito pela documentação e confirmado no uso em 09/10/2026, com <c>gemini-flash-latest</c>:
+/// dois turnos de navegador com mais de vinte voltas de ferramenta, uma assinatura guardada e
+/// devolvida em cada volta, nenhum 400, e o cache implícito acertando de 70% a 83% da entrada.
+/// O raciocínio chegou como texto e acendeu o indicador. Chamadas em paralelo e a recusa de
+/// desligar o raciocínio (modelos Pro) continuam só nos testes.
 /// </para>
 /// </summary>
 public sealed class GoogleProvider : IChatProvider

@@ -376,9 +376,10 @@ Remove do canal final tokens de template que vazam (Harmony, ChatML, Llama 3, GP
 
 Fala o endpoint do Gemini compatível com a OpenAI (`/chat/completions`, SSE), com a chave do AI
 Studio em `Authorization: Bearer`. Não o nativo `generateContent`: o formato de mensagens,
-ferramentas e stream é o que `OpenRouterProvider.LerTrecho` já lê. **Foi escrito pela
-documentação do Google, sem ensaio contra a API real** — os testes fixam o formato como a AIB o
-entende.
+ferramentas e stream é o que `OpenRouterProvider.LerTrecho` já lê. Escrito pela documentação do Google e confirmado no uso em 09/10/2026 com `gemini-flash-latest`:
+mais de vinte voltas de ferramenta em dois turnos, a assinatura devolvida em cada uma, nenhum
+400, cache implícito de 70% a 83% da entrada. Chamadas em paralelo e a recusa de desligar o
+raciocínio continuam só nos testes.
 
 - **Chave:** cofre `google` (`ProvedoresDeIa.SistemaDaChave`), guardada pela aba Conexão LLM.
   O formato aceito é frouxo (30+ caracteres sem espaço): o Google emite mais de um.
@@ -396,9 +397,9 @@ entende.
 - **Uso:** `prompt_tokens`, `completion_tokens` e `prompt_tokens_details.cached_tokens`. O
   Google não relata custo: `CustoUsd` fica nulo e o rodapé do turno não mostra valor.
 - **Erros:** 408, 429 e 5xx se repetem antes de a resposta começar; 400, 401, 403 e 404 não.
-- **Não tem:** catálogo de modelos, marcas de cache (o cache do Gemini é implícito), texto do
-  raciocínio na tela (o indicador de "pensando" não acende) e tela de primeiro arranque — o
-  Google se escolhe nas configurações.
+- **Não tem:** catálogo de modelos, marcas de cache (o cache do Gemini é implícito) e tela de
+  primeiro arranque — o Google se escolhe nas configurações. O texto do raciocínio não é pedido,
+  mas o `gemini-flash-latest` o manda mesmo assim, e o indicador de "pensando" acende.
 
 `MotivoDeFim.De(raw)` traduz "stop", "tool_calls" e "length" para `StreamFinishReason`; o resto é `Unknown`. Um lugar só para os dois provedores — estava copiado e uma cópia podia divergir.
 
