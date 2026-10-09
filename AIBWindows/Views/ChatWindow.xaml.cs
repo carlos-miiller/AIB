@@ -282,6 +282,12 @@ public partial class ChatWindow : Window
     /// <summary>Se há turno em andamento. A fala por iniciativa espera ele acabar.</summary>
     public bool Ocupada => _isSending;
 
+    /// <summary>Para o turno em andamento, como o botão de parar. É o que o orbe chama.</summary>
+    public void PararTurno()
+    {
+        if (_isSending) _conversation.CancelGeneration();
+    }
+
     /// <summary>
     /// Uma fala que a persona puxa sozinha (lembrete, iniciativa): entra na conversa como fala
     /// dela, em balão e no histórico, para que a resposta do usuário continue o assunto. Quem
@@ -350,6 +356,10 @@ public partial class ChatWindow : Window
         if (_painelAberto && _painel != null)
         {
             PosicionarPainel();
+
+            // Escondido, o painel não acompanha o histórico (AtualizarPainelDeHistorico só
+            // remonta o que está na tela): o que mudou enquanto isso entra agora.
+            _painel.Recarregar();
             _painel.Show();
         }
     }
@@ -888,42 +898,8 @@ public partial class ChatWindow : Window
     private MarkdownViewer AddAgentBubble(string? initialText = null)
     {
 
-        var viewer = new MarkdownViewer
-        {
-            // Antes do texto: trocar o interpretador depois obrigaria a remontar o documento.
-            Pipeline = AIB.Ui.MarkdownPipelines.Conversa,
-            Markdown = initialText ?? "",
-            Foreground = (System.Windows.Media.Brush)FindResource("TextBodyBrush"),
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-            FontSize = (double)FindResource("FontSizeBubble"),
-        };
-
-        // O documento de fluxo nasce com margem própria de página, e ela se somava ao padding
-        // da bolha. A margem negativa que existia aqui compensava isso puxando o conteúdo para
-        // fora nos quatro lados — o que também comia o padding de 17x13 que a spec pede.
-        // Zerar na fonte é o certo.
-        ZerarMargemDoDocumento(viewer);
-
-        // §5.5 — código inline em lilás sobre surfaceCode; bloco em textBody sobre
-        // surfaceCodeBlock. Os dois em mono 12,5. Antes o inline saía ciano, uma cor que não
-        // existe em nenhum dos dois arquivos de spec.
-        var fonteMono = (System.Windows.Media.FontFamily)FindResource("MonoFontFamily");
-        var tamanhoCodigo = (double)FindResource("FontSizeCode");
-
-        var inlineCodeStyle = new Style();
-        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.BackgroundProperty, FindResource("SurfaceCodeBrush")));
-        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.ForegroundProperty, FindResource("AccentLilacBrush")));
-        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontFamilyProperty, fonteMono));
-        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontSizeProperty, tamanhoCodigo));
-
-        var blockCodeStyle = new Style();
-        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.BackgroundProperty, FindResource("SurfaceCodeBlockBrush")));
-        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.ForegroundProperty, FindResource("TextBodyBrush")));
-        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontFamilyProperty, fonteMono));
-        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontSizeProperty, tamanhoCodigo));
-
-        viewer.Resources.Add(Markdig.Wpf.Styles.CodeStyleKey, inlineCodeStyle);
-        viewer.Resources.Add(Markdig.Wpf.Styles.CodeBlockStyleKey, blockCodeStyle);
+        // O mesmo visualizador das falas do orbe: interpretador, cores e margem num lugar só.
+        var viewer = AIB.Ui.VisorDeMarkdown.Criar(initialText, this);
 
         // Permite que o scroll do mouse funcione mesmo com o ponteiro sobre a bolha Markdown
         viewer.PreviewMouseWheel += (s, e) =>
@@ -947,42 +923,12 @@ public partial class ChatWindow : Window
         // A medição vai por fora, sobre o documento: perguntar ao visualizador não adianta,
         // porque ele devolve como desejada a mesma largura que recebeu. Os 2px de folga cobrem
         // o arredondamento entre a medição do texto e o desenho dele.
-        var encolhido = new AIB.Ui.ShrinkWrap
-        {
-            Child = viewer,
-            MedirNatural = () => AIB.Ui.FlowDocumentMeasure.LarguraNatural(viewer.Document) + 2
-        };
+        var encolhido = AIB.Ui.VisorDeMarkdown.Encolhido(viewer);
 
         var linha = NovaLinha(CascaDaIa(encolhido, new Thickness(17, 13, 17, 13)), doUsuario: false);
         AnimateBubbleIn(linha);
         ChatScrollViewer.ScrollToEnd();
         return viewer;
-    }
-
-    /// <summary>
-    /// Zera a margem de página do <c>FlowDocument</c> do visualizador, agora e a cada vez que
-    /// ele for trocado.
-    /// <para>
-    /// Reaplicar não é zelo: atribuir <c>Markdown</c> reconstrói o documento inteiro, e o
-    /// streaming da resposta faz isso a cada pedaço que chega. Zerar uma vez só valeria até a
-    /// primeira letra da resposta.
-    /// </para>
-    /// </summary>
-    private static void ZerarMargemDoDocumento(MarkdownViewer viewer)
-    {
-        static void Aplicar(MarkdownViewer v)
-        {
-            if (v.Document == null) return;
-            v.Document.PagePadding = new Thickness(0);
-            v.Document.PageWidth = double.NaN;
-        }
-
-        Aplicar(viewer);
-
-        var descritor = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(
-            MarkdownViewer.DocumentProperty, typeof(MarkdownViewer));
-
-        descritor?.AddValueChanged(viewer, (_, _) => Aplicar(viewer));
     }
 
     /// <summary>
@@ -2101,47 +2047,6 @@ public partial class ChatWindow : Window
     }
 
     /// <summary>
-    /// Cor do contador por ECONOMIA de contexto, nao por ocupacao — §3.8.
-    /// <para>
-    /// A tela antiga pintava de verde a laranja conforme o historico enchia. A spec inverte o
-    /// que o numero comunica. O que ele mede mudou de novo: era a fatia do prompt que o cache
-    /// do Ollama nao precisou reprocessar, e agora e quanto o sistema de capitulos e atos
-    /// esta poupando. Verde quer dizer "a memoria esta trabalhando"; magenta, "a conversa vai
-    /// quase inteira em toda requisicao".
-    /// </para>
-    /// <para>
-    /// Sem economia medida a cor e neutra, e nao magenta: antes do primeiro capitulo nao ha
-    /// falha nenhuma a sinalizar.
-    /// </para>
-    /// </summary>
-    /// <summary>
-    /// A cor da barra mede OCUPAÇÃO do contexto, e não economia.
-    /// <para>
-    /// Antes ela media a economia, e a escala punia conversa curta: um capítulo que resumiu 200
-    /// tokens em 128 fez o trabalho dele e a barra saía MAGENTA, acusando o sistema de falhar.
-    /// É a mesma armadilha do "-0%" que a nota do primeiro turno já evitava, um nível acima.
-    /// </para>
-    /// <para>
-    /// Ocupação é acionável: passar de 75% avisa que a compactação vai disparar; passar de 90%
-    /// avisa que a poda de emergência está perto — e a poda descarta sem substituto.
-    /// </para>
-    /// </summary>
-    private System.Windows.Media.Brush CorDaOcupacao(TokenReport r)
-    {
-        // A REDE em primeiro lugar: é o único ponto em que algo é perdido de verdade. Passar
-        // dela é a poda de emergência voltando a descartar sem substituto.
-        if (r.OcupacaoDaRedePct >= 90) return (System.Windows.Media.Brush)FindResource("DangerTextBrush");
-
-        // Passar do teto do NÍVEL não interrompe nada e virou rotina desde que a janela ficou
-        // bem maior que ele. Vale laranja — "vai compactar no fim do turno" — e não vermelho:
-        // alarme que dispara todo turno deixa de ser alarme.
-        if (r.AcimaDoOrcamento || r.OcupacaoPct >= 90)
-            return (System.Windows.Media.Brush)FindResource("WarnBrush");
-
-        return (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
-    }
-
-    /// <summary>
     /// Escreve o contador do rodape: quanto a conversa inteira pesaria, quanto ela pesa agora
     /// e quanto o sistema de capitulos e atos esta poupando.
     /// <para>
@@ -2155,42 +2060,8 @@ public partial class ChatWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            // O teto do nivel no lugar da porcentagem. Os dois numeros da esquerda ja dizem
-            // quanto foi poupado — a porcentagem repetia isso em outra forma, e ocupava o
-            // espaco do unico dado que faltava: o quanto ainda cabe.
-            //
-            // A condição é o TOTAL diferir do contexto, e não haver economia. Uma conversa
-            // reaberta sem capítulo nenhum não poupou nada, mas o custo cru dela continua sendo
-            // maior que o contexto — e esconder isso é o que fazia 9.144 tokens virarem 1.838
-            // sem explicação.
-            bool temTotal = relatorio.Total > relatorio.Contexto;
-
-            TokenCounterText.Inlines.Clear();
-
-            if (temTotal)
-            {
-                // TACHADO e apagado: é o preço que a conversa NÃO está pagando. Riscar diz isso
-                // sem precisar de legenda, e deixa o número vivo ser o que salta aos olhos.
-                TokenCounterText.Inlines.Add(new Run($"{relatorio.Total:N0}")
-                {
-                    TextDecorations = System.Windows.TextDecorations.Strikethrough,
-                    Foreground = (System.Windows.Media.Brush)FindResource("TextMutedBrush")
-                });
-
-                // A seta fica. O risco diz que aquele preço não está sendo pago; a seta diz
-                // que um número VIROU o outro. São duas informações, não uma repetida.
-                TokenCounterText.Inlines.Add(new Run(" > "));
-            }
-
-            TokenCounterText.Inlines.Add(new Run(
-                $"{relatorio.Contexto:N0} tokens | {relatorio.Max:N0}"));
-
-            // O dinheiro, quando há. Só o OpenRouter cobra; no Ollama o campo é nulo e o rodapé
-            // continua como sempre foi.
-            if (relatorio.CustoUsd is decimal custo)
-                TokenCounterText.Inlines.Add(new Run($" | {TokenReport.Dolares(custo)}"));
-
-            TokenCounterText.Foreground = CorDaOcupacao(relatorio);
+            // O mesmo texto do contador do orbe: total riscado, seta, contexto, teto e gasto.
+            AIB.Ui.ContadorDeTokens.Escrever(TokenCounterText, relatorio);
 
             // A conta atrás do número. Dois números e uma cor respondem "está economizando?",
             // e não respondem "de onde vem isso?" — que é a pergunta do dia em que a conta

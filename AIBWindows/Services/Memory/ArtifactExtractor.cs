@@ -157,6 +157,44 @@ public static class ArtifactExtractor
         };
 
     /// <summary>
+    /// O resumo dos argumentos para a TELA — o chip e o registro de ações. Igual a
+    /// <see cref="ResumirArgumento"/>, menos no navegador: ali a ref do elemento (<c>s21e17</c>)
+    /// vira o nome dele e a ação sai em português, "clicar botão \"OK\"".
+    /// <para>
+    /// Separado porque o nome é texto da página. <see cref="ResumirArgumento"/> também alimenta
+    /// o resumo que a memória guarda e manda ao modelo, e lá conteúdo de terceiros não entra.
+    /// </para>
+    /// </summary>
+    public static string ResumirParaTela(string ferramenta, string argumentosJson)
+    {
+        if (ferramenta != Ferramentas.Navegador) return ResumirArgumento(ferramenta, argumentosJson);
+
+        string acao = StringDe(argumentosJson, "action");
+        string refe = StringDe(argumentosJson, "ref");
+
+        return string.Join(" ", new[]
+        {
+            AcaoDoNavegador(acao), StringDe(argumentosJson, "url"),
+            refe.Length == 0 ? "" : Navegador.NomesDeElemento.De(refe) ?? refe,
+            StringDe(argumentosJson, "text")
+        }.Where(s => s.Length > 0));
+    }
+
+    private static string AcaoDoNavegador(string acao) => acao.ToLowerInvariant() switch
+    {
+        "open" => "abrir",
+        "view" => "ver a página",
+        "find" => "procurar",
+        "table" => "ler tabela",
+        "click" => "clicar",
+        "type" => "digitar em",
+        "scroll" => "rolar",
+        "back" => "voltar",
+        "note" => "anotar",
+        _ => acao
+    };
+
+    /// <summary>
     /// O resultado em poucas palavras, para o registro de ações e o tooltip (§6.4 e):
     /// "12 arquivos", "3 acertos em 2 arquivos", "saída: 4 linhas".
     /// <para>

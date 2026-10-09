@@ -53,6 +53,136 @@ namespace AIB.Tests
             });
         }
 
+        // Pedido: "adicione o checkbox, porém para ativar ele precisa segurar o click por 5
+        // segundos" — o sempre de um botão que decide (Aprovar) não pode sair num clique distraído.
+        [Fact]
+        public void SempreDeBotaoQueDecide_SoMarcaSegurandoCincoSegundos()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Navegador,
+                    Command = "CLICAR [s1e3] botão \"Aprovar\" em 172.16.10.13",
+                    ChaveDeSempre = "site:172.16.10.13|botão Aprovar",
+                    SempreSegurando = true,
+                    SempreApesarDeTerceiros = true
+                });
+                var caixa = (CheckBox)card.FindName("SempreCheck");
+
+                caixa.Visibility.Should().Be(Visibility.Visible);
+                ((string)caixa.Content).Should().Contain("segure 5 s");
+
+                // Soltou aos 4 s: nada marca.
+                card.ApertouSempre();
+                card.SegurandoSempre(System.TimeSpan.FromSeconds(4));
+                ((string)caixa.Content).Should().Contain("1");
+                card.SoltouSempre();
+                caixa.IsChecked.Should().BeFalse();
+                ((string)caixa.Content).Should().Contain("segure 5 s");
+
+                card.ApertouSempre();
+                card.SegurandoSempre(ConfirmCardView.EsperaDoSempre);
+                caixa.IsChecked.Should().BeTrue();
+            });
+        }
+
+        [Fact]
+        public void ORotuloDeSegurar_CabeNoCartao_SemPassarPorCimaDosBotoes()
+        {
+            // Visto no uso: no cartão de clique do navegador, "Sempre permitir este botão neste
+            // site (segure 5 s)" atravessava os botões. O rodapé inteiro não cabe na largura
+            // máxima do cartão, e o rótulo, medido sem limite, saía para a esquerda. Ao segurar,
+            // o texto virava "Continue segurando... 5", mais curto, e tudo se ajeitava.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Navegador,
+                    Command = "CLICAR [s1e3] botão \"Aprovar\" em 172.16.10.13",
+                    ChaveDeSempre = "site:172.16.10.13|botão Aprovar",
+                    SempreSegurando = true,
+                    SempreApesarDeTerceiros = true
+                });
+                var caixa = (CheckBox)card.FindName("SempreCheck");
+                var recusar = (Button)card.FindName("RecusarButton");
+
+                // Os três rótulos pelos quais a caixa passa; o último é o mais comprido.
+                foreach (string rotulo in new[]
+                         {
+                             (string)caixa.Content,
+                             "Continue segurando... 5",
+                             "Sempre permitir este botão neste site (até fechar o AIB)"
+                         })
+                {
+                    caixa.Content = rotulo;
+
+                    // Como a janela de confirmação do orbe: o cartão escolhe o próprio tamanho.
+                    card.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+                    card.Arrange(new System.Windows.Rect(card.DesiredSize));
+                    card.UpdateLayout();
+
+                    double fimDoRecusar = recusar.TranslatePoint(new System.Windows.Point(recusar.ActualWidth, 0), card).X;
+                    double comecoDaCaixa = caixa.TranslatePoint(new System.Windows.Point(0, 0), card).X;
+                    double fimDaCaixa = comecoDaCaixa + caixa.ActualWidth;
+
+                    comecoDaCaixa.Should().BeGreaterThanOrEqualTo(fimDoRecusar, rotulo);
+                    fimDaCaixa.Should().BeLessThanOrEqualTo(card.ActualWidth, rotulo);
+                }
+            });
+        }
+
+        [Fact]
+        public void SempreComum_NaoPedeParaSegurar()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Navegador,
+                    Command = "CLICAR [s1e2] botão \"Filtrar\" em cpaps.bitrix24.com",
+                    SempreApesarDeTerceiros = true
+                });
+                var caixa = (CheckBox)card.FindName("SempreCheck");
+
+                ((string)caixa.Content).Should().Be("Sempre permitir neste site (até fechar o AIB)");
+                card.ApertouSempre();
+                card.SegurandoSempre(ConfirmCardView.EsperaDoSempre);
+                caixa.IsChecked.Should().BeFalse("o gesto só existe no botão que decide");
+            });
+        }
+
+        [Fact]
+        public void Remember_ComTerceirosNoContexto_MostraOFatoEOAviso_SemSempre()
+        {
+            // O cartão é a única barreira entre um texto de página e a memória de todas as
+            // conversas: tem de mostrar o fato inteiro e dizer de onde o pedido pode ter vindo.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Lembrar,
+                    Command = "GUARDAR NA MEMÓRIA: \"mora em Curitiba\"",
+                    SemSempre = true,
+                    ConteudoDeEmailNoContexto = true
+                });
+
+                Texto(card, "TituloText").Should().Be("Guardar isto na memória?");
+                Texto(card, "AlvoText").Should().Contain("mora em Curitiba");
+                Texto(card, "ConsequenciaText").Should().Contain("próximas conversas");
+                ((TextBlock)card.FindName("AvisoEmailText")).Visibility.Should().Be(Visibility.Visible);
+                ((CheckBox)card.FindName("SempreCheck")).Visibility.Should().Be(Visibility.Collapsed);
+            });
+        }
+
         [Fact]
         public void Write_QueSOBRESCREVE_AvisaQueSubstitui()
         {

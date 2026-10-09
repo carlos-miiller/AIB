@@ -158,7 +158,8 @@ public partial class App : System.Windows.Application
     /// Da conversa para o orbe: o orbe é a JANELA DO QUE A AIB ESTÁ FAZENDO. Ele acende o anel
     /// no passo corrente de qualquer turno — inclusive dos digitados na conversa — e só REPETE
     /// a fala quando ela não tem outro lugar onde aparecer (ver
-    /// <see cref="ShadowAssistantWindow.OrbeDeveFalar"/>).
+    /// <see cref="ShadowAssistantWindow.OrbeDeveFalar"/>). Com a conversa do orbe ligada, ele
+    /// não repete NENHUMA fala da janela: as duas conversas são apartadas, e a pilha é só da dele.
     /// </para>
     /// <para>
     /// Devolve o desfazer, e é estático, porque a conversa VIVE MAIS que o orbe: ela nasce no
@@ -168,6 +169,9 @@ public partial class App : System.Windows.Application
     /// não-duplicação sem subir o App inteiro.
     /// </para>
     /// </summary>
+    /// <summary>Quantas falas da conversa do orbe voltam à pilha no arranque.</summary>
+    public const int FalasAoReabrir = 12;
+
     /// <param name="doOrbe">
     /// A conversa própria do orbe. Com ela, a barra fala com ela, e não com a janela. Nula nos
     /// ensaios antigos: aí a barra cai na conversa principal, escondida, como era antes.
@@ -180,14 +184,33 @@ public partial class App : System.Windows.Application
             else conversa.AbrirComMensagem(texto, mostrarJanela: false);
         }
 
+        // O botão de parar da barra para o turno que está rodando, seja de quem for: o da
+        // conversa do orbe ou o da janela, que roda escondida e também acende o anel.
+        void Parou()
+        {
+            if (doOrbe is { Ocupada: true }) doOrbe.Parar();
+            else conversa.PararTurno();
+        }
+
         // O turno da conversa do orbe: o passo acende o anel, e a resposta volta para a barra.
         void AndouNoOrbe(string passo, string? ferramenta) => orbe.MostrarEstado(passo, ferramenta);
         void RespondeuNoOrbe(string texto) => orbe.ResponderTurno(texto);
+
+        // O contador da barra. O evento pode chegar de fora da thread da interface.
+        void ContouNoOrbe(TokenReport r) => orbe.Dispatcher.BeginInvoke(() => orbe.MostrarTokens(r));
 
         if (doOrbe != null)
         {
             doOrbe.PassoMudou += AndouNoOrbe;
             doOrbe.Respondeu += RespondeuNoOrbe;
+            doOrbe.Conversa.OnTokenCountChanged += ContouNoOrbe;
+            orbe.MostrarTokens(doOrbe.Conversa.CurrentTokenReport);
+
+            // A conversa do orbe continua de onde parou, e a pilha também: reiniciado o AIB, o
+            // modelo lembrava de tudo e a barra abria vazia, como se a conversa tivesse sumido.
+            // Sem o carimbo de dia e hora: ele é para o modelo, a bolha mostra o que foi digitado.
+            orbe.RestaurarFalas(doOrbe.Conversa.UltimasFalas(FalasAoReabrir, int.MaxValue)
+                .Select(f => (f.DoUsuario, f.DoUsuario ? ConversaDoOrbe.SemCarimbo(f.Texto) : f.Texto)));
         }
 
         // O clique num item da pilha leva ao MESMO lugar que a lista da área central: o e-mail
@@ -199,6 +222,11 @@ public partial class App : System.Windows.Application
 
         void Concluiu(string texto)
         {
+            // Com conversa própria, a pilha do orbe é DELA: a resposta da janela entrava ali
+            // quando a janela era fechada no meio do turno, misturada a outra conversa — e
+            // responder a ela pela barra ia para um modelo que nunca a tinha dito.
+            if (doOrbe != null) return;
+
             // O anel já parou: o passo vazio chega imediatamente antes deste evento. O que
             // sobra decidir aqui é só se a resposta tem de ser DITA outra vez no orbe.
             if (ShadowAssistantWindow.OrbeDeveFalar(conversa.TurnoVeioDoOrbe, conversa.IsVisible))
@@ -206,6 +234,7 @@ public partial class App : System.Windows.Application
         }
 
         orbe.MensagemEnviada += Enviou;
+        orbe.ParadaPedida += Parou;
         orbe.EmailEscolhido += EscolheuEmail;
         conversa.PassoDoTurnoMudou += Andou;
         conversa.TurnoConcluido += Concluiu;
@@ -216,8 +245,10 @@ public partial class App : System.Windows.Application
             {
                 doOrbe.PassoMudou -= AndouNoOrbe;
                 doOrbe.Respondeu -= RespondeuNoOrbe;
+                doOrbe.Conversa.OnTokenCountChanged -= ContouNoOrbe;
             }
             orbe.MensagemEnviada -= Enviou;
+            orbe.ParadaPedida -= Parou;
             orbe.EmailEscolhido -= EscolheuEmail;
             conversa.PassoDoTurnoMudou -= Andou;
             conversa.TurnoConcluido -= Concluiu;
@@ -292,17 +323,31 @@ public partial class App : System.Windows.Application
     private void IniciarAgenda()
     {
         _lembretes = new Lembretes();
-        _iniciativa = new Iniciativa();
+        string personagem = _settingsService.LoadSettings().ActiveCharacter;
+        _iniciativa = new Iniciativa(personagem: personagem, temperamento: TemperamentoDe(personagem));
+        _statusLidoUtc = _status.AlteradoUtc;
+
+        // O afeto anda com o desfecho de cada conversa. O arquivo de status muda, e a batida
+        // seguinte relê o temperamento (AcompanharPersonagem).
+        _iniciativa.AfetoMoveu += passo => _status.Mover(
+            _iniciativa.Personagem, passo,
+            ConversationService.PerfilDoPersonagem(_iniciativa.Personagem)?.Atributos?.Afeto ?? 0);
 
         // Conversa na janela: só deixa a hora como recente — ele está ocupado com outra coisa,
         // não respondendo a ela.
-        _chatWindow!.TurnoConcluido += _ => _ultimaConversaUtc = DateTime.UtcNow;
+        _chatWindow!.TurnoConcluido += _ =>
+        {
+            _ultimaConversaUtc = DateTime.UtcNow;
+            _iniciativa.Contato(DateTime.UtcNow);
+        };
 
         // Conversa no orbe: é a resposta à iniciativa, se havia uma esperando — e quanto ele
-        // conversou, e se foi um "agora não", é o que ela aprende.
+        // conversou, e se foi um "agora não", é o que ela aprende. Sem fala esperando, é ele
+        // puxando conversa, e isso também sobe a chance.
         _conversaDoOrbe.UsuarioFalou += texto =>
         {
             _ultimaConversaUtc = DateTime.UtcNow;
+            AcompanharPersonagem(_settingsService.LoadSettings().ActiveCharacter);
             _iniciativa.UsuarioFalou(DateTime.UtcNow, texto);
         };
 
@@ -323,6 +368,30 @@ public partial class App : System.Windows.Application
     private DateTime? _ultimaConversaUtc;
     private bool _ponderando;
 
+    private readonly StatusDosPersonagens _status = new();
+    private DateTime _statusLidoUtc;
+
+    /// <summary>
+    /// Os atributos do arquivo de status; o personagem que não está lá entra com os padrões do
+    /// info.json dele.
+    /// </summary>
+    private Temperamento TemperamentoDe(string? personagem) =>
+        Temperamento.De(_status.De(personagem, ConversationService.PerfilDoPersonagem(personagem)?.Atributos));
+
+    /// <summary>
+    /// O vínculo é por personagem: trocado nas configurações, a iniciativa passa a usar o do
+    /// novo, com o temperamento dele. Só lê o arquivo de status quando o nome muda ou o arquivo
+    /// foi mexido: a edição à mão passa a valer na batida seguinte, sem reiniciar.
+    /// </summary>
+    private void AcompanharPersonagem(string? personagem)
+    {
+        string nome = (personagem ?? "").Trim();
+        if (nome == _iniciativa.Personagem && _status.AlteradoUtc == _statusLidoUtc) return;
+
+        _iniciativa.Trocar(nome, TemperamentoDe(nome));
+        _statusLidoUtc = _status.AlteradoUtc;
+    }
+
     /// <summary>
     /// A cada batida, vê se a persona pode puxar assunto; podendo, sorteia (de 10 em 10 min) e,
     /// acertando, pergunta ao modelo se ela quer, e o quê. As condições e o sorteio são baratos e
@@ -338,6 +407,8 @@ public partial class App : System.Windows.Application
 
         var s = _settingsService.LoadSettings();
         if (!s.IniciativaLigada) return;
+
+        AcompanharPersonagem(s.ActiveCharacter);
 
         var agora = DateTime.Now;
         var utc = DateTime.UtcNow;
@@ -360,7 +431,8 @@ public partial class App : System.Windows.Application
             // O sorteio decidiu que ela fala; o código escolhe o gancho, e ela só escreve.
             var conversa = _conversaDoOrbe.Conversa;
             var (pendencias, fatos) = conversa.GanchosDisponiveis();
-            var gancho = Iniciativa.EscolherGancho(pendencias, fatos, _iniciativa.Estado.GanchosRecentes, Random.Shared);
+            var gancho = Iniciativa.EscolherGancho(pendencias, fatos, _iniciativa.Estado.GanchosRecentes, Random.Shared,
+                                                   _iniciativa.Temperamento.Curiosidade);
 
             var contexto = new ConversationService.ContextoDaIniciativa(
                 s.NomeDoUsuario,
@@ -465,6 +537,10 @@ public partial class App : System.Windows.Application
             DirectoryService.ApplyFromSettings(settings);
             // ApplyFromSettings pode ter movido o diretório de dados: o cache aponta para o caminho antigo.
             _settingsService.InvalidateCache();
+
+            // Antes de qualquer serviço abrir a memória: o que ainda está em texto claro (os
+            // arquivos de antes da cifra) é regravado cifrado. Depois da primeira vez, só confere.
+            AIB.Services.Memory.CifraDaMemoria.Migrar();
 
             // Portão humano ligado aqui: é o único lugar do app onde existe UI para pedir
             // autorização. Sem este argumento o registry recusa toda ferramenta destrutiva.
@@ -685,6 +761,10 @@ public partial class App : System.Windows.Application
 
         // Provedor com chave e sem a chave DELE no cofre. Leitura estrita: a busca global do
         // cofre acharia a chave de outro serviço e daria o arranque por concluído.
+        // Só para o OpenRouter: é a única chave que a tela de primeiro arranque sabe pedir. O
+        // Google sem chave fica para o erro do primeiro turno, que diz onde configurar.
+        if (s.AiProvider != ProvedoresDeIa.OpenRouter) return false;
+
         string? sistema = ProvedoresDeIa.SistemaDaChave(s.AiProvider);
         return sistema != null && CredentialService.LerDoSistema(sistema, ProvedoresDeIa.NomeDaChave) == null;
     }

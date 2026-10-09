@@ -11,6 +11,11 @@ fatos duráveis (facts.md) — atravessam conversas
 
 O que sai do prompt **não sai do disco**: `raw.jsonl` guarda todos os turnos, para sempre.
 
+Os arquivos da memória são **cifrados por linha** (`ArquivoCifrado`, DPAPI da conta do Windows):
+`raw.jsonl`, `chapters.jsonl`, `acts.jsonl`, `facts.md`, `facts.index.jsonl` e o
+`turno-aberto.json`. Ver "Cifra dos dados" em `07-configuracoes-e-dados.md`, inclusive a
+exportação em texto claro, que é o backup.
+
 Arquivos (todos em `AIBWindows/Services/Memory/`, salvo indicação):
 
 | Papel | Arquivo |
@@ -72,7 +77,9 @@ Exemplo: nível 1, janela 32.768, prefixo de 3.000 tokens → disponível 5.192;
 ### 2.3 Gatilho e alvo
 
 - **Gatilho** (`MemoryBudget.CompactionThreshold`): `viva × CompactionTrigger`, padrão 0,85 (saneado entre 0,50 e 0,99). Não é 1,0 de propósito: tem de disparar antes de a poda de emergência entrar e comer as mensagens que o capítulo iria resumir. No exemplo acima: 3.309.
-- **Alvo** (`LimitesDoProvedor.AlvoDepoisDeCompactar`): depois de compactar, a conversa viva cai para 0,5 da cota viva no Ollama e 0,3 no OpenRouter. Compactar só até encostar no gatilho faria a próxima compactação disparar quase junto — e cada compactação reescreve o começo do prompt (prefill frio no Ollama, cache perdido e pago no OpenRouter).
+- **Teto de tokens soltos** (`TokensSoltos`, padrão 100.000, saneado 8.000–1.000.000): o gatilho de tokens é o MENOR entre a fração acima e este teto (`CompactionThreshold(quota, fração, tokensSoltos)`). A fração protege a janela pequena; o teto, o custo em janela grande — num modelo de 1 M de janela os 85% nunca chegavam, e uma sessão de navegador reenviou 165 mil tokens a cada requisição.
+- **Turnos soltos** (`TurnosSoltos`, padrão 20, saneado 4–200): com este tanto de turnos fechados fora de capítulo (`TurnosSoltosAgora`), fecha UM capítulo, mesmo com a conversa leve.
+- **Alvo** (`LimitesDoProvedor.AlvoDepoisDeCompactar`): depois de compactar por tokens, a conversa viva cai para 0,5 (Ollama) ou 0,3 (OpenRouter) do menor entre a cota viva e `TokensSoltos`. Compactar só até encostar no gatilho faria a próxima compactação disparar quase junto — e cada compactação reescreve o começo do prompt (prefill frio no Ollama, cache perdido e pago no OpenRouter).
 
 ---
 
@@ -81,7 +88,7 @@ Exemplo: nível 1, janela 32.768, prefixo de 3.000 tokens → disponível 5.192;
 ### 3.1 Automática (`CompactIfNeededAsync`)
 
 - No `finally` de `StreamResponseAsync`, ainda com o portão do turno, **só se o turno não foi cancelado**. Nunca no meio de uma cadeia de ferramentas.
-- Em laço: enquanto `LiveTokens()` (tudo menos as mensagens de sistema do começo) passar do gatilho, seleciona turnos e fecha um capítulo. Até `MaxCapitulosPorPassada` = 10 por passada (cada capítulo é uma chamada ao modelo); o que sobra fica para o fim do turno seguinte, e o diário registra.
+- Em laço: enquanto `LiveTokens()` (tudo menos as mensagens de sistema do começo) passar do gatilho, seleciona turnos e fecha um capítulo. Disparado o gatilho de tokens, a passada continua até o **alvo**, e não só até ficar abaixo do gatilho: um capítulo que fecha no teto de turnos ou de tokens deixaria a conversa encostada no gatilho e o turno seguinte compactaria de novo, perdendo o cache do prompt a cada vez. O gatilho de turnos soltos fecha um capítulo só e tem linha própria no diário (`GatilhoDeTurnos`). Até `MaxCapitulosPorPassada` = 10 por passada (cada capítulo é uma chamada ao modelo); o que sobra fica para o fim do turno seguinte, e o diário registra.
 - Sem turno elegível: registra `PULOU` com a causa ("os recentes curtos ficam fora…").
 - **Falha ou cancelamento** põe a compactação em descanso por `CompactionCooldownTurns` = 3 turnos. A compactação segura o portão, então uma compactação lenta que falha a cada turno transformaria toda mensagem numa espera de minutos. Enquanto isso, a poda de emergência cuida do contexto.
 - A chamada de resumo **não tem prazo**. Já teve (quatro minutos) e cortava trabalho válido. Quem desiste é o usuário: `InterromperCompactacao` cancela `_desistencia`, e os eventos `CompactacaoAndou`/`CompactacaoAcabou` alimentam a faixa de sistema. Interromper não perde nada: os turnos só saem do contexto **depois** de o capítulo existir.
@@ -321,8 +328,8 @@ Os pedidos do usuário que carregam **valor**, copiados por código. Motivo: o u
 - **Fatos sobre o usuário** (`remember`, `LembrarTool`): a persona grava na hora, pelo mesmo
   `Promote`, o que o usuário contou sobre si — `- sobre o usuário: …`, chave `usuario|<frase em
   minúsculas>`. Passam pelo mesmo índice (apagado não volta), têm teto de 60 linhas para não
-  empurrar os fatos de trabalho para fora da cota, e são recusados com texto de terceiros no
-  contexto. Entram no prompt na próxima montagem da memória (capítulo ou ato novo, ou conversa
+  empurrar os fatos de trabalho para fora da cota, e com texto de terceiros no
+  contexto só entram pelo cartão de confirmação, que mostra o fato inteiro. Entram no prompt na próxima montagem da memória (capítulo ou ato novo, ou conversa
   nova); na conversa em que foram ditos, o modelo já os tem no histórico.
 - No prompt (`FactStore.Render`): só linhas que começam com `- `, relidas do disco a cada montagem; corte **do fim para o começo** (a ordem é a do usuário, o topo é o que ele quer garantir), dentro de `quota.Facts`.
 

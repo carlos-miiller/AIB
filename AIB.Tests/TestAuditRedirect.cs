@@ -41,6 +41,18 @@ namespace AIB.Tests
 
             Directory.CreateDirectory(historico);
             ChatHistoryService.HistoryDirectoryOverride = historico;
+
+            // Os fatos, pelo mesmo motivo: a aba Memória lê e regrava o facts.md, e a tela de
+            // ensaio abriria (e ao salvar, reescreveria) o do usuário.
+            string fatos = Path.Combine(Path.GetTempPath(), "AIB_TestFatos_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(fatos);
+            AIB.Services.Memory.FactStore.RaizPadrao = fatos;
+
+            // O arquivo de status, que o prompt de sistema lê para o afeto: sem desviar, o
+            // prompt de todo ensaio dependeria do afeto que o usuário tem hoje.
+            string status = Path.Combine(Path.GetTempPath(), "AIB_TestStatus_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(status);
+            StatusDosPersonagens.RaizPadrao = status;
         }
     }
 }

@@ -329,6 +329,25 @@ public sealed class UserAppSettings
     /// </summary>
     public bool MemoriaComModelo { get; set; } = PadraoDaMemoriaComModelo;
 
+    public const int PadraoDeTurnosSoltos = 20;
+
+    /// <summary>
+    /// Com este tanto de turnos fora de capítulo, a conversa compacta — qualquer que seja a
+    /// janela do modelo. Decisão do usuário, junto com <see cref="TokensSoltos"/>: o gatilho por
+    /// fração da janela nunca disparava num modelo de janela enorme, e uma sessão de navegador
+    /// chegou a reenviar 165 mil tokens a cada requisição.
+    /// </summary>
+    public int TurnosSoltos { get; set; } = PadraoDeTurnosSoltos;
+
+    public const int PadraoDeTokensSoltos = 100_000;
+
+    /// <summary>
+    /// Com este tanto de tokens fora de capítulo, a conversa compacta. Vale o menor entre este
+    /// e a fração da cota viva (<see cref="CompactionTrigger"/>), que continua sendo o que
+    /// protege o modelo de janela pequena.
+    /// </summary>
+    public int TokensSoltos { get; set; } = PadraoDeTokensSoltos;
+
     /// <summary>Era 8; o usuário subiu para 15: capítulos maiores, menos compactações.</summary>
     public const int PadraoDeTurnosPorCapitulo = 15;
 
@@ -544,6 +563,8 @@ public sealed class UserAppSettings
         TurnosPorCapitulo = Entre(TurnosPorCapitulo <= 0 ? PadraoDeTurnosPorCapitulo : TurnosPorCapitulo, 2, 20);
         TokensPorCapitulo = Entre(
             TokensPorCapitulo <= 0 ? PadraoDeTokensPorCapitulo : TokensPorCapitulo, 4_000, 60_000);
+        TurnosSoltos = Entre(TurnosSoltos <= 0 ? PadraoDeTurnosSoltos : TurnosSoltos, 4, 200);
+        TokensSoltos = Entre(TokensSoltos <= 0 ? PadraoDeTokensSoltos : TokensSoltos, 8_000, 1_000_000);
         CapitulosPorAto = CapitulosPorAto <= 0 ? 0 : Entre(CapitulosPorAto, 2, 24);
         EsconderResultadosDepoisDe = EsconderResultadosDepoisDe <= 0 ? 0 : Entre(EsconderResultadosDepoisDe, 2, 50);
         ShadowMailPreviewCount = Entre(ShadowMailPreviewCount, 1, 10);

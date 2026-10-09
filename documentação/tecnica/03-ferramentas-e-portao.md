@@ -39,8 +39,8 @@ Renomear uma ferramenta é mudar só a constante.
 | `browser` (`Navegador`) | `BrowserTool` | 2 | **por ação** (`PedeConfirmacao`) — ler não pergunta; clicar e digitar perguntam, com "sempre" por site; site novo pergunta uma vez | Navegador (Edge, perfil próprio, logado pelo usuário): abre, lê a vista, procura, lê tabela, clica, digita (§7). |
 | `mail` (`Email`) | `ConsultarEmailsTool` | 1 | não | Consulta o diário da triagem de e-mail (disco, não o servidor). |
 | `mail_read` (`LerEmail`) | `LerEmailTool` | 1 | não | Relê no servidor o e-mail da conversa aberta (somente leitura). |
-| `remember` (`Lembrar`) | `LembrarTool` | 1 | não — mas **recusada com texto de terceiros no contexto** (`SoComFalaDoUsuario`) | Guarda no `facts.md` um fato que o usuário contou sobre si (`- sobre o usuário: …`). Sem segredo, uma frase (200), teto de 60. Na tela vira o aviso "<persona> lembrará disso…", fora da cadeia de ações. |
-| `remind` (`Lembrete`) | `LembreteTool` | 1 | não — mas **recusada com texto de terceiros no contexto** | Lembrete único: `create` (`at` "HH:mm" — já passou, é amanhã — ou "yyyy-MM-dd HH:mm"; ou `in_minutes`; `text` é a fala da persona na hora), `list`, `cancel` por `id`. Grava em `~/.AIB/lembretes.json` (`Lembretes`, teto 50, até um ano). Quem entrega é a agenda do `App`, sem chamar o modelo. |
+| `remember` (`Lembrar`) | `LembrarTool` | 1 | não — mas **com texto de terceiros no contexto vai ao cartão** (`SoComFalaDoUsuario`: `GUARDAR NA MEMÓRIA: "fato"`, sem "sempre"; sem interface, recusa) | Guarda no `facts.md` um fato que o usuário contou sobre si (`- sobre o usuário: …`). Sem segredo, uma frase (200), teto de 60. Na tela vira o aviso "<persona> lembrará disso…", fora da cadeia de ações. |
+| `remind` (`Lembrete`) | `LembreteTool` | 1 | não — mas **com texto de terceiros no contexto, criar e cancelar vão ao cartão** (`PedeFalaDoUsuario`; listar não) | Lembrete único: `create` (`at` "HH:mm" — já passou, é amanhã — ou "yyyy-MM-dd HH:mm"; ou `in_minutes`; `text` é a fala da persona na hora), `list`, `cancel` por `id`. Grava em `~/.AIB/lembretes.json` (`Lembretes`, teto 50, até um ano). Quem entrega é a agenda do `App`, sem chamar o modelo. |
 
 Detalhes de registro:
 
@@ -260,9 +260,12 @@ O foco nasce em **Recusar**: Enter sem ler não executa nada. Os botões travam 
   uma autorização dada com outro contexto não cobre o que esse texto pode ter pedido. Exceção:
   `ctx.SempreApesarDeTerceiros` (só o `browser`), que vale com a página no contexto — é a página que
   o usuário liberou — mas **não com e-mail** (`ToolRegistry.EmailNoContexto`).
-- `ctx.SemSempre`: nunca entra nem é consultado. O `browser` marca botão que decide (apagar,
-  concluir, enviar, pagar…, e botão que envia formulário), Enter fora de caixa de busca e abrir
-  site novo.
+- `ctx.SemSempre`: nunca entra nem é consultado. O `browser` marca Enter fora de caixa de busca,
+  abrir site novo, anotar, e botão que decide **sem texto**.
+- `ctx.SempreSegurando` (só o `browser`): botão que decide (apagar, concluir, enviar, aprovar,
+  pagar…, ou que envia formulário) aceita "sempre", mas com chave própria
+  `site:<domínio>|<papel> <texto>` — vale para aquele rótulo naquele site, o "sempre" do site não
+  o cobre — e a caixa só marca segurando o clique por 5 s (`ConfirmCardView.EsperaDoSempre`).
 - `Listar()`/`Quantos` existem para a tela mostrar o que está autorizado.
 
 ---
@@ -592,9 +595,11 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
 | `type` | sim — `DIGITAR "texto" em [ref] <campo> [e apertar Enter] em <domínio>`; "sempre" vale para o site |
 | `note` | sim, **toda vez** — `ANOTAR na página /x/{n}/ de <domínio>: "texto"` (ou `no site inteiro`) |
 
-Pergunta **toda vez** (`SemSempre`): botão cujo nome decide algo (excluir, apagar, concluir,
-enviar, salvar, pagar, comprar, confirmar, aprovar, publicar, cancelar…), botão que envia
-formulário, e Enter em campo que não é busca/filtro. A frase do cartão leva a ref com a versão: se
+Botão cujo nome decide algo (excluir, apagar, concluir, enviar, salvar, pagar, comprar,
+confirmar, aprovar, publicar, cancelar…) ou que envia formulário fica fora do "sempre" do site:
+tem um "sempre" próprio, daquele botão naquele site, marcado segurando a caixa por 5 s
+(`SempreSegurando`). Sem texto no botão, pergunta **toda vez** (`SemSempre`), como o Enter em
+campo que não é busca/filtro. A frase do cartão leva a ref com a versão: se
 a página mudou entre o cartão e o clique, a execução recusa.
 
 **Anotações por site** (`AnotacoesDeSite`): o `facts.md` dos sites. Uma pasta por site em

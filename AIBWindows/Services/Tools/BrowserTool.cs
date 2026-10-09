@@ -43,6 +43,10 @@ public sealed class BrowserTool : ITool
     public BrowserTool(INavegador navegador, SitesLiberados sites, AnotacoesDeSite notas)
     {
         _navegador = navegador;
+
+        // O chip e o registro de ações mostram o nome do elemento, não a ref (NomesDeElemento).
+        NomesDeElemento.Fonte = refe =>
+            _navegador.Atual?.Resolver(refe).No is { } no ? (no.Ref, NomesDeElemento.Nome(no)) : null;
         _sites = sites;
         _notas = notas;
     }
@@ -211,7 +215,7 @@ public sealed class BrowserTool : ITool
         var (p, _) = Ler(argumentsJson);
         if (p == null) return null;
 
-        string? descricao = Descrever(p, out bool semSempre, out string site);
+        string? descricao = Descrever(p, out bool semSempre, out string site, out string? decisivo);
         if (descricao == null) return null;
 
         return new CommandConfirmationContext
@@ -219,8 +223,11 @@ public sealed class BrowserTool : ITool
             Tool = Name,
             Command = descricao,
             Level = userLevel,
-            ChaveDeSempre = "site:" + site,
+            // Botão que decide tem chave própria: o "sempre" do site não o cobre, e o dele não
+            // cobre outro botão.
+            ChaveDeSempre = decisivo == null ? "site:" + site : $"site:{site}|{decisivo}",
             SemSempre = semSempre,
+            SempreSegurando = decisivo != null,
             SempreApesarDeTerceiros = true,
             Aviso = p.Acao == "open"
                 ? "Site novo. Ao permitir, ele fica liberado: abrir e ler nele deixam de perguntar."
@@ -232,10 +239,15 @@ public sealed class BrowserTool : ITool
     /// A frase do cartão, que a execução confere de novo. Leva a ref com a versão da leitura: se
     /// a página mudou entre o cartão e o clique, a frase não bate e nada é feito.
     /// </summary>
-    private string? Descrever(Pedido p, out bool semSempre, out string site)
+    /// <param name="decisivo">
+    /// Papel e texto do botão que decide algo, ou null. Com ele o "sempre" existe, mas vale só
+    /// para aquele botão e só segurando a caixa (<see cref="CommandConfirmationContext.SempreSegurando"/>).
+    /// </param>
+    private string? Descrever(Pedido p, out bool semSempre, out string site, out string? decisivo)
     {
         semSempre = false;
         site = "";
+        decisivo = null;
 
         if (p.Acao == "open")
         {
@@ -264,7 +276,14 @@ public sealed class BrowserTool : ITool
 
         if (p.Acao == "click")
         {
-            semSempre = no.Envia || Decisivo.IsMatch(no.Texto);
+            // Botão que decide perguntava TODA vez, sem saída: aprovar 40 solicitações iguais
+            // eram 80 cartões. Agora aceita "sempre" para aquele rótulo, com o gesto de segurar.
+            // Sem texto não há como dizer qual botão é: continua perguntando toda vez.
+            if (no.Envia || Decisivo.IsMatch(no.Texto))
+            {
+                if (no.Texto.Length > 0) decisivo = $"{no.Papel} {no.Texto}";
+                else semSempre = true;
+            }
             string oque = no.Texto.Length > 0 ? $"{no.Papel} \"{Curto(no.Texto, 120)}\"" : no.Papel;
             string envia = no.Envia ? " (envia formulário)" : "";
             return $"CLICAR [{no.Ref}] {oque}{envia} em {site}";
@@ -301,7 +320,7 @@ public sealed class BrowserTool : ITool
         if (PedeConfirmacao(argumentsJson))
         {
             if (autorizado == null) return "ERRO: esta ação precisa de autorização e não recebeu nenhuma. Nada foi feito.";
-            string? agora = Descrever(p, out _, out _);
+            string? agora = Descrever(p, out _, out _, out _);
             if (!string.Equals(agora, autorizado.Command, StringComparison.Ordinal))
                 return $"ERRO: a página mudou desde a autorização (era \"{autorizado.Command}\"). Nada foi feito; leia de novo com view.";
         }

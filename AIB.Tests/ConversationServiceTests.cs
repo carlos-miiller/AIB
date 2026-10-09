@@ -364,6 +364,71 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task PassadoOGatilho_APassadaDesceAteOAlvo_ENaoSoAteOGatilho()
+        {
+            // Visto no orbe: 102.919 tokens vivos contra o gatilho de 100 mil. O capítulo fechou
+            // no teto de tokens com um turno só, a conversa ficou em 93.747 — abaixo do gatilho —
+            // e a passada parou. Os dois turnos seguintes compactaram de novo, cada um perdendo
+            // o cache do prompt inteiro. O alvo era 30% do teto.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var s = settings.LoadSettings();
+            s.TurnosPorCapitulo = 2;
+            settings.SaveSettings(s.Sanear());
+
+            var provider = new FakeProvider { CompleteReply = "Resumo do trecho." };
+            var conversation = BuildConversation(settings, provider, out _);
+
+            // No nível 1 a cota viva fica perto de 7 mil tokens: gatilho em uns 5.900 (85%) e
+            // alvo em uns 3.500 (metade). Quinze turnos de uns 430 tokens passam do gatilho, e
+            // cada capítulo só leva dois: o primeiro já deixa a conversa abaixo dele.
+            for (int i = 0; i < 15; i++)
+                conversation.AppendRecoveredContext($"pedido {i}", Filler(3200));
+
+            await conversation.CompactIfNeededAsync(userLevel: 1);
+
+            conversation.Chapters.Count.Should().BeGreaterThan(1,
+                "um capítulo só deixa a conversa encostada no gatilho, e o turno seguinte compacta de novo");
+            conversation.CurrentTokenReport.Contexto.Should().BeLessThan(4_600,
+                "a passada desce até perto do alvo, e não só até abaixo do gatilho");
+        }
+
+        // Pedido: "no lugar de ser % do modelo, que tal fazermos em 20 turnos ou 100k de tokens
+        // soltos (fora de capítulos)". Caso real: numa sessão de navegador com modelo de janela
+        // enorme, os 85% da cota nunca chegaram e cada requisição reenviava 165 mil tokens.
+        [Fact]
+        public async Task VinteTurnosSoltos_FechamUmCapitulo_MesmoComAConversaLeve()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = new FakeProvider { CompleteReply = "Resumo do trecho." };
+            var conversation = BuildConversation(settings, provider, out _);
+
+            // Turnos de poucas palavras: longe de qualquer gatilho de tokens.
+            for (int i = 0; i < UserAppSettings.PadraoDeTurnosSoltos - 1; i++)
+                conversation.AppendRecoveredContext($"pedido {i}", "ok");
+
+            await conversation.CompactIfNeededAsync(userLevel: 1);
+            conversation.Chapters.Should().BeEmpty("dezenove turnos ainda não são vinte");
+
+            conversation.AppendRecoveredContext("pedido 19", "ok");
+            await conversation.CompactIfNeededAsync(userLevel: 1);
+
+            var capitulo = conversation.Chapters.Should().ContainSingle("o gatilho de turnos fecha um capítulo só").Subject;
+            (capitulo.LastTurn - capitulo.FirstTurn + 1).Should().BeLessThanOrEqualTo(UserAppSettings.PadraoDeTurnosPorCapitulo);
+        }
+
+        [Fact]
+        public void OGatilhoDeTokens_EhOMenorEntreAFracaoDaCotaEOTetoDeSoltos()
+        {
+            // Janela grande: 85% de 800 mil nunca chega; o teto de 100 mil manda.
+            var grande = new AIB.Services.Memory.MemoryQuota(0, 0, 0, 800_000);
+            AIB.Services.Memory.MemoryBudget.CompactionThreshold(grande, 0.85, 100_000).Should().Be(100_000);
+
+            // Janela pequena: o teto absoluto não pode empurrar o gatilho para depois do estouro.
+            var pequena = new AIB.Services.Memory.MemoryQuota(0, 0, 0, 4_000);
+            AIB.Services.Memory.MemoryBudget.CompactionThreshold(pequena, 0.85, 100_000).Should().Be(3_400);
+        }
+
+        [Fact]
         public async Task OCapitulo_FECHA_NoTetoDeTOKENS_AntesDoTetoDeTurnos()
         {
             // Contar turnos não mede trabalho. Numa sessão real, 8 turnos carregavam 95.164
@@ -741,7 +806,7 @@ namespace AIB.Tests
 
             await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
 
             linhas.Should().ContainSingle();
             linhas[0].Should().Contain("oi").And.Contain("olá");
@@ -761,7 +826,7 @@ namespace AIB.Tests
             await foreach (var _ in conversation.StreamResponseAsync("primeira")) { }
             await foreach (var _ in conversation.StreamResponseAsync("segunda")) { }
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
 
             linhas.Should().HaveCount(2);
             linhas[0].Should().Contain("\"Index\":0");
@@ -789,7 +854,7 @@ namespace AIB.Tests
             string caminho = Path.Combine(conversation.SessionMemoryDir, "raw.jsonl");
             File.Exists(caminho).Should().BeTrue("o turno aconteceu, e o registro é do que aconteceu");
 
-            string linha = File.ReadAllText(caminho);
+            string linha = Claro.Texto(caminho);
             linha.Should().Contain("oi");
             linha.Should().Contain("turno encerrado sem resposta",
                 "a marca diz POR QUE não houve fala, em vez de deixar um usuário sem resposta");
@@ -879,7 +944,7 @@ namespace AIB.Tests
             // O que saiu do contexto vivo continua em disco.
             var turnosVivos = conversation.SnapshotHistory().Count(m => m is UserChatMessage);
             turnosVivos.Should().BeLessThan(turnos, "os turnos antigos viraram capítulo");
-            File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
+            Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
                 .Should().HaveCount(turnos, "raw.jsonl nunca perde turno");
         }
 
@@ -956,7 +1021,7 @@ namespace AIB.Tests
 
             await ConversarAteCompactar(conversation);
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"));
 
             linhas.Should().ContainSingle();
             linhas[0].Should().Contain("\"Index\":0");
@@ -1357,6 +1422,9 @@ namespace AIB.Tests
             // número é 2 para o ensaio exercitar a promoção sem depender do padrão do provedor.
             var s = settings.LoadSettings();
             s.CapitulosPorAto = 2;
+            // Sem o gatilho de turnos soltos: aos 20 ele fecharia um capítulo no caminho, e o
+            // ensaio é do COMANDO fechando vários de uma vez.
+            s.TurnosSoltos = 200;
             settings.SaveSettings(s.Sanear());
 
             var conversation = BuildConversation(settings, provider, out _);
@@ -1618,7 +1686,7 @@ namespace AIB.Tests
             fala.TokensDoCache.Should().BeNull("o Ollama não relata cache, e previsão não é medida");
             fala.Provedor.Should().BeNull();
             conversation.MemoriaEmTexto(1).Should().NotContain("cache").And.NotContain("Provedores");
-            File.ReadAllText(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
+            Claro.Texto(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
                 .Should().NotContainEquivalentOf("TokensDoCache").And.NotContainEquivalentOf("\"Provedor\"");
         }
 
@@ -1693,7 +1761,7 @@ namespace AIB.Tests
 
             string arquivo = Path.Combine(conversation.SessionMemoryDir, "turno-aberto.json");
             File.Exists(arquivo).Should().BeTrue("se o AIB cair agora, é o que sobra do turno");
-            File.ReadAllText(arquivo).Should().Contain("pergunta demorada");
+            Claro.Texto(arquivo).Should().Contain("pergunta demorada");
 
             provider.Liberar.SetResult();
             await turno.WaitAsync(TimeSpan.FromSeconds(10));
@@ -1832,7 +1900,7 @@ namespace AIB.Tests
             string arquivo = System.IO.Path.Combine(conversation.SessionMemoryDir, "raw.jsonl");
             System.IO.File.Exists(arquivo).Should().BeTrue();
 
-            string bruto = System.IO.File.ReadAllText(arquivo);
+            string bruto = Claro.Texto(arquivo);
             bruto.Should().Contain("primeira pergunta");
             bruto.Should().Contain("segunda pergunta", "o turno pulado não pode levar os outros junto");
         }
@@ -1997,7 +2065,7 @@ namespace AIB.Tests
 
             await ConversarAteFecharAto(conversation);
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "acts.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "acts.jsonl"));
 
             linhas.Should().ContainSingle();
             linhas[0].Should().Contain("\"Index\":0");
@@ -2013,7 +2081,7 @@ namespace AIB.Tests
 
             await ConversarAteFecharAto(conversation);
 
-            File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"))
+            Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"))
                 .Length.Should().BeGreaterThanOrEqualTo(
                     conversation.Acts[0].LastChapter + 1,
                     "todo capítulo coberto pelo ato continua gravado");
@@ -2327,7 +2395,7 @@ namespace AIB.Tests
             ChatHistoryService.ConversasDoUsuario().Should().NotContain(c => c.Content.Contains(marca));
             // Direto em memory/, e não em memory/sessions/: é uma só, não uma sessão entre muitas.
             orbe.SessionMemoryDir.Should().Be(Path.Combine(_dir, "memory", "shadow"));
-            File.ReadAllText(Path.Combine(orbe.SessionMemoryDir, "raw.jsonl")).Should().Contain(marca, "raw.jsonl guarda tudo");
+            Claro.Texto(Path.Combine(orbe.SessionMemoryDir, "raw.jsonl")).Should().Contain(marca, "raw.jsonl guarda tudo");
         }
 
         [Fact]
@@ -2341,6 +2409,23 @@ namespace AIB.Tests
 
             reaberta.SnapshotHistory().OfType<UserChatMessage>().Select(TextOf)
                 .Should().Contain(t => t.Contains("meu servidor caiu"), "uma conversa só, que nunca termina");
+        }
+
+        // Bug: reiniciado o AIB, a barra do orbe abria vazia. O modelo lembrava (o teste acima),
+        // mas ninguém devolvia as falas à pilha. É daqui que o orbe as tira no arranque.
+        [Fact]
+        public async Task AConversaDoOrbe_DevolveAsFalasParaAPilha_NoArranqueSeguinte()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var primeira = ConversaDoOrbe(settings, new FakeProvider());
+            await foreach (var _ in primeira.StreamResponseAsync("meu servidor caiu", _ => { })) { }
+
+            var falas = ConversaDoOrbe(settings, new FakeProvider()).UltimasFalas(12, int.MaxValue);
+
+            falas.Should().HaveCount(2);
+            falas[0].Should().Be((true, "meu servidor caiu"));
+            falas[1].DoUsuario.Should().BeFalse();
+            falas[1].Texto.Should().NotBeEmpty().And.NotContain("<think>");
         }
 
         [Fact]

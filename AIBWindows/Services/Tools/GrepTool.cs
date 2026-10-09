@@ -272,7 +272,9 @@ public sealed class GrepTool : ITool
                 catch { yield break; }
 
                 if (linha == null) yield break;
-                yield return linha;
+
+                // Arquivo da memória é cifrado por linha: a busca é no texto, não na cifra.
+                yield return ArquivoCifrado.Abrir(linha);
             }
         }
     }

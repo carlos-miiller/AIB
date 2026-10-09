@@ -87,4 +87,12 @@ public static class MemoryBudget
     /// <summary>Tokens de conversa viva a partir dos quais compensa compactar.</summary>
     public static int CompactionThreshold(MemoryQuota quota, double gatilho = CompactionTrigger) =>
         (int)(quota.Live * gatilho);
+
+    /// <summary>
+    /// O gatilho com o teto absoluto de tokens soltos: o menor dos dois. A fração protege a
+    /// janela pequena; o teto, o bolso em janela grande — com 1 M de janela, 85% dela nunca
+    /// chega, e cada requisição reenvia a conversa inteira.
+    /// </summary>
+    public static int CompactionThreshold(MemoryQuota quota, double gatilho, int tokensSoltos) =>
+        Math.Min(CompactionThreshold(quota, gatilho), tokensSoltos);
 }

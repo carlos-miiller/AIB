@@ -8,7 +8,7 @@ O AIB é um assistente de IA para desktop Windows, escrito em C# sobre .NET 8 e 
 
 Características que moldam o resto do código:
 
-- **Dois provedores de modelo**, e só dois: o Ollama local (`http://127.0.0.1:11434`, API nativa `/api/chat`) e o OpenRouter na nuvem (`https://openrouter.ai/api/v1`). Ver `AIBWindows/Services/ProvedoresDeIa.cs`.
+- **Três provedores de modelo**: o Ollama local (`http://127.0.0.1:11434`, API nativa `/api/chat`), o OpenRouter na nuvem (`https://openrouter.ai/api/v1`) e o Google AI Studio (`https://generativelanguage.googleapis.com/v1beta/openai`, o endpoint do Gemini compatível com a OpenAI). Ver `AIBWindows/Services/ProvedoresDeIa.cs`.
 - **Portão humano**: ferramenta que altera a máquina pede confirmação num cartão dentro da conversa antes de rodar.
 - **Memória hierárquica em disco**: a conversa crua é gravada inteira e nunca apagada; o que vai ao modelo é resumido em capítulos, atos e fatos.
 - **Vigia de e-mail**: um serviço de fundo lê caixas IMAP, em modo somente leitura, e faz a triagem com o modelo.
@@ -43,7 +43,7 @@ O AIB não usa container de injeção de dependência. Todos os serviços de vid
 | `ToolRegistry(confirmationPrompt, settingsService)` | Registro das ferramentas nativas e execução com o portão. |
 | `TokenCounter` | Tokenizador único do processo (criar um é caro). |
 | `RegexToolCallHealer` | Recupera chamadas de ferramenta que modelos pequenos escrevem como texto. |
-| `ChatProviderFactory(httpClient, healer)` | Entrega o provider (Ollama ou OpenRouter) conforme as configurações, com cache por combinação. |
+| `ChatProviderFactory(httpClient, healer)` | Entrega o provider (Ollama, OpenRouter ou Google) conforme as configurações, com cache por combinação. |
 | `AgentLoop(toolRegistry, providerFactory, settingsService, tokenCounter)` | O laço ReAct. |
 | `ConversationService(settings, toolRegistry, agentLoop, tokenCounter, providerFactory)` | Dona do histórico da conversa e da memória. |
 | `ChatWindow(conversation, settingsService)` | A janela de conversa; é também `MainWindow`. |
@@ -70,7 +70,7 @@ Outras decisões que moram no `App`:
 |---|---|
 | `Services/` | A lógica. Serviços transversais: `ConversationService` (conversa, memória, arquivamento), `ToolRegistry` e `Ferramentas` (nomes das ferramentas), `SettingsService`/`UserAppSettings`, `ProvedoresDeIa` (provedores, perfis, limites), `DirectoryService`, `CredentialService`, `LevelService`, `AuditLogService`, `ChatHistoryService`, `ActionLogService` e `ContextService` (o que o painel lateral mostra), `SkillService`, `CommandFloorList`, `PastasSemConfirmacao`, `AlwaysAllowSession`, `ChatTitler`, `TokenCounter`, `RegistroDeExecucao`. |
 | `Services/Agent/` | O turno: `AgentLoop`, `AgentEvent`, `IMessageStore` e `EphemeralMessageStore`, `WarmupService`, `PromptPrefixTracker`, `PulsoDoTurno`. |
-| `Services/Ai/` | Os provedores: `IChatProvider`, `ChatProviderFactory`, `OllamaProvider` (+ `OllamaNativeClient`, que fica em `Services/`), `OpenRouterProvider`, `CatalogoDoOpenRouter`, `ChannelSplitter`, `ChatTemplateSanitizer`, `RegexToolCallHealer`, `StreamChunk`, `ChatRequestOptions`, `RetratoDoEnvio`. |
+| `Services/Ai/` | Os provedores: `IChatProvider`, `ChatProviderFactory`, `OllamaProvider` (+ `OllamaNativeClient`, que fica em `Services/`), `OpenRouterProvider`, `CatalogoDoOpenRouter`, `GoogleProvider`, `ChannelSplitter`, `ChatTemplateSanitizer`, `RegexToolCallHealer`, `StreamChunk`, `ChatRequestOptions`, `RetratoDoEnvio`. |
 | `Services/Memory/` | A memória: `SessionMemory` (arquivos da sessão), `Compactor` (capítulos e atos), `MemoryLayer`, `FactStore`, `ArtifactExtractor`, `Pendencia`, `EstadoDoTrecho`, `RegistroDaCompactacao` e os tipos `Turn`, `TurnRecord`, `Chapter`, `Act`. |
 | `Services/Mail/` | O e-mail: `MailDigestService` (o vigia), `MailKitMailService` (IMAP), `TriadorDeEmail`, `DiarioDeTriagem`, `ArquivoDeConversas`, `ConversasIgnoradas`, `EstadoDasCaixas`, `RegrasDoVigia`, `VigiasDoEmail`, `MailVault`. |
 | `Services/Tools/` | As ferramentas (`ITool`): `ReadFileTool`, `WriteFileTool`, `EditFileTool`, `GlobTool`, `GrepTool`, `RunCommandTool`, `ExecuteSkillTool`, `ConsultarEmailsTool`, `LerEmailTool`, e auxiliares (`PreVooDeCaminho`, `PathArgumentRepair`, `EscritaNoComando`). |
