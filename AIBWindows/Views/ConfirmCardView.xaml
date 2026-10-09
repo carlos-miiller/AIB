@@ -123,16 +123,29 @@
                         Style="{StaticResource OutlineButton}" Padding="18,8"
                         Click="Recusar_Click"/>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal"
-                            HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <CheckBox x:Name="SempreCheck" VerticalAlignment="Center"
+                <!-- Grade, e não StackPanel horizontal: o StackPanel mede o rótulo com largura
+                     infinita, e o rótulo longo ("...neste site (segure 5 s)") não cabia no que
+                     sobrava do cartão — saía por cima dos botões. Aqui o rótulo recebe a largura
+                     que há e quebra linha. -->
+                <Grid Grid.Column="2" VerticalAlignment="Center" Margin="14,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <CheckBox x:Name="SempreCheck" VerticalAlignment="Center" HorizontalAlignment="Right"
                               Foreground="{StaticResource TextMutedBrush}"
                               FontSize="11" Margin="0,0,12,0"
-                              Content="Sempre permitir este comando"/>
-                    <TextBlock x:Name="DicaText" Text="execução pausada"
+                              Content="Sempre permitir este comando">
+                        <CheckBox.ContentTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                            </DataTemplate>
+                        </CheckBox.ContentTemplate>
+                    </CheckBox>
+                    <TextBlock x:Name="DicaText" Grid.Column="1" Text="execução pausada"
                                FontSize="11" Foreground="{StaticResource TextMutedBrush}"
                                VerticalAlignment="Center"/>
-                </StackPanel>
+                </Grid>
             </Grid>
         </StackPanel>
     </Border>

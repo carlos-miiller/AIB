@@ -90,6 +90,53 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ORotuloDeSegurar_CabeNoCartao_SemPassarPorCimaDosBotoes()
+        {
+            // Visto no uso: no cartão de clique do navegador, "Sempre permitir este botão neste
+            // site (segure 5 s)" atravessava os botões. O rodapé inteiro não cabe na largura
+            // máxima do cartão, e o rótulo, medido sem limite, saía para a esquerda. Ao segurar,
+            // o texto virava "Continue segurando... 5", mais curto, e tudo se ajeitava.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Navegador,
+                    Command = "CLICAR [s1e3] botão \"Aprovar\" em 172.16.10.13",
+                    ChaveDeSempre = "site:172.16.10.13|botão Aprovar",
+                    SempreSegurando = true,
+                    SempreApesarDeTerceiros = true
+                });
+                var caixa = (CheckBox)card.FindName("SempreCheck");
+                var recusar = (Button)card.FindName("RecusarButton");
+
+                // Os três rótulos pelos quais a caixa passa; o último é o mais comprido.
+                foreach (string rotulo in new[]
+                         {
+                             (string)caixa.Content,
+                             "Continue segurando... 5",
+                             "Sempre permitir este botão neste site (até fechar o AIB)"
+                         })
+                {
+                    caixa.Content = rotulo;
+
+                    // Como a janela de confirmação do orbe: o cartão escolhe o próprio tamanho.
+                    card.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+                    card.Arrange(new System.Windows.Rect(card.DesiredSize));
+                    card.UpdateLayout();
+
+                    double fimDoRecusar = recusar.TranslatePoint(new System.Windows.Point(recusar.ActualWidth, 0), card).X;
+                    double comecoDaCaixa = caixa.TranslatePoint(new System.Windows.Point(0, 0), card).X;
+                    double fimDaCaixa = comecoDaCaixa + caixa.ActualWidth;
+
+                    comecoDaCaixa.Should().BeGreaterThanOrEqualTo(fimDoRecusar, rotulo);
+                    fimDaCaixa.Should().BeLessThanOrEqualTo(card.ActualWidth, rotulo);
+                }
+            });
+        }
+
+        [Fact]
         public void SempreComum_NaoPedeParaSegurar()
         {
             WpfHost.EmSta(() =>
