@@ -350,6 +350,10 @@ public partial class ChatWindow : Window
         if (_painelAberto && _painel != null)
         {
             PosicionarPainel();
+
+            // Escondido, o painel não acompanha o histórico (AtualizarPainelDeHistorico só
+            // remonta o que está na tela): o que mudou enquanto isso entra agora.
+            _painel.Recarregar();
             _painel.Show();
         }
     }
