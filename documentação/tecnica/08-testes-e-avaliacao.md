@@ -103,6 +103,7 @@ dotnet run --project AIB.Avaliacao -- <rótulo> AIB.Avaliacao\resultados [opçõ
 | `--num-ctx N` | Outra janela, só nesta execução. |
 | `--sem-recado-de-falha` | Casos `falha-*` sem o recado que o laço acrescenta ao erro (`AgentLoop.RecadoDeFalha`) — a linha de base. |
 | `--sem-pendencias` | Caso `continuar` sem a seção de pendências na memória. |
+| `--afeto N` | O desvio do afeto (agora menos o de fábrica), para medir a linha "Convivência" do prompt: 0.75, 1.5, -0.75, -1.5. Sem a opção, zero: a linha não entra. |
 | `--conversa <pasta>` | Acrescenta os casos `mem-*`, sobre a memória gravada daquela sessão (`chapters.jsonl` e `acts.jsonl`, lidos de uma cópia). Para antes de chamar o modelo se a memória renderizar vazia. |
 | `--mostrar-memoria` | Com `--conversa`: imprime o bloco de memória e sai, sem chamar o modelo. |
 

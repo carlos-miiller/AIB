@@ -511,6 +511,38 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void OJeitoDeFalar_SoMudaQuandoOAfetoSeAfastaDoDeFabrica()
+        {
+            // Pedido: o comportamento e o jeito de interagir mudarem, e não só a frequência.
+            // Sem desvio a linha não existe: o prompt medido continua valendo.
+            ConversationService.LinhaDoAfeto(null).Should().BeEmpty("personagem que ainda não está no arquivo de status");
+            ConversationService.LinhaDoAfeto(0).Should().BeEmpty();
+            ConversationService.LinhaDoAfeto(0.7).Should().BeEmpty();
+            ConversationService.LinhaDoAfeto(-0.7).Should().BeEmpty();
+
+            ConversationService.LinhaDoAfeto(0.75).Should().Contain("um pouco mais à vontade");
+            ConversationService.LinhaDoAfeto(2).Should().Contain("mais pessoal");
+            ConversationService.LinhaDoAfeto(-0.75).Should().Contain("mais direto ao ponto");
+            ConversationService.LinhaDoAfeto(-2).Should().Contain("não puxe conversa");
+
+            // Uma linha só, no bloco de contexto, sem gênero do personagem nem do usuário.
+            foreach (double d in new[] { 0.75, 2, -0.75, -2 })
+            {
+                string linha = ConversationService.LinhaDoAfeto(d);
+                linha.Should().StartWith("\n- Convivência: ").And.NotMatchRegex("expressiva|à vontade para ser|ele tem|ela tem");
+                linha.LastIndexOf('\n').Should().Be(0, "é uma linha só");
+            }
+
+            // E só lê: consultar o afeto não acrescenta ninguém ao arquivo.
+            var status = new StatusDosPersonagens(_raiz);
+            status.AfetoDe("Ellen").Should().BeNull();
+            File.Exists(status.Arquivo).Should().BeFalse();
+            status.De("Ellen", new Atributos { Afeto = 2 });
+            status.Mover("Ellen", 1, 2);
+            status.AfetoDe("ellen").Should().Be(3);
+        }
+
+        [Fact]
         public void ComAfetoMinimo_ConversaNaoFazPuxarMaisAssunto()
         {
             // Pedido: "-5 o personagem é totalmente direto e evita interações prolongadas".

@@ -3086,6 +3086,46 @@ public sealed class ConversationService : IMessageStore
     /// está desligado — caso de quem usa um Modelfile do Ollama com SYSTEM embutido e não
     /// quer duplicar instruções.
     /// </summary>
+    /// <summary>A partir de quanto de desvio o afeto aparece no prompt, e quando reforça.</summary>
+    public const double DesvioQueAparece = 0.75;
+    public const double DesvioForte = 1.5;
+
+    /// <summary>
+    /// A linha de contexto do afeto, pelo DESVIO: o afeto de agora menos o de fábrica. O desvio e
+    /// não o afeto, porque o jeito de fábrica de cada personagem já está na alma dele — a Kai
+    /// seca e a Sora expansiva não precisam de linha para ser quem são. O que a linha diz é o que
+    /// a convivência mudou.
+    /// <para>
+    /// Vazia abaixo de <see cref="DesvioQueAparece"/>. Quatro textos fixos, para o prefixo do
+    /// prompt (e o cache dele) só mudar quando o afeto cruza uma faixa, e não a cada conversa.
+    /// </para>
+    /// </summary>
+    public static string LinhaDoAfeto(double? desvio) => desvio switch
+    {
+        >= DesvioForte => "\n- Convivência: vocês conversam muito e a conversa costuma ser bem recebida. Fique à vontade para se expressar mais e ser mais pessoal, sem deixar de ser quem você é.",
+        >= DesvioQueAparece => "\n- Convivência: vocês têm conversado bastante. Pode se mostrar um pouco mais à vontade, sem deixar de ser quem você é.",
+        <= -DesvioForte => "\n- Convivência: o usuário tem preferido respostas objetivas. Responda o necessário e não puxe conversa além do que foi pedido.",
+        <= -DesvioQueAparece => "\n- Convivência: as suas tentativas de conversa têm sido pouco correspondidas. Vá mais direto ao ponto e alongue menos.",
+        _ => ""
+    };
+
+    /// <summary>
+    /// O desvio a usar em vez do lido do arquivo de status. Só para a avaliação
+    /// (<c>AIB.Avaliacao --afeto</c>) medir as linhas sem esperar o afeto andar.
+    /// </summary>
+    public static double? DesvioDoAfetoForcado { get; set; }
+
+    /// <summary>O afeto de agora do personagem menos o de fábrica. Nulo quando falta um dos dois.</summary>
+    private static double? DesvioDoAfeto(string? personagem)
+    {
+        if (DesvioDoAfetoForcado is double forcado) return forcado;
+
+        double? agora = new StatusDosPersonagens().AfetoDe(personagem);
+        if (agora == null) return null;
+
+        return agora - (PerfilDoPersonagem(personagem)?.Atributos?.Afeto ?? 0);
+    }
+
     private string? BuildSystemPrompt()
     {
         var settings = _settingsService.LoadSettings();
@@ -3115,6 +3155,10 @@ public sealed class ConversationService : IMessageStore
         // byte a byte o que era, e a medição de antes continua valendo para quem não escolheu.
         if (!string.IsNullOrWhiteSpace(settings.NomeDoUsuario))
             contextualPrompt += $"\n- O usuário quer ser chamado de: {settings.NomeDoUsuario.Trim()}";
+
+        // O jeito de falar acompanha o afeto, mas só quando ele se afastou do de fábrica: no
+        // personagem que ainda não andou a linha não existe e o prompt fica byte a byte o que era.
+        if (comPersona) contextualPrompt += LinhaDoAfeto(DesvioDoAfeto(settings.ActiveCharacter));
 
         contextualPrompt += EstadoDoVigia(settings, _diarioDeTriagem, DateTime.Now);
 

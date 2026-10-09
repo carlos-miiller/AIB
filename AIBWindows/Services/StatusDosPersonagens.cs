@@ -76,7 +76,37 @@ public sealed class StatusDosPersonagens
 
     /// <param name="raiz">Pasta alternativa. Existe para o teste não escrever no ~/.AIB real.</param>
     public StatusDosPersonagens(string? raiz = null) =>
-        _arquivo = Path.Combine(raiz ?? DirectoryService.DataDir, "memory", ConversaDoOrbe.Sessao, "status.json");
+        _arquivo = Path.Combine(raiz ?? RaizPadrao ?? DirectoryService.DataDir, "memory", ConversaDoOrbe.Sessao, "status.json");
+
+    /// <summary>
+    /// A raiz quando ninguém passa uma. Existe para a suíte desviar de <c>~/.AIB</c> o status que
+    /// o prompt de sistema lê (<see cref="ConversationService.LinhaDoAfeto"/>).
+    /// </summary>
+    public static string? RaizPadrao { get; set; }
+
+    /// <summary>
+    /// O afeto de agora do personagem, só lendo: quem não está no arquivo não é acrescentado.
+    /// Nulo quando ele não está lá ou o arquivo não abre.
+    /// </summary>
+    public double? AfetoDe(string? personagem)
+    {
+        string nome = (personagem ?? "").Trim();
+        if (nome.Length == 0) return null;
+
+        lock (_gate)
+        {
+            try
+            {
+                var todos = Ler();
+                string? chave = todos.Keys.FirstOrDefault(k => string.Equals(k, nome, StringComparison.OrdinalIgnoreCase));
+                return chave == null ? null : todos[chave]?.Afeto;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+    }
 
     public string Arquivo => _arquivo;
 
