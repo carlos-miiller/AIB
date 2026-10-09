@@ -2010,7 +2010,7 @@ public sealed class ConversationService : IMessageStore
                         yield return new ChatStreamItem.ToolStarted(
                             iniciada.Id,
                             iniciada.Tool,
-                            Memory.ArtifactExtractor.ResumirArgumento(iniciada.Tool, iniciada.Arguments));
+                            Memory.ArtifactExtractor.ResumirParaTela(iniciada.Tool, iniciada.Arguments));
                         break;
 
                     case AgentEvent.ModelReplied volta:
@@ -2046,7 +2046,7 @@ public sealed class ConversationService : IMessageStore
                             Memory.ArtifactExtractor.Recusado(terminada.Result),
                             terminada.Artifact,
                             terminada.Failed ? PrimeiraLinhaDoErro(terminada.Result) : null,
-                            Memory.ArtifactExtractor.ResumirArgumento(terminada.Tool, terminada.Arguments),
+                            Memory.ArtifactExtractor.ResumirParaTela(terminada.Tool, terminada.Arguments),
                             terminada.Failed ? null : Memory.ArtifactExtractor.ResumirResultado(terminada.Tool, terminada.Result),
                             Memory.ArtifactExtractor.SaidaBruta(terminada.Tool, terminada.Result),
                             Memory.ArtifactExtractor.TrocaDaEdicao(terminada.Tool, terminada.Arguments));

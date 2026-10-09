@@ -43,6 +43,10 @@ public sealed class BrowserTool : ITool
     public BrowserTool(INavegador navegador, SitesLiberados sites, AnotacoesDeSite notas)
     {
         _navegador = navegador;
+
+        // O chip e o registro de ações mostram o nome do elemento, não a ref (NomesDeElemento).
+        NomesDeElemento.Fonte = refe =>
+            _navegador.Atual?.Resolver(refe).No is { } no ? (no.Ref, NomesDeElemento.Nome(no)) : null;
         _sites = sites;
         _notas = notas;
     }

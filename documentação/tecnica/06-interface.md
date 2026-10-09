@@ -279,6 +279,10 @@ e as ferramentas anunciadas pela fala seguinte abrem outra logo abaixo do balão
 
 - `Iniciar` mostra o chip em curso com spinner, rótulo "Executando", nome e argumento. Ferramentas
   paralelas dividem o mesmo chip, com contagem.
+  O argumento vem de `ArtifactExtractor.ResumirParaTela`: igual ao resumo da memória, menos no
+  navegador, onde a ref do elemento vira o nome dele (`clicar botão "OK"`, por `NomesDeElemento`)
+  e a ação sai em português. O nome é texto da página e fica só na tela: o resumo que a memória
+  guarda (`ResumirArgumento`) continua com a ref.
 - `Aguardar` troca o rótulo para "Aguardando" enquanto o cartão de confirmação está na tela.
 - `Concluir` põe a conclusão numa fila; `DesenharProxima` desenha uma a cada 500 ms
   (`TempoMinimoVisivel`). O atraso é só de desenho: a ferramenta já rodou.
