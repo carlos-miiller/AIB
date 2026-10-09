@@ -99,7 +99,7 @@ resposta), a exclusão de conversa do histórico, o descarte de conversa de e-ma
   `AplicarTitulo`).
 - **Contador do rodapé** (`UpdateTokenCounterUI`): custo cru riscado e seta quando há compactação
   (`1.204 > 812`), tokens no prompt, teto do nível e, no OpenRouter, o gasto em dólares. A cor mede
-  ocupação (`CorDaOcupacao`): vermelho perto da janela do modelo (a poda de emergência descarta sem
+  ocupação (`TokenReport.PincelDaOcupacao`): vermelho perto da janela do modelo (a poda de emergência descarta sem
   substituto), laranja acima do teto do nível, neutro no resto. O tooltip (`DicaDoContador`) mostra
   a conta parcela por parcela.
 - **Estado vazio:** "Nenhuma conversa ainda" enquanto `MessagesPanel` está vazio
@@ -321,8 +321,9 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   foco volta ao círculo; o que estava digitado e não foi enviado fica no campo para a próxima
   abertura (só enviar o esvazia).
 - **Contador de tokens** (`MostrarTokens`), só com a conversa própria do orbe e com a barra
-  aberta: abaixo da barra, à direita, como no rodapé da janela. Mostra o que vai ao modelo agora
-  e o teto do nível, na mesma cor de ocupação (`TokenReport.PincelDaOcupacao`). Como flutua sobre
+  aberta: abaixo da barra, à direita, como no rodapé da janela. O texto é o mesmo do rodapé
+  (`Ui/ContadorDeTokens`): custo cru riscado e seta quando há compactação, contexto, teto do
+  nível e gasto, na mesma cor de ocupação (`TokenReport.PincelDaOcupacao`). Como flutua sobre
   o desktop, leva o halo `FloatingTextShadow` (escuro no tema escuro, claro no claro). A dica
   traz capítulos e atos, o poupado e o gasto. `App.LigarOrbe` o alimenta pelo
   `OnTokenCountChanged` da conversa do orbe.

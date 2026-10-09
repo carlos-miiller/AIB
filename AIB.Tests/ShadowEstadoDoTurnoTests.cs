@@ -93,6 +93,15 @@ namespace AIB.Tests
             });
         }
 
+        // O contador é escrito em pedaços (o total vem riscado), e aí o Text do bloco fica vazio.
+        private static string Texto(TextBlock bloco)
+        {
+            string texto = "";
+            foreach (var pedaco in bloco.Inlines)
+                texto += ((System.Windows.Documents.Run)pedaco).Text;
+            return texto;
+        }
+
         [Fact]
         public void ABarra_MostraOContadorDeTokens_DaConversaDoOrbe()
         {
@@ -120,7 +129,7 @@ namespace AIB.Tests
                 orbe.AbrirBarra();
 
                 contador.Visibility.Should().Be(Visibility.Visible, "já nasce com a conta atual");
-                contador.Text.Should().StartWith($"{doOrbe.Conversa.CurrentTokenReport.Contexto:N0} tokens | ");
+                Texto(contador).Should().Contain($"{doOrbe.Conversa.CurrentTokenReport.Contexto:N0} tokens | ");
 
                 // Pedido: "na mesma posição que na janela principal, só adiciona uma sombra no
                 // texto para separá-lo". Abaixo da barra, à direita, com o halo do tema.
@@ -133,7 +142,11 @@ namespace AIB.Tests
                     Cru: 8_549, Memoria: 522, Capitulos: 2, CustoUsd: 0.0015m);
                 orbe.MostrarTokens(medido);
 
-                contador.Text.Should().Be($"{9_936:N0} tokens | {32_000:N0}");
+                // Visto no uso: o orbe não mostrava a compactação como a janela. O custo cru vem
+                // riscado, com a seta, antes do que vai ao modelo.
+                Texto(contador).Should().Be($"{17_377:N0} > {9_936:N0} tokens | {32_000:N0} | {TokenReport.Dolares(0.0015m)}");
+                ((System.Windows.Documents.Run)contador.Inlines.FirstInline)
+                    .TextDecorations.Should().BeSameAs(TextDecorations.Strikethrough);
                 contador.Foreground.Should().BeSameAs(orbe.FindResource("TextSecondaryBrush"));
                 ((string)contador.ToolTip).Should().Contain("2 capítulo(s)").And.Contain("US$");
 

@@ -2047,40 +2047,6 @@ public partial class ChatWindow : Window
     }
 
     /// <summary>
-    /// Cor do contador por ECONOMIA de contexto, nao por ocupacao — §3.8.
-    /// <para>
-    /// A tela antiga pintava de verde a laranja conforme o historico enchia. A spec inverte o
-    /// que o numero comunica. O que ele mede mudou de novo: era a fatia do prompt que o cache
-    /// do Ollama nao precisou reprocessar, e agora e quanto o sistema de capitulos e atos
-    /// esta poupando. Verde quer dizer "a memoria esta trabalhando"; magenta, "a conversa vai
-    /// quase inteira em toda requisicao".
-    /// </para>
-    /// <para>
-    /// Sem economia medida a cor e neutra, e nao magenta: antes do primeiro capitulo nao ha
-    /// falha nenhuma a sinalizar.
-    /// </para>
-    /// </summary>
-    /// <summary>
-    /// A cor da barra mede OCUPAÇÃO do contexto, e não economia.
-    /// <para>
-    /// Antes ela media a economia, e a escala punia conversa curta: um capítulo que resumiu 200
-    /// tokens em 128 fez o trabalho dele e a barra saía MAGENTA, acusando o sistema de falhar.
-    /// É a mesma armadilha do "-0%" que a nota do primeiro turno já evitava, um nível acima.
-    /// </para>
-    /// <para>
-    /// Ocupação é acionável: passar de 75% avisa que a compactação vai disparar; passar de 90%
-    /// avisa que a poda de emergência está perto — e a poda descarta sem substituto.
-    /// </para>
-    /// </summary>
-    private System.Windows.Media.Brush CorDaOcupacao(TokenReport r)
-    {
-        // A REDE em primeiro lugar: é o único ponto em que algo é perdido de verdade. Passar do
-        // teto do NÍVEL virou rotina e vale laranja, não vermelho: alarme que dispara todo
-        // turno deixa de ser alarme. A regra mora no relatório, e o orbe usa a mesma.
-        return (System.Windows.Media.Brush)FindResource(r.PincelDaOcupacao);
-    }
-
-    /// <summary>
     /// Escreve o contador do rodape: quanto a conversa inteira pesaria, quanto ela pesa agora
     /// e quanto o sistema de capitulos e atos esta poupando.
     /// <para>
@@ -2094,42 +2060,8 @@ public partial class ChatWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            // O teto do nivel no lugar da porcentagem. Os dois numeros da esquerda ja dizem
-            // quanto foi poupado — a porcentagem repetia isso em outra forma, e ocupava o
-            // espaco do unico dado que faltava: o quanto ainda cabe.
-            //
-            // A condição é o TOTAL diferir do contexto, e não haver economia. Uma conversa
-            // reaberta sem capítulo nenhum não poupou nada, mas o custo cru dela continua sendo
-            // maior que o contexto — e esconder isso é o que fazia 9.144 tokens virarem 1.838
-            // sem explicação.
-            bool temTotal = relatorio.Total > relatorio.Contexto;
-
-            TokenCounterText.Inlines.Clear();
-
-            if (temTotal)
-            {
-                // TACHADO e apagado: é o preço que a conversa NÃO está pagando. Riscar diz isso
-                // sem precisar de legenda, e deixa o número vivo ser o que salta aos olhos.
-                TokenCounterText.Inlines.Add(new Run($"{relatorio.Total:N0}")
-                {
-                    TextDecorations = System.Windows.TextDecorations.Strikethrough,
-                    Foreground = (System.Windows.Media.Brush)FindResource("TextMutedBrush")
-                });
-
-                // A seta fica. O risco diz que aquele preço não está sendo pago; a seta diz
-                // que um número VIROU o outro. São duas informações, não uma repetida.
-                TokenCounterText.Inlines.Add(new Run(" > "));
-            }
-
-            TokenCounterText.Inlines.Add(new Run(
-                $"{relatorio.Contexto:N0} tokens | {relatorio.Max:N0}"));
-
-            // O dinheiro, quando há. Só o OpenRouter cobra; no Ollama o campo é nulo e o rodapé
-            // continua como sempre foi.
-            if (relatorio.CustoUsd is decimal custo)
-                TokenCounterText.Inlines.Add(new Run($" | {TokenReport.Dolares(custo)}"));
-
-            TokenCounterText.Foreground = CorDaOcupacao(relatorio);
+            // O mesmo texto do contador do orbe: total riscado, seta, contexto, teto e gasto.
+            AIB.Ui.ContadorDeTokens.Escrever(TokenCounterText, relatorio);
 
             // A conta atrás do número. Dois números e uma cor respondem "está economizando?",
             // e não respondem "de onde vem isso?" — que é a pergunta do dia em que a conta

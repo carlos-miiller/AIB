@@ -418,8 +418,8 @@ public partial class ShadowAssistantWindow : Window
     /// </summary>
     public void MostrarTokens(TokenReport r)
     {
-        Contador.Text = $"{r.Contexto:N0} tokens | {r.Max:N0}";
-        Contador.Foreground = (System.Windows.Media.Brush)FindResource(r.PincelDaOcupacao);
+        // O mesmo texto do rodapé da janela: com compactação, o custo cru riscado e a seta.
+        AIB.Ui.ContadorDeTokens.Escrever(Contador, r);
         Contador.ToolTip = DicaDoContador(r);
         _temTokens = true;
         AtualizarContador();
