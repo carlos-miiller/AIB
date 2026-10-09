@@ -334,6 +334,11 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   o desktop, leva o halo `FloatingTextShadow` (escuro no tema escuro, claro no claro). A dica
   traz capítulos e atos, o poupado e o gasto. `App.LigarOrbe` o alimenta pelo
   `OnTokenCountChanged` da conversa do orbe.
+- **Carimbo de tempo:** cada fala do usuário na conversa do orbe vai ao modelo com o dia e a hora
+  na frente, `[sexta-feira - 09/10/2026 | 14:32]` (`ConversaDoOrbe.Carimbar`). Fica na fala, e
+  não no prompt de sistema, para não perder o cache a cada minuto; só na fala do usuário, para o
+  modelo não imitar. A bolha e as falas restauradas mostram o texto sem ele (`SemCarimbo`). Não
+  foi medido com `AIB.Avaliacao` (decisão do usuário).
 - **Comandos de barra** no orbe (`ConversaDoOrbe.ComandoDe`): `/compact` (a mesma
   `ForcarCompactacaoAsync`, na conversa do orbe) e `/memoria`, `/memória` ou `/memory`
   (`MemoriaEmTexto`). A resposta volta como fala. Não vão ao modelo como mensagem, não contam

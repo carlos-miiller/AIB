@@ -35,6 +35,40 @@ namespace AIB.Tests
             ConversaDoOrbe.DeveCompactar(true, false, null, Agora).Should().BeFalse();
         }
 
+        // Pedido: "no modo shadow, quero mandar a informação de dia da semana - DD/MM/YYYY |
+        // hh:mm ... quero dar à Ellen o senso de tempo".
+        private static readonly DateTime Sexta = new(2026, 10, 9, 14, 32, 0);
+
+        [Fact]
+        public void OCarimbo_TemDiaDaSemanaDataEHora_ESaiInteiro()
+        {
+            string fala = ConversaDoOrbe.Carimbar("lembra do ramal?", Sexta);
+
+            fala.Should().Be("[sexta-feira - 09/10/2026 | 14:32]\nlembra do ramal?");
+            ConversaDoOrbe.SemCarimbo(fala).Should().Be("lembra do ramal?");
+
+            // Só o carimbo do começo sai; colchete digitado pelo usuário fica.
+            ConversaDoOrbe.SemCarimbo("[urgente] liga pro Fernando").Should().Be("[urgente] liga pro Fernando");
+            ConversaDoOrbe.SemCarimbo(ConversaDoOrbe.Carimbar(fala, Sexta)).Should().Be(fala);
+        }
+
+        [Fact]
+        public async Task AFalaDoUsuario_VaiAoModeloComOCarimbo_EABarraFicaSemEle()
+        {
+            var servico = JanelaDeEnsaio.Servico();
+            var doOrbe = new ConversaDoOrbe(JanelaDeEnsaio.Conversa(servico), servico) { Agora = () => Sexta };
+
+            string? ouvido = null;
+            doOrbe.UsuarioFalou += texto => ouvido = texto;
+
+            await doOrbe.EnviarAsync("que horas são?");
+
+            var falas = doOrbe.Conversa.UltimasFalas(10, int.MaxValue);
+            falas.Should().Contain((true, "[sexta-feira - 09/10/2026 | 14:32]\nque horas são?"),
+                "é o que o modelo recebe e o que fica no histórico");
+            ouvido.Should().Be("que horas são?", "o resto do programa conta as palavras que o usuário digitou");
+        }
+
         [Theory]
         [InlineData("/compact", ConversaDoOrbe.Comando.Compactar)]
         [InlineData("  /COMPACT ", ConversaDoOrbe.Comando.Compactar)]

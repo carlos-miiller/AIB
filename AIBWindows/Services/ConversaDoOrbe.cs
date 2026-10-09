@@ -81,6 +81,35 @@ public sealed class ConversaDoOrbe
         Conversa.InterromperCompactacao();
     }
 
+    /// <summary>O relógio do carimbo. Trocável no ensaio.</summary>
+    public Func<DateTime> Agora { get; set; } = () => DateTime.Now;
+
+    private static readonly System.Globalization.CultureInfo PtBr = new("pt-BR");
+
+    private static readonly System.Text.RegularExpressions.Regex ComCarimbo = new(
+        @"^\[[^\]\r\n]+ - \d{2}/\d{2}/\d{4} \| \d{2}:\d{2}\]\r?\n",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// A fala do usuário com o dia e a hora na frente, como o modelo a recebe:
+    /// <c>[sexta-feira - 09/10/2026 | 14:32]</c> e o texto na linha de baixo.
+    /// <para>
+    /// Pedido: "quero dar à Ellen o senso de tempo". A conversa do orbe é uma só para sempre;
+    /// sem carimbo o modelo não sabe se a fala anterior foi há cinco minutos ou há três dias,
+    /// e a data do prompt de sistema é a do dia em que ele foi montado.
+    /// </para>
+    /// <para>
+    /// Na fala, e não no prompt de sistema: a hora muda a cada minuto, e mexer no começo do
+    /// prompt perderia o cache inteiro a cada mensagem. Só na fala do USUÁRIO: carimbo na fala
+    /// dela ensinaria o modelo a escrever carimbo nas respostas.
+    /// </para>
+    /// </summary>
+    public static string Carimbar(string texto, DateTime agora) =>
+        $"[{agora.ToString("dddd", PtBr)} - {agora:dd/MM/yyyy} | {agora:HH:mm}]\n{texto}";
+
+    /// <summary>A fala sem o carimbo: é o que a barra mostra.</summary>
+    public static string SemCarimbo(string texto) => ComCarimbo.Replace(texto ?? "", "", 1);
+
     /// <summary>Os comandos de barra que o orbe entende.</summary>
     public enum Comando { Nenhum, Compactar, Memoria }
 
@@ -160,7 +189,7 @@ public sealed class ConversaDoOrbe
         {
             PassoMudou?.Invoke("Pensando", null);
 
-            await foreach (var item in Conversa.StreamResponseAsync(texto, Console.Write))
+            await foreach (var item in Conversa.StreamResponseAsync(Carimbar(texto, Agora()), Console.Write))
             {
                 switch (item)
                 {

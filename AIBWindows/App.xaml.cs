@@ -208,7 +208,9 @@ public partial class App : System.Windows.Application
 
             // A conversa do orbe continua de onde parou, e a pilha também: reiniciado o AIB, o
             // modelo lembrava de tudo e a barra abria vazia, como se a conversa tivesse sumido.
-            orbe.RestaurarFalas(doOrbe.Conversa.UltimasFalas(FalasAoReabrir, int.MaxValue));
+            // Sem o carimbo de dia e hora: ele é para o modelo, a bolha mostra o que foi digitado.
+            orbe.RestaurarFalas(doOrbe.Conversa.UltimasFalas(FalasAoReabrir, int.MaxValue)
+                .Select(f => (f.DoUsuario, f.DoUsuario ? ConversaDoOrbe.SemCarimbo(f.Texto) : f.Texto)));
         }
 
         // O clique num item da pilha leva ao MESMO lugar que a lista da área central: o e-mail
