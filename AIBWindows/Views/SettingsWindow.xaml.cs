@@ -293,15 +293,24 @@ public partial class SettingsWindow : Window
         {
             var perfil = _perfis[provedor];
             bool openRouter = provedor == ProvedoresDeIa.OpenRouter;
+            bool google = provedor == ProvedoresDeIa.Google;
+            bool nuvem = ProvedoresDeIa.EhNuvem(provedor);
 
-            PainelOllama.Visibility = openRouter ? Visibility.Collapsed : Visibility.Visible;
+            PainelOllama.Visibility = nuvem ? Visibility.Collapsed : Visibility.Visible;
             PainelOpenRouter.Visibility = openRouter ? Visibility.Visible : Visibility.Collapsed;
+            PainelGoogle.Visibility = google ? Visibility.Visible : Visibility.Collapsed;
 
             if (openRouter)
             {
                 OpenRouterUrlTextBox.Text = ProvedoresDeIa.UrlDoOpenRouter;
                 OpenRouterModelComboBox.Text = perfil.Modelo;
                 _modeloDaJanela = perfil.Modelo;
+            }
+            else if (google)
+            {
+                GoogleUrlTextBox.Text = ProvedoresDeIa.UrlDoGoogle;
+                GoogleModelComboBox.ItemsSource = ProvedoresDeIa.ModelosDoGoogle.ToList();
+                GoogleModelComboBox.Text = perfil.Modelo;
             }
             else
             {
@@ -311,14 +320,16 @@ public partial class SettingsWindow : Window
             }
 
             JanelaTextBox.Text = perfil.JanelaDeContexto.ToString();
-            JanelaAjuda.Text = openRouter
+            JanelaAjuda.Text = nuvem
                 ? "Quanto da conversa a AIB manda por turno — base dos orçamentos por nível. Não passa da janela do modelo, e cada token dela é pago."
                 : "O num_ctx pedido ao Ollama, e a base dos orçamentos por nível. Sem GPU, cada 16 mil tokens custam ~0,65 GB de RAM; mudar recarrega o modelo.";
 
             RaciocinioComboBox.ItemsSource = ProvedoresDeIa.OpcoesDeRaciocinio(provedor)
                 .Select(o => new { o.Valor, o.Rotulo }).ToList();
             RaciocinioComboBox.SelectedValue = perfil.Raciocinio;
-            RaciocinioAjuda.Text = openRouter
+            RaciocinioAjuda.Text = google
+                ? "Esforço de raciocínio pedido ao Gemini (reasoning_effort). Os tokens de raciocínio são cobrados como saída. Os modelos Pro não desligam: neles, \"Desligado\" vale o padrão do modelo."
+                : openRouter
                 ? "Esforço de raciocínio pedido ao modelo (parâmetro reasoning). Os tokens de raciocínio são cobrados como saída. O resumo e a triagem sempre pedem desligado."
                 : "O modelo pensa antes de responder. Sem GPU custa minutos por turno — medido: 953 tokens de pensamento em 12 minutos para zero texto.";
 
@@ -334,8 +345,9 @@ public partial class SettingsWindow : Window
 
         async System.Threading.Tasks.Task openRouterOuOllama(string p)
         {
+            // O Google não tem catálogo a buscar: a lista dele é fixa, de sugestões.
             if (p == ProvedoresDeIa.OpenRouter) await CarregarCatalogoAsync();
-            else await RefreshModelsAsync();
+            else if (p == ProvedoresDeIa.Ollama) await RefreshModelsAsync();
         }
     }
 
@@ -348,6 +360,10 @@ public partial class SettingsWindow : Window
         if (openRouter)
         {
             perfil.Modelo = (OpenRouterModelComboBox.Text ?? "").Trim();
+        }
+        else if (provedor == ProvedoresDeIa.Google)
+        {
+            perfil.Modelo = (GoogleModelComboBox.Text ?? "").Trim();
         }
         else
         {
@@ -636,6 +652,69 @@ public partial class SettingsWindow : Window
         KeyTextBox.Text = configurada ? "••••••••••••" : "—";
         KeyTextBox.ToolTip = configurada ? "Configurada — guardada no cofre DPAPI" : "Não configurada";
         AlterarChaveBotao.Content = configurada ? "Alterar" : "Adicionar";
+
+        // A do Google, lida do cofre DELE.
+        bool doGoogle = AIB.Services.Ai.ChatProviderFactory.ChaveDe(ProvedoresDeIa.Google).Length > 0;
+        GoogleKeyTextBox.Text = doGoogle ? "••••••••••••" : "—";
+        GoogleKeyTextBox.ToolTip = doGoogle ? "Configurada — guardada no cofre DPAPI" : "Não configurada";
+        GoogleAlterarChaveBotao.Content = doGoogle ? "Alterar" : "Adicionar";
+    }
+
+    // ── A chave do Google: as mesmas regras da do OpenRouter, no cofre dele ──
+
+    private void GoogleAlterarChave_Click(object sender, RoutedEventArgs e)
+    {
+        GoogleNovaChaveLinha.Visibility = Visibility.Visible;
+        GoogleNovaChaveBox.Focus();
+    }
+
+    private void GoogleNovaChave_Mudou(object sender, RoutedEventArgs e)
+    {
+        GoogleGuardarChaveBotao.IsEnabled = ProvedoresDeIa.ChaveValida(ProvedoresDeIa.Google, GoogleNovaChaveBox.Password);
+        GoogleChaveErro.Visibility = Visibility.Collapsed;
+    }
+
+    private void GoogleCancelarChave_Click(object sender, RoutedEventArgs e)
+    {
+        GoogleNovaChaveBox.Clear();
+        GoogleNovaChaveLinha.Visibility = Visibility.Collapsed;
+        GoogleChaveErro.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Guarda a chave do Google AGORA, no cofre dele, sem esperar o "Salvar".</summary>
+    private async void GoogleGuardarChave_Click(object sender, RoutedEventArgs e)
+    {
+        string chave = GoogleNovaChaveBox.Password.Trim();
+
+        if (!ProvedoresDeIa.ChaveValida(ProvedoresDeIa.Google, chave))
+        {
+            GoogleChaveErro.Text = "Não parece uma chave do Google AI Studio: são pelo menos 30 letras, números, - ou _, sem espaço.";
+            GoogleChaveErro.Visibility = Visibility.Visible;
+            return;
+        }
+
+        string resultado = await CredentialService.StoreCredentialAsync(
+            ProvedoresDeIa.SistemaDaChave(ProvedoresDeIa.Google)!, ProvedoresDeIa.NomeDaChave, chave);
+
+        if (resultado.StartsWith("ERRO", StringComparison.Ordinal))
+        {
+            GoogleChaveErro.Text = resultado;
+            GoogleChaveErro.Visibility = Visibility.Visible;
+            return;
+        }
+
+        // Só os quatro últimos caracteres: o bastante para reconhecer qual chave foi, nada de uso.
+        _ = AuditLogService.AppendAsync(new
+        {
+            ts = DateTime.UtcNow.ToString("o"),
+            outcome = "chave_guardada",
+            provider = ProvedoresDeIa.Google,
+            key_last4 = chave[^4..]
+        });
+
+        GoogleNovaChaveBox.Clear();
+        GoogleNovaChaveLinha.Visibility = Visibility.Collapsed;
+        RefreshKeyTextBoxLabel();
     }
 
     private void NovaChave_Mudou(object sender, RoutedEventArgs e)
@@ -1864,8 +1943,11 @@ public partial class SettingsWindow : Window
     {
         if (TriagemAviso == null) return;
 
-        bool fora = TriagemProvedorComboBox.SelectedItem as string == ProvedoresDeIa.OpenRouter;
-        TriagemAviso.Text = fora
+        string? escolhido = TriagemProvedorComboBox.SelectedItem as string;
+        bool fora = ProvedoresDeIa.EhNuvem(escolhido);
+        TriagemAviso.Text = escolhido == ProvedoresDeIa.Google
+            ? "No Google, remetente, assunto e o começo do corpo de cada e-mail triado são enviados ao Google. No nível gratuito ele pode usar esse conteúdo para treinar."
+            : fora
             ? "No OpenRouter, remetente, assunto e o começo do corpo de cada e-mail triado são enviados ao OpenRouter e ao modelo escolhido."
             : "Quem lê os e-mails para classificar. No Ollama, nada sai desta máquina.";
         TriagemAviso.Foreground = (System.Windows.Media.Brush)FindResource(fora ? "WarnBrush" : "TextMutedBrush");
@@ -1881,9 +1963,12 @@ public partial class SettingsWindow : Window
         try
         {
             string atual = TriagemModeloComboBox.Text;
-            TriagemModeloComboBox.ItemsSource = TriagemProvedorComboBox.SelectedItem as string == ProvedoresDeIa.OpenRouter
-                ? _catalogo.Select(m => m.Id).ToList()
-                : (ModelComboBox.ItemsSource as IEnumerable<string>)?.ToList();
+            TriagemModeloComboBox.ItemsSource = (TriagemProvedorComboBox.SelectedItem as string) switch
+            {
+                ProvedoresDeIa.OpenRouter => _catalogo.Select(m => m.Id).ToList(),
+                ProvedoresDeIa.Google => ProvedoresDeIa.ModelosDoGoogle.ToList(),
+                _ => (ModelComboBox.ItemsSource as IEnumerable<string>)?.ToList()
+            };
             TriagemModeloComboBox.Text = atual;
         }
         finally

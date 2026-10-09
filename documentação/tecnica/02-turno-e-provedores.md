@@ -235,7 +235,7 @@ Contrato do stream (`StreamChunk`), obrigatório para todo provedor:
 
 ### 6.2 `ChatProviderFactory`
 
-- Escolhe Ollama ou OpenRouter por `ProvedoresDeIa.Normalizar(settings.AiProvider, settings.ApiUrl)`; vazio vira Ollama.
+- Escolhe Ollama, OpenRouter ou Google por `ProvedoresDeIa.Normalizar(settings.AiProvider, settings.ApiUrl)`; vazio vira Ollama.
 - Guarda **uma instância por combinação** `(provedor, modelo, URL, credencial efetiva, sem-coleta, provedor fixo)`, e não só a última: conversa e triagem de e-mail podem usar provedores diferentes e se alternam o tempo todo.
 - A **credencial efetiva** entra na chave: trocar a chave no cofre não muda as configurações, e sem ela o cache reaproveitava um cliente com a chave velha (401 que só sumia reiniciando).
 - `ChaveDe(provedor)` lê do cofre do provedor (`CredentialService.LerDoSistema("openrouter", "ApiKey")`), sem busca global. Ollama não usa chave.
@@ -243,7 +243,7 @@ Contrato do stream (`StreamChunk`), obrigatório para todo provedor:
 
 ### 6.3 `ProvedoresDeIa` e perfis
 
-- Dois provedores, de propósito: `Ollama` (`http://127.0.0.1:11434`) e `OpenRouter` (`https://openrouter.ai/api/v1`). Gravações antigas ("OpenAI", "Anthropic", "LmStudio") são normalizadas: URL do OpenRouter leva ao OpenRouter, o resto ao Ollama.
+- Três provedores: `Ollama` (`http://127.0.0.1:11434`), `OpenRouter` (`https://openrouter.ai/api/v1`) e `Google` (`https://generativelanguage.googleapis.com/v1beta/openai`). `ProvedoresDeIa.EhNuvem` responde pelos dois pagos: sem aquecimento, limites de `LimitesDoProvedor.Nuvem`, raciocínio por esforço. Gravações antigas ("OpenAI", "Anthropic", "LmStudio") são normalizadas: URL do OpenRouter leva ao OpenRouter, o resto ao Ollama.
 - `NormalizarUrlDoOllama`: tira o `/v1` do fim, tira a barra final e troca `localhost` por `127.0.0.1` — no Windows `localhost` resolve primeiro para IPv6, o Ollama escuta só IPv4, e cada conexão esperava até dois minutos.
 - `ModeloPadraoDoOllama` = `qwen2.5:7b` (um nome só para todos os padrões).
 - `ChaveValida`: só formato (`sk-or-` + 20 caracteres ou mais); quem valida é o OpenRouter.
@@ -371,6 +371,34 @@ Uma instância por stream. Separa o texto em canal `Final` e `Reasoning`, com ca
 Remove do canal final tokens de template que vazam (Harmony, ChatML, Llama 3, GPT, marcadores de papel) e tags `<think>`/`</think>` órfãs. Não confundir com `Memory.ThinkBlockStripper`, que remove blocos de raciocínio **inteiros** (usado no histórico, no título e no resumidor).
 
 ### 10.3 `MotivoDeFim`
+
+### Google AI Studio (`GoogleProvider`)
+
+Fala o endpoint do Gemini compatível com a OpenAI (`/chat/completions`, SSE), com a chave do AI
+Studio em `Authorization: Bearer`. Não o nativo `generateContent`: o formato de mensagens,
+ferramentas e stream é o que `OpenRouterProvider.LerTrecho` já lê. **Foi escrito pela
+documentação do Google, sem ensaio contra a API real** — os testes fixam o formato como a AIB o
+entende.
+
+- **Chave:** cofre `google` (`ProvedoresDeIa.SistemaDaChave`), guardada pela aba Conexão LLM.
+  O formato aceito é frouxo (30+ caracteres sem espaço): o Google emite mais de um.
+- **Modelo:** padrão `gemini-flash-latest`; `ProvedoresDeIa.ModelosDoGoogle` é só a lista de
+  sugestões da tela, e a caixa é editável.
+- **Raciocínio:** `reasoning_effort` (`none`, `low`, `medium`, `high`; "padrão do modelo" não
+  manda o campo). Modelo que recusa `none` com 400 (os Pro) recebe o pedido de novo sem o
+  campo, e o provider lembra (`_naoDesliga`).
+- **Assinatura de pensamento:** o `extra_content` de cada chamada de ferramenta é guardado pelo
+  id (`_extraPorChamada`) e devolvido na mesma chamada em toda requisição em que ela estiver no
+  histórico. Sem ele os modelos que raciocinam recusam a volta seguinte.
+- **Chamadas em paralelo:** `GoogleProvider.JuntaDeChamadas` começa uma chamada a cada NOME,
+  sem confiar no índice nem no id (o Gemini pode repetir o 0 e omitir o id); sem id, a AIB dá
+  um.
+- **Uso:** `prompt_tokens`, `completion_tokens` e `prompt_tokens_details.cached_tokens`. O
+  Google não relata custo: `CustoUsd` fica nulo e o rodapé do turno não mostra valor.
+- **Erros:** 408, 429 e 5xx se repetem antes de a resposta começar; 400, 401, 403 e 404 não.
+- **Não tem:** catálogo de modelos, marcas de cache (o cache do Gemini é implícito), texto do
+  raciocínio na tela (o indicador de "pensando" não acende) e tela de primeiro arranque — o
+  Google se escolhe nas configurações.
 
 `MotivoDeFim.De(raw)` traduz "stop", "tool_calls" e "length" para `StreamFinishReason`; o resto é `Unknown`. Um lugar só para os dois provedores — estava copiado e uma cópia podia divergir.
 

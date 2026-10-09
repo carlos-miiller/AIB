@@ -836,7 +836,86 @@
                                     </Border>
                                     </StackPanel>
 
-                                    <!-- ── Dos dois, com o sentido de cada um ── -->
+                                    <!-- ── Só Google AI Studio ── -->
+                                    <StackPanel x:Name="PainelGoogle" Visibility="Collapsed">
+
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Endereço" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Fixo: é a API do Gemini no formato da OpenAI."/>
+                                            </StackPanel>
+                                            <TextBox x:Name="GoogleUrlTextBox" Grid.Column="1" VerticalAlignment="Center"
+                                                     Style="{StaticResource ControlTextBoxMono}" IsReadOnly="True"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Chave da API" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="A chave do Google AI Studio. Guardada no cofre DPAPI desta conta do Windows, só para o Google. Nunca é exibida. No nível gratuito o Google pode usar as conversas para treinar."/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox x:Name="GoogleKeyTextBox" Style="{StaticResource ControlTextBoxMono}"
+                                                             IsReadOnly="True" Margin="0,0,8,0"/>
+                                                    <Button x:Name="GoogleAlterarChaveBotao" Grid.Column="1" Content="Alterar"
+                                                            Style="{StaticResource InlineButton}" Click="GoogleAlterarChave_Click"/>
+                                                </Grid>
+                                                <Grid x:Name="GoogleNovaChaveLinha" Margin="0,8,0,0" Visibility="Collapsed">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <PasswordBox x:Name="GoogleNovaChaveBox" Margin="0,0,8,0"
+                                                                 FontFamily="{StaticResource MonoFontFamily}"
+                                                                 PasswordChanged="GoogleNovaChave_Mudou"/>
+                                                    <Button x:Name="GoogleGuardarChaveBotao" Grid.Column="1" Content="Guardar" IsEnabled="False"
+                                                            Style="{StaticResource InlineButton}" Margin="0,0,6,0" Click="GoogleGuardarChave_Click"/>
+                                                    <Button Grid.Column="2" Content="Cancelar"
+                                                            Style="{StaticResource InlineButton}" Click="GoogleCancelarChave_Click"/>
+                                                </Grid>
+                                                <TextBlock x:Name="GoogleChaveErro" Style="{StaticResource FieldHelpText}" Foreground="{StaticResource DangerBrush}"
+                                                           TextWrapping="Wrap" Visibility="Collapsed" Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Modelo" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="O id do modelo Gemini. A lista é só sugestão: dá para digitar qualquer id que a sua chave alcance. Os Flash-Lite são os baratos; os Pro custam várias vezes mais."/>
+                                            </StackPanel>
+                                            <ComboBox x:Name="GoogleModelComboBox" Grid.Column="1" VerticalAlignment="Center"
+                                                      IsEditable="True"
+                                                      Style="{StaticResource ControlComboBoxMono}"
+                                                      SelectionChanged="Campo_Mudou"
+                                                      LostFocus="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+                                    </StackPanel>
+
+                                    <!-- ── De todos, com o sentido de cada um ── -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">
                                             <Grid.ColumnDefinitions>

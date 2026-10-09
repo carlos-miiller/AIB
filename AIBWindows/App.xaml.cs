@@ -743,6 +743,10 @@ public partial class App : System.Windows.Application
 
         // Provedor com chave e sem a chave DELE no cofre. Leitura estrita: a busca global do
         // cofre acharia a chave de outro serviço e daria o arranque por concluído.
+        // Só para o OpenRouter: é a única chave que a tela de primeiro arranque sabe pedir. O
+        // Google sem chave fica para o erro do primeiro turno, que diz onde configurar.
+        if (s.AiProvider != ProvedoresDeIa.OpenRouter) return false;
+
         string? sistema = ProvedoresDeIa.SistemaDaChave(s.AiProvider);
         return sistema != null && CredentialService.LerDoSistema(sistema, ProvedoresDeIa.NomeDaChave) == null;
     }

@@ -225,6 +225,7 @@ Várias opções nascem desligadas por decisão registrada no comentário de cad
 - Hoje só o OpenRouter usa chave: `ProvedoresDeIa.SistemaDaChave` devolve `"openrouter"` para ele e `null` para o Ollama; o nome da chave é `ProvedoresDeIa.NomeDaChave` (`"ApiKey"`).
 - `CredentialService.StoreCredentialAsync` grava; devolve texto começando com `ERRO` em falha, e quem chama confere.
 - `CredentialService.LerDoSistema(sistema, chave)` lê **só o arquivo daquele sistema**. Uma busca global devolveria a chave de mesmo nome de outro serviço (por exemplo, uma chave da OpenAI gravada por versão antiga) e mandaria a requisição com a credencial errada.
+- Cada provedor de nuvem tem o seu cofre: `openrouter` e `google` (`ProvedoresDeIa.SistemaDaChave`).
 - `ChatProviderFactory.ChaveDe(provedor)` é quem o app usa para obter a chave de um provedor; devolve vazio se não há chave, e a requisição sai sem autorização até o 401 explicar onde configurar. A **credencial efetiva** entra na chave do cache da fábrica: sem isso, trocar a chave no cofre continuava usando o cliente com a chave velha até reiniciar.
 - A chave é gravada no cofre na hora em que o usuário a confirma (`SettingsWindow.GuardarChave_Click`, `FirstRunWindow`), sem esperar o "Salvar". O formato é checado por `ProvedoresDeIa.ChaveValida` (`sk-or-` e ao menos 20 caracteres), o mesmo critério nas duas telas.
 

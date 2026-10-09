@@ -1808,7 +1808,7 @@ public sealed class ConversationService : IMessageStore
 
         // Provedor vazio é Ollama, como na fábrica.
         string provedor = ProvedoresDeIa.Normalizar(settings.AiProvider, settings.ApiUrl);
-        if (provedor == ProvedoresDeIa.OpenRouter) return daTela;
+        if (ProvedoresDeIa.EhNuvem(provedor)) return daTela;
 
         int janela = settings.ContextWindow > 0 ? settings.ContextWindow : ChatRequestOptions.JanelaDoOllama;
         return Math.Min(daTela, (int)(janela * FracaoDaJanelaPorCapitulo));
@@ -3156,7 +3156,7 @@ public sealed class ConversationService : IMessageStore
             // aqui: a tela oferecia "5 minutos" e o Ollama recebia -1 em toda requisição.
             NumCtx = settings.ContextWindow > 0 ? settings.ContextWindow : ChatRequestOptions.JanelaAtual,
             KeepAliveSeconds = settings.AiProvider == ProvedoresDeIa.Ollama ? SegundosDeKeepAlive(settings.KeepAlive) : null,
-            Raciocinio = settings.AiProvider == ProvedoresDeIa.OpenRouter ? settings.Reasoning : null
+            Raciocinio = ProvedoresDeIa.EhNuvem(settings.AiProvider) ? settings.Reasoning : null
         };
 
     /// <summary>"1m", "5m", "30m" ou "-1" em segundos. A conversão mora em <see cref="ChatRequestOptions.SegundosDeKeepAlive"/>.</summary>
