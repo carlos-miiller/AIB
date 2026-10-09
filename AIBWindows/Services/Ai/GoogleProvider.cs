@@ -131,8 +131,13 @@ public sealed class GoogleProvider : IChatProvider
                 break;
         }
 
+        // Para o registro: é o único jeito de ver, depois, que esforço cada requisição pediu.
+        _esforcoPedido = (string?)corpo["reasoning_effort"] ?? "padrão do modelo";
+
         return corpo.ToJsonString();
     }
+
+    private volatile string _esforcoPedido = "";
 
     /// <summary>As mensagens no formato da API, com o <c>extra_content</c> de volta em cada chamada.</summary>
     private JsonArray Mensagens(IReadOnlyList<ChatMessage> messages)
@@ -343,7 +348,7 @@ public sealed class GoogleProvider : IChatProvider
         foreach (var (id, extra) in chamadas.Extras) Guardar(id, extra);
 
         if (_verboseLogging)
-            Console.WriteLine($"[STREAM-END][Google] updates={updates} finish={rawFinish ?? "none"} mode={splitter.Mode} final={splitter.FinalText.Length}ch tools={(chamadas.Houve ? "sim" : "nao")} assinaturas={chamadas.Extras.Count}");
+            Console.WriteLine($"[STREAM-END][Google] updates={updates} finish={rawFinish ?? "none"} mode={splitter.Mode} final={splitter.FinalText.Length}ch tools={(chamadas.Houve ? "sim" : "nao")} assinaturas={chamadas.Extras.Count} raciocinio={_esforcoPedido}");
 
         if (!chamadas.Houve && tools.Count > 0 && _healer.TryHeal(splitter.FinalText, tools, out var healed))
         {
