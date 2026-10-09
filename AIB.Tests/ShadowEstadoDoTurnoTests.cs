@@ -94,6 +94,49 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ABarra_MostraOContadorDeTokens_DaConversaDoOrbe()
+        {
+            // Pedido: "colocar o contador de tokens no shadow, somente ele". A conversa do orbe
+            // compacta sozinha e não tinha, na barra, nada que dissesse quanto ela pesa.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var conversa = JanelaDeEnsaio.Nova();
+                var servico = JanelaDeEnsaio.Servico();
+                var doOrbe = new ConversaDoOrbe(JanelaDeEnsaio.Conversa(servico), servico);
+
+                // Sem conversa própria não há o que contar: o contador nem aparece.
+                var semConversa = new ShadowAssistantWindow();
+                App.LigarOrbe(conversa, semConversa)();
+                ((TextBlock)semConversa.FindName("Contador")).Visibility.Should().Be(Visibility.Collapsed);
+                semConversa.Close();
+
+                var orbe = new ShadowAssistantWindow();
+                var contador = (TextBlock)orbe.FindName("Contador");
+                App.LigarOrbe(conversa, orbe, doOrbe);
+
+                contador.Visibility.Should().Be(Visibility.Visible, "já nasce com a conta atual");
+                contador.Text.Should().Be(doOrbe.Conversa.CurrentTokenReport.Contexto.ToString("N0"));
+
+                // O caso do registro real: 15 turnos viraram capítulo e o prompt ficou em 9.936.
+                var medido = new TokenReport(Total: 17_377, Contexto: 9_936, Max: 32_000,
+                    Cru: 8_549, Memoria: 522, Capitulos: 2, CustoUsd: 0.0015m);
+                orbe.MostrarTokens(medido);
+
+                contador.Text.Should().Be(9_936.ToString("N0"));
+                contador.Foreground.Should().BeSameAs(orbe.FindResource("TextSecondaryBrush"));
+                ((string)contador.ToolTip).Should().Contain("2 capítulo(s)").And.Contain("US$");
+
+                // Acima do teto do nível: laranja, como no rodapé da janela.
+                orbe.MostrarTokens(medido with { Contexto = 40_000 });
+                contador.Foreground.Should().BeSameAs(orbe.FindResource("WarnBrush"));
+
+                orbe.Close();
+                conversa.Close();
+            });
+        }
+
+        [Fact]
         public void ComTurnoRodando_OBotaoDaBarra_ViraParar_ENaoEnvia()
         {
             // Visto no uso: no orbe o botão de enviar nunca virava parar. Com a IA em laço, a

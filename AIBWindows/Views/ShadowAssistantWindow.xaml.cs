@@ -408,6 +408,33 @@ public partial class ShadowAssistantWindow : Window
         }
     }
 
+    /// <summary>
+    /// O contador de tokens da barra: quanto a conversa do orbe pesa no prompt agora, na cor da
+    /// ocupação. A dica traz o teto, a memória e o gasto. Só aparece com a conversa própria
+    /// do orbe ligada; sem ela não há o que contar aqui.
+    /// </summary>
+    public void MostrarTokens(TokenReport r)
+    {
+        Contador.Text = r.Contexto.ToString("N0");
+        Contador.Foreground = (System.Windows.Media.Brush)FindResource(r.PincelDaOcupacao);
+        Contador.ToolTip = DicaDoContador(r);
+        Contador.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>A conta atrás do número, curta: a barra não tem /memoria para o detalhe.</summary>
+    public static string DicaDoContador(TokenReport r)
+    {
+        string dica = $"No prompt: {r.Contexto:N0} de {r.Max:N0} tokens.";
+
+        dica += r.Capitulos == 0 && r.Atos == 0
+            ? "\nNada compactado ainda."
+            : $"\n{r.Capitulos} capítulo(s), {r.Atos} ato(s): {r.Economia:N0} tokens poupados.";
+
+        if (r.CustoUsd is decimal custo) dica += $"\nGasto na conversa: {TokenReport.Dolares(custo)}";
+
+        return dica;
+    }
+
     private void BotaoEnviar_Click(object sender, RoutedEventArgs e)
     {
         // Com turno em andamento o botão é PARAR, como na janela de chat.

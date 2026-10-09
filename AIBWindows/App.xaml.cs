@@ -196,10 +196,15 @@ public partial class App : System.Windows.Application
         void AndouNoOrbe(string passo, string? ferramenta) => orbe.MostrarEstado(passo, ferramenta);
         void RespondeuNoOrbe(string texto) => orbe.ResponderTurno(texto);
 
+        // O contador da barra. O evento pode chegar de fora da thread da interface.
+        void ContouNoOrbe(TokenReport r) => orbe.Dispatcher.BeginInvoke(() => orbe.MostrarTokens(r));
+
         if (doOrbe != null)
         {
             doOrbe.PassoMudou += AndouNoOrbe;
             doOrbe.Respondeu += RespondeuNoOrbe;
+            doOrbe.Conversa.OnTokenCountChanged += ContouNoOrbe;
+            orbe.MostrarTokens(doOrbe.Conversa.CurrentTokenReport);
 
             // A conversa do orbe continua de onde parou, e a pilha também: reiniciado o AIB, o
             // modelo lembrava de tudo e a barra abria vazia, como se a conversa tivesse sumido.
@@ -238,6 +243,7 @@ public partial class App : System.Windows.Application
             {
                 doOrbe.PassoMudou -= AndouNoOrbe;
                 doOrbe.Respondeu -= RespondeuNoOrbe;
+                doOrbe.Conversa.OnTokenCountChanged -= ContouNoOrbe;
             }
             orbe.MensagemEnviada -= Enviou;
             orbe.ParadaPedida -= Parou;

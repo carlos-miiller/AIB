@@ -2074,17 +2074,10 @@ public partial class ChatWindow : Window
     /// </summary>
     private System.Windows.Media.Brush CorDaOcupacao(TokenReport r)
     {
-        // A REDE em primeiro lugar: é o único ponto em que algo é perdido de verdade. Passar
-        // dela é a poda de emergência voltando a descartar sem substituto.
-        if (r.OcupacaoDaRedePct >= 90) return (System.Windows.Media.Brush)FindResource("DangerTextBrush");
-
-        // Passar do teto do NÍVEL não interrompe nada e virou rotina desde que a janela ficou
-        // bem maior que ele. Vale laranja — "vai compactar no fim do turno" — e não vermelho:
-        // alarme que dispara todo turno deixa de ser alarme.
-        if (r.AcimaDoOrcamento || r.OcupacaoPct >= 90)
-            return (System.Windows.Media.Brush)FindResource("WarnBrush");
-
-        return (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
+        // A REDE em primeiro lugar: é o único ponto em que algo é perdido de verdade. Passar do
+        // teto do NÍVEL virou rotina e vale laranja, não vermelho: alarme que dispara todo
+        // turno deixa de ser alarme. A regra mora no relatório, e o orbe usa a mesma.
+        return (System.Windows.Media.Brush)FindResource(r.PincelDaOcupacao);
     }
 
     /// <summary>
