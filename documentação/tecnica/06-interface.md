@@ -330,6 +330,10 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   o desktop, leva o halo `FloatingTextShadow` (escuro no tema escuro, claro no claro). A dica
   traz capítulos e atos, o poupado e o gasto. `App.LigarOrbe` o alimenta pelo
   `OnTokenCountChanged` da conversa do orbe.
+- **Comandos de barra** no orbe (`ConversaDoOrbe.ComandoDe`): `/compact` (a mesma
+  `ForcarCompactacaoAsync`, na conversa do orbe) e `/memoria`, `/memória` ou `/memory`
+  (`MemoriaEmTexto`). A resposta volta como fala. Não vão ao modelo como mensagem, não contam
+  como conversa para o afeto e o botão de parar interrompe a compactação.
 - **Parar:** com um turno rodando (`EmTurno`, pelo passo anunciado), o botão de enviar vira o
   quadrado vermelho de parar e dispara `ParadaPedida`; `App.LigarOrbe` cancela o turno de quem
   estiver rodando (`ConversaDoOrbe.Parar` ou `ChatWindow.PararTurno`). A barra recebe o que já

@@ -76,12 +76,79 @@ public sealed class ConversaDoOrbe
 
         _parou = true;
         Conversa.CancelGeneration();
+
+        // O /compact não é um turno: quem o interrompe é a desistência da compactação.
+        Conversa.InterromperCompactacao();
+    }
+
+    /// <summary>Os comandos de barra que o orbe entende.</summary>
+    public enum Comando { Nenhum, Compactar, Memoria }
+
+    /// <summary>
+    /// O comando que o texto da barra é, se for um. Os mesmos da janela de chat que fazem
+    /// sentido aqui, mais <c>/memory</c>, que é como o usuário pediu.
+    /// </summary>
+    public static Comando ComandoDe(string? texto) => (texto ?? "").Trim().ToLowerInvariant() switch
+    {
+        "/compact" => Comando.Compactar,
+        "/memoria" or "/memória" or "/memory" => Comando.Memoria,
+        _ => Comando.Nenhum
+    };
+
+    /// <summary>
+    /// Roda um comando de barra na conversa DO ORBE. Não passa pelo modelo como mensagem: no
+    /// orbe o <c>/compact</c> ia ao modelo como texto comum, e ele respondia a ele.
+    /// <para>
+    /// Não conta como conversa: não dispara <see cref="UsuarioFalou"/> (o afeto e o contato não
+    /// andam por um comando) nem marca atividade nova para a compactação da pausa.
+    /// </para>
+    /// </summary>
+    private async Task RodarComandoAsync(Comando comando)
+    {
+        Ocupada = true;
+        _parou = false;
+        string resposta;
+
+        try
+        {
+            if (comando == Comando.Memoria)
+            {
+                // Entre cercas: a conta é alinhada por espaços, e o Markdown juntaria as colunas.
+                resposta = "```\n" + Conversa.MemoriaEmTexto(Nivel) + "\n```";
+            }
+            else
+            {
+                PassoMudou?.Invoke("Compactando", null);
+                resposta = await Conversa.ForcarCompactacaoAsync(Nivel).ConfigureAwait(true);
+
+                // O que havia de novo acabou de ser compactado: a pausa não pede de novo.
+                _compactarNaPausa = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ORBE] comando falhou: {ex.Message}");
+            resposta = $"O comando falhou: {ex.Message}";
+        }
+        finally
+        {
+            Ocupada = false;
+            PassoMudou?.Invoke("", null);
+        }
+
+        Respondeu?.Invoke(resposta);
     }
 
     /// <summary>Roda um turno com o que o usuário escreveu na barra.</summary>
     public async Task EnviarAsync(string texto)
     {
         if (string.IsNullOrWhiteSpace(texto) || Ocupada) return;
+
+        if (ComandoDe(texto) is var comando and not Comando.Nenhum)
+        {
+            await RodarComandoAsync(comando);
+            return;
+        }
 
         Ocupada = true;
         _parou = false;

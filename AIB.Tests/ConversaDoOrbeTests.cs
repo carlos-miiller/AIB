@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using AIB.Services;
 using FluentAssertions;
 using Xunit;
@@ -32,6 +33,47 @@ namespace AIB.Tests
         public void SemAtividade_NaoCompacta()
         {
             ConversaDoOrbe.DeveCompactar(true, false, null, Agora).Should().BeFalse();
+        }
+
+        [Theory]
+        [InlineData("/compact", ConversaDoOrbe.Comando.Compactar)]
+        [InlineData("  /COMPACT ", ConversaDoOrbe.Comando.Compactar)]
+        [InlineData("/memoria", ConversaDoOrbe.Comando.Memoria)]
+        [InlineData("/memória", ConversaDoOrbe.Comando.Memoria)]
+        [InlineData("/memory", ConversaDoOrbe.Comando.Memoria)]
+        [InlineData("/compact agora", ConversaDoOrbe.Comando.Nenhum)]
+        [InlineData("o que é /compact?", ConversaDoOrbe.Comando.Nenhum)]
+        [InlineData("", ConversaDoOrbe.Comando.Nenhum)]
+        public void ReconheceOsComandosDeBarra(string texto, ConversaDoOrbe.Comando esperado)
+        {
+            ConversaDoOrbe.ComandoDe(texto).Should().Be(esperado);
+        }
+
+        [Theory]
+        [InlineData("/memory")]
+        [InlineData("/compact")]
+        public async Task OComando_RespondeNaBarra_SemIrAoModeloNemContarComoConversa(string comando)
+        {
+            // Visto no uso: no orbe o /compact ia ao modelo como texto comum. Os comandos de
+            // barra só existiam na janela de chat, e lá agem sobre a conversa da janela.
+            var servico = JanelaDeEnsaio.Servico();
+            var doOrbe = new ConversaDoOrbe(JanelaDeEnsaio.Conversa(servico), servico);
+            int antes = doOrbe.Conversa.SnapshotHistory().Count;
+
+            string? resposta = null;
+            bool falou = false;
+            doOrbe.Respondeu += texto => resposta = texto;
+            doOrbe.UsuarioFalou += _ => falou = true;
+
+            await doOrbe.EnviarAsync(comando);
+
+            resposta.Should().NotBeNullOrWhiteSpace();
+            if (comando == "/memory") resposta.Should().StartWith("```", "a conta é alinhada por espaços");
+
+            doOrbe.Conversa.SnapshotHistory().Count.Should().Be(antes, "o comando não entra na conversa");
+            falou.Should().BeFalse("comando não é conversa: o afeto não anda");
+            doOrbe.Ocupada.Should().BeFalse();
+            doOrbe.UltimaAtividadeUtc.Should().BeNull();
         }
 
         [Theory]
