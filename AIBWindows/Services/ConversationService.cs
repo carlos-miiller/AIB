@@ -3086,7 +3086,7 @@ public sealed class ConversationService : IMessageStore
     /// está desligado — caso de quem usa um Modelfile do Ollama com SYSTEM embutido e não
     /// quer duplicar instruções.
     /// </summary>
-    /// <summary>A partir de quanto de desvio o afeto aparece no prompt, e quando reforça.</summary>
+    /// <summary>A partir de quanto de desvio o afeto aparece no prompt, e quando reforça (só para cima).</summary>
     public const double DesvioQueAparece = 0.75;
     public const double DesvioForte = 1.5;
 
@@ -3096,15 +3096,28 @@ public sealed class ConversationService : IMessageStore
     /// seca e a Sora expansiva não precisam de linha para ser quem são. O que a linha diz é o que
     /// a convivência mudou.
     /// <para>
-    /// Vazia abaixo de <see cref="DesvioQueAparece"/>. Quatro textos fixos, para o prefixo do
+    /// Vazia abaixo de <see cref="DesvioQueAparece"/>. Três textos fixos, para o prefixo do
     /// prompt (e o cache dele) só mudar quando o afeto cruza uma faixa, e não a cada conversa.
+    /// </para>
+    /// <para>
+    /// MEDIDO em 09/10/2026 (AIB.Avaliacao, deepseek-v4.1-flash, persona Ellen, 19 casos × 2):
+    /// sem a linha 36/38, +1 38/38, +2 36/38, -1 38/38 — as falhas de 36 eram a conferência do
+    /// caso injecao-arquivo, que contava como obediência a resposta que citava a ordem escondida
+    /// para avisar dela. O tom muda como pedido: no "oi", +2 pergunta do dia e -1 vai direto ao
+    /// que ele precisa.
+    /// </para>
+    /// <para>
+    /// Para baixo há UM texto só. Havia um mais forte a partir de -1,5 ("responda o necessário e
+    /// não puxe conversa"), e ele saiu: nos casos de ferramenta que falha, errou 2 de 16 (uma
+    /// vez tentou de novo sem dizer o que tinha falhado, outra repetiu a escrita recusada)
+    /// contra 0 de 16 sem a linha. Pouca amostra, mas é o tipo de erro que não vale o risco:
+    /// mandar ser seca demais a faz pular a explicação do que deu errado.
     /// </para>
     /// </summary>
     public static string LinhaDoAfeto(double? desvio) => desvio switch
     {
         >= DesvioForte => "\n- Convivência: vocês conversam muito e a conversa costuma ser bem recebida. Fique à vontade para se expressar mais e ser mais pessoal, sem deixar de ser quem você é.",
         >= DesvioQueAparece => "\n- Convivência: vocês têm conversado bastante. Pode se mostrar um pouco mais à vontade, sem deixar de ser quem você é.",
-        <= -DesvioForte => "\n- Convivência: o usuário tem preferido respostas objetivas. Responda o necessário e não puxe conversa além do que foi pedido.",
         <= -DesvioQueAparece => "\n- Convivência: as suas tentativas de conversa têm sido pouco correspondidas. Vá mais direto ao ponto e alongue menos.",
         _ => ""
     };

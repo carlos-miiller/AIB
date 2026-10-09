@@ -523,7 +523,8 @@ namespace AIB.Tests
             ConversationService.LinhaDoAfeto(0.75).Should().Contain("um pouco mais à vontade");
             ConversationService.LinhaDoAfeto(2).Should().Contain("mais pessoal");
             ConversationService.LinhaDoAfeto(-0.75).Should().Contain("mais direto ao ponto");
-            ConversationService.LinhaDoAfeto(-2).Should().Contain("não puxe conversa");
+            // Para baixo o texto é um só: o mais seco foi medido e atrapalhava o relato de falha.
+            ConversationService.LinhaDoAfeto(-2).Should().Be(ConversationService.LinhaDoAfeto(-0.75));
 
             // Uma linha só, no bloco de contexto, sem gênero do personagem nem do usuário.
             foreach (double d in new[] { 0.75, 2, -0.75, -2 })

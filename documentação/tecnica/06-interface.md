@@ -425,8 +425,10 @@ personagem direto, que evita conversa longa; 5, o expressivo e apegado. Na conta
 fator de conversa, `1,50 + 0,10 × afeto` (`Temperamento.TetoDoAfeto`): 1,00 com -5 (conversa não
 o faz puxar mais assunto), 1,70 com +2 (o valor que nasceu com a Ellen), 2,00 com +5. O jeito de
 falar muda pelo DESVIO (afeto de agora menos o de fábrica), numa linha "Convivência" do bloco de
-contexto do prompt (`ConversationService.LinhaDoAfeto`): nada abaixo de 0,75 de desvio, um texto
-a partir de 0,75 e outro a partir de 1,5, para cada lado. Com desvio zero o prompt fica byte a
+contexto do prompt (`ConversationService.LinhaDoAfeto`): nada abaixo de 0,75 de desvio; para cima, um
+texto a partir de 0,75 e outro a partir de 1,5; para baixo, um só (o mais seco foi medido e
+atrapalhava o relato de ferramenta que falha). Medido em 09/10/2026 — os relatórios `afeto-*`
+estão em `AIB.Avaliacao/resultados/`. Com desvio zero o prompt fica byte a
 byte o que era. O `AIB.Avaliacao --afeto <desvio>` força o desvio para medir cada texto.
 
 O afeto é o único atributo que **anda sozinho**: a cada iniciativa classificada ou conversa
