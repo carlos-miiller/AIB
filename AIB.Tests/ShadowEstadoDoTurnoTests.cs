@@ -115,21 +115,34 @@ namespace AIB.Tests
                 var contador = (TextBlock)orbe.FindName("Contador");
                 App.LigarOrbe(conversa, orbe, doOrbe);
 
+                // Sob o círculo ele ficaria solto no desktop: só aparece com a barra aberta.
+                contador.Visibility.Should().Be(Visibility.Collapsed);
+                orbe.AbrirBarra();
+
                 contador.Visibility.Should().Be(Visibility.Visible, "já nasce com a conta atual");
-                contador.Text.Should().Be(doOrbe.Conversa.CurrentTokenReport.Contexto.ToString("N0"));
+                contador.Text.Should().StartWith($"{doOrbe.Conversa.CurrentTokenReport.Contexto:N0} tokens | ");
+
+                // Pedido: "na mesma posição que na janela principal, só adiciona uma sombra no
+                // texto para separá-lo". Abaixo da barra, à direita, com o halo do tema.
+                contador.HorizontalAlignment.Should().Be(HorizontalAlignment.Right);
+                contador.Margin.Bottom.Should().BeNegative("é desenhado abaixo da barra, sem linha própria");
+                contador.Effect.Should().BeSameAs(orbe.FindResource("FloatingTextShadow"));
 
                 // O caso do registro real: 15 turnos viraram capítulo e o prompt ficou em 9.936.
                 var medido = new TokenReport(Total: 17_377, Contexto: 9_936, Max: 32_000,
                     Cru: 8_549, Memoria: 522, Capitulos: 2, CustoUsd: 0.0015m);
                 orbe.MostrarTokens(medido);
 
-                contador.Text.Should().Be(9_936.ToString("N0"));
+                contador.Text.Should().Be($"{9_936:N0} tokens | {32_000:N0}");
                 contador.Foreground.Should().BeSameAs(orbe.FindResource("TextSecondaryBrush"));
                 ((string)contador.ToolTip).Should().Contain("2 capítulo(s)").And.Contain("US$");
 
                 // Acima do teto do nível: laranja, como no rodapé da janela.
                 orbe.MostrarTokens(medido with { Contexto = 40_000 });
                 contador.Foreground.Should().BeSameAs(orbe.FindResource("WarnBrush"));
+
+                orbe.FecharBarra();
+                contador.Visibility.Should().Be(Visibility.Collapsed);
 
                 orbe.Close();
                 conversa.Close();

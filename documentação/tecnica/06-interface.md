@@ -320,9 +320,11 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   altura por `Ui/AlturaParaRaioConverter`, porque WPF não anima `CornerRadius`). `Esc` ou perder o
   foco volta ao círculo; o que estava digitado e não foi enviado fica no campo para a próxima
   abertura (só enviar o esvazia).
-- **Contador de tokens** na barra (`MostrarTokens`), só com a conversa própria do orbe: o que vai
-  ao modelo agora, na mesma cor de ocupação do rodapé da janela (`TokenReport.PincelDaOcupacao`).
-  A dica traz o teto, capítulos e atos, o poupado e o gasto. `App.LigarOrbe` o alimenta pelo
+- **Contador de tokens** (`MostrarTokens`), só com a conversa própria do orbe e com a barra
+  aberta: abaixo da barra, à direita, como no rodapé da janela. Mostra o que vai ao modelo agora
+  e o teto do nível, na mesma cor de ocupação (`TokenReport.PincelDaOcupacao`). Como flutua sobre
+  o desktop, leva o halo `FloatingTextShadow` (escuro no tema escuro, claro no claro). A dica
+  traz capítulos e atos, o poupado e o gasto. `App.LigarOrbe` o alimenta pelo
   `OnTokenCountChanged` da conversa do orbe.
 - **Parar:** com um turno rodando (`EmTurno`, pelo passo anunciado), o botão de enviar vira o
   quadrado vermelho de parar e dispara `ParadaPedida`; `App.LigarOrbe` cancela o turno de quem

@@ -503,7 +503,6 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
                             <TextBox x:Name="Campo" Grid.Column="0"
@@ -540,18 +539,7 @@
                                        VerticalAlignment="Center"
                                        IsHitTestVisible="False"/>
 
-                            <!-- O contador de tokens da conversa do orbe: só o que vai ao
-                                 modelo agora. A conta inteira fica na dica, porque a barra
-                                 tem uma linha e o campo precisa do espaço. -->
-                            <TextBlock x:Name="Contador" Grid.Column="1"
-                                       FontFamily="{StaticResource MonoFontFamily}"
-                                       FontSize="11"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       VerticalAlignment="Center"
-                                       Margin="8,0,4,0"
-                                       Visibility="Collapsed"/>
-
-                            <Button x:Name="BotaoMic" Grid.Column="2"
+                            <Button x:Name="BotaoMic" Grid.Column="1"
                                     Style="{StaticResource IconButton}"
                                     ToolTip="Microfone">
                                 <Path Data="M9,3.4 A2.4,2.4 0 0 1 11.4,5.8 V9.4 A2.4,2.4 0 0 1 6.6,9.4 V5.8 A2.4,2.4 0 0 1 9,3.4 Z M4.6,9 A4.4,4.4 0 0 0 13.4,9 M9,13.4 V15.6"
@@ -560,7 +548,7 @@
                                       StrokeEndLineCap="Round" Width="18" Height="18" Stretch="None"/>
                             </Button>
 
-                            <Button x:Name="BotaoEnviar" Grid.Column="3"
+                            <Button x:Name="BotaoEnviar" Grid.Column="2"
                                     Style="{StaticResource SendButton}"
                                     Margin="4,0,0,0"
                                     Click="BotaoEnviar_Click"
@@ -591,6 +579,21 @@
                  3px para cima ao começar a trabalhar e voltava ao terminar. Com -3
                  de cada lado a pegada de LAYOUT volta a ser 56x56 e o anel
                  transborda só no DESENHO, que é o que se quer. -->
+            <!-- O contador de tokens da conversa do orbe, no lugar em que a janela de chat o
+                 tem: abaixo da barra, à direita. Aqui não há janela por trás, então ele flutua
+                 sobre o desktop e leva um halo para se separar do papel de parede. A margem
+                 negativa o desenha na folga do Palco, sem criar linha: uma linha a mais
+                 empurraria o orbe para cima. -->
+            <TextBlock x:Name="Contador"
+                       Grid.Row="1"
+                       HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                       Margin="0,0,16,-22"
+                       FontFamily="{StaticResource MonoFontFamily}"
+                       FontSize="12"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       Effect="{StaticResource FloatingTextShadow}"
+                       Visibility="Collapsed"/>
+
             <Path x:Name="AnelDoOrbe"
                   Grid.Row="1"
                   Data="M 35.5,1 A 34.5,34.5 0 0 1 70,35.5"

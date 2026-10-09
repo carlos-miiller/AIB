@@ -336,6 +336,7 @@ public partial class ShadowAssistantWindow : Window
         VisualStateManager.GoToElementState(Palco, "Barra", true);
         AnimarMargemDaCelula(MargemNaBarra, DuracaoDoMorph, EasingMode.EaseOut);
         AtualizarAnelDeProgresso();
+        AtualizarContador();
 
         // A pilha volta com o que já estava nela. Fechar a barra ESCONDE as bolhas; só o X
         // descarta. Sem isto, sair da barra por um clique fora apagava a resposta que o
@@ -376,6 +377,7 @@ public partial class ShadowAssistantWindow : Window
         VisualStateManager.GoToElementState(Palco, "Orbe", true);
         AnimarMargemDaCelula(MargemQueCentraliza(LarguraDaCelula()), TimeSpan.FromSeconds(0.22), EasingMode.EaseIn);
         AtualizarAnelDeProgresso();
+        AtualizarContador();
 
         // O que foi digitado e não enviado fica no campo, qualquer que seja o tamanho: só
         // Enviar o esvazia. Antes o rascunho de até 40 caracteres era descartado aqui, e um
@@ -409,17 +411,24 @@ public partial class ShadowAssistantWindow : Window
     }
 
     /// <summary>
-    /// O contador de tokens da barra: quanto a conversa do orbe pesa no prompt agora, na cor da
-    /// ocupação. A dica traz o teto, a memória e o gasto. Só aparece com a conversa própria
-    /// do orbe ligada; sem ela não há o que contar aqui.
+    /// O contador de tokens, abaixo da barra e à direita, como no rodapé da janela de chat:
+    /// quanto a conversa do orbe pesa no prompt agora e o teto do nível, na cor da ocupação. A
+    /// dica traz a memória e o gasto. Só existe com a conversa própria do orbe ligada, e só
+    /// aparece com a barra aberta: sob o círculo ficaria solto no desktop.
     /// </summary>
     public void MostrarTokens(TokenReport r)
     {
-        Contador.Text = r.Contexto.ToString("N0");
+        Contador.Text = $"{r.Contexto:N0} tokens | {r.Max:N0}";
         Contador.Foreground = (System.Windows.Media.Brush)FindResource(r.PincelDaOcupacao);
         Contador.ToolTip = DicaDoContador(r);
-        Contador.Visibility = Visibility.Visible;
+        _temTokens = true;
+        AtualizarContador();
     }
+
+    private bool _temTokens;
+
+    private void AtualizarContador() =>
+        Contador.Visibility = _temTokens && _emModoBarra ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>A conta atrás do número, curta: a barra não tem /memoria para o detalhe.</summary>
     public static string DicaDoContador(TokenReport r)

@@ -163,4 +163,10 @@
                       Direction="270" Opacity="0.55" Color="Black"/>
     <DropShadowEffect x:Key="BarShadow"      BlurRadius="44" ShadowDepth="16"
                       Direction="270" Opacity="0.58" Color="Black"/>
+
+    <!-- Texto solto sobre o papel de parede (o contador de tokens sob a barra do orbe). Sem
+         placa por trás, é o halo que o separa do que estiver no desktop: fechado, sem
+         deslocamento, na cor oposta à do texto do tema. -->
+    <DropShadowEffect x:Key="FloatingTextShadow" BlurRadius="5" ShadowDepth="0"
+                      Opacity="0.95" Color="White"/>
 </ResourceDictionary>
