@@ -323,7 +323,7 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
 - **Parar:** com um turno rodando (`EmTurno`, pelo passo anunciado), o botão de enviar vira o
   quadrado vermelho de parar e dispara `ParadaPedida`; `App.LigarOrbe` cancela o turno de quem
   estiver rodando (`ConversaDoOrbe.Parar` ou `ChatWindow.PararTurno`). A barra recebe o que já
-  tinha sido dito, ou "Parei.".
+  tinha sido dito, ou "Parei.". Enquanto o turno roda o Enter não envia: o texto fica no campo.
 - **Enviar** pela barra dispara `MensagemEnviada`, e o turno roda na **conversa do orbe**
   (`Services/ConversaDoOrbe`), separada da janela: um `ConversationService` em sessão fixa
   (`memory/shadow`, fora de `sessions/`: é uma só), reaberto de onde parou no arranque, fora do `chat_history.json` e sem

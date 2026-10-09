@@ -136,6 +136,40 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ComTurnoRodando_OEnter_NaoEnvia_EOTextoFicaNoCampo()
+        {
+            // Com a conversa do orbe ocupada, o Enter criava a bolha do usuário e esvaziava o
+            // campo, mas o texto era descartado: parecia enviado e o modelo nunca o recebia.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var orbe = new ShadowAssistantWindow();
+                var campo = (TextBox)orbe.FindName("Campo");
+                int envios = 0;
+                orbe.MensagemEnviada += _ => envios++;
+
+                orbe.AbrirBarra();
+                orbe.MostrarEstado("Pensando");
+                campo.Text = "e o ramal do Fernando?";
+
+                orbe.Enviar();
+
+                envios.Should().Be(0);
+                orbe.Falas.Should().BeEmpty("nada foi enviado, então não há bolha");
+                campo.Text.Should().Be("e o ramal do Fernando?");
+
+                // Terminado o turno, o mesmo texto segue normalmente.
+                orbe.MostrarEstado("");
+                orbe.Enviar();
+
+                envios.Should().Be(1);
+                campo.Text.Should().BeEmpty();
+
+                orbe.Close();
+            });
+        }
+
+        [Fact]
         public void ComAConversaNA_TELA_OOrbeNaoREPETE_AFala()
         {
             // Este era o defeito: a mesma frase em dois lugares ao mesmo tempo, e a segunda

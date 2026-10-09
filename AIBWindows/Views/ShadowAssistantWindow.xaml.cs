@@ -446,6 +446,11 @@ public partial class ShadowAssistantWindow : Window
         string texto = Campo.Text.Trim();
         if (texto.Length == 0) return;
 
+        // Com turno rodando o Enter não envia, e o texto fica no campo para depois. Antes ele
+        // virava bolha na pilha e sumia do campo, mas a conversa, ocupada, o ignorava: a
+        // mensagem parecia enviada e nunca chegava ao modelo.
+        if (EmTurno) return;
+
         Campo.Clear();
         AtualizarDica();
 
