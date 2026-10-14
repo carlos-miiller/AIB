@@ -107,7 +107,7 @@ namespace AIB.Tests
             var e = new EstadoDaIniciativa { Geral = 2 };
             e.Faixas[Iniciativa.FaixaDe(Dez)] = 1.5;
 
-            Iniciativa.Chance(e, Dez).Should().BeApproximately(0.015 * 2 * 1.5, 1e-9);
+            Iniciativa.Chance(e, Dez).Should().BeApproximately(0.02 * 2 * 1.5, 1e-9);
         }
 
         [Fact]
@@ -117,6 +117,39 @@ namespace AIB.Tests
             i.Sortear(Agora, Dez, dado: 0.01).Should().BeTrue();
             i.Sortear(Agora, Dez, dado: 0.5).Should().BeFalse();
             i.Estado.SorteioUtc.Should().Be(Agora);
+        }
+
+        [Fact]
+        public void ODiario_DizPorQueElaNaoFalou_SemOTextoDasMensagens()
+        {
+            // Visto no uso: "hoje ela não mandou nenhuma mensagem primeiro", com a suspeita de
+            // que a resposta dela ficava como "não respondida". O estado gravado dizia que não,
+            // mas não havia como saber quantos sorteios tinham acontecido nem o que segurou os
+            // outros: o programa só escrevia uma linha quando ela falava.
+            bool ligado = true;
+            var registro = new RegistroDaIniciativa(() => ligado, Path.Combine(_raiz, "logs"));
+            var i = new Iniciativa(_raiz) { Registro = registro };
+
+            i.Sortear(Agora, Dez, dado: 0.5).Should().BeFalse();
+            registro.Estado("segura: janela de chat aberta");
+            registro.Estado("segura: janela de chat aberta");
+            registro.Estado("livre: sorteia de 10 em 10 min");
+            i.Falou(Agora, Dez, "E o relatório do Fernando, saiu?", new Gancho("pendência", "relatório do Fernando"));
+            i.UsuarioFalou(Agora.AddMinutes(2), "saiu sim, mandei ontem", Dez);
+
+            string diario = File.ReadAllText(registro.Caminho);
+            diario.Should().Contain("SORTEIO").And.Contain("chance 2,0% = base 2,0%").And.Contain("dado 50,0% → não");
+            diario.Split("janela de chat aberta").Length.Should().Be(2, "a batida é de 20 s: só a mudança vira linha");
+            diario.Should().Contain("livre: sorteia").And.Contain("FALOU").And.Contain("primeira resposta à fala dela");
+            diario.Should().NotContain("Fernando", "o diário guarda números e motivos, não o que foi dito");
+
+            // Desligado nas configurações, não escreve mais nada.
+            ligado = false;
+            long tamanho = new FileInfo(registro.Caminho).Length;
+            i.Sortear(Agora.AddMinutes(10), Dez, dado: 0.5);
+            new FileInfo(registro.Caminho).Length.Should().Be(tamanho);
+
+            new UserAppSettings().IniciativaLogging.Should().BeTrue();
         }
 
         // ── Fatores ───────────────────────────────────────────────────

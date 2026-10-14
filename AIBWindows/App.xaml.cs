@@ -324,7 +324,10 @@ public partial class App : System.Windows.Application
     {
         _lembretes = new Lembretes();
         string personagem = _settingsService.LoadSettings().ActiveCharacter;
-        _iniciativa = new Iniciativa(personagem: personagem, temperamento: TemperamentoDe(personagem));
+        _iniciativa = new Iniciativa(personagem: personagem, temperamento: TemperamentoDe(personagem))
+        {
+            Registro = new RegistroDaIniciativa(() => _settingsService.LoadSettings().IniciativaLogging)
+        };
         _statusLidoUtc = _status.AlteradoUtc;
 
         // O afeto anda com o desfecho de cada conversa. O arquivo de status muda, e a batida
@@ -406,7 +409,11 @@ public partial class App : System.Windows.Application
         if (_ponderando || _chatWindow == null) return;
 
         var s = _settingsService.LoadSettings();
-        if (!s.IniciativaLigada) return;
+        if (!s.IniciativaLigada)
+        {
+            _iniciativa.Registro?.Estado("desligada nas configurações");
+            return;
+        }
 
         AcompanharPersonagem(s.ActiveCharacter);
 
@@ -421,6 +428,7 @@ public partial class App : System.Windows.Application
             Iniciativa.Hora(s.SilencioInicio) ?? TimeSpan.FromHours(22),
             Iniciativa.Hora(s.SilencioFim) ?? TimeSpan.FromHours(8),
             livre && Presenca.Disponivel(), livre, _ultimaConversaUtc, s.MensagensPorDia);
+        _iniciativa.Registro?.Estado(OQueSegura(impedimento, s.MensagensPorDia));
         if (impedimento != null) return;
 
         if (!_iniciativa.Sortear(utc, agora.TimeOfDay, Random.Shared.NextDouble())) return;
@@ -441,10 +449,20 @@ public partial class App : System.Windows.Application
                 _iniciativa.Estado.UltimoDesfecho,
                 _iniciativa.Estado.Recentes.ToList());
 
+            _iniciativa.Registro?.Escrever("PEDIDO", $"ao modelo, gancho {gancho?.Tipo ?? "conhecer"} "
+                + $"({pendencias.Count} pendência(s), {fatos.Count} fato(s) disponíveis)");
+            var relogio = System.Diagnostics.Stopwatch.StartNew();
+
             string? fala = await conversa.EscreverIniciativaAsync(gancho, contexto, System.Threading.CancellationToken.None);
 
             // Enquanto ela escrevia, o usuário pode ter começado a falar com ela.
-            if (fala != null && _conversaDoOrbe.Ocupada) fala = null;
+            if (fala != null && _conversaDoOrbe.Ocupada)
+            {
+                fala = null;
+                _iniciativa.Registro?.Escrever("DESCARTADA", "ele começou a falar com ela enquanto ela escrevia");
+            }
+            _iniciativa.Registro?.Escrever("RESPOSTA", $"do modelo em {relogio.Elapsed.TotalSeconds:0.0} s: "
+                + (fala == null ? "sem mensagem" : "mensagem pronta"));
 
             _iniciativa.Falou(DateTime.UtcNow, DateTime.Now.TimeOfDay, fala, gancho);
             Console.WriteLine($"[INICIATIVA] {(fala == null ? "sem mensagem" : "falou")} "
@@ -456,6 +474,43 @@ public partial class App : System.Windows.Application
         finally
         {
             _ponderando = false;
+        }
+    }
+
+    /// <summary>
+    /// O impedimento por extenso, para o diário. <see cref="Iniciativa.Impedimento"/> junta
+    /// "sem orbe", "janela aberta", "turno rodando", "ausente" e "não perturbe" num motivo só,
+    /// e para saber por que ela ficou calada é preciso saber qual deles foi.
+    /// </summary>
+    private string OQueSegura(string? impedimento, int teto)
+    {
+        var e = _iniciativa.Estado;
+        switch (impedimento)
+        {
+            // Entre um sorteio e outro ela continua livre: não é mudança de estado.
+            case null:
+            case "sorteou há pouco":
+                return "livre: sorteia de 10 em 10 min";
+
+            case "ausente ou ocupado":
+            case "turno ou conversa aberta":
+                if (_orbe == null) return "segura: sem orbe na tela";
+                if (_chatWindow!.IsVisible) return "segura: janela de chat aberta";
+                if (_chatWindow.Ocupada) return "segura: turno rodando na janela";
+                if (_conversaDoOrbe.Ocupada) return "segura: turno rodando no orbe";
+                if (Presenca.Ocioso() >= Iniciativa.Ausencia) return "segura: usuário ausente (mais de 5 min sem mexer no PC)";
+                return "segura: o Windows não aceita avisos (tela cheia, apresentação ou não perturbe)";
+
+            case "conversa recente":
+                return "segura: conversa há menos de 15 min";
+            case "esperando resposta":
+                return $"segura: a fala dela das {RegistroDaIniciativa.Hora(e.FalaUtc ?? DateTime.UtcNow)} ainda não teve resposta";
+            case "pausa pedida":
+                return $"segura: pausa pedida até {RegistroDaIniciativa.Hora(e.PausaAteUtc ?? DateTime.UtcNow)}";
+            case "teto de mensagens":
+                return $"segura: teto de mensagens do dia ({e.MensagensHoje} de {teto})";
+            default:
+                return "segura: " + impedimento;
         }
     }
 

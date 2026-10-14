@@ -225,7 +225,7 @@ public sealed record Gancho(string Tipo, string Texto);
 /// A persona puxa assunto sozinha: retoma algo que ficou em aberto, pergunta sobre o usuário.
 /// <para>
 /// O ALGORITMO DECIDE QUANDO, ELA SÓ ESCREVE — decisão do usuário. De 10 em 10 min, nas batidas
-/// em que ela poderia falar, sorteia <c>chance = 1,5% × geral × faixa</c>; acertando, o código
+/// em que ela poderia falar, sorteia <c>chance = 2% × geral × faixa</c>; acertando, o código
 /// escolhe também o gancho (<see cref="EscolherGancho"/>) e o modelo recebe "você está sem
 /// fazer nada, ele está online, você decide mandar uma mensagem". Não há saída NADA: cada
 /// chamada é uma mensagem, e o custo é o das mensagens. O gancho é o que evita o "oi, como vai?"
@@ -279,10 +279,14 @@ public sealed class Iniciativa
     public const double FatorLida = 0.9;
 
     /// <summary>
-    /// A chance por sorteio com tudo neutro: ~1,3 mensagem num dia de 14 h (84 sorteios). Era
+    /// A chance por sorteio com tudo neutro: ~1,7 mensagem num dia de 14 h (84 sorteios). Era
     /// 2,5% quando o modelo ainda podia responder NADA; agora todo acerto é mensagem.
+    /// <para>
+    /// Era 1,5%. Pedido: "vamos aumentar o limite de chance levemente", depois de um dia inteiro
+    /// de conversa sem ela puxar assunto nenhuma vez — com o geral em 2,44.
+    /// </para>
     /// </summary>
-    public const double ChanceBase = 0.015;
+    public const double ChanceBase = 0.02;
 
     public static readonly TimeSpan Cadencia = TimeSpan.FromMinutes(10);
 
@@ -359,6 +363,15 @@ public sealed class Iniciativa
     /// <summary>O personagem cujo vínculo está carregado. Vazio: nenhum.</summary>
     public string Personagem { get; private set; }
 
+    /// <summary>O diário (<see cref="RegistroDaIniciativa"/>). Nulo: não se registra nada.</summary>
+    public RegistroDaIniciativa? Registro { get; set; }
+
+    private void Log(string rotulo, string texto) => Registro?.Escrever(rotulo, texto);
+
+    private static string F(double n) => RegistroDaIniciativa.Num(n);
+
+    private static string FaixaEmTexto(int faixa) => $"{faixa * 2}h–{faixa * 2 + 2}h";
+
     /// <summary>O temperamento do personagem carregado.</summary>
     public Temperamento Temperamento { get { lock (_gate) return _temperamento; } }
 
@@ -385,9 +398,11 @@ public sealed class Iniciativa
             if (novo == Personagem) return;
 
             Gravar();
+            string antes = Personagem;
             Personagem = novo;
             (LerVinculo() ?? new Vinculo()).Para(Estado);
             Gravar();
+            Log("PERSONAGEM", $"{(antes.Length > 0 ? antes : "(nenhum)")} → {(novo.Length > 0 ? novo : "(nenhum)")}, geral {F(Estado.Geral)}");
         }
     }
 
@@ -595,6 +610,7 @@ public sealed class Iniciativa
             if (Estado.Dia == hoje) return;
 
             bool primeiraVez = Estado.Dia.Length == 0;
+            double geralAntes = Estado.Geral;
             Estado.Dia = hoje;
             Estado.MensagensHoje = 0;
             if (!primeiraVez)
@@ -604,6 +620,8 @@ public sealed class Iniciativa
                 for (int i = 0; i < Estado.Faixas.Length; i++) Estado.Faixas[i] = Esquecer(Estado.Faixas[i]);
             }
             Gravar();
+            Log("NOVO DIA", $"{hoje}: contagem zerada, geral {F(geralAntes)} → {F(Estado.Geral)}, "
+                            + $"faixas {string.Join(" ", Estado.Faixas.Select(F))}");
         }
     }
 
@@ -619,8 +637,17 @@ public sealed class Iniciativa
             Estado.ContatoUtc ??= agoraUtc;
             Gravar();
 
-            double saudade = Saudade(agoraUtc - Estado.ContatoUtc.Value, _temperamento.Saudade);
-            return dado < Chance(Estado, horaLocal, _temperamento.Chance, saudade);
+            var semContato = agoraUtc - Estado.ContatoUtc.Value;
+            double saudade = Saudade(semContato, _temperamento.Saudade);
+            double chance = Chance(Estado, horaLocal, _temperamento.Chance, saudade);
+            bool acertou = dado < chance;
+
+            Log("SORTEIO", $"chance {RegistroDaIniciativa.Pct(chance)} = base {RegistroDaIniciativa.Pct(ChanceBase)}"
+                           + $" × temperamento {F(_temperamento.Chance)} × saudade {F(saudade)}"
+                           + $" ({semContato.TotalHours:0.0} h sem contato) × geral {F(Estado.Geral)}"
+                           + $" × faixa {FaixaEmTexto(FaixaDe(horaLocal))} {F(Estado.Faixas[FaixaDe(horaLocal)])}"
+                           + $"; dado {RegistroDaIniciativa.Pct(dado)} → {(acertou ? "ACERTOU" : "não")}");
+            return acertou;
         }
     }
 
@@ -647,6 +674,12 @@ public sealed class Iniciativa
                 Estado.Palavras = 0;
             }
             Gravar();
+
+            // Só contagens: o texto da mensagem não vai para o diário.
+            Log("FALOU", string.IsNullOrWhiteSpace(texto)
+                ? $"o modelo não devolveu mensagem; conta no teto ({Estado.MensagensHoje} hoje)"
+                : $"{ConversaDoOrbe.Palavras(texto)} palavra(s), gancho {gancho?.Tipo ?? "conhecer"}, "
+                  + $"{Estado.MensagensHoje} hoje; agora espera resposta");
         }
     }
 
@@ -665,6 +698,7 @@ public sealed class Iniciativa
             if (Estado.FalaUtc == null || Estado.Leu) return;
             Estado.Leu = true;
             Gravar();
+            Log("LEU", "ele abriu o pulso e leu a fala");
         }
     }
 
@@ -678,6 +712,7 @@ public sealed class Iniciativa
         {
             Estado.ContatoUtc = agoraUtc;
             Gravar();
+            Log("CONTATO", "turno concluído na janela: a saudade zera");
         }
     }
 
@@ -704,6 +739,8 @@ public sealed class Iniciativa
                 }
                 Estado.TurnosDaConversa++;
                 Gravar();
+                Log("ELE FALOU", $"sem fala dela esperando: conversa puxada por ele, turno {Estado.TurnosDaConversa} "
+                                 + $"(aberta às {RegistroDaIniciativa.Hora(Estado.ConversaUtc!.Value)})");
                 return;
             }
 
@@ -719,12 +756,19 @@ public sealed class Iniciativa
                     Estado.PausaAteUtc = agoraUtc + PausaDaRecusa < fimDoDia ? agoraUtc + PausaDaRecusa : fimDoDia;
                     Encerrar();
                     Gravar();
+                    Log("ELE FALOU", $"a resposta à fala dela foi um \"agora não\": pausa até {RegistroDaIniciativa.Hora(Estado.PausaAteUtc.Value)}");
                     return;
                 }
+
+                Log("ELE FALOU", $"primeira resposta à fala dela ({Estado.Palavras} palavra(s)): a trava de espera cai");
             }
 
-            if (agoraUtc - Estado.RespostaUtc.Value <= JanelaDaConversa) Estado.Turnos++;
+            bool conta = agoraUtc - Estado.RespostaUtc.Value <= JanelaDaConversa;
+            if (conta) Estado.Turnos++;
             Gravar();
+            Log("ELE FALOU", conta
+                ? $"turno {Estado.Turnos} da conversa que a fala dela abriu"
+                : "fora dos 30 min da resposta: não conta mais para a fala dela");
         }
     }
 
@@ -769,6 +813,8 @@ public sealed class Iniciativa
     private void Aplicar(double fator, string desfecho, double passo)
     {
         Estado.UltimoDesfecho = desfecho;
+        Log("DESFECHO", $"a fala dela {desfecho} ({Estado.Turnos} turno(s), {Estado.Palavras} palavra(s) na resposta, "
+                        + $"{(Estado.Leu ? "lida" : "não lida")}); afeto {passo:+0.00;-0.00}");
         Multiplicar(Estado.FaixaDaFala, fator);
         AfetoMoveu?.Invoke(passo);
     }
@@ -776,8 +822,11 @@ public sealed class Iniciativa
     private void Multiplicar(int faixa, double fator)
     {
         int f = Math.Clamp(faixa, 0, NumeroDeFaixas - 1);
+        double faixaAntes = Estado.Faixas[f], geralAntes = Estado.Geral;
         Estado.Faixas[f] = Preso(Estado.Faixas[f] * fator);
         Estado.Geral = Preso(Estado.Geral * Math.Sqrt(fator));
+        Log("APRENDEU", $"fator {F(fator)}: faixa {FaixaEmTexto(f)} {F(faixaAntes)} → {F(Estado.Faixas[f])}, "
+                        + $"geral {F(geralAntes)} → {F(Estado.Geral)}");
     }
 
     /// <summary>
@@ -786,6 +835,8 @@ public sealed class Iniciativa
     /// </summary>
     private void FecharConversa()
     {
+        Log("CONVERSA", $"a conversa puxada por ele fechou com {Estado.TurnosDaConversa} turno(s)"
+                        + (Estado.TurnosDaConversa >= 2 ? $"; afeto {PassoDaEspontanea:+0.00;-0.00}" : ""));
         if (Estado.TurnosDaConversa > 0)
             Multiplicar(Estado.FaixaDaConversa, FatorEspontaneo(Estado.TurnosDaConversa, _temperamento.Apego));
 
@@ -831,6 +882,7 @@ public sealed class Iniciativa
         {
             Estado = new EstadoDaIniciativa { Dia = Estado.Dia, MensagensHoje = Estado.MensagensHoje };
             Gravar();
+            Log("ZERADO", "aprendizado zerado pelas configurações");
         }
     }
 

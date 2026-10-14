@@ -200,6 +200,17 @@ public sealed class UserAppSettings
     /// </summary>
     public int MensagensPorDia { get; set; } = Iniciativa.PadraoDeMensagensPorDia;
 
+    /// <summary>
+    /// Grava o diário da iniciativa em <c>~/.AIB/logs/iniciativa.log</c>
+    /// (<see cref="RegistroDaIniciativa"/>): cada sorteio com a conta da chance, o que segurou o
+    /// sorteio, e o que ela aprendeu.
+    /// <para>
+    /// Nasce LIGADA, ao contrário dos outros diários: grava números e motivos, nunca o texto
+    /// das mensagens, e sem ela "por que ela não falou hoje?" não tem resposta.
+    /// </para>
+    /// </summary>
+    public bool IniciativaLogging { get; set; } = true;
+
     /// <summary>Começo do horário de silêncio, "HH:mm". Lembrete pedido fura o silêncio.</summary>
     public string SilencioInicio { get; set; } = "22:00";
 

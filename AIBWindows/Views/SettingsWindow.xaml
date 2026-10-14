@@ -1489,6 +1489,24 @@
                                         </Grid>
                                     </Border>
 
+                                    <!-- Diário da iniciativa -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Gravar diário da iniciativa" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Cada sorteio com a conta da chance, o que a impediu de sortear e o que ela aprendeu. Vai para logs\iniciativa.log. Grava números e motivos, não o texto das mensagens."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="IniciativaLogSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
                                     <!-- Horário de silêncio -->
                                     <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
                                         <Grid Margin="0,13">

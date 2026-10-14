@@ -402,8 +402,17 @@ orbe na tela, conversa fora da tela e sem turno; usuário presente (`Presenca`: 
 últimos 5 min e `SHQueryUserNotificationState` aceitando avisos — sem tela cheia nem "não
 perturbe"); 15 min sem conversa; fora da pausa pedida; a última fala dela já respondida; menos
 do teto de mensagens do dia (`MensagensPorDia`, configurável de 1 a 20, padrão 6; cada uma é uma requisição paga). Podendo, **sorteia** de 10 em 10 min:
-`chance = 1,5% × geral × faixa` (`Iniciativa.Chance`; ~1,3 mensagem num dia de 14 h com tudo
-neutro). Sem número fixo de falas por dia e sem intervalo mínimo, por decisão do usuário.
+`chance = 2% × geral × faixa` (`Iniciativa.Chance`, `ChanceBase`; ~1,7 mensagem num dia de 14 h
+com tudo neutro; era 1,5%, subiu a pedido). Sem número fixo de falas por dia e sem intervalo
+mínimo, por decisão do usuário.
+
+**Diário** (`RegistroDaIniciativa`, chave `IniciativaLogging`, nasce ligada): em
+`~/.AIB/logs/iniciativa.log`, uma linha por sorteio com a conta inteira da chance e o dado, uma a
+cada MUDANÇA do que segura o sorteio (`App.OQueSegura` separa o que `Impedimento` junta: sem
+orbe, janela aberta, turno rodando, ausente, "não perturbe"), e uma por transição — fala dela,
+leitura, mensagem dele, desfecho, o que os multiplicadores aprenderam, virada do dia, troca de
+personagem, pedido e resposta do modelo. Só números e motivos, nunca o texto das mensagens.
+Passando de 1 MB vira `iniciativa.anterior.log`.
 
 **O algoritmo decide quando; ela só escreve** (decisão do usuário). Acertando o sorteio, o código
 escolhe o **gancho** (`Iniciativa.EscolherGancho`): uma pendência de assunto da memória da
