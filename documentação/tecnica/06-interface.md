@@ -414,23 +414,28 @@ leitura, mensagem dele, desfecho, o que os multiplicadores aprenderam, virada do
 personagem, pedido e resposta do modelo. Só números e motivos, nunca o texto das mensagens.
 Passando de 1 MB vira `iniciativa.anterior.log`.
 
-**O algoritmo decide quando; ela só escreve** (decisão do usuário). Acertando o sorteio, o código
-escolhe o **gancho** (`Iniciativa.EscolherGancho`): uma pendência de assunto da memória da
-conversa do orbe ou um fato "sobre o usuário", sorteados com o mesmo peso — ela não está ajudando
-no trabalho naquela hora, então a pendência não vale mais que o resto —, evitando os 5 usados por
-último; sem nenhum, "puxe um assunto para conhecer melhor". O gancho é o que evita o "oi, como
-vai?" de quem foi mandado falar sem assunto.
+**O algoritmo decide quando; ela decide o quê** (decisão do usuário em 15/10/2026). Até então o
+código sorteava um gancho (uma pendência ou um fato sobre o usuário), e o pedido trazia "você está
+sem fazer nada, você decide mandar uma mensagem", as últimas mensagens dela com "não repita" e
+"uma ou duas frases, sem saudação genérica e sem oferecer ajuda". Isso engessava a resposta e
+saiu: o pedido dá só a situação.
 
 `ConversationService.EscreverIniciativaAsync` chama o modelo fora de banda (sem ferramentas,
-temperatura 0,8, até 160 tokens) com um papel, não uma decisão (`MaterialDaIniciativa`): a
-**alma inteira** — decisão do usuário: o sorteio controla quantas vezes ela é chamada e toda
-chamada vira mensagem, então os ~4.000 tokens só são pagos quando ela fala; sem alma, a persona
-curta do `info.json` (nome, descrição, personalidade, fala de exemplo) —, "Você está sem fazer nada.
-Carlo está online. Vocês conversaram pela última vez há 3 h. Você decide mandar uma mensagem para
-Carlo.", como terminou a última iniciativa (`UltimoDesfecho`), o gancho, as últimas 4 falas e as
-últimas 5 mensagens por iniciativa ("não repita", `Recentes`, sobrevive ao arranque). Sem saída
-NADA: o pedido custa ~4.500–5.000 tokens (a alma é quase tudo) e toda chamada é uma mensagem. Com o geral ≥ 1,5, ganha
-"vocês têm conversado bastante ultimamente": o afeto aparece na voz, não só na frequência.
+temperatura 0,8, até 400 tokens, `TetoDaIniciativa`) com uma mensagem só (`MaterialDaIniciativa`):
+
+1. a **alma inteira** — decisão do usuário: o sorteio controla quantas vezes ela é chamada e toda
+   chamada vira mensagem, então os ~4.000 tokens só são pagos quando ela fala; sem alma, a persona
+   curta do `info.json` (nome, descrição, personalidade, fala de exemplo);
+2. o **bloco de memória** da conversa do orbe, o mesmo do turno normal (`MemoryLayer.Render`:
+   fatos, atos, capítulos, pendências);
+3. "Agora: quarta-feira, 15:40. Carlo está online. Vocês conversaram pela última vez há 3 h.";
+4. a linha "Convivência" do afeto, a mesma do chat (`LinhaDoAfeto`, pelo desvio), quando há;
+5. como terminou a última iniciativa (`UltimoDesfecho`);
+6. as últimas 4 falas da conversa do orbe;
+7. "Escreva só a mensagem que você manda agora para Carlo, por conta própria." — o "só a
+   mensagem" evita o "Aqui está uma mensagem:"; o "por conta própria", que ela responda à última fala.
+
+Sem saída NADA: toda chamada é uma mensagem. O custo é a alma mais a memória.
 
 O nome vem de `NomeDoUsuario` (Configurações > Identidade, e o primeiro passo da primeira
 inicialização); vazio é "o usuário".
@@ -441,8 +446,7 @@ estado só (`EstadoDaIniciativa`); no disco são dois arquivos cifrados (`Arquiv
 - `~/.AIB/iniciativa.dat` — o que é do **usuário**: as faixas de horário, a pausa do "agora
   não", o último sorteio e a contagem do dia;
 - `~/.AIB/character/<Nome>/vinculo.dat` — o que é da relação com **um personagem** (`Vinculo`):
-  o geral, a fala que espera resposta, a conversa espontânea aberta, as mensagens e ganchos
-  recentes e o último desfecho.
+  o geral, a fala que espera resposta, a conversa espontânea aberta e o último desfecho.
 
 `Iniciativa.Trocar` grava o vínculo do personagem que sai e carrega o do que entra (ou começa do
 zero); o `App` chama a cada batida e a cada mensagem no orbe (`AcompanharPersonagem`). O
@@ -463,7 +467,7 @@ batida seguinte. Não são as estrelas da tela de escolha (`AgentStats`, no `inf
 | `Iniciativa` | multiplica a chance base do sorteio | ×0,5 | ×0,75 | ×1 | ×1,3 | ×1,6 |
 | `Resiliencia` | fator da fala ignorada / do "agora não" | 0,60 / 0,35 | 0,68 / 0,42 | 0,75 / 0,50 | 0,83 / 0,60 | 0,90 / 0,70 |
 | `Constancia` | quanto o geral volta para 1 por dia | 20% | 15% | 10% | 7% | 5% |
-| `Curiosidade` | chance de, tendo gancho, pedir para conhecer o usuário | 0% | 10% | 20% | 35% | 50% |
+| `Curiosidade` | nada desde 15/10/2026 (escolhia entre o gancho e "conhecer o usuário"; o gancho saiu) | — | — | — | — | — |
 
 O **afeto** (`Afeto`) é o quinto e tem escala própria, de **-5 a 5**, com 0 de neutro: -5 é o
 personagem direto, que evita conversa longa; 5, o expressivo e apegado. Na conta ele é o teto do
@@ -490,8 +494,7 @@ crescimento é multiplicado pelo afeto, 6% por ponto (`Temperamento.SaudadeDoAfe
 tela passava sem mensagem quase metade das vezes.
 
 A constância só mexe no **geral**, que é do personagem; as faixas de horário são do usuário e
-esquecem sempre 10%. A curiosidade é a única em que o 3 muda algo: antes o pedido de conhecer o
-usuário só saía sem gancho nenhum. O desfecho dito à persona vem do que aconteceu, não do fator
+esquecem sempre 10%. O desfecho dito à persona vem do que aconteceu, não do fator
 (`Desfecho(recusou, respondeu, leu, fator)`): o "agora não" de um resiliente vale 0,70.
 
  Cada fala é classificada uma vez — 30 min depois da primeira resposta na conversa do orbe, ou

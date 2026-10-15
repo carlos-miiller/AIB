@@ -2273,31 +2273,18 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     /// <param name="Nome">Como chamar o usuário; vazio é "o usuário".</param>
     /// <param name="UltimaConversaUtc">Última vez que conversaram, em qualquer das conversas.</param>
-    /// <param name="Proximos">Se eles têm conversado bastante (multiplicador geral alto).</param>
     /// <param name="Desfecho">Como terminou a última iniciativa, em palavras; vazio na primeira.</param>
-    /// <param name="Recentes">As últimas mensagens por iniciativa, para não repetir.</param>
-    public sealed record ContextoDaIniciativa(
-        string Nome, DateTime? UltimaConversaUtc, bool Proximos, string Desfecho, IReadOnlyList<string> Recentes);
+    public sealed record ContextoDaIniciativa(string Nome, DateTime? UltimaConversaUtc, string Desfecho);
 
-    /// <summary>Os ganchos disponíveis: as pendências de assunto da memória e os fatos sobre o usuário.</summary>
-    public (IReadOnlyList<string> Pendencias, IReadOnlyList<string> Fatos) GanchosDisponiveis()
-    {
-        var pendencias = _memory.PendenciasVivas
-            .Where(p => p.Tipo == Memory.Pendencia.Assunto)
-            .Select(p => p.Texto)
-            .ToList();
-
-        var fatos = _facts.ReadFacts()
-            .Where(f => f.StartsWith(Tools.LembrarTool.Prefixo, StringComparison.Ordinal))
-            .Select(f => f[Tools.LembrarTool.Prefixo.Length..])
-            .ToList();
-
-        return (pendencias, fatos);
-    }
+    /// <summary>
+    /// Até quantos tokens a mensagem por iniciativa pode ter. Era 160 com "uma ou duas frases" no
+    /// pedido; sem a regra de tamanho quem decide é a alma, e o teto só guarda o custo.
+    /// </summary>
+    public const int TetoDaIniciativa = 400;
 
     /// <summary>
     /// Escreve a mensagem por iniciativa (<see cref="Iniciativa"/>): o algoritmo já decidiu que
-    /// ela fala, e o gancho; o modelo só escreve. Devolve null se a chamada falhar ou vier vazia.
+    /// ela fala; o quê é dela. Devolve null se a chamada falhar ou vier vazia.
     /// <para>
     /// Chamada fora de banda, sem ferramentas, COM A ALMA INTEIRA — decisão do usuário: o sorteio
     /// controla exatamente quantas vezes ela é chamada, e toda chamada vira mensagem, então os
@@ -2305,24 +2292,31 @@ public sealed class ConversationService : IMessageStore
     /// persona curta do info.json só entra quando o personagem não tem alma. Não entra no
     /// histórico; quem põe a fala na conversa é o App.
     /// </para>
+    /// <para>
+    /// Leva o mesmo bloco de memória do turno normal (fatos, atos, capítulos, pendências) — pedido
+    /// do usuário: com só as 4 últimas falas ela não sabia de nada que tinha sido dito antes.
+    /// </para>
     /// </summary>
-    public async Task<string?> EscreverIniciativaAsync(Gancho? gancho, ContextoDaIniciativa contexto, CancellationToken ct)
+    public async Task<string?> EscreverIniciativaAsync(ContextoDaIniciativa contexto, CancellationToken ct)
     {
         var settings = _settingsService.LoadSettings();
 
-        string material = MaterialDaIniciativa(
-            LoadActiveCharacterSoul(settings.ActiveCharacter), PerfilDoPersonagem(settings.ActiveCharacter),
-            gancho, contexto, UltimasFalas(4), DateTime.UtcNow);
-
         try
         {
+            _memory.SetFacts(_facts.ReadFacts());
+            string memoria = _memory.Render(CurrentQuota(LevelService.GetLevel(settings.MessageCount)), _tokenCounter);
+
+            string material = MaterialDaIniciativa(
+                LoadActiveCharacterSoul(settings.ActiveCharacter), PerfilDoPersonagem(settings.ActiveCharacter),
+                memoria, contexto, DesvioDoAfeto(settings.ActiveCharacter), UltimasFalas(4), DateTime.UtcNow);
+
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromMinutes(2));
 
             var resultado = await _providerFactory.GetProvider(settings)
                 .CompleteAsync(new List<ChatMessage> { ChatMessage.CreateUserMessage(material) },
                                Array.Empty<ChatTool>(),
-                               Ai.ChatRequestOptions.DeServico(160, think: false, temperature: 0.8f),
+                               Ai.ChatRequestOptions.DeServico(TetoDaIniciativa, think: false, temperature: 0.8f),
                                timeout.Token)
                 .ConfigureAwait(false);
 
@@ -2350,13 +2344,21 @@ public sealed class ConversationService : IMessageStore
     /// <summary>
     /// O pedido da mensagem. Puro, para o ensaio ver o que vai ao modelo.
     /// <para>
-    /// "Você está sem fazer nada, ele está online, você decide mandar uma mensagem": um papel
-    /// a interpretar, e não uma decisão de sim ou não — decisão do usuário. Sem saída NADA: quem
-    /// decide se ela fala é o sorteio, e o gancho é o que dá assunto.
+    /// Só a situação, e o assunto e o jeito ficam com a alma — decisão do usuário em 15/10/2026.
+    /// Antes o código sorteava um gancho ("ponto de partida: ..."), mandava "você está sem fazer
+    /// nada, você decide mandar uma mensagem", listava as últimas mensagens dela com "não repita"
+    /// e fechava com "uma ou duas frases, sem saudação genérica e sem oferecer ajuda". O usuário
+    /// achou que isso engessava a resposta: o que ela manda tem de vir da alma e da proximidade.
+    /// Sem saída NADA: quem decide se ela fala é o sorteio.
+    /// </para>
+    /// <para>
+    /// A proximidade é a mesma linha "Convivência" do chat (<see cref="LinhaDoAfeto"/>), pelo
+    /// desvio do afeto. Antes era o multiplicador geral da iniciativa, que mede quantas vezes
+    /// ela fala, e não o afeto.
     /// </para>
     /// </summary>
     public static string MaterialDaIniciativa(
-        string? alma, AgentProfile? perfil, Gancho? gancho, ContextoDaIniciativa c,
+        string? alma, AgentProfile? perfil, string memoria, ContextoDaIniciativa c, double? desvio,
         IReadOnlyList<(bool DoUsuario, string Texto)> falas, DateTime agoraUtc)
     {
         string quem = string.IsNullOrWhiteSpace(c.Nome) ? "o usuário" : c.Nome.Trim();
@@ -2373,24 +2375,18 @@ public sealed class ConversationService : IMessageStore
             sb.AppendLine();
         }
 
-        sb.AppendLine($"Agora: {agoraUtc.ToLocalTime().ToString("dddd, HH:mm", new System.Globalization.CultureInfo("pt-BR"))}.");
-        sb.Append($"Você está sem fazer nada. {Quem} está online.");
+        if (!string.IsNullOrWhiteSpace(memoria))
+            sb.AppendLine(memoria.Trim()).AppendLine().AppendLine("---").AppendLine();
+
+        sb.Append($"Agora: {agoraUtc.ToLocalTime().ToString("dddd, HH:mm", new System.Globalization.CultureInfo("pt-BR"))}.");
+        sb.Append($" {Quem} está online.");
         string ha = HaQuanto(c.UltimaConversaUtc, agoraUtc);
         if (ha.Length > 0) sb.Append($" Vocês conversaram pela última vez {ha}.");
-        sb.AppendLine($" Você decide mandar uma mensagem para {quem}.");
-
-        // O afeto aparece na voz, não só na frequência: com quem conversa muito com ela, a alma
-        // prevê que ela fique mais solta. Uma frase, e não um número que o modelo não saberia ler.
-        if (c.Proximos) sb.AppendLine($"Vocês têm conversado bastante ultimamente, e você se sente à vontade com {quem}.");
-        if (!string.IsNullOrWhiteSpace(c.Desfecho)) sb.AppendLine($"Sua última mensagem assim {c.Desfecho}.");
-
         sb.AppendLine();
-        sb.AppendLine(gancho switch
-        {
-            { Tipo: "pendência" } => $"Ponto de partida — ficou em aberto: {gancho.Texto}",
-            { } => $"Ponto de partida — você sabe isto sobre {quem}: {gancho.Texto}",
-            null => $"Ponto de partida: você ainda sabe pouco sobre {quem}. Puxe um assunto para conhecer melhor."
-        });
+
+        string afeto = LinhaDoAfeto(desvio).TrimStart('\n', '-', ' ');
+        if (afeto.Length > 0) sb.AppendLine(afeto);
+        if (!string.IsNullOrWhiteSpace(c.Desfecho)) sb.AppendLine($"Sua última mensagem por conta própria {c.Desfecho}.");
 
         if (falas.Count > 0)
         {
@@ -2398,13 +2394,9 @@ public sealed class ConversationService : IMessageStore
             foreach (var (doUsuario, texto) in falas) sb.AppendLine($"{(doUsuario ? Quem : "Você")}: {texto}");
         }
 
-        if (c.Recentes.Count > 0)
-        {
-            sb.AppendLine().AppendLine("Você já mandou recentemente (não repita):");
-            foreach (var r in c.Recentes) sb.AppendLine($"- {r}");
-        }
-
-        sb.AppendLine().Append("Escreva só a mensagem: uma ou duas frases, na sua voz, sem saudação genérica e sem oferecer ajuda.");
+        // "Só a mensagem" fica: sem ele o modelo abre com "Aqui está uma mensagem:" ou narra a
+        // cena. "Por conta própria" diz que ninguém a chamou, senão ela responde a última fala.
+        sb.AppendLine().Append($"Escreva só a mensagem que você manda agora para {quem}, por conta própria.");
         return sb.ToString();
     }
 

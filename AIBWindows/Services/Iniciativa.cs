@@ -72,12 +72,6 @@ public sealed class EstadoDaIniciativa
 
     public int MensagensHoje { get; set; }
 
-    /// <summary>As últimas mensagens por iniciativa, para ela não repetir. Sobrevive ao arranque.</summary>
-    public System.Collections.Generic.List<string> Recentes { get; set; } = new();
-
-    /// <summary>Os últimos ganchos usados, para o sorteio variar o assunto.</summary>
-    public System.Collections.Generic.List<string> GanchosRecentes { get; set; } = new();
-
     /// <summary>Como terminou a última iniciativa, em palavras: "virou conversa", "foi ignorada".</summary>
     public string UltimoDesfecho { get; set; } = "";
 }
@@ -104,8 +98,6 @@ public sealed class Vinculo
     public int FaixaDaConversa { get; set; }
     public int TurnosDaConversa { get; set; }
     public DateTime? ContatoUtc { get; set; }
-    public System.Collections.Generic.List<string> Recentes { get; set; } = new();
-    public System.Collections.Generic.List<string> GanchosRecentes { get; set; } = new();
     public string UltimoDesfecho { get; set; } = "";
 
     public static Vinculo De(EstadoDaIniciativa e) => new()
@@ -121,8 +113,6 @@ public sealed class Vinculo
         FaixaDaConversa = e.FaixaDaConversa,
         TurnosDaConversa = e.TurnosDaConversa,
         ContatoUtc = e.ContatoUtc,
-        Recentes = e.Recentes.ToList(),
-        GanchosRecentes = e.GanchosRecentes.ToList(),
         UltimoDesfecho = e.UltimoDesfecho
     };
 
@@ -139,8 +129,6 @@ public sealed class Vinculo
         e.FaixaDaConversa = FaixaDaConversa;
         e.TurnosDaConversa = TurnosDaConversa;
         e.ContatoUtc = ContatoUtc;
-        e.Recentes = (Recentes ?? new()).ToList();
-        e.GanchosRecentes = (GanchosRecentes ?? new()).ToList();
         e.UltimoDesfecho = UltimoDesfecho ?? "";
     }
 }
@@ -172,19 +160,13 @@ public readonly record struct Temperamento(double Chance, double Apego)
     /// </summary>
     public double Saudade { get; init; } = SaudadeDoAfeto(2);
 
-    /// <summary>A chance de, tendo assunto para retomar, ele preferir perguntar sobre o usuário.</summary>
-    public double Curiosidade { get; init; } = CuriosidadePorNivel[Atributos.Neutro - 1];
-
-    // O que cada nível vale, do 1 ao 5. O do meio é o comportamento de antes dos atributos —
-    // menos na curiosidade, que não existia: antes ele só perguntava sem ter assunto nenhum.
+    // O que cada nível vale, do 1 ao 5. O do meio é o comportamento de antes dos atributos.
     // O afeto não tem tabela: é uma conta (TetoDoAfeto).
     private static readonly double[] ChancePorNivel = { 0.5, 0.75, 1, 1.3, 1.6 };
     private static readonly double[] IgnoradaPorNivel = { 0.60, 0.68, Iniciativa.FatorIgnorada, 0.83, 0.90 };
     private static readonly double[] RecusadaPorNivel = { 0.35, 0.42, Iniciativa.FatorRecusada, 0.60, 0.70 };
     private static readonly double[] EsquecimentoPorNivel = { 0.20, 0.15, Iniciativa.Esquecimento, 0.07, 0.05 };
-    private static readonly double[] CuriosidadePorNivel = { 0, 0.10, 0.20, 0.35, 0.50 };
 
-    // Depois das escalas: o inicializador da curiosidade lê uma delas.
     public static readonly Temperamento Padrao = new(1, Iniciativa.TetoDaConversa);
 
     /// <summary>Nível fora de 1–5 (zero de um campo ausente, erro de digitação) vale o neutro ou a ponta.</summary>
@@ -212,24 +194,18 @@ public readonly record struct Temperamento(double Chance, double Apego)
             Saudade = SaudadeDoAfeto(a.Afeto),
             Ignorada = Nivel(IgnoradaPorNivel, a.Resiliencia),
             Recusada = Nivel(RecusadaPorNivel, a.Resiliencia),
-            Esquecimento = Nivel(EsquecimentoPorNivel, a.Constancia),
-            Curiosidade = Nivel(CuriosidadePorNivel, a.Curiosidade)
+            Esquecimento = Nivel(EsquecimentoPorNivel, a.Constancia)
         };
 }
 
-/// <summary>O ponto de partida de uma mensagem por iniciativa, escolhido pelo código.</summary>
-/// <param name="Tipo">"pendência" ou "fato".</param>
-public sealed record Gancho(string Tipo, string Texto);
-
 /// <summary>
-/// A persona puxa assunto sozinha: retoma algo que ficou em aberto, pergunta sobre o usuário.
+/// A persona puxa assunto sozinha.
 /// <para>
-/// O ALGORITMO DECIDE QUANDO, ELA SÓ ESCREVE — decisão do usuário. De 10 em 10 min, nas batidas
-/// em que ela poderia falar, sorteia <c>chance = 2% × geral × faixa</c>; acertando, o código
-/// escolhe também o gancho (<see cref="EscolherGancho"/>) e o modelo recebe "você está sem
-/// fazer nada, ele está online, você decide mandar uma mensagem". Não há saída NADA: cada
-/// chamada é uma mensagem, e o custo é o das mensagens. O gancho é o que evita o "oi, como vai?"
-/// de quem foi mandado falar sem ter assunto. Sem número fixo por dia e sem intervalo mínimo:
+/// O ALGORITMO DECIDE QUANDO, ELA DECIDE O QUÊ — decisão do usuário. De 10 em 10 min, nas
+/// batidas em que ela poderia falar, sorteia <c>chance = 2% × geral × faixa</c>; acertando, o
+/// modelo recebe a alma, a memória e as últimas falas, e escreve o que ela mandaria
+/// (<see cref="ConversationService.MaterialDaIniciativa"/>). Não há saída NADA: cada chamada é
+/// uma mensagem, e o custo é o das mensagens. Sem número fixo por dia e sem intervalo mínimo:
 /// às vezes ela fala duas vezes numa manhã e depois some, como gente.
 /// </para>
 /// <para>
@@ -247,7 +223,7 @@ public sealed record Gancho(string Tipo, string Texto);
 /// <para>
 /// ESSES NÚMEROS SÃO OS DO PERSONAGEM NEUTRO. Cada personagem tem cinco atributos de 1 a 5 no
 /// arquivo de status (<see cref="StatusDosPersonagens"/>), e <see cref="Temperamento.De"/> os
-/// traduz: chance, teto da conversa, peso de ser ignorada ou recusada, esquecimento, curiosidade.
+/// traduz: chance, teto da conversa, peso de ser ignorada ou recusada, esquecimento.
 /// </para>
 /// <para>
 /// ELE PUXAR CONVERSA TAMBÉM CONTA — pedido do usuário: "que tal nós mandarmos mensagem no
@@ -299,9 +275,6 @@ public sealed class Iniciativa
     /// </summary>
     public const int PadraoDeMensagensPorDia = 6;
 
-    /// <summary>Quantas mensagens e ganchos recentes ela lembra, para não repetir.</summary>
-    public const int Memoria = 5;
-
     /// <summary>Sem resposta depois disso, a fala é classificada como não respondida.</summary>
     public static readonly TimeSpan Paciencia = TimeSpan.FromHours(8);
 
@@ -313,9 +286,6 @@ public sealed class Iniciativa
 
     /// <summary>Quanto os multiplicadores voltam para 1 por dia (no logaritmo).</summary>
     public const double Esquecimento = 0.10;
-
-    /// <summary>Geral a partir do qual a ponderação diz que eles têm conversado bastante.</summary>
-    public const double Proximidade = 1.5;
 
     /// <summary>Usuário sem mexer no PC há mais que isso não está lá para ler.</summary>
     public static readonly TimeSpan Ausencia = TimeSpan.FromMinutes(5);
@@ -518,36 +488,6 @@ public sealed class Iniciativa
         return t.Length == 0 || t.Equals("NADA", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// O gancho da mensagem: uma pendência de assunto ou um fato sobre o usuário, COM O MESMO
-    /// PESO — decisão do usuário: ela não está ajudando no trabalho naquela hora, e quando a
-    /// mensagem chega ele talvez nem esteja lidando com aquilo, então a pendência não vale mais
-    /// que o resto. Os usados há pouco ficam de fora enquanto houver outro. Nulo quando não há
-    /// nenhum: aí o pedido é para conhecê-lo melhor.
-    /// </summary>
-    /// <param name="curiosidade">
-    /// A chance de, mesmo havendo gancho, o pedido ser para conhecê-lo melhor
-    /// (<see cref="Temperamento.Curiosidade"/>).
-    /// </param>
-    public static Gancho? EscolherGancho(
-        System.Collections.Generic.IReadOnlyList<string> pendencias,
-        System.Collections.Generic.IReadOnlyList<string> fatos,
-        System.Collections.Generic.IReadOnlyCollection<string> recentes,
-        Random sorte,
-        double curiosidade = 0)
-    {
-        var todos = pendencias.Select(p => new Gancho("pendência", p.Trim()))
-            .Concat(fatos.Select(f => new Gancho("fato", f.Trim())))
-            .Where(g => g.Texto.Length > 0)
-            .ToList();
-        if (todos.Count == 0) return null;
-        if (curiosidade > 0 && sorte.NextDouble() < curiosidade) return null;
-
-        var novos = todos.Where(g => !recentes.Contains(g.Texto)).ToList();
-        var escolha = novos.Count > 0 ? novos : todos;
-        return escolha[sorte.Next(escolha.Count)];
-    }
-
     /// <summary>O fator em palavras, para ela saber como foi a última vez.</summary>
     public static string Desfecho(double fator) => fator switch
     {
@@ -653,18 +593,16 @@ public sealed class Iniciativa
 
     /// <summary>
     /// Registra uma mensagem pedida ao modelo. Conta no teto mesmo sem texto (a requisição foi
-    /// paga); com texto, abre a fala que vai ser classificada e guarda para não repetir.
+    /// paga); com texto, abre a fala que vai ser classificada.
     /// </summary>
-    public void Falou(DateTime agoraUtc, TimeSpan horaLocal, string? texto, Gancho? gancho)
+    public void Falou(DateTime agoraUtc, TimeSpan horaLocal, string? texto)
     {
         lock (_gate)
         {
             Estado.MensagensHoje++;
-            if (gancho != null) Lembrar(Estado.GanchosRecentes, gancho.Texto);
 
             if (!string.IsNullOrWhiteSpace(texto))
             {
-                Lembrar(Estado.Recentes, texto.Trim());
                 Estado.ContatoUtc = agoraUtc;
                 Estado.FalaUtc = agoraUtc;
                 Estado.FaixaDaFala = FaixaDe(horaLocal);
@@ -678,16 +616,9 @@ public sealed class Iniciativa
             // Só contagens: o texto da mensagem não vai para o diário.
             Log("FALOU", string.IsNullOrWhiteSpace(texto)
                 ? $"o modelo não devolveu mensagem; conta no teto ({Estado.MensagensHoje} hoje)"
-                : $"{ConversaDoOrbe.Palavras(texto)} palavra(s), gancho {gancho?.Tipo ?? "conhecer"}, "
+                : $"{ConversaDoOrbe.Palavras(texto)} palavra(s), "
                   + $"{Estado.MensagensHoje} hoje; agora espera resposta");
         }
-    }
-
-    private static void Lembrar(System.Collections.Generic.List<string> lista, string item)
-    {
-        lista.Remove(item);
-        lista.Add(item);
-        while (lista.Count > Memoria) lista.RemoveAt(0);
     }
 
     /// <summary>Ele abriu o pulso.</summary>

@@ -436,24 +436,17 @@ public partial class App : System.Windows.Application
         _ponderando = true;
         try
         {
-            // O sorteio decidiu que ela fala; o código escolhe o gancho, e ela só escreve.
+            // O sorteio decidiu que ela fala; o que ela diz é dela.
             var conversa = _conversaDoOrbe.Conversa;
-            var (pendencias, fatos) = conversa.GanchosDisponiveis();
-            var gancho = Iniciativa.EscolherGancho(pendencias, fatos, _iniciativa.Estado.GanchosRecentes, Random.Shared,
-                                                   _iniciativa.Temperamento.Curiosidade);
-
             var contexto = new ConversationService.ContextoDaIniciativa(
                 s.NomeDoUsuario,
                 new[] { _ultimaConversaUtc, _conversaDoOrbe.UltimaAtividadeUtc }.Max(),
-                Proximos: _iniciativa.Estado.Geral >= Iniciativa.Proximidade,
-                _iniciativa.Estado.UltimoDesfecho,
-                _iniciativa.Estado.Recentes.ToList());
+                _iniciativa.Estado.UltimoDesfecho);
 
-            _iniciativa.Registro?.Escrever("PEDIDO", $"ao modelo, gancho {gancho?.Tipo ?? "conhecer"} "
-                + $"({pendencias.Count} pendência(s), {fatos.Count} fato(s) disponíveis)");
+            _iniciativa.Registro?.Escrever("PEDIDO", "ao modelo");
             var relogio = System.Diagnostics.Stopwatch.StartNew();
 
-            string? fala = await conversa.EscreverIniciativaAsync(gancho, contexto, System.Threading.CancellationToken.None);
+            string? fala = await conversa.EscreverIniciativaAsync(contexto, System.Threading.CancellationToken.None);
 
             // Enquanto ela escrevia, o usuário pode ter começado a falar com ela.
             if (fala != null && _conversaDoOrbe.Ocupada)
@@ -464,9 +457,9 @@ public partial class App : System.Windows.Application
             _iniciativa.Registro?.Escrever("RESPOSTA", $"do modelo em {relogio.Elapsed.TotalSeconds:0.0} s: "
                 + (fala == null ? "sem mensagem" : "mensagem pronta"));
 
-            _iniciativa.Falou(DateTime.UtcNow, DateTime.Now.TimeOfDay, fala, gancho);
+            _iniciativa.Falou(DateTime.UtcNow, DateTime.Now.TimeOfDay, fala);
             Console.WriteLine($"[INICIATIVA] {(fala == null ? "sem mensagem" : "falou")} "
-                              + $"(gancho: {gancho?.Tipo ?? "conhecer"}; geral {_iniciativa.Estado.Geral:0.00}, "
+                              + $"(geral {_iniciativa.Estado.Geral:0.00}, "
                               + $"chance {Iniciativa.Chance(_iniciativa.Estado, agora.TimeOfDay):P1}).");
 
             if (fala != null) FalarPorIniciativa(fala);

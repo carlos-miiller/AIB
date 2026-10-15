@@ -134,7 +134,7 @@ namespace AIB.Tests
             registro.Estado("segura: janela de chat aberta");
             registro.Estado("segura: janela de chat aberta");
             registro.Estado("livre: sorteia de 10 em 10 min");
-            i.Falou(Agora, Dez, "E o relatório do Fernando, saiu?", new Gancho("pendência", "relatório do Fernando"));
+            i.Falou(Agora, Dez, "E o relatório do Fernando, saiu?");
             i.UsuarioFalou(Agora.AddMinutes(2), "saiu sim, mandei ontem", Dez);
 
             string diario = File.ReadAllText(registro.Caminho);
@@ -194,7 +194,7 @@ namespace AIB.Tests
         private Iniciativa FalouAs10()
         {
             var i = new Iniciativa(_raiz);
-            i.Falou(Agora, Dez, "Conseguiu testar o backup?", null);
+            i.Falou(Agora, Dez, "Conseguiu testar o backup?");
             return i;
         }
 
@@ -316,7 +316,7 @@ namespace AIB.Tests
             var i = new Iniciativa(_raiz);
             for (int n = 0; n < 20; n++)
             {
-                i.Falou(Agora, Dez, "Conseguiu testar o backup?", null);
+                i.Falou(Agora, Dez, "Conseguiu testar o backup?");
                 i.Classificar(Agora + Iniciativa.Paciencia);
             }
             i.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().Be(Iniciativa.Minimo, "nunca zero: ela ainda tenta, raramente, e pode reaprender");
@@ -344,7 +344,7 @@ namespace AIB.Tests
         public void OVinculo_EhDeCadaPersonagem_EAsFaixasSaoDoUsuario()
         {
             var i = new Iniciativa(_raiz, "Ellen");
-            i.Falou(Agora, Dez, "Conseguiu testar o backup?", null);
+            i.Falou(Agora, Dez, "Conseguiu testar o backup?");
             i.UsuarioFalou(Agora.AddMinutes(1), "oi! resolvi sim");
             i.UsuarioFalou(Agora.AddMinutes(2), "e mais uma coisa");
             i.Classificar(Agora.AddMinutes(32));
@@ -406,7 +406,7 @@ namespace AIB.Tests
             Temperamento.De(null).Should().Be(Temperamento.Padrao);
 
             var seco = new Iniciativa(_raiz, "Ren", new Temperamento(1, 1.30));
-            seco.Falou(Agora, Dez, "E o relatório?", null);
+            seco.Falou(Agora, Dez, "E o relatório?");
             for (int t = 0; t < 10; t++) seco.UsuarioFalou(Agora.AddMinutes(1 + t), "mais uma");
             seco.Classificar(Agora.AddMinutes(40));
             seco.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().BeApproximately(1.30, 1e-9);
@@ -498,7 +498,6 @@ namespace AIB.Tests
             (frio.Ignorada, quente.Ignorada).Should().Be((0.60, 0.90));
             (frio.Recusada, quente.Recusada).Should().Be((0.35, 0.70));
             (frio.Esquecimento, quente.Esquecimento).Should().Be((0.20, 0.05));
-            (frio.Curiosidade, quente.Curiosidade).Should().Be((0, 0.50));
         }
 
         [Fact]
@@ -536,7 +535,7 @@ namespace AIB.Tests
             // Mensagem no orbe e fala dela também.
             i.UsuarioFalou(Agora.AddHours(50), "oi");
             i.Estado.ContatoUtc.Should().Be(Agora.AddHours(50));
-            i.Falou(Agora.AddHours(80), Dez, "E o relatório?", null);
+            i.Falou(Agora.AddHours(80), Dez, "E o relatório?");
             i.Estado.ContatoUtc.Should().Be(Agora.AddHours(80));
 
             // E sobrevive ao arranque, no vínculo do personagem.
@@ -601,13 +600,13 @@ namespace AIB.Tests
             i.AfetoMoveu += passo => status.Mover(i.Personagem, passo, fabrica.Afeto);
 
             // Uma iniciativa que virou conversa: +0,10.
-            i.Falou(Agora, Dez, "E o relatório?", null);
+            i.Falou(Agora, Dez, "E o relatório?");
             for (int t = 0; t < 4; t++) i.UsuarioFalou(Agora.AddMinutes(1 + t), "mais uma");
             i.Classificar(Agora.AddMinutes(40));
             status.De("Kai").Afeto.Should().BeApproximately(-1.90, 1e-9);
 
             // Um "agora não": -0,15.
-            i.Falou(Agora.AddHours(1), Dez, "E o deploy?", null);
+            i.Falou(Agora.AddHours(1), Dez, "E o deploy?");
             i.UsuarioFalou(Agora.AddHours(1).AddMinutes(1), "agora não");
             status.De("Kai").Afeto.Should().BeApproximately(-2.05, 1e-9);
 
@@ -635,7 +634,7 @@ namespace AIB.Tests
             var resiliente = Temperamento.De(new Atributos { Resiliencia = 5 });
 
             var ignorada = new Iniciativa(_raiz, "Kai", resiliente);
-            ignorada.Falou(Agora, Dez, "E o relatório?", null);
+            ignorada.Falou(Agora, Dez, "E o relatório?");
             ignorada.Classificar(Agora + Iniciativa.Paciencia);
             ignorada.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().BeApproximately(0.90, 1e-9);
             ignorada.Estado.UltimoDesfecho.Should().Be("ficou sem resposta");
@@ -643,7 +642,7 @@ namespace AIB.Tests
             // O "agora não" dele vale 0,70: pelo número seria "sem resposta", e ela leria errado
             // como foi a última vez.
             var recusada = new Iniciativa(Path.Combine(_raiz, "r"), "Kai", resiliente);
-            recusada.Falou(Agora, Dez, "E o relatório?", null);
+            recusada.Falou(Agora, Dez, "E o relatório?");
             recusada.UsuarioFalou(Agora.AddMinutes(1), "agora não");
             recusada.Estado.Faixas[Iniciativa.FaixaDe(Dez)].Should().BeApproximately(0.70, 1e-9);
             recusada.Estado.UltimoDesfecho.Should().Be("recebeu um \"agora não\"");
@@ -662,20 +661,6 @@ namespace AIB.Tests
 
             i.Estado.Geral.Should().BeApproximately(Math.Pow(2.0, 0.80), 1e-9);
             i.Estado.Faixas[4].Should().BeApproximately(Math.Pow(2.0, 0.90), 1e-9);
-        }
-
-        [Fact]
-        public void ACuriosidade_TrocaOGanchoPorConhecerOUsuario()
-        {
-            var pend = new[] { "o relatório" };
-            var sorte = new Random(7);
-
-            int semGancho = Enumerable.Range(0, 400)
-                .Count(_ => Iniciativa.EscolherGancho(pend, Array.Empty<string>(), Array.Empty<string>(), sorte, 0.50) == null);
-
-            semGancho.Should().BeInRange(150, 250);
-            Iniciativa.EscolherGancho(pend, Array.Empty<string>(), Array.Empty<string>(), sorte)
-                .Should().NotBeNull("sem curiosidade, havendo gancho ele é usado");
         }
 
         [Fact]
@@ -702,47 +687,6 @@ namespace AIB.Tests
             Iniciativa.Resumo(new EstadoDaIniciativa()).Should().Contain("ainda sem preferência");
         }
 
-        // ── O gancho ──────────────────────────────────────────────────
-
-        [Fact]
-        public void OGancho_SorteiaPendenciaEFatoComOMesmoPeso()
-        {
-            // Decisão do usuário: quando a mensagem chega ele talvez nem esteja lidando com a
-            // pendência, então ela não vale mais que um fato.
-            var pend = new[] { "testar o backup" };
-            var fatos = new[] { "trabalha com TI num hospital" };
-            var sorte = new Random(7);
-
-            var tipos = Enumerable.Range(0, 400)
-                .Select(_ => Iniciativa.EscolherGancho(pend, fatos, Array.Empty<string>(), sorte)!.Tipo)
-                .ToList();
-
-            tipos.Count(t => t == "pendência").Should().BeInRange(160, 240);
-        }
-
-        [Fact]
-        public void OGancho_EvitaOsUsadosHaPouco_EFaltandoTudoENulo()
-        {
-            var fatos = new[] { "gosta de café", "mora em Curitiba" };
-            Iniciativa.EscolherGancho(Array.Empty<string>(), fatos, new[] { "gosta de café" }, new Random(1))!
-                .Texto.Should().Be("mora em Curitiba");
-
-            Iniciativa.EscolherGancho(Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), new Random(1))
-                .Should().BeNull("sem gancho, o pedido é para conhecê-lo melhor");
-        }
-
-        [Fact]
-        public void Falou_LembraAMensagemEOGancho_ParaNaoRepetir()
-        {
-            var i = new Iniciativa(_raiz);
-            for (int n = 0; n < Iniciativa.Memoria + 2; n++)
-                i.Falou(Agora, Dez, "mensagem " + n, new Gancho("fato", "fato " + n));
-
-            i.Estado.Recentes.Should().HaveCount(Iniciativa.Memoria).And.EndWith("mensagem " + (Iniciativa.Memoria + 1));
-            i.Estado.GanchosRecentes.Should().HaveCount(Iniciativa.Memoria);
-            i.Estado.MensagensHoje.Should().Be(Iniciativa.Memoria + 2);
-        }
-
         [Fact]
         public void ODesfecho_DizComoFoiAUltima()
         {
@@ -761,24 +705,41 @@ namespace AIB.Tests
             SampleSpeech = "\"Ah, e... obrigada por conferir comigo.\""
         };
 
-        private static ConversationService.ContextoDaIniciativa Contexto(
-            string nome = "Carlo", bool proximos = false, string desfecho = "", params string[] recentes) =>
-            new(nome, Agora.AddHours(-3), proximos, desfecho, recentes);
+        private static ConversationService.ContextoDaIniciativa Contexto(string nome = "Carlo", string desfecho = "") =>
+            new(nome, Agora.AddHours(-3), desfecho);
+
+        private static string Pedido(
+            string? alma = null, string memoria = "", string nome = "Carlo", string desfecho = "", double? desvio = null,
+            params (bool, string)[] falas) =>
+            ConversationService.MaterialDaIniciativa(alma, Ellen, memoria, Contexto(nome, desfecho), desvio, falas, Agora);
 
         [Fact]
-        public void OPedido_EUmPapel_ComPersonaCurtaGanchoEFalas()
+        public void OPedido_SoDaASituacao_EOAssuntoEOJeitoFicamComEla()
         {
-            string m = ConversationService.MaterialDaIniciativa(
-                null, Ellen, new Gancho("pendência", "testar o backup"), Contexto(),
-                new[] { (true, "amanhã eu testo o backup"), (false, "Combinado!") }, Agora);
+            // Decisão do usuário em 15/10/2026: o gancho sorteado, o "você está sem fazer nada,
+            // você decide mandar", o "não repita" e o "uma ou duas frases, sem saudação genérica e
+            // sem oferecer ajuda" engessavam a resposta. O que ela manda vem da alma e da proximidade.
+            string m = Pedido(falas: new[] { (true, "amanhã eu testo o backup"), (false, "Combinado!") });
 
             m.Should().StartWith("Você é Ellen. Vinda de uma casa nobre de espadachins.")
-             .And.Contain("Você está sem fazer nada. Carlo está online. Vocês conversaram pela última vez há 3 h.")
-             .And.Contain("Você decide mandar uma mensagem para Carlo.")
-             .And.Contain("ficou em aberto: testar o backup")
+             .And.Contain("Carlo está online. Vocês conversaram pela última vez há 3 h.")
              .And.Contain("Carlo: amanhã eu testo o backup")
-             .And.NotContain("NADA", "quem decide se ela fala é o sorteio")
-             .And.NotContain("conversado bastante");
+             .And.EndWith("Escreva só a mensagem que você manda agora para Carlo, por conta própria.");
+
+            foreach (var velho in new[] { "Ponto de partida", "sem fazer nada", "decide mandar", "não repita",
+                                          "duas frases", "oferecer ajuda", "NADA", "Convivência" })
+                m.Should().NotContain(velho);
+        }
+
+        [Fact]
+        public void OPedido_LevaAMemoriaDaConversa()
+        {
+            // Pedido do usuário: com só as 4 últimas falas ela não sabia de nada dito antes delas.
+            string m = Pedido(alma: "## 1. Identidade", memoria: "## Memória da conversa\nCapítulo: o backup do servidor");
+
+            m.Should().Contain("## Memória da conversa\nCapítulo: o backup do servidor");
+            m.IndexOf("Memória da conversa").Should().BeGreaterThan(m.IndexOf("## 1. Identidade"))
+             .And.BeLessThan(m.IndexOf("está online"), "a alma, depois a memória, depois o agora");
         }
 
         [Fact]
@@ -786,34 +747,28 @@ namespace AIB.Tests
         {
             // Decisão do usuário: o sorteio controla quantas vezes ela é chamada, e toda chamada
             // vira mensagem — então a alma inteira só é paga quando ela fala de fato.
-            string m = ConversationService.MaterialDaIniciativa(
-                "## 1. Identidade\n- Nome: Ellen Walker", Ellen, null, Contexto(), Array.Empty<(bool, string)>(), Agora);
+            string m = Pedido(alma: "## 1. Identidade\n- Nome: Ellen Walker");
 
             m.Should().StartWith("## 1. Identidade\n- Nome: Ellen Walker")
              .And.NotContain("Um exemplo do seu jeito de falar", "a persona curta é só para quem não tem alma");
         }
 
         [Fact]
-        public void SemNome_ElaFalaComOUsuario_ESemGancho_PuxaAssuntoParaConhecer()
+        public void SemNome_ElaFalaComOUsuario()
         {
-            string m = ConversationService.MaterialDaIniciativa(
-                null, Ellen, null, Contexto(nome: ""), Array.Empty<(bool, string)>(), Agora);
-
-            m.Should().Contain("O usuário está online").And.Contain("conhecer melhor");
+            Pedido(nome: "").Should().Contain("O usuário está online").And.EndWith("para o usuário, por conta própria.");
         }
 
         [Fact]
-        public void OPedido_TrazProximidadeDesfechoEOQueJaDisse()
+        public void AProximidade_EALinhaDoAfetoDoChat_EODesfechoVem()
         {
-            string m = ConversationService.MaterialDaIniciativa(
-                null, Ellen, new Gancho("fato", "gosta de café"),
-                Contexto(proximos: true, desfecho: "virou conversa", recentes: "E o café de hoje?"),
-                Array.Empty<(bool, string)>(), Agora);
+            // Antes a proximidade vinha do multiplicador geral, que mede QUANTAS VEZES ela fala.
+            // Agora é a mesma linha do afeto que o chat usa.
+            string m = Pedido(desvio: 0.8, desfecho: "virou conversa");
 
-            m.Should().Contain("Vocês têm conversado bastante")
-             .And.Contain("Sua última mensagem assim virou conversa.")
-             .And.Contain("você sabe isto sobre Carlo: gosta de café")
-             .And.Contain("- E o café de hoje?");
+            m.Should().Contain(ConversationService.LinhaDoAfeto(0.8).TrimStart('\n', '-', ' '))
+             .And.Contain("Sua última mensagem por conta própria virou conversa.");
+            Pedido(desvio: 0.3).Should().NotContain("Convivência", "abaixo do limiar o afeto não aparece");
         }
 
         [Theory]

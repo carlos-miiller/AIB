@@ -42,7 +42,10 @@ public sealed class Atributos
     /// <summary>O quanto o que ele aprendeu dura: alto, esquece devagar.</summary>
     public int Constancia { get; set; } = Neutro;
 
-    /// <summary>O quanto ele prefere perguntar sobre o usuário a retomar um assunto.</summary>
+    /// <summary>
+    /// Sem efeito desde 15/10/2026: escolhia entre o gancho sorteado e perguntar sobre o usuário,
+    /// e o gancho saiu do pedido da iniciativa. Fica porque está no info.json e no status.json.
+    /// </summary>
     public int Curiosidade { get; set; } = Neutro;
 }
 
