@@ -606,6 +606,7 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
 | `click` | sim — `CLICAR [s3e2] botão "Filtrar" em <domínio>`; "sempre" vale para o site |
 | `type` | sim — `DIGITAR "texto" em [ref] <campo> [e apertar Enter] em <domínio>`; "sempre" vale para o site |
 | `note` | sim, **toda vez** — `ANOTAR na página /x/{n}/ de <domínio>: "texto"` (ou `no site inteiro`) |
+| `unnote` | sim, **toda vez** — `APAGAR ANOTAÇÃO da página /x/{n}/ de <domínio>: "- linha inteira"` (ou `do site inteiro`) |
 
 Botão cujo nome decide algo (excluir, apagar, concluir, enviar, salvar, pagar, comprar,
 confirmar, aprovar, publicar, cancelar…) ou que envia formulário fica fora do "sempre" do site:
@@ -622,8 +623,15 @@ conteúdo. Chegam ao modelo **antes e fora** do embrulho da página, rotuladas c
 usuário: no `open` sempre, e depois só quando o site ou a página mudam. Gravar pede cartão **toda
 vez** com o texto exato (`SemSempre`): anotação é instrução para conversas futuras, e uma página
 que induzisse "sempre clique em Excluir" plantaria uma ordem duradoura. Tetos: 500 caracteres por
-anotação, 2000 por arquivo; texto com cara de segredo é recusado. Só acrescenta linhas; editar e
-apagar é à mão.
+anotação, 2000 por arquivo; texto com cara de segredo é recusado.
+
+**Apagar** (`unnote`, pedido do usuário em 15/10/2026: ela pode anotar algo errado): `text` é um
+trecho da anotação, comparado sem caixa e com espaços normalizados, nas do site e nas da página
+(`AnotacoesDeSite.Achar`). Precisa achar **uma** linha: nenhuma, ou várias, é recusado antes do
+cartão, e o erro lista as várias para ela escolher um trecho único. O cartão mostra a linha inteira
+e pergunta **toda vez**, pelo mesmo motivo de gravar: uma página poderia induzi-la a apagar o que o
+usuário ensinou. `Remover` tira só aquela linha; o resto do arquivo, inclusive o editado à mão,
+fica byte a byte. Editar continua sendo à mão.
 
 **A página é de terceiros.** O resultado sai por `ConteudoDeTerceiros.EmbrulharPagina`
 (`[[INICIO_DA_PAGINA]]`…`[[FIM_DA_PAGINA]]`) e ganha a marca de conteúdo do `AgentLoop`. Todo

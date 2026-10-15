@@ -192,6 +192,7 @@ public static class ArtifactExtractor
         "scroll" => "rolar",
         "back" => "voltar",
         "note" => "anotar",
+        "unnote" => "apagar anotação",
         _ => acao
     };
 

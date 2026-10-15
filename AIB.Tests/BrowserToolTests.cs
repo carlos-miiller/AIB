@@ -510,6 +510,47 @@ namespace AIB.Tests
                 .Should().StartWith(ConteudoDeTerceiros.InicioDaPagina);
         }
 
+        [Fact]
+        public async Task ApagarAnotacao_PedeCartaoComALinha_EApagaSoEla()
+        {
+            // Pedido do usuário em 15/10/2026: só havia inclusão; se ela anotar algo errado,
+            // tem de poder apagar. O resto do arquivo, inclusive a edição à mão, fica como estava.
+            const string lista = "https://cpaps.bitrix24.com/workgroups/group/223/tasks/";
+            _nav.JaAberta(lista);
+            _notas.Adicionar(lista, doSite: false, "Filtrar por responsável: campo Assignee.");
+            _notas.Adicionar(lista, doSite: false, "O botão Filtrar fica no topo.");
+            _notas.Adicionar(lista, doSite: true, "Tarefas do time ficam no projeto TI.");
+            string caminho = _notas.Caminho(lista, doSite: false);
+            File.AppendAllText(caminho, "linha escrita à mão pelo usuário\n");
+            var (registry, prompt) = Registry(sempre: true);
+            string apagar = Args(new { action = "unnote", text = "campo  ASSIGNEE" });
+
+            string r = await registry.ExecuteToolAsync(Ferramentas.Navegador, apagar, 2);
+
+            r.Should().StartWith("SUCESSO");
+            prompt.Vistos.Should().ContainSingle().Which.Command.Should().StartWith(
+                "APAGAR ANOTAÇÃO da página /workgroups/group/{n}/tasks/ de cpaps.bitrix24.com: \"- Filtrar por responsável: campo Assignee.");
+            prompt.Vistos[0].SemSempre.Should().BeTrue("uma página poderia induzi-la a apagar o que o usuário ensinou");
+
+            string arquivo = File.ReadAllText(caminho);
+            arquivo.Should().NotContain("Assignee").And.Contain("O botão Filtrar fica no topo.")
+                   .And.Contain("linha escrita à mão pelo usuário").And.StartWith("# cpaps.bitrix24.com");
+            _notas.Ler(lista).Site.Should().Contain("projeto TI");
+        }
+
+        [Fact]
+        public void ApagarAnotacao_TrechoQueNaoAchaOuQueAchaVarias_EhRecusado()
+        {
+            const string lista = "https://cpaps.bitrix24.com/workgroups/group/223/tasks/";
+            _nav.JaAberta(lista);
+            _notas.Adicionar(lista, doSite: false, "Filtrar por responsável: campo Assignee.");
+            _notas.Adicionar(lista, doSite: true, "Filtrar por data: campo Deadline.");
+
+            Ferramenta().Validar(Args(new { action = "unnote", text = "Excluir" })).Should().StartWith("ERRO: nenhuma");
+            Ferramenta().Validar(Args(new { action = "unnote", text = "Filtrar por" })).Should().StartWith("ERRO: 2 anotações");
+            Ferramenta().Validar(Args(new { action = "unnote", text = "Deadline" })).Should().BeNull("do site também vale");
+        }
+
         [Theory]
         [InlineData("senha do servidor Ab3xQ9#kLm2@Zt7w")]
         [InlineData("")]
