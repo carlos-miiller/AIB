@@ -365,21 +365,31 @@ public partial class ChatWindow
     /// </summary>
     private bool RetomarConversaDoEmail(ChatSession sessao, MailSummary alvo)
     {
+        if (_abrindo) return true;
+
         var falas = ChatHistoryService.Parse(sessao.Content);
         if (falas.Count == 0) return false;
 
+        _ = RetomarAsync(sessao, falas, alvo);
+        return true;
+    }
+
+    /// <summary>
+    /// O resto da retomada, depois que a conversa carregou: o vínculo com a thread só depois do
+    /// <c>LoadConversation</c>, que zera o anterior.
+    /// </summary>
+    private async Task RetomarAsync(ChatSession sessao, IReadOnlyList<ChatTurn> falas, MailSummary alvo)
+    {
         // O CARTÃO entra no lugar da PRIMEIRA fala, que foi o enquadramento — e não algo que o
         // usuário tenha escrito. Mostrá-la como bolha aqui seria pôr na boca dele um texto
         // montado pelo programa.
-        RestaurarConversaGravada(sessao, falas, () => CartaoDoEmail(alvo));
+        await RestaurarConversaGravadaAsync(sessao, falas, () => CartaoDoEmail(alvo));
         _conversation.VincularAEmail(sessao.MailThreadKey);
 
         EntrarNaLeitura(alvo);
 
         AtualizarEstadoVazio();
         ChatScrollViewer.ScrollToEnd();
-
-        return true;
     }
 
     /// <summary>

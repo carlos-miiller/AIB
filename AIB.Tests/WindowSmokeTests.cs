@@ -377,6 +377,32 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void CadeiaReposta_DesenhaNaHora_SemSpinnerNemFila()
+        {
+            // Caso real, 15/10: ao reabrir a conversa do Bitrix, cada ação do histórico passava
+            // por Iniciar/Concluir e ganhava o meio segundo de "Executando" do ao vivo — as
+            // cadeias ficavam minutos girando, uma ação de cada vez. Reposta, ela já entra pronta.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var cadeia = new ToolChainView();
+                for (int i = 0; i < 5; i++)
+                    cadeia.Repor("t" + i, "browser", "abrir tarefa", falhou: false, recusada: false, artefato: null, detalhe: null);
+
+                cadeia.Concluidas.Should().Be(5, "sem drenar a fila: nada ficou esperando o ritmo");
+                cadeia.TemAcaoEmCurso.Should().BeFalse();
+
+                cadeia.Repor("f", "browser", "clicar", falhou: true, recusada: false, artefato: null, detalhe: "ref não existe");
+                cadeia.TemAcaoEmCurso.Should().BeTrue("a falha fica à vista, como ao vivo");
+
+                cadeia.Repor("g", "browser", "ler", falhou: false, recusada: false, artefato: null, detalhe: null);
+                cadeia.Concluidas.Should().Be(7, "a seguinte recolhe a falha para a trilha");
+                cadeia.TemAcaoEmCurso.Should().BeFalse();
+            });
+        }
+
+        [Fact]
         public void CadeiaDeAcoes_VariasEmParalelo_MostramATodasEmVezDaUltima()
         {
             // O modelo pede várias ferramentas na mesma iteração e elas rodam juntas. O chip é

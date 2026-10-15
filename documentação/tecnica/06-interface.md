@@ -222,6 +222,8 @@ ferramentas que parou no teto voltava como a linha "[turno encerrado sem respost
 O arquivo do histórico ainda desenha a tela quando não há raw, ou quando o raw tem menos turnos que
 ele (conversa de antes da memória, continuada depois).
 
+Abrir é assíncrono (`RestaurarConversaGravadaAsync`): `LoadConversation`, a leitura do raw e a montagem rodam fora da thread da tela, com "📂 Abrindo a conversa…" na barra de status e a entrada desligada; o desenho sai em lotes de `ItensPorLote` = 40 itens, devolvendo a vez à janela entre eles. As ferramentas entram já concluídas por `ToolChainView.Repor`, sem spinner e sem a fila de 500 ms do ao vivo. Antes a conversa do Bitrix (67 turnos) congelava a janela ao abrir e depois girava cada ação por meio segundo, uma de cada vez.
+
 ### Botões de visão e voz
 
 `VisionButton_Click` chama `OcrService.ExtractTextFromActiveScreenAsync` e `VoiceButton_Click` usa

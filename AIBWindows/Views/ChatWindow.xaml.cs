@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -2298,12 +2298,14 @@ public partial class ChatWindow : Window
     /// A conversa que estava aberta não se perde: o ResetHistory lá dentro a arquiva antes.
     /// </para>
     /// </summary>
-    private void AbrirChat(ChatSession sessao)
+    private async void AbrirChat(ChatSession sessao)
     {
+        if (_abrindo) return;
+
         var falas = ChatHistoryService.Parse(sessao.Content);
         if (falas.Count == 0) return;
 
-        RestaurarConversaGravada(sessao, falas);
+        await RestaurarConversaGravadaAsync(sessao, falas);
 
         AtualizarEstadoVazio();
         ChatScrollViewer.ScrollToEnd();
@@ -2312,6 +2314,12 @@ public partial class ChatWindow : Window
         // tela foi arquivada e agora é o item mais recente.
         _painel?.Recarregar();
     }
+
+    /// <summary>Uma conversa está sendo aberta: o carregamento e o desenho ainda não acabaram.</summary>
+    private bool _abrindo;
+
+    /// <summary>Itens desenhados entre uma pausa e outra, para a janela seguir respondendo.</summary>
+    private const int ItensPorLote = 40;
 
     /// <summary>
     /// Põe uma conversa gravada de volta no lugar da atual: no modelo, no registro de ações, nas
@@ -2326,42 +2334,80 @@ public partial class ChatWindow : Window
     /// Quando presente, entra no lugar da PRIMEIRA fala, se ela for do usuário — é o
     /// enquadramento do e-mail, montado pelo programa, e não algo que o usuário escreveu.
     /// </param>
-    private void RestaurarConversaGravada(
+    private async Task RestaurarConversaGravadaAsync(
         ChatSession sessao, IReadOnlyList<ChatTurn> falas,
         Func<FrameworkElement>? cartaoNoLugarDaPrimeiraFala = null)
     {
         DescartarConfirmacaoPendente();
 
-        _conversation.LoadConversation(falas, sessao.MemorySessionId, sessao.Id);
-
-        // O registro de ações vive só em memória: volta remontado do raw.jsonl da conversa.
-        // Conversa gravada antes da ligação com a memória não tem raw, e a aba fica vazia.
-        var gravados = _conversation.TurnosGravados();
-        ActionLogService.Restaurar(ActionLogService.Reconstruir(gravados));
-
+        // A conversa do Bitrix (67 turnos, 1,2 MB de raw) congelava a janela inteira ao abrir:
+        // decifrar, remontar e contar tokens rodavam na thread da tela, e depois centenas de
+        // chips eram desenhados de uma vez. A leitura vai para fora da tela; o desenho, em lotes.
+        _abrindo = true;
         MessagesPanel.Children.Clear();
         _cadeiaAtual = null;
+        ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
+        InputBox.IsEnabled = false;
+        SendButton.IsEnabled = false;
+        StatusBar.Visibility = Visibility.Visible;
+        StatusText.Text = "📂 Abrindo a conversa…";
 
-        // Do raw.jsonl, com as ferramentas entre as falas, como a conversa foi vista ao vivo.
-        // Só sem raw (conversa de antes da memória) ficam as falas do arquivo do histórico, que
-        // não têm as ferramentas nem as falas do meio de cada turno. Raw com MENOS turnos que o
-        // arquivo é a conversa antiga continuada depois: o raw só tem o fim, e desenhá-lo
-        // apagaria o começo da tela.
-        var itens = gravados.Count > 0 && gravados.Count >= falas.Count(f => f.DoUsuario)
-            ? ConversaNaTela.Montar(gravados)
-            : falas.Select(f => (ConversaNaTela.Item)new ConversaNaTela.Fala(f.DoUsuario, f.Texto)).ToList();
+        try
+        {
+            var (itens, acoes) = await Task.Run(() =>
+            {
+                _conversation.LoadConversation(falas, sessao.MemorySessionId, sessao.Id);
 
+                // O registro de ações vive só em memória: volta remontado do raw.jsonl da conversa.
+                // Conversa gravada antes da ligação com a memória não tem raw, e a aba fica vazia.
+                var gravados = _conversation.TurnosGravados();
+
+                // Do raw.jsonl, com as ferramentas entre as falas, como a conversa foi vista ao
+                // vivo. Só sem raw (conversa de antes da memória) ficam as falas do arquivo do
+                // histórico, que não têm as ferramentas nem as falas do meio de cada turno. Raw
+                // com MENOS turnos que o arquivo é a conversa antiga continuada depois: o raw só
+                // tem o fim, e desenhá-lo apagaria o começo da tela.
+                IReadOnlyList<ConversaNaTela.Item> montados = gravados.Count > 0 && gravados.Count >= falas.Count(f => f.DoUsuario)
+                    ? ConversaNaTela.Montar(gravados)
+                    : falas.Select(f => (ConversaNaTela.Item)new ConversaNaTela.Fala(f.DoUsuario, f.Texto)).ToList();
+
+                return (montados, ActionLogService.Reconstruir(gravados));
+            });
+
+            ActionLogService.Restaurar(acoes);
+            await DesenharAsync(itens, cartaoNoLugarDaPrimeiraFala);
+        }
+        finally
+        {
+            StatusBar.Visibility = Visibility.Collapsed;
+            StatusText.Text = "🧠 Pensando...";
+            InputBox.IsEnabled = true;
+            SendButton.IsEnabled = true;
+            _abrindo = false;
+        }
+
+        UpdateTokenCounterUI(_conversation.CurrentTokenReport);
+    }
+
+    /// <summary>
+    /// Desenha a conversa reaberta, devolvendo a vez à janela a cada <see cref="ItensPorLote"/>
+    /// itens. As ferramentas entram já concluídas (<see cref="ToolChainView.Repor"/>).
+    /// </summary>
+    private async Task DesenharAsync(IReadOnlyList<ConversaNaTela.Item> itens, Func<FrameworkElement>? cartaoNoLugarDaPrimeiraFala)
+    {
         bool primeira = true;
         FrameworkElement? semDigitando = null;
+        int desenhados = 0;
 
         foreach (var item in itens)
         {
+            if (++desenhados % ItensPorLote == 0)
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+
             if (item is ConversaNaTela.Acao acao)
             {
-                var cadeia = GarantirCadeia(ref semDigitando);
-                cadeia.RecolherFalhaPendente();
-                cadeia.Iniciar(acao.Id, acao.Ferramenta, acao.Argumento);
-                cadeia.Concluir(acao.Id, acao.Falhou, acao.Recusada, acao.Artefato, acao.Detalhe);
+                GarantirCadeia(ref semDigitando).Repor(
+                    acao.Id, acao.Ferramenta, acao.Argumento, acao.Falhou, acao.Recusada, acao.Artefato, acao.Detalhe);
                 continue;
             }
 
@@ -2392,10 +2438,6 @@ public partial class ChatWindow : Window
 
         _cadeiaAtual?.RecolherFalhaPendente();
         _cadeiaAtual = null;
-
-        ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
-
-        UpdateTokenCounterUI(_conversation.CurrentTokenReport);
     }
 
     /// <summary>
