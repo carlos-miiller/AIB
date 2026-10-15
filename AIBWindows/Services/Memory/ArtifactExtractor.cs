@@ -188,6 +188,7 @@ public static class ArtifactExtractor
         "table" => "ler tabela",
         "click" => "clicar",
         "type" => "digitar em",
+        "hover" => "passar o mouse em",
         "scroll" => "rolar",
         "back" => "voltar",
         "note" => "anotar",

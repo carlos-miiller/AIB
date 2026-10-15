@@ -85,10 +85,10 @@ namespace AIB.Tests
             public LeituraDaPagina? Atual { get; private set; }
             public List<string> Acoes { get; } = new();
 
-            private LeituraDaPagina Nova(string url = "https://cpaps.bitrix24.com/workgroups/group/223/tasks/")
+            private LeituraDaPagina Nova(string url = "https://cpaps.bitrix24.com/workgroups/group/223/tasks/", IEnumerable<NoDaPagina>? mais = null)
             {
                 _v++;
-                Atual = new LeituraDaPagina(_v, url, "Tarefas", PaginaDeTarefas(_v));
+                Atual = new LeituraDaPagina(_v, url, "Tarefas", PaginaDeTarefas(_v).Concat(mais ?? Enumerable.Empty<NoDaPagina>()));
                 return Atual;
             }
 
@@ -96,6 +96,9 @@ namespace AIB.Tests
             public Task<LeituraDaPagina> LerAsync() { Acoes.Add("ler"); return Task.FromResult(Nova(Atual?.Url ?? "https://x/")); }
             public Task<LeituraDaPagina> ClicarAsync(string r) { Acoes.Add("clicar " + r); return Task.FromResult(Nova(Atual!.Url)); }
             public Task<LeituraDaPagina> DigitarAsync(string r, string t, bool e) { Acoes.Add($"digitar {r} {t} {e}"); return Task.FromResult(Nova(Atual!.Url)); }
+            public string Dica { get; set; } = "";
+            public Func<int, IEnumerable<NoDaPagina>>? Janela { get; set; }
+            public Task<(LeituraDaPagina, string)> PassarMouseAsync(string r) { Acoes.Add("passar " + r); return Task.FromResult((Nova(Atual!.Url, Janela?.Invoke(_v + 1)), Dica)); }
             public bool Rola { get; set; } = true;
             public Task<(LeituraDaPagina, bool)> RolarAsync(bool c, string? r) { Acoes.Add("rolar " + r); return Task.FromResult((Nova(Atual!.Url), Rola)); }
             public Task<LeituraDaPagina> VoltarAsync() { Acoes.Add("voltar"); return Task.FromResult(Nova(Atual?.Url ?? "https://x/")); }
@@ -170,6 +173,63 @@ namespace AIB.Tests
 
             prompt.Vistos.Should().BeEmpty();
             r.Should().StartWith(ConteudoDeTerceiros.InicioDaPagina).And.EndWith(ConteudoDeTerceiros.FimDaPagina);
+        }
+
+        [Fact]
+        public async Task PassarOMouse_NaoPergunta_EADicaVemDentroDoEmbrulho()
+        {
+            // Pedido do usuário em 15/10/2026: hover no navegador. Menu que só abre com o mouse
+            // em cima entra na leitura; a dica do atributo title o Edge desenha fora da página,
+            // então volta à parte — e é texto da página, portanto dentro do embrulho.
+            _nav.JaAberta();
+            _nav.Dica = "Mais ações da tarefa";
+            var (registry, prompt) = Registry();
+
+            string r = await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "hover", @ref = "s1e5" }), 2);
+
+            prompt.Vistos.Should().BeEmpty("passar o mouse não muda nada");
+            _nav.Acoes.Should().Contain("passar s1e5");
+            r.Should().StartWith(ConteudoDeTerceiros.InicioDaPagina)
+             .And.Contain("(dica do elemento [s1e5]: \"Mais ações da tarefa\")")
+             .And.Contain("(nada novo apareceu com o mouse em [s1e5])")
+             .And.EndWith(ConteudoDeTerceiros.FimDaPagina);
+        }
+
+        [Fact]
+        public async Task AJanelaQueOHoverAbre_VemNoTopo_ComRefsClicaveis()
+        {
+            // Lembrado pelo usuário: no Bitrix, o mouse em cima abre uma janela com vários itens,
+            // alguns clicáveis. Ela é acrescentada no FIM do documento, e numa página cheia a
+            // vista (teto de 8000 caracteres) a cortaria — por isso vem à parte, no topo.
+            _nav.JaAberta();
+            _nav.Janela = v => new NoDaPagina[]
+            {
+                new($"s{v}e50", "texto", "Fernando Caetano", 0, true, true, 0),
+                new($"s{v}e51", "link", "Enviar mensagem", 0, true, true, 0),
+                new($"s{v}e52", "botão", "Ver perfil", 0, true, true, 0),
+                new($"s{v}e53", "link", "Escondido", 0, false, false, 0)
+            };
+            var (registry, _) = Registry();
+
+            string r = await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "hover", @ref = "s1e5" }), 2);
+
+            int topo = r.IndexOf("apareceu com o mouse em [s1e5]", StringComparison.Ordinal);
+            topo.Should().BeGreaterThan(0);
+            r.IndexOf("[s2e51] link \"Enviar mensagem\"", StringComparison.Ordinal)
+             .Should().BeGreaterThan(topo).And.BeLessThan(r.IndexOf("página s2", StringComparison.Ordinal), "antes da vista");
+            r.Should().Contain("[s2e52] botão \"Ver perfil\"").And.NotContain("Escondido");
+            r.Should().NotContain("apareceu com o mouse em [s1e5] (clicável pela ref, sem passar o mouse de novo):\n  [s2e1]",
+                "o que já estava na página não é novo");
+
+            await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "s2e52" }), 2);
+            _nav.Acoes.Should().Contain("clicar s2e52");
+        }
+
+        [Fact]
+        public void PassarOMouse_PrecisaDeRef()
+        {
+            _nav.JaAberta();
+            Ferramenta().Validar(Args(new { action = "hover" })).Should().Be("ERRO: 'hover' precisa de 'ref'.");
         }
 
         [Fact]

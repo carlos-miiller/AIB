@@ -551,8 +551,8 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
   `~/.AIB/navegador/perfil`, com **janela visível**. O usuário loga pela janela; a IA nunca vê nem
   digita senha. Nasce na primeira chamada (quem não usa não paga) e fecha com o app. Um semáforo
   põe as ações em fila: as ferramentas de um turno rodam em paralelo.
-- **Ações** (`action`): `open`, `view`, `find`, `table`, `click`, `type` (com `enter`), `scroll`
-  (`up`), `back`.
+- **Ações** (`action`): `open`, `view`, `find`, `table`, `click`, `type` (com `enter`), `hover`,
+  `scroll` (`up`), `back`.
 - **A vista** (`LeituraDaPagina.Vista`): só o que está na tela **e por cima** — o `Snapshot.js`
   confere `elementFromPoint`, e o quadro (iframe) coberto por outro painel não conta. Texto
   escondido por CSS fica de fora (é onde mora a injeção escondida) — mas só `display:none`,
@@ -575,6 +575,18 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
   gira a roda; compara a rolagem de tudo antes e depois e, se nada mexeu, diz isso e aponta a saída.
   Antes a roda girava no canto (0,0): num quadro do Bitrix, onde cada coluna rola sozinha, nada se
   mexia, e o modelo rolou 40 vezes.
+- **`hover`** (`PassarMouseAsync`, pedido do usuário em 15/10/2026) põe o mouse sobre o elemento da
+  `ref`, espera 400 ms (menu de hover abre com atraso) e assenta, e lê. O que a página desenha no
+  hover — menu, pré-visualização, dica própria — entra na vista como qualquer elemento. A dica do
+  atributo `title` o Edge desenha **fora** da página, então volta à parte, na primeira linha e
+  dentro do embrulho: `(dica do elemento [s3e5]: "…")`. O mouse fica onde parou, e o menu continua
+  aberto para o `click` seguinte.
+- **A janela que o hover abre vai no topo** (`LeituraDaPagina.Surgiu`): no Bitrix, o mouse em
+  cima de uma tarefa ou pessoa abre um cartão com vários itens, alguns clicáveis. Ele costuma ser
+  acrescentado no fim do documento, e numa página cheia o teto da vista o cortaria. Por isso o que
+  está na tela e não estava na leitura de antes (comparado por papel e texto, contando repetidos —
+  as refs mudam a cada leitura) vem à parte, antes da vista, com as refs novas: "apareceu com o
+  mouse em [s3e5] (clicável pela ref…)". Teto de 3000 caracteres. Nada novo também é dito.
 - **Antes de ler, espera assentar**: rede calma (até 6 s) e animações finitas terminadas (até 2 s).
   No Bitrix a tarefa abre num painel que desliza, e lida no meio a vista vinha vazia.
 - **Campo sem rótulo** ganha o nome do texto curto logo antes dele ("Assignee"), sem atravessar
@@ -587,7 +599,7 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
 
 | Ação | Pergunta? |
 |---|---|
-| `view`, `find`, `table`, `scroll`, `back` | não |
+| `view`, `find`, `table`, `scroll`, `back`, `hover` | não |
 | `open` em site liberado | não |
 | `open` em site novo | sim — `ABRIR SITE NOVO <domínio> — <url>`; aprovar **libera o site** (`SitesLiberados`, `~/.AIB/navegador/sites-liberados.txt`, um domínio por linha) |
 | `click` em link que só navega (href http real, sem `#`, `javascript:` ou `onclick`) para site liberado | não — é o mesmo que `open` |
