@@ -1752,7 +1752,8 @@ public sealed class ConversationService : IMessageStore
         List<ChatMessage> vivos;
         lock (_gate) { vivos = _history.Skip(FirstRemovableIndex()).ToList(); }
 
-        return TurnSplitter.Split(vivos).Count(TurnSplitter.IsClosed);
+        var turnos = TurnSplitter.Split(vivos);
+        return Enumerable.Range(0, turnos.Count).Count(i => TurnSplitter.Acabou(turnos, i));
     }
 
     private int LiveTokens()
@@ -1820,7 +1821,7 @@ public sealed class ConversationService : IMessageStore
 
         for (int i = 0; i < teto && (forcado || restante > alvo); i++)
         {
-            if (!TurnSplitter.IsClosed(turnos[i])) break;
+            if (!TurnSplitter.Acabou(turnos, i)) break;
 
             // Segundo teto, em tokens: contar turnos não mede trabalho. Oito turnos cheios de
             // saída de ferramenta já chegaram a 95 mil tokens e viraram UM capítulo de 171
@@ -2161,7 +2162,13 @@ public sealed class ConversationService : IMessageStore
                 // compactação de tudo o que vier depois, porque SelectTurnsToCompact para no
                 // primeiro turno aberto que encontra. A marca fecha, e é honesta — o turno
                 // acabou mesmo, só que por decisão do usuário.
-                if (cancelado) FecharTurnoAberto("cancelado por você");
+                //
+                // Erro também: uma exceção do provedor no meio da cadeia sai pelo mesmo
+                // finally, com o histórico no mesmo estado. Visto em 15/10: o OpenRouter
+                // respondeu 403 (limite mensal da chave) depois da 24ª ferramenta, o turno
+                // ficou aberto e o /compact passou a responder "nada a compactar" com 172 mil
+                // tokens vivos. Num turno que fechou direito, FecharTurnoAberto não faz nada.
+                FecharTurnoAberto(cancelado ? "cancelado por você" : "o turno parou por um erro");
 
                 // Antes de liberar o portão: o turno seguinte não pode começar a mexer no
                 // histórico enquanto este ainda não foi registrado.

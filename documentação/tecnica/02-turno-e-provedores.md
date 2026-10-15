@@ -38,7 +38,7 @@ UI ──► ConversationService.StreamResponseAsync
           │  respondeu texto? anexa e termina
           ▼
        finally (ainda com o portão):
-          fecha turno cancelado → RecordLastTurn (raw.jsonl) → título (1º turno)
+          fecha turno aberto (cancelado ou erro) → RecordLastTurn (raw.jsonl) → título (1º turno)
           → ArquivarConversaViva → CompactIfNeededAsync → libera o portão
 ```
 
@@ -112,10 +112,11 @@ Todo turno termina com uma fala de assistente. Quando não há, entra a marca `A
 | Stream sem texto e sem ferramenta | `AgentLoop` (`TurnOutcome.EmptyResponse`) |
 | Teto de iterações com ferramenta pendente | `AgentLoop` (`IterationLimitReached`) |
 | Cancelado pelo usuário | `ConversationService.FecharTurnoAberto("cancelado por você")` |
+| Exceção no meio do turno (ex.: provedor respondeu 403) | `ConversationService.FecharTurnoAberto("o turno parou por um erro")`, no mesmo `finally` |
 | Conversa trocada no meio do turno | `ResetHistory` → `FecharTurnoAberto` |
 | App caiu no meio do turno | `SessionMemory.RecuperarTurnoAberto` na reabertura |
 
-**Por quê:** sem a marca o turno não fecha, não vai para o `raw.jsonl` e — pior — `SelectTurnsToCompact` para no primeiro turno aberto, travando a compactação de tudo o que vier depois. Aconteceu numa sessão real: um turno vazio deixou a conversa com sete podas de emergência e nenhum capítulo.
+**Por quê:** sem a marca o turno não fecha, não vai para o `raw.jsonl` e — pior — `SelectTurnsToCompact` para no primeiro turno aberto, travando a compactação de tudo o que vier depois. Aconteceu numa sessão real: um turno vazio deixou a conversa com sete podas de emergência e nenhum capítulo. E de novo em 15/10, com erro: o OpenRouter respondeu 403 (limite mensal da chave) no meio de uma cadeia, e o `/compact` passou a dizer "nada a compactar" com 172 mil tokens vivos. Para as conversas que já ficaram assim, a compactação aceita um turno aberto que tem outro depois dele (`TurnSplitter.Acabou`): ele não muda mais.
 
 ### 2.8 Poda de emergência (`Trim`)
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -875,6 +875,73 @@ namespace AIB.Tests
 
             turnos.Should().HaveCount(1);
             AIB.Services.Memory.TurnSplitter.IsClosed(turnos[0]).Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task ErroDoProvedor_NoMeioDaCadeia_FechaOTurnoComAMarca()
+        {
+            // Caso real, 15/10, conversa "Editar tarefa 3103 no Bitrix": depois da 24ª ferramenta
+            // o OpenRouter respondeu 403 (limite mensal da chave). A exceção saiu pelo finally do
+            // turno, que só fechava turno CANCELADO; o histórico ficou terminando num resultado
+            // de ferramenta, e o /compact passou a dizer "nada a compactar" com 172 mil tokens.
+            int chamadas = 0;
+            var provider = new ProviderRoteirizado(_ =>
+            {
+                if (++chamadas == 1)
+                    return new StreamChunk[]
+                    {
+                        new StreamChunk.ToolCallDelta("k0", "id0", "ferramenta_inexistente", "{}"),
+                        new StreamChunk.Done(StreamFinishReason.ToolCalls, "tool_calls")
+                    };
+                throw new System.Net.Http.HttpRequestException("OpenRouter respondeu 403: Key limit exceeded (monthly limit).");
+            });
+            var conversation = BuildConversation(BuildSettings(sendSystemPrompt: false), provider, out _);
+
+            Func<Task> turno = async () => { await foreach (var _ in conversation.StreamResponseAsync("edite a tarefa")) { } };
+            await turno.Should().ThrowAsync<System.Net.Http.HttpRequestException>();
+
+            var turnos = AIB.Services.Memory.TurnSplitter.Split(conversation.SnapshotHistory());
+            AIB.Services.Memory.TurnSplitter.IsClosed(turnos[^1]).Should().BeTrue();
+            TextOf(conversation.SnapshotHistory()[^1]).Should().Contain("o turno parou por um erro");
+            Claro.Texto(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
+                .Should().Contain("o turno parou por um erro", "fechado, o turno vai para o disco na hora");
+        }
+
+        [Fact]
+        public async Task TurnoQueMorreuAberto_NoMeioDaConversa_NaoTravaOCompact()
+        {
+            // A conversa que JÁ ficou presa (o turno 62 dela morreu aberto antes da marca de
+            // erro): o turno aberto tem mensagens do usuário depois dele e não muda mais.
+            // SelectTurnsToCompact parava nele — /compact respondia "nada a compactar" para
+            // sempre, e só a poda de emergência agia.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = new FakeProvider(new StreamChunk[]
+            {
+                new StreamChunk.TextDelta("ok", TextChannel.Final),
+                new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+            });
+            var conversation = BuildConversation(settings, provider, out _);
+
+            string longa = string.Concat(Enumerable.Repeat("uma frase qualquer para gastar tokens. ", 30));
+            await foreach (var _ in conversation.StreamResponseAsync($"{longa} primeiro")) { }
+
+            // O estado que o erro deixava: a cadeia segue e termina num resultado, sem fala.
+            conversation.AppendAssistantToolCalls(new[]
+            {
+                ChatToolCall.CreateFunctionToolCall("id-morto", "browser", BinaryData.FromString("{}"))
+            });
+            conversation.AppendToolResult("id-morto", "resultado da ferramenta");
+
+            for (int i = 0; i < 3; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"{longa} depois {i}")) { }
+
+            var turnos = AIB.Services.Memory.TurnSplitter.Split(conversation.SnapshotHistory());
+            AIB.Services.Memory.TurnSplitter.IsClosed(turnos[0]).Should().BeFalse("o ensaio precisa do turno aberto");
+
+            string resposta = await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            resposta.Should().StartWith("Capitulo 0 fechado");
+            conversation.Chapters.Should().ContainSingle();
         }
 
         [Fact]
