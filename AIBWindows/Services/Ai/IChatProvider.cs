@@ -44,4 +44,15 @@ public interface IChatProvider
     /// aquecimento seguir rodando durante o encerramento do app.
     /// </summary>
     Task WarmupAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Tokens que o provedor manda JUNTO com <paramref name="messages"/> sem que estejam nelas: o
+    /// raciocínio guardado das voltas com ferramenta, que ele devolve ao modelo. Zero onde não há.
+    /// <para>
+    /// O contador e a compactação contam o histórico; sem isto não viam esse raciocínio. Visto
+    /// em 15/10: o OpenRouter cobrou 239.393 tokens de entrada numa volta em que a conta da AIB
+    /// dava ~190 mil.
+    /// </para>
+    /// </summary>
+    int RaciocinioReenviado(IReadOnlyList<ChatMessage> messages, System.Func<string, int> contar) => 0;
 }

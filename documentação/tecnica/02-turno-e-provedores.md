@@ -175,7 +175,7 @@ Todo turno termina com uma fala de assistente. Quando não há, entra a marca `A
 | Nada | `Completed(EmptyResponse)` | marca de turno morto |
 | Teto | `Completed(IterationLimitReached, teto)` | marca de turno morto; a UI mostra "Limite de N etapas atingido" com o número **do evento** |
 
-`ParaOHistorico` usa o texto cru do provedor (`Done.RawAssistantText`, com `<think>`) quando `ThinkingInHistory` está ligado; desligado (padrão), o bloco de raciocínio é removido por `ThinkBlockStripper`.
+`ParaOHistorico` usa o texto cru do provedor (`Done.RawAssistantText`, com `<think>`) quando `ThinkingInHistory` está ligado; desligado (padrão), o bloco de raciocínio é removido por `ThinkBlockStripper`. A chave vale só para o raciocínio que vem **no texto** (o `<think>` do Ollama). No OpenRouter e no Google o raciocínio das voltas com ferramenta vai por outro canal e volta sempre (ver §OpenRouter, "Raciocínio devolvido sempre").
 
 ---
 
@@ -330,7 +330,7 @@ Record com `Temperature` (0,1), `NumCtx` (32.768), `KeepAliveSeconds`, `Think`, 
 
 ### 9.3 Cache
 
-- **Raciocínio devolvido sempre:** `_raciocinioPorChamada` guarda os `reasoning_details` de cada volta que pediu ferramenta, pelo id da primeira chamada, e os recoloca naquela mensagem em **toda** requisição enquanto ela estiver no histórico. Mandar só no turno corrente mudava o prefixo no turno seguinte. Poda: acima de 2.048 entradas, remove as menos recentemente enviadas até 1.536 — nunca zera o mapa.
+- **Raciocínio devolvido sempre:** `_raciocinioPorChamada` guarda os `reasoning_details` de cada volta que pediu ferramenta, pelo id da primeira chamada, e os recoloca naquela mensagem em **toda** requisição enquanto ela estiver no histórico. Mandar só no turno corrente mudava o prefixo no turno seguinte. Poda: acima de 2.048 entradas, remove as menos recentemente enviadas até 1.536 — nunca zera o mapa. Esse raciocínio vai na requisição sem estar no histórico, então `IChatProvider.RaciocinioReenviado` diz quanto ele pesa (o texto de `text`/`summary`; o cifrado é opaco), e `ConversationService.Peso` o soma ao contador (`CountTokens`), à conta da compactação (`LiveTokens`) e ao peso de cada turno na escolha do capítulo. Visto em 15/10: 239.393 tokens cobrados numa volta em que a conta da AIB dava ~190 mil.
 - **Marcas de cache** (`UsaMarcasDeCache`): só `anthropic/*` e `google/gemini*`. Até `TetoDeMarcasDeCache` = 4: primeira mensagem de sistema, última de sistema (memória), última fala do usuário e **última mensagem da requisição** (a que faz as voltas de ferramenta do mesmo turno acharem o miolo em cache). Toda mensagem de sistema, usuário e ferramenta vira lista de partes, marcada ou não — a mudança de forma entre requisições arriscaria o prefixo.
 - `Usage.CachedTokens` vem de `prompt_tokens_details.cached_tokens`; `Provedor` vem do campo `provider` de cada evento. A `ConversationService` soma entrada e cache por volta e conta voltas por provedor; mais de um provedor no `/memoria` é o sinal de que o cache foi jogado fora.
 

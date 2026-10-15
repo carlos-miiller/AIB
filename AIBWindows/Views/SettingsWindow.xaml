@@ -2005,7 +2005,7 @@
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                                 <TextBlock Text="Devolver o raciocínio ao modelo" Style="{StaticResource FieldLabelText}"/>
                                                 <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
-                                                           Text="O pensamento de cada etapa volta ao modelo nas seguintes, em vez de ser descartado. Modelos de raciocínio são treinados esperando o pensamento AUSENTE do histórico — pode melhorar ou piorar. Só faz diferença com o raciocínio ligado."/>
+                                                           Text="O pensamento escrito na resposta (o do Ollama) volta ao modelo nas etapas seguintes, em vez de ser descartado. Modelos de raciocínio são treinados esperando o pensamento AUSENTE do histórico — pode melhorar ou piorar. Só faz diferença com o raciocínio ligado. No OpenRouter e no Google, o raciocínio das etapas com ferramenta volta sempre: há modelos que o exigem, e ele mantém o cache."/>
                                             </StackPanel>
                                             <ToggleButton x:Name="ThinkingInHistorySwitch" Grid.Column="1"
                                                           Style="{StaticResource Switch}"

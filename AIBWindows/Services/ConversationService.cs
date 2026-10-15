@@ -1053,7 +1053,7 @@ public sealed class ConversationService : IMessageStore
 
         for (int i = turnos.Count - 1; i >= 0 && ficam < KeepRecentTurns; i--)
         {
-            gasto += _tokenCounter.CountMessages(turnos[i].Messages);
+            gasto += Peso(turnos[i].Messages);
             if (gasto > fatia) break;
             ficam++;
         }
@@ -1758,11 +1758,9 @@ public sealed class ConversationService : IMessageStore
 
     private int LiveTokens()
     {
-        lock (_gate)
-        {
-            int inicio = FirstRemovableIndex();
-            return _tokenCounter.CountMessages(_history.Skip(inicio));
-        }
+        List<ChatMessage> vivas;
+        lock (_gate) { vivas = _history.Skip(FirstRemovableIndex()).ToList(); }
+        return Peso(vivas);
     }
 
     /// <summary>
@@ -1827,7 +1825,7 @@ public sealed class ConversationService : IMessageStore
             // saída de ferramenta já chegaram a 95 mil tokens e viraram UM capítulo de 171
             // tokens de resumo. O primeiro turno entra sempre, mesmo sozinho maior que o teto —
             // cortar DENTRO de um turno quebraria o par tool_call/resultado.
-            int doTurno = _tokenCounter.CountMessages(turnos[i].Messages);
+            int doTurno = Peso(turnos[i].Messages);
             if (escolhidos.Count > 0 && somados + doTurno > tetoDeTokens) break;
             somados += doTurno;
 
@@ -2680,7 +2678,32 @@ public sealed class ConversationService : IMessageStore
 
     public int CountTokens()
     {
-        lock (_gate) { return _tokenCounter.CountMessages(_history); }
+        List<ChatMessage> todas;
+        lock (_gate) { todas = new List<ChatMessage>(_history); }
+        return Peso(todas);
+    }
+
+    /// <summary>
+    /// O raciocínio que o provedor devolve ao modelo junto com estas mensagens, sem estar nelas
+    /// (<see cref="IChatProvider.RaciocinioReenviado"/>). Entra no contador e na conta da
+    /// compactação: na conversa do Bitrix de 15/10 eram ~50 mil tokens que nenhum dos dois via.
+    /// Zero se o provedor não puder ser montado — o contador nunca derruba o turno.
+    /// </summary>
+    /// <summary>O que estas mensagens pesam na requisição: o texto delas e o raciocínio que vai junto.</summary>
+    private int Peso(IReadOnlyList<ChatMessage> mensagens) =>
+        _tokenCounter.CountMessages(mensagens) + RaciocinioReenviado(mensagens);
+
+    private int RaciocinioReenviado(IReadOnlyList<ChatMessage> mensagens)
+    {
+        try
+        {
+            return _providerFactory.GetProvider(_settingsService.LoadSettings())
+                .RaciocinioReenviado(mensagens, _tokenCounter.CountText);
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
     }
 
     /// <summary>

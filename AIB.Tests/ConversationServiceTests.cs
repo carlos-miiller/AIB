@@ -86,6 +86,11 @@ namespace AIB.Tests
                 WarmupCalls++;
                 return Task.CompletedTask;
             }
+
+            /// <summary>O raciocínio que o provedor diria reenviar junto com o histórico.</summary>
+            public int Raciocinio { get; set; }
+
+            public int RaciocinioReenviado(IReadOnlyList<ChatMessage> messages, Func<string, int> contar) => Raciocinio;
         }
 
         /// <summary>
@@ -877,6 +882,25 @@ namespace AIB.Tests
             AIB.Services.Memory.TurnSplitter.IsClosed(turnos[0]).Should().BeTrue();
         }
 
+        [Fact]
+        public async Task OContador_SomaORaciocinioQueOProvedorDevolveAoModelo()
+        {
+            // Caso real, 15/10, conversa do Bitrix: o OpenRouter cobrou 239.393 tokens de entrada
+            // numa volta em que o contador dava ~190 mil. O raciocínio das voltas com ferramenta
+            // vai junto em toda requisição, fora do histórico, e o contador não o via.
+            var provider = new FakeProvider(new StreamChunk[]
+            {
+                new StreamChunk.TextDelta("ok", TextChannel.Final),
+                new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+            });
+            var conversation = BuildConversation(BuildSettings(sendSystemPrompt: false), provider, out _);
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+
+            int sem = conversation.CountTokens();
+            provider.Raciocinio = 50_000;
+
+            conversation.CountTokens().Should().Be(sem + 50_000);
+        }
         [Fact]
         public async Task ErroDoProvedor_NoMeioDaCadeia_FechaOTurnoComAMarca()
         {
