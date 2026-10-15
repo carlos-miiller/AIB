@@ -43,8 +43,9 @@ public sealed class Atributos
     public int Constancia { get; set; } = Neutro;
 
     /// <summary>
-    /// Sem efeito desde 15/10/2026: escolhia entre o gancho sorteado e perguntar sobre o usuário,
-    /// e o gancho saiu do pedido da iniciativa. Fica porque está no info.json e no status.json.
+    /// O quanto ele se abre a um jeito novo: a força com que um hábito nasce
+    /// (<see cref="Habitos.Nasce"/>). Antes escolhia entre o gancho sorteado da iniciativa e
+    /// perguntar sobre o usuário; o gancho saiu em 15/10/2026.
     /// </summary>
     public int Curiosidade { get; set; } = Neutro;
 }

@@ -53,6 +53,9 @@ namespace AIB.Tests
             string status = Path.Combine(Path.GetTempPath(), "AIB_TestStatus_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(status);
             StatusDosPersonagens.RaizPadrao = status;
+
+            // Os hábitos, que o fechamento de capítulo grava e o prompt de sistema lê.
+            Habitos.RaizPadrao = status;
         }
     }
 }

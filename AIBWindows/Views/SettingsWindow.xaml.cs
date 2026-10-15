@@ -199,6 +199,8 @@ public partial class SettingsWindow : Window
             IniciativaResumo.Text = App.ResumoDaIniciativa();
             MensagensPorDiaTextBox.Text = _currentSettings.MensagensPorDia.ToString();
             IniciativaLogSwitch.IsChecked = _currentSettings.IniciativaLogging;
+            HabitosSwitch.IsChecked = _currentSettings.AprenderHabitos;
+            MostrarHabitos();
             SilencioInicioTextBox.Text = _currentSettings.SilencioInicio;
             SilencioFimTextBox.Text = _currentSettings.SilencioFim;
             MailWindowTextBox.Text = _currentSettings.MailWindowDays.ToString();
@@ -1344,6 +1346,67 @@ public partial class SettingsWindow : Window
         IniciativaResumo.Text = App.ResumoDaIniciativa();
     }
 
+    /// <summary>
+    /// Os hábitos do personagem ativo, cada um com o botão de tirar. Os que ainda não foram
+    /// vistos de novo aparecem como "se firmando": estão guardados, mas não vão ao prompt.
+    /// </summary>
+    private void MostrarHabitos()
+    {
+        HabitosLista.Children.Clear();
+
+        string personagem = _currentSettings.ActiveCharacter;
+        var habitos = new Habitos();
+        var todos = habitos.De(personagem);
+        if (todos.Count == 0)
+        {
+            HabitosLista.Children.Add(new TextBlock
+            {
+                Text = "Nenhum hábito ainda.",
+                Style = (Style)FindResource("FieldHelpText")
+            });
+            return;
+        }
+
+        var atributos = new StatusDosPersonagens().De(personagem, ConversationService.PerfilDoPersonagem(personagem)?.Atributos);
+        var ativos = habitos.Ativos(personagem, DateTime.UtcNow, Temperamento.De(atributos).Esquecimento);
+
+        foreach (var h in todos)
+        {
+            var linha = new DockPanel { Margin = new Thickness(0, 2, 0, 0) };
+
+            var esquecer = new System.Windows.Controls.Button
+            {
+                Content = "Esquecer",
+                Tag = h.Texto,
+                Margin = new Thickness(10, 0, 0, 0),
+                Style = (Style)FindResource("QuietButton")
+            };
+            esquecer.Click += EsquecerHabito_Click;
+            DockPanel.SetDock(esquecer, Dock.Right);
+            linha.Children.Add(esquecer);
+
+            linha.Children.Add(new TextBlock
+            {
+                Text = $"{(h.Evita ? "Evita" : "Faz")}: {h.Texto} · visto {h.Vezes}× · "
+                       + (ativos.Any(a => a.Texto == h.Texto) ? "em uso" : "se firmando"),
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center,
+                Style = (Style)FindResource("FieldHelpText")
+            });
+
+            HabitosLista.Children.Add(linha);
+        }
+    }
+
+    /// <summary>Tira um hábito. Vale na hora, sem "Salvar", como zerar a iniciativa: é memória dela.</summary>
+    private void EsquecerHabito_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string texto) return;
+
+        new Habitos().Esquecer(_currentSettings.ActiveCharacter, texto);
+        MostrarHabitos();
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Restaurar padrões
     // ─────────────────────────────────────────────────────────────────────
@@ -1419,6 +1482,7 @@ public partial class SettingsWindow : Window
                 IniciativaSwitch.IsChecked = padrao.IniciativaLigada;
                 MensagensPorDiaTextBox.Text = padrao.MensagensPorDia.ToString();
                 IniciativaLogSwitch.IsChecked = padrao.IniciativaLogging;
+                HabitosSwitch.IsChecked = padrao.AprenderHabitos;
                 SilencioInicioTextBox.Text = padrao.SilencioInicio;
                 SilencioFimTextBox.Text = padrao.SilencioFim;
                 AtualizarAjudaDoShadow();
@@ -2070,6 +2134,7 @@ public partial class SettingsWindow : Window
         _currentSettings.IniciativaLigada = IniciativaSwitch.IsChecked ?? false;
         _currentSettings.MensagensPorDia = Numero(MensagensPorDiaTextBox, _currentSettings.MensagensPorDia);
         _currentSettings.IniciativaLogging = IniciativaLogSwitch.IsChecked ?? false;
+        _currentSettings.AprenderHabitos = HabitosSwitch.IsChecked ?? false;
         // Hora ilegível volta ao que estava (o Sanear abaixo só cobre o que veio do disco).
         if (Iniciativa.Hora(SilencioInicioTextBox.Text) != null) _currentSettings.SilencioInicio = SilencioInicioTextBox.Text.Trim();
         if (Iniciativa.Hora(SilencioFimTextBox.Text) != null) _currentSettings.SilencioFim = SilencioFimTextBox.Text.Trim();

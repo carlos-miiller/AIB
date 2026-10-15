@@ -37,6 +37,9 @@ Console.OutputEncoding = Encoding.UTF8;
 //            --afeto 2                  o desvio do afeto (agora menos o de fábrica), para medir a
 //                                       linha "Convivência" do prompt: 0.75, 1.5, -0.75, -1.5.
 //                                       Sem a opção, o desvio é zero e a linha não entra.
+//            --habitos "faz X;-manda Y"  os hábitos firmes, para medir a linha "Jeitos da convivência";
+//                                       "-" na frente é o que ele não gosta. Sem a opção, nenhum
+//                                       (e não os que o personagem tem hoje).
 //            --conversa <pasta>         casos "mem-*" sobre a memória GRAVADA dessa sessão
 //                                       (ex.: %USERPROFILE%\.AIB\memory\sessions\20260915-103155-507),
 //                                       lida de uma cópia temporária
@@ -77,6 +80,12 @@ bool comPendencias = !args.Contains("--sem-pendencias");
 ConversationService.DesvioDoAfetoForcado =
     double.TryParse(Opcao("--afeto"), System.Globalization.NumberStyles.Float,
                     System.Globalization.CultureInfo.InvariantCulture, out double desvioDoAfeto) ? desvioDoAfeto : 0;
+
+// Pelo mesmo motivo, sem a opção nenhum hábito: vazio, e não os do arquivo do personagem.
+ConversationService.HabitosForcados = Habitos.Linha(
+    (Opcao("--habitos") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(h => new Habito { Texto = h.TrimStart('-').Trim(), Evita = h.StartsWith('-') })
+        .ToList());
 
 ConversationService.PrimeiroEnvio Ajustar(ConversationService.PrimeiroEnvio envio) =>
     envio with

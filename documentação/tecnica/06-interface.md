@@ -467,7 +467,7 @@ batida seguinte. Não são as estrelas da tela de escolha (`AgentStats`, no `inf
 | `Iniciativa` | multiplica a chance base do sorteio | ×0,5 | ×0,75 | ×1 | ×1,3 | ×1,6 |
 | `Resiliencia` | fator da fala ignorada / do "agora não" | 0,60 / 0,35 | 0,68 / 0,42 | 0,75 / 0,50 | 0,83 / 0,60 | 0,90 / 0,70 |
 | `Constancia` | quanto o geral volta para 1 por dia | 20% | 15% | 10% | 7% | 5% |
-| `Curiosidade` | nada desde 15/10/2026 (escolhia entre o gancho e "conhecer o usuário"; o gancho saiu) | — | — | — | — | — |
+| `Curiosidade` | força com que um hábito novo nasce (`Habitos.Nasce`) | 0,50 | 0,75 | 1,00 | 1,25 | 1,50 |
 
 O **afeto** (`Afeto`) é o quinto e tem escala própria, de **-5 a 5**, com 0 de neutro: -5 é o
 personagem direto, que evita conversa longa; 5, o expressivo e apegado. Na conta ele é o teto do
@@ -485,6 +485,33 @@ espontânea encerrada, `Iniciativa.AfetoMoveu` dá o passo e `StatusDosPersonage
 arquivo de status — conversa +0,10, resposta rápida +0,03, conversa puxada pelo usuário (2 turnos
 ou mais) +0,05, lida sem resposta -0,02, ignorada -0,05, "agora não" -0,15. Fica entre -5 e 5 e a
 no máximo 2 pontos do afeto de fábrica do `info.json` (`Atributos.FolgaDoAfeto`).
+
+**Hábitos** (`Habitos`, pedido do usuário em 15/10/2026: "se ela faz algo e eu reajo
+positivamente a isso, de forma orgânica"). O personagem pega jeitos de agir na convivência. **O
+resumidor vê, o código decide:**
+
+- **Quem aprende:** com `AprenderHabitos` ligado (Configurações > Shadow, nasce ligado) e o
+  personagem ativo com alma (`ConversationService.QuemAprende`). Nas duas conversas, janela e orbe.
+- **Onde o jeito é visto:** ao fechar um capítulo, o prompt do resumidor ganha a seção JEITO
+  (`Compactor.SecaoDoJeito`), e o material ganha os hábitos já guardados, numerados. O resumidor
+  devolve até 2 linhas, `- + faz trocadilhos com esgrima | "kkkk adorei"` ou `- - #2 | "resume"`.
+  Sem persona, ou desligado, o prompt do capítulo fica byte a byte o de antes.
+- **A prova:** `Compactor.LerJeito` corta a seção antes de `LerSecoes` (as linhas dela seriam lidas
+  como lições) e só aceita a reação cuja fala entre aspas está nas mensagens **do usuário** do
+  trecho (`Turn.UserText`). Reação inventada, ou tirada de arquivo, e-mail ou página, não passa.
+- **A força:** jeito novo nasce com a força da curiosidade (0,5 a 1,5). A mesma reação de novo soma
+  1 (até 5); a contrária tira 2. A força cai pela constância a cada **semana** sem ser vista
+  (`Habitos.ForcaEm`, a escala do esquecimento do geral, mas por semana: hábito dura mais que
+  humor). Abaixo de 0,25 o jeito sai do arquivo. Guarda até 12, os mais fortes.
+- **No prompt:** só os vistos 2 vezes ou mais e com força ≥ 1,5, no máximo 5
+  (`Habitos.Ativos`), numa linha "Jeitos da convivência" depois da do afeto
+  (`Habitos.Linha`): "o usuário gosta quando você …, e não gosta quando você …. Use isso com
+  naturalidade, de vez em quando, sem deixar de ser quem você é." Vai no prompt de sistema (vale
+  da próxima conversa, que é quando ele é montado) e no pedido da iniciativa. Sem hábito firme, a
+  linha não existe. `ConversationService.HabitosForcados` força a linha, para a avaliação.
+- **Arquivo:** `~/.AIB/memory/shadow/habitos/<Nome>.dat`, cifrado (DPAPI): o texto vem da conversa.
+  A página Shadow lista os hábitos do personagem ativo ("em uso" ou "se firmando") com o botão
+  Esquecer, que vale na hora.
 
 **Saudade** (`Iniciativa.Saudade`): a chance do sorteio é multiplicada pelo tempo sem contato —
 1 até 2 h, 2 com 8 h, 3 com 24 h, e daí não passa. Contato é mensagem do usuário no orbe, turno

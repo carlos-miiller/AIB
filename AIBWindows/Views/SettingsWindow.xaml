@@ -1452,7 +1452,7 @@
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                                 <TextBlock Text="Puxar assunto sozinha"
                                                            Style="{StaticResource FieldLabelText}"/>
-                                                <TextBlock Text="Pelo orbe, retoma o que ficou em aberto ou pergunta sobre você. Fala mais quando você conversa com ela e menos quando ignora. Cada vez que ela pensa em falar é uma requisição ao modelo."
+                                                <TextBlock Text="Pelo orbe, ela manda mensagem por conta própria, do jeito dela e com o que lembra de vocês. Fala mais quando você conversa com ela e menos quando ignora. Cada mensagem é uma requisição ao modelo."
                                                            Style="{StaticResource FieldHelpText}"/>
                                                 <!-- O que ela aprendeu, e como esquecer. -->
                                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -1502,6 +1502,26 @@
                                                            Text="Cada sorteio com a conta da chance, o que a impediu de sortear e o que ela aprendeu. Vai para logs\iniciativa.log. Grava números e motivos, não o texto das mensagens."/>
                                             </StackPanel>
                                             <ToggleButton x:Name="IniciativaLogSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Hábitos: o que o personagem pegou na convivência, e
+                                         como tirar um. A lista é preenchida em código. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="Pegar hábitos na convivência" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Quando você reage bem ou mal a um jeito dela (uma piada, um apelido, o tamanho das mensagens), ela nota ao resumir a conversa. Visto de novo, o jeito vira hábito; sem se repetir, ela esquece aos poucos. Desligado, ela nem aprende nem usa o que aprendeu."/>
+                                                <StackPanel x:Name="HabitosLista" Margin="0,6,0,0"/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="HabitosSwitch" Grid.Column="1"
                                                           Style="{StaticResource Switch}"
                                                           Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
                                         </Grid>

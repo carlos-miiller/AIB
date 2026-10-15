@@ -50,7 +50,8 @@ O AIB não usa pasta temporária.
 │   ├── facts.md                     fatos duráveis (do usuário; cifrado por linha, editado na aba Memória)
 │   ├── facts.index.jsonl            registro do que já foi promovido (da máquina; cifrado por linha)
 │   ├── shadow/                      a conversa do orbe, uma só para sempre (mesmos arquivos de uma sessão)
-│   │   └── status.json              atributos dos personagens como estão agora; nasce vazio, ganha cada um quando aparece
+│   │   ├── status.json              atributos dos personagens como estão agora; nasce vazio, ganha cada um quando aparece
+│   │   └── habitos/<Nome>.dat       hábitos que o personagem pegou na convivência (cifrado; ver "Hábitos" em 06-interface.md)
 │   └── sessions/<id>/
 │       ├── raw.jsonl                todos os turnos, crus — nunca apagado (cifrado por linha)
 │       ├── chapters.jsonl           capítulos (resumos de turnos; cifrado por linha)
@@ -215,7 +216,7 @@ Além disso, `LoadSettings` e `SaveSettings` chamam `PastasSemConfirmacao.Config
 
 ### Chaves que nascem desligadas
 
-Várias opções nascem desligadas por decisão registrada no comentário de cada uma: `ShadowAssistantEnabled` e `ShadowHandlesMail` (ninguém ganha um programa lendo o próprio e-mail por ter atualizado; e querer o orbe não é querer que ele abra a caixa), `ModelThinking` (medido: em CPU, turnos inteiros terminavam só pensando), `ThinkingInHistory`, `MailTriageThinking`, `ExecutionLogging`, `CompactionLogging`, `EsconderResultadosDepoisDe`. `OpenRouterSemColetaDeDados` nasce **ligada**, porque o prompt leva arquivos e e-mails. `KeepAssistantSpeech` nasce ligada porque o contrário é defeito. `IniciativaLogging` nasce ligada porque o diário só tem números e, sem ele, não há como saber por que a persona não puxou assunto.
+Várias opções nascem desligadas por decisão registrada no comentário de cada uma: `ShadowAssistantEnabled` e `ShadowHandlesMail` (ninguém ganha um programa lendo o próprio e-mail por ter atualizado; e querer o orbe não é querer que ele abra a caixa), `ModelThinking` (medido: em CPU, turnos inteiros terminavam só pensando), `ThinkingInHistory`, `MailTriageThinking`, `ExecutionLogging`, `CompactionLogging`, `EsconderResultadosDepoisDe`. `OpenRouterSemColetaDeDados` nasce **ligada**, porque o prompt leva arquivos e e-mails. `KeepAssistantSpeech` nasce ligada porque o contrário é defeito. `IniciativaLogging` nasce ligada porque o diário só tem números e, sem ele, não há como saber por que a persona não puxou assunto. `AprenderHabitos` nasce ligada a pedido do usuário: a pergunta pelo jeito vai na chamada de resumo que já é paga, e o prompt só muda quando um hábito se firma.
 
 ## Credenciais
 

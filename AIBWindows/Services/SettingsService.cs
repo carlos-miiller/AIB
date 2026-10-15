@@ -187,8 +187,7 @@ public sealed class UserAppSettings
     public bool ShadowHandlesMail { get; set; } = false;
 
     /// <summary>
-    /// Se a persona pode puxar assunto sozinha: retomar algo em aberto, perguntar sobre o
-    /// usuário. Opt-in, como o orbe: cada vez que ela pondera falar é uma requisição paga. O
+    /// Se a persona pode puxar assunto sozinha, mandando mensagem pelo orbe. Opt-in, como o orbe: cada vez que ela pondera falar é uma requisição paga. O
     /// ritmo se ajusta ao quanto o usuário responde (<see cref="Iniciativa"/>). Lembretes pedidos
     /// não dependem desta chave.
     /// </summary>
@@ -210,6 +209,17 @@ public sealed class UserAppSettings
     /// </para>
     /// </summary>
     public bool IniciativaLogging { get; set; } = true;
+
+    /// <summary>
+    /// Se o personagem pega hábitos na convivência (<see cref="Habitos"/>): o resumidor do
+    /// capítulo aponta o jeito dele que o usuário recebeu bem ou mal, e os vistos de novo entram
+    /// no prompt. Desligada, nem aprende nem usa o que aprendeu.
+    /// <para>
+    /// Nasce LIGADA — pedido do usuário. O custo é pequeno: a pergunta vai na chamada de resumo
+    /// que já é paga, e o prompt só muda quando um hábito se firma.
+    /// </para>
+    /// </summary>
+    public bool AprenderHabitos { get; set; } = true;
 
     /// <summary>Começo do horário de silêncio, "HH:mm". Lembrete pedido fura o silêncio.</summary>
     public string SilencioInicio { get; set; } = "22:00";

@@ -1284,14 +1284,46 @@ public sealed class ConversationService : IMessageStore
     /// do provedor desta conversa. Novo a cada uso porque qualquer um dos três pode ter mudado
     /// na aba de configurações desde a última compactação.
     /// </summary>
-    private Compactor NovoCompactor()
+    private Compactor NovoCompactor(IReadOnlyList<Habito>? jeitos = null)
     {
         var settings = _settingsService.LoadSettings();
         return new Compactor(
             _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
             comModelo: settings.MemoriaComModelo,
-            limites: LimitesDoProvedor.Para(settings.AiProvider));
+            limites: LimitesDoProvedor.Para(settings.AiProvider),
+            jeitos: jeitos);
     }
+
+    private readonly Habitos _habitos = new();
+
+    /// <summary>
+    /// O personagem que pega hábitos nesta conversa: o ativo, se ele tem alma e o aprendizado
+    /// está ligado. Nulo: nem se pergunta pelo jeito, nem se usa o aprendido.
+    /// </summary>
+    private static string? QuemAprende(UserAppSettings settings) =>
+        settings.AprenderHabitos && !string.IsNullOrWhiteSpace(LoadActiveCharacterSoul(settings.ActiveCharacter))
+            ? settings.ActiveCharacter
+            : null;
+
+    /// <summary>Os atributos de agora do personagem: a constância esquece os hábitos e a curiosidade os faz nascer.</summary>
+    private static Atributos AtributosDe(string personagem) =>
+        new StatusDosPersonagens().De(personagem, PerfilDoPersonagem(personagem)?.Atributos);
+
+    /// <summary>A linha dos hábitos firmes do personagem, para o prompt. Vazia sem nenhum.</summary>
+    private string LinhaDosHabitos(UserAppSettings settings)
+    {
+        if (HabitosForcados is string forcados) return forcados;
+        if (QuemAprende(settings) is not string personagem) return "";
+
+        double esquecimento = Temperamento.De(AtributosDe(personagem)).Esquecimento;
+        return Habitos.Linha(_habitos.Ativos(personagem, DateTime.UtcNow, esquecimento));
+    }
+
+    /// <summary>
+    /// A linha a usar em vez da do arquivo. Só para a avaliação medir o prompt com hábitos sem
+    /// esperar eles se firmarem, como <see cref="DesvioDoAfetoForcado"/>.
+    /// </summary>
+    public static string? HabitosForcados { get; set; }
 
     /// <summary>
     /// Fecha um capitulo sobre <paramref name="candidatos"/>: resume, tira os turnos do
@@ -1301,7 +1333,9 @@ public sealed class ConversationService : IMessageStore
     private async Task<Chapter> FecharCapituloAsync(
         List<Turn> candidatos, MemoryQuota quota, CancellationToken ct)
     {
-        var compactor = NovoCompactor();
+        string? personagem = QuemAprende(_settingsService.LoadSettings());
+        var conhecidos = personagem == null ? null : _habitos.De(personagem);
+        var compactor = NovoCompactor(conhecidos);
 
         int conversa;
         lock (_gate) { conversa = _conversaViva; }
@@ -1344,6 +1378,11 @@ public sealed class ConversationService : IMessageStore
 
         _memory.Add(capitulo);
         _sessionMemory.AppendChapter(capitulo);
+
+        if (personagem != null && conhecidos != null && compactor.Reacoes.Count > 0)
+            foreach (string mudanca in _habitos.Aprender(
+                         personagem, compactor.Reacoes, conhecidos, AtributosDe(personagem), DateTime.UtcNow))
+                Console.WriteLine($"[HABITOS] {personagem}: {mudanca}");
         if (capitulo.CustoUsd is decimal custoDoCapitulo) lock (_gate) { _custoDaConversa += custoDoCapitulo; }
 
         // Promocao antes de reescrever o bloco: se um ato nascer agora, ele ja entra no mesmo
@@ -2308,7 +2347,8 @@ public sealed class ConversationService : IMessageStore
 
             string material = MaterialDaIniciativa(
                 LoadActiveCharacterSoul(settings.ActiveCharacter), PerfilDoPersonagem(settings.ActiveCharacter),
-                memoria, contexto, DesvioDoAfeto(settings.ActiveCharacter), UltimasFalas(4), DateTime.UtcNow);
+                memoria, contexto, DesvioDoAfeto(settings.ActiveCharacter), UltimasFalas(4), DateTime.UtcNow,
+                LinhaDosHabitos(settings));
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromMinutes(2));
@@ -2359,7 +2399,7 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     public static string MaterialDaIniciativa(
         string? alma, AgentProfile? perfil, string memoria, ContextoDaIniciativa c, double? desvio,
-        IReadOnlyList<(bool DoUsuario, string Texto)> falas, DateTime agoraUtc)
+        IReadOnlyList<(bool DoUsuario, string Texto)> falas, DateTime agoraUtc, string habitos = "")
     {
         string quem = string.IsNullOrWhiteSpace(c.Nome) ? "o usuário" : c.Nome.Trim();
         string Quem = char.ToUpper(quem[0]) + quem[1..];
@@ -2386,6 +2426,8 @@ public sealed class ConversationService : IMessageStore
 
         string afeto = LinhaDoAfeto(desvio).TrimStart('\n', '-', ' ');
         if (afeto.Length > 0) sb.AppendLine(afeto);
+        string jeitos = habitos.TrimStart('\n', '-', ' ');
+        if (jeitos.Length > 0) sb.AppendLine(jeitos);
         if (!string.IsNullOrWhiteSpace(c.Desfecho)) sb.AppendLine($"Sua última mensagem por conta própria {c.Desfecho}.");
 
         if (falas.Count > 0)
@@ -3190,6 +3232,10 @@ public sealed class ConversationService : IMessageStore
         // O jeito de falar acompanha o afeto, mas só quando ele se afastou do de fábrica: no
         // personagem que ainda não andou a linha não existe e o prompt fica byte a byte o que era.
         if (comPersona) contextualPrompt += LinhaDoAfeto(DesvioDoAfeto(settings.ActiveCharacter));
+
+        // Os hábitos firmes, depois do afeto e pelo mesmo motivo: sem nenhum, a linha não existe.
+        // O prompt é montado quando a conversa começa, então um hábito novo vale da próxima.
+        if (comPersona) contextualPrompt += LinhaDosHabitos(settings);
 
         contextualPrompt += EstadoDoVigia(settings, _diarioDeTriagem, DateTime.Now);
 
