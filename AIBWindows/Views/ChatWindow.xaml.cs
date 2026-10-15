@@ -2336,15 +2336,47 @@ public partial class ChatWindow : Window
 
         // O registro de ações vive só em memória: volta remontado do raw.jsonl da conversa.
         // Conversa gravada antes da ligação com a memória não tem raw, e a aba fica vazia.
-        ActionLogService.Restaurar(ActionLogService.Reconstruir(_conversation.TurnosGravados()));
+        var gravados = _conversation.TurnosGravados();
+        ActionLogService.Restaurar(ActionLogService.Reconstruir(gravados));
 
         MessagesPanel.Children.Clear();
         _cadeiaAtual = null;
 
-        bool primeira = true;
+        // Do raw.jsonl, com as ferramentas entre as falas, como a conversa foi vista ao vivo.
+        // Só sem raw (conversa de antes da memória) ficam as falas do arquivo do histórico, que
+        // não têm as ferramentas nem as falas do meio de cada turno. Raw com MENOS turnos que o
+        // arquivo é a conversa antiga continuada depois: o raw só tem o fim, e desenhá-lo
+        // apagaria o começo da tela.
+        var itens = gravados.Count > 0 && gravados.Count >= falas.Count(f => f.DoUsuario)
+            ? ConversaNaTela.Montar(gravados)
+            : falas.Select(f => (ConversaNaTela.Item)new ConversaNaTela.Fala(f.DoUsuario, f.Texto)).ToList();
 
-        foreach (var fala in falas)
+        bool primeira = true;
+        FrameworkElement? semDigitando = null;
+
+        foreach (var item in itens)
         {
+            if (item is ConversaNaTela.Acao acao)
+            {
+                var cadeia = GarantirCadeia(ref semDigitando);
+                cadeia.RecolherFalhaPendente();
+                cadeia.Iniciar(acao.Id, acao.Ferramenta, acao.Argumento);
+                cadeia.Concluir(acao.Id, acao.Falhou, acao.Recusada, acao.Artefato, acao.Detalhe);
+                continue;
+            }
+
+            if (item is ConversaNaTela.Lembrou lembrou)
+            {
+                AddAvisoDeMemoria(lembrou.Fato, null);
+                continue;
+            }
+
+            if (item is not ConversaNaTela.Fala fala) continue;
+
+            // Cada fala fecha a cadeia anterior, como a fronteira de fala faz ao vivo.
+            _cadeiaAtual?.RecolherFalhaPendente();
+            _cadeiaAtual = null;
+
             if (primeira && fala.DoUsuario && cartaoNoLugarDaPrimeiraFala != null)
             {
                 MessagesPanel.Children.Add(cartaoNoLugarDaPrimeiraFala());
@@ -2357,6 +2389,9 @@ public partial class ChatWindow : Window
             if (fala.DoUsuario) AddUserBubble(fala.Texto);
             else foreach (var parte in QuebraDeFala.Dividir(fala.Texto)) AddAgentBubble(parte);
         }
+
+        _cadeiaAtual?.RecolherFalhaPendente();
+        _cadeiaAtual = null;
 
         ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
 

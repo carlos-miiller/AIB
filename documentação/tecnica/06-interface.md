@@ -214,6 +214,14 @@ contexto, que são da conversa. `RecuperarChat` soma uma conversa antiga à atua
 lateral. `RestaurarConversaGravada` é o caminho único de restauração, usado também pela reabertura
 de e-mail.
 
+A tela reaberta sai do `raw.jsonl` (`ConversaNaTela.Montar`): cada fala no seu balão, inclusive as
+do meio da cadeia, e entre elas os chips das ferramentas, pareadas chamada com resultado como no
+registro de ações; `remember` que deu certo volta como o aviso "X lembrará disso…". Antes ela saía
+do arquivo do histórico, que guarda só a fala do usuário e a última do assistente: um turno de 60
+ferramentas que parou no teto voltava como a linha "[turno encerrado sem resposta: …]" e mais nada.
+O arquivo do histórico ainda desenha a tela quando não há raw, ou quando o raw tem menos turnos que
+ele (conversa de antes da memória, continuada depois).
+
 ### Botões de visão e voz
 
 `VisionButton_Click` chama `OcrService.ExtractTextFromActiveScreenAsync` e `VoiceButton_Click` usa
