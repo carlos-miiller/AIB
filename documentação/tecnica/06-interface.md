@@ -271,7 +271,7 @@ Substitui a janela modal: a pergunta aparece na coluna da IA, logo abaixo da aç
 | `shell` | "Executar este comando?" |
 | `skill` | "Executar esta habilidade?" ou "Ler o manual desta habilidade?" |
 
-O cartão mostra a pill "Ação destrutiva", o alvo literal, a prévia do conteúdo ou do trecho
+O cartão mostra a pill "Ação destrutiva", o alvo literal (inteiro e quebrando linha, com rolagem acima de 160 px; antes era uma linha cortada em 330 px com o resto num tooltip sem fim, e uma anotação longa do navegador não se lia), a prévia do conteúdo ou do trecho
 trocado (`ScriptBody`) e, quando cabem, três avisos: motivo de bloqueio, "Há texto de um e-mail
 nesta conversa..." e o aviso de caminho fora das pastas sem confirmação. Botões: **Permitir**
 (`DangerFilledButton`) e **Recusar**. A caixa "Sempre permitir este comando" só aparece para `shell`

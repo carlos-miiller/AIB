@@ -106,7 +106,6 @@ public partial class ConfirmCardView : UserControl
 
         FerramentaText.Text = ferramenta;
         AlvoText.Text = alvo;
-        AlvoText.ToolTip = alvo;
         IconeAlvo.Data = ToolIcons.De(ferramenta);
 
         // A prévia que o WriteFileTool e o EditFileTool montavam e nenhuma view lia: o usuário

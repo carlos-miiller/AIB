@@ -50,24 +50,37 @@
             <Border Background="{StaticResource SurfaceCodeBrush}"
                     CornerRadius="{StaticResource RadiusCard}"
                     Padding="12,10" Margin="0,12,0,0">
-                <StackPanel Orientation="Horizontal">
+                <!-- Grade, e não StackPanel horizontal: o alvo recebe a largura que sobra e QUEBRA
+                     linha. Antes era uma linha cortada em 330 px com "…", e o texto inteiro só no
+                     tooltip — uma linha sem fim que atravessava a tela (visto em 15/10 com uma
+                     anotação do navegador). O cartão existe para o usuário ler o que autoriza:
+                     anotação e comando vão inteiros, com rolagem se passarem da altura. -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
                     <Path x:Name="IconeAlvo"
                           Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.3"
                           StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                           Width="22" Height="22" Stretch="Uniform"
-                          VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock x:Name="FerramentaText"
+                          VerticalAlignment="Top" Margin="0,0,10,0"/>
+                    <TextBlock x:Name="FerramentaText" Grid.Column="1"
                                FontFamily="{StaticResource MonoFontFamily}"
                                FontSize="12" FontWeight="SemiBold"
                                Foreground="{StaticResource DangerBrush}"
-                               VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock x:Name="AlvoText"
-                               FontFamily="{StaticResource MonoFontFamily}"
-                               FontSize="12"
-                               Foreground="{StaticResource TextBodyBrush}"
-                               TextTrimming="CharacterEllipsis" MaxWidth="330"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
+                               VerticalAlignment="Top" Margin="0,3,10,0"/>
+                    <ScrollViewer Grid.Column="2" MaxHeight="160"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <TextBlock x:Name="AlvoText"
+                                   FontFamily="{StaticResource MonoFontFamily}"
+                                   FontSize="12" LineHeight="17"
+                                   Foreground="{StaticResource TextBodyBrush}"
+                                   TextWrapping="Wrap" Margin="0,3,8,0"/>
+                    </ScrollViewer>
+                </Grid>
             </Border>
 
             <!-- PRÉVIA do que vai ser gravado: o conteúdo do write, o antes e depois do edit.
