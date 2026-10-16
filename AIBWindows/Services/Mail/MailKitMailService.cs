@@ -630,19 +630,25 @@ public sealed class MailKitMailService : IMailService
                 return Array.Empty<ThreadRespondida>();
             }
 
-            // Só a conversa e a data. Nem assunto, nem destinatário, nem corpo: para saber que
-            // ele respondeu, nada disso é necessário — e o que não desce não vaza.
+            // A conversa, a data e o ENVELOPE — assunto e destinatários. O corpo, nunca. Já foi
+            // só conversa e data, e a lista "Aguardando retorno" não tinha como dizer qual
+            // conversa esperava: as duas propostas enviadas no mesmo dia eram duas linhas iguais.
+            // O X-GM-MSGID diz quem começou a conversa (ver ThreadRespondida.Abriu).
             var resumos = await enviados.FetchAsync(
                 uids,
                 MessageSummaryItems.UniqueId | MessageSummaryItems.InternalDate |
-                MessageSummaryItems.GMailThreadId,
+                MessageSummaryItems.GMailThreadId | MessageSummaryItems.GMailMessageId |
+                MessageSummaryItems.Envelope,
                 ct).ConfigureAwait(false);
 
             var respondidas = resumos
                 .Where(r => r.GMailThreadId.HasValue)
                 .Select(r => new ThreadRespondida(
                     r.GMailThreadId!.Value.ToString(),
-                    r.InternalDate?.UtcDateTime ?? DateTime.UtcNow))
+                    r.InternalDate?.UtcDateTime ?? DateTime.UtcNow,
+                    (r.Envelope?.Subject ?? "").Trim(),
+                    Destinatario(r.Envelope?.To.Mailboxes.Select(m => m.Address)),
+                    Abriu: r.GMailMessageId.HasValue && r.GMailMessageId == r.GMailThreadId))
                 .ToList();
 
             Console.WriteLine($"[VIGIA] {endereco}: {respondidas.Count} conversa(s) em que você " +
@@ -664,6 +670,25 @@ public sealed class MailKitMailService : IMailService
             await DesconectarAsync(cliente).ConfigureAwait(false);
             return Array.Empty<ThreadRespondida>();
         }
+    }
+
+    /// <summary>
+    /// O primeiro destinatário, e "+N" quando há mais: "ana@x.com +2". Uma linha da tela não
+    /// comporta a lista inteira, e a lista inteira não diz mais do que isto sobre a quem se espera.
+    /// </summary>
+    public static string Destinatario(IEnumerable<string>? enderecos)
+    {
+        var lista = (enderecos ?? Array.Empty<string>())
+            .Select(e => (e ?? "").Trim())
+            .Where(e => e.Length > 0)
+            .ToList();
+
+        return lista.Count switch
+        {
+            0 => "",
+            1 => lista[0],
+            _ => $"{lista[0]} +{lista.Count - 1}"
+        };
     }
 
     // ─────────────────────────────────────────────────────────────────────────

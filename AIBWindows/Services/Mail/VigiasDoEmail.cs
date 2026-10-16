@@ -164,4 +164,11 @@ public sealed class VigiasDoEmail
 /// <summary>Uma conversa em que o usuário escreveu, vinda de <c>[Gmail]/Sent</c>.</summary>
 /// <param name="Thrid">X-GM-THRID.</param>
 /// <param name="QuandoUtc">Quando ele escreveu.</param>
-public readonly record struct ThreadRespondida(string Thrid, DateTime QuandoUtc);
+/// <param name="Assunto">Do envelope. Sem ele a tela não tem como nomear a conversa que espera retorno.</param>
+/// <param name="Para">O primeiro destinatário, com "+N" quando há mais.</param>
+/// <param name="Abriu">
+/// Esta mensagem COMEÇOU a conversa: no Gmail, o X-GM-THRID é o X-GM-MSGID da primeira
+/// mensagem da thread. É o que dá o selo "Você iniciou".
+/// </param>
+public readonly record struct ThreadRespondida(
+    string Thrid, DateTime QuandoUtc, string Assunto = "", string Para = "", bool Abriu = false);

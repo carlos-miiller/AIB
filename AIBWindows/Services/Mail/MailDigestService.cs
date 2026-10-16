@@ -362,9 +362,11 @@ public sealed class MailDigestService : IDisposable
                         ArquivoDeConversas.Agora(minha.QuandoUtc),
                         Uid: 0,
                         De: caixa.Address,
-                        Assunto: "",
+                        Assunto: minha.Assunto,
                         Minha: true,
-                        Origem: "enviados"),
+                        Origem: "enviados",
+                        Para: minha.Para,
+                        Abriu: minha.Abriu),
                     config.MailJournalDays);
             }
         }

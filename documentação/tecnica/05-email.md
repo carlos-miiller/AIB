@@ -65,7 +65,11 @@ e-mails"), lida **a cada batida** — ligar a chave vale sem reiniciar. Roda com
    (`TetoDeCorpos`), só a parte de texto (nunca anexo), limpo e cortado em 600 caracteres
    (`MensagemDeEmail.Limpar`/`Encurtar`). Também desce `X-GM-THRID`, `X-GM-LABELS` e três headers de
    lista (`List-Unsubscribe`, `List-Id`, `Precedence`).
-3. Mensagens enviadas pelo usuário viram entradas `Minha` no histórico da conversa e renovam as
+3. Mensagens enviadas pelo usuário viram entradas `Minha` no histórico da conversa — com **assunto,
+   destinatário** (o primeiro, "+N" quando há mais; `MailKitMailService.Destinatario`) e **`Abriu`**,
+   tirados só do envelope; o corpo não desce. `Abriu` é `X-GM-MSGID == X-GM-THRID`: no Gmail a thread
+   leva o id da primeira mensagem, então a sua abriu a conversa. Entrada sua gravada antes sem assunto
+   é completada na passada seguinte, sem contar duas vezes (`ArquivoDeConversas.Completa`). Elas renovam as
    **vigias** (`VigiasDoEmail`, `~/.AIB/email/vigias.json`): conversa em que ele respondeu fica
    vigiada por 7 dias. Threads com histórico em disco também contam como vigiadas.
 4. `DetectorDeRajada.Encontrar` sobre o conjunto de todas as caixas (§4).
@@ -148,7 +152,7 @@ Toda queda vai para a lista de `Descartada` com o motivo — a triagem tem de se
 | `vigias.json` | `VigiasDoEmail` | Id de thread, frase de motivo, duas datas. | 7 dias por vigia. |
 | `regras.md` | `RegrasDoVigia` | Escrito pelo usuário. | — |
 | `diario/diario-AAAA-MM-DD.json` | `DiarioDeTriagem` | Por passada: lidas, descartadas e cada triada (remetente, nome, assunto, resumo, urgência, conta, data). | `MailJournalDays` |
-| `conversas/<hash>/triagem.jsonl` + `chave.txt` | `ArquivoDeConversas` | Histórico por conversa (`EntradaDaConversa`). | `MailJournalDays` |
+| `conversas/<hash>/triagem.jsonl` + `chave.txt` | `ArquivoDeConversas` | Histórico por conversa (`EntradaDaConversa`): remetente, assunto, urgência e resumo; nas suas, também destinatário e se abriu a conversa. Nunca corpo. | `MailJournalDays` |
 | `ignoradas.json` | `ConversasIgnoradas` | Chaves ignoradas e datas. | 7 dias desde o clique. |
 
 `MailJournalDays` (padrão 7, 0–90):

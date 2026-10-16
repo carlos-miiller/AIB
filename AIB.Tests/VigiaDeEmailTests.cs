@@ -622,6 +622,31 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task OEnviado_VaiAoHistorico_ComAssuntoDestinatarioEQuemIniciou()
+        {
+            // Caso real (16/10/2026): duas propostas enviadas no mesmo dia viraram duas entradas
+            // sem nome no histórico — a pasta de enviados só descia thread e data.
+            var (vigia, _, email, pasta) = MontarComPasta(
+                lidas: Array.Empty<MensagemDeEmail>(), resposta: "[]");
+
+            email.Respondidas = new[]
+            {
+                new ThreadRespondida("17ab", DateTime.UtcNow.AddHours(-1),
+                    "Proposta de Parceria - Google Workspace", "ana@parceiro.com", Abriu: true)
+            };
+
+            await vigia.ExecutarAsync(comModelo: false, CancellationToken.None);
+
+            var estado = new ArquivoDeConversas(pasta)
+                .EstadoDe(ArquivoDeConversas.Chave("eu@empresa.com", "17ab", 0))!;
+
+            estado.Assunto.Should().Be("Proposta de Parceria - Google Workspace");
+            estado.Para.Should().Be("ana@parceiro.com");
+            estado.Iniciada.Should().BeTrue();
+            estado.EsperandoVoce.Should().BeFalse();
+        }
+
+        [Fact]
         public async Task ATriagem_NaoDEPENDE_DoOrbeEstarLigado()
         {
             // O orbe só MOSTRA o digest. Quem liga "triar os e-mails" não pediu, junto, uma
