@@ -342,7 +342,9 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
   - **"Lembrar até fechar o AIB"**: só senha, só de solicitante confiável, na RAM, pela chave do
     prompt exato (que traz `usuário@host`: a senha de um servidor nunca vai para outro). Se o mesmo
     prompt volta no mesmo comando, a lembrada estava errada: é esquecida e a janela abre.
-  - Uma janela de cada vez (`SemaphoreSlim`).
+  - Uma janela de cada vez (`SemaphoreSlim`), e ela entra na fila das flutuantes (`PerguntarAsync`)
+    — não abre por cima de uma confirmação pendente. Casca das flutuantes: pill e "Enviar" em
+    laranja (`WarnFilledButton`), como toda pergunta que executa algo.
   - Não cobre sessão interativa nem `sudo` remoto: é para `ssh usuario@host "comando"`.
   - **`BatchMode=yes` é recusado no pré-voo** (`Validar`, `RecadoDeBatchMode`): ele impede o ssh
     de perguntar, inclusive pelo askpass. O modelo punha em toda chamada "para não travar", a janela

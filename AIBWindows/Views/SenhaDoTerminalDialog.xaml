@@ -10,17 +10,29 @@
         TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType">
 
-    <!-- Mesma casca do ConfirmDialog. Janela própria, e não card na conversa: o pedido chega
+    <!-- A casca das janelas flutuantes (a mesma da confirmação perto do orbe). Janela própria, e não card na conversa: o pedido chega
          no meio de um comando, com a conversa talvez fechada, e precisa do foco do teclado. -->
     <Border Margin="30,20,30,45" Background="{StaticResource NeonBrush}"
             CornerRadius="{StaticResource RadiusWindowOuter}" Padding="1.5"
             Effect="{StaticResource WindowShadow}">
         <Border Background="{StaticResource GlassBrush}"
                 CornerRadius="{StaticResource RadiusWindowInner}" ClipToBounds="True">
-            <StackPanel Margin="18,16">
+            <StackPanel Margin="16,15,16,14">
 
-                <Border Style="{StaticResource PillBorder}" HorizontalAlignment="Left">
-                    <TextBlock x:Name="PillText" Text="O terminal pede" Style="{StaticResource PillText}"/>
+                <!-- Laranja, como toda pergunta das flutuantes que executa algo: há um comando
+                     parado esperando, e o que se digita vai para ele. -->
+                <Border x:Name="Pill" Style="{StaticResource PillBorder}" HorizontalAlignment="Left"
+                        Background="{StaticResource WarnFill10Brush}"
+                        BorderBrush="{StaticResource WarnBorderBrush}">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="M6,9 A3,3 0 1 1 6,8.99 Z M9,9 H16 M13.5,9 V11.5 M15.5,9 V11"
+                              Stroke="{StaticResource WarnBrush}" StrokeThickness="1.4"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Width="12" Height="12" Stretch="Uniform"
+                              VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBlock x:Name="PillText" Text="O terminal pede" Style="{StaticResource PillText}"
+                                   Foreground="{StaticResource WarnBrush}"/>
+                    </StackPanel>
                 </Border>
 
                 <TextBlock x:Name="TituloText" FontSize="14" FontWeight="SemiBold"
@@ -74,7 +86,7 @@
                     </Grid.ColumnDefinitions>
 
                     <Button x:Name="EnviarButton" Grid.Column="0" Content="Enviar"
-                            Style="{StaticResource PrimaryButton}"
+                            Style="{StaticResource WarnFilledButton}"
                             Click="Enviar_Click" Margin="0,0,10,0"/>
                     <Button x:Name="CancelarButton" Grid.Column="1" Content="Cancelar"
                             Style="{StaticResource OutlineButton}" Padding="18,8"
