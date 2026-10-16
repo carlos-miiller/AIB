@@ -105,7 +105,7 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Lembrete when alvo.StartsWith("CANCELAR ", StringComparison.Ordinal) =>
                 "O lembrete sai da lista e não avisa mais.",
             Ferramentas.Lembrete =>
-                "Na hora marcada, a fala acima chega pelo orbe ou pela bandeja.",
+                "Na hora marcada, a fala acima chega numa janela de aviso perto do orbe (ou da bandeja).",
             _ => "Esta ação altera o seu sistema e não pode ser desfeita pelo AIB."
         };
 

@@ -2067,7 +2067,8 @@ public sealed class ConversationService : IMessageStore
                 userLevel,
                 OpcoesDoTurno(settings),
                 settings.VerboseConsoleLogging,
-                UsaTriagem);
+                UsaTriagem,
+                new ContextoDoTurno(ChaveDoEmail ?? "", _sessaoFixa == ConversaDoOrbe.Sessao));
 
             await foreach (var evt in _agentLoop.RunAsync(request, ct).WithCancellation(ct).ConfigureAwait(false))
             {

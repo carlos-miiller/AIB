@@ -795,6 +795,65 @@ public partial class ChatWindow
     }
 
     /// <summary>
+    /// "Ver na caixa" de um aviso: a janela vem à frente no modo e-mail, com o item aberto no
+    /// acordeão quando o aviso era sobre um e-mail só. Nenhum turno é enviado.
+    /// </summary>
+    public void MostrarCaixa(MailSummary? item)
+    {
+        if (Visibility != Visibility.Visible) ToggleWindow();
+        else Activate();
+
+        _emailEmLeitura = null;
+
+        // Pela CHAVE, e não pela referência: o aviso pode ter sido montado antes de a lista ser
+        // recarregada do vigia.
+        string? chave = item == null ? null : ArquivoDeConversas.ChaveDaConversa(item);
+        _emailAberto = chave == null
+            ? null
+            : (FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>())
+                .FirstOrDefault(i => ArquivoDeConversas.ChaveDaConversa(i) == chave);
+
+        if (ModoEmail.IsChecked == true)
+        {
+            AplicarEstadoDoModo();
+            MontarCaixaDeEntrada();
+        }
+        else
+        {
+            ModoEmail.IsChecked = true;
+        }
+    }
+
+    /// <summary>
+    /// "Abrir o e-mail" de um lembrete: volta à conversa de e-mail em que ele nasceu.
+    /// <para>
+    /// Procura o e-mail na caixa e nas esperas pela chave; sem achar (a triagem já esqueceu a
+    /// conversa), monta um item mínimo com a conta e a thread da chave — o que basta para
+    /// RETOMAR a conversa havida, que é o caso de um lembrete criado nela.
+    /// </para>
+    /// </summary>
+    public void AbrirConversaDoEmail(string chave, string assunto)
+    {
+        if (string.IsNullOrWhiteSpace(chave)) return;
+
+        var item = (FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>())
+                       .FirstOrDefault(i => ArquivoDeConversas.ChaveDaConversa(i) == chave)
+                   ?? (FonteDeEsperas?.Invoke() ?? Array.Empty<EsperaDeRetorno>())
+                       .Where(e => ArquivoDeConversas.Chave(e.Conta, e.ThreadId, 0) == chave)
+                       .Select(ComoEmail)
+                       .FirstOrDefault()
+                   ?? new MailSummary(
+                       string.IsNullOrWhiteSpace(assunto) ? "(e-mail do lembrete)" : assunto,
+                       "",
+                       MailUrgency.Media,
+                       Account: ArquivoDeConversas.ContaDaChave(chave),
+                       ThreadId: ArquivoDeConversas.ThreadDaChave(chave),
+                       AwaitingMe: false);
+
+        AbrirEmailDoOrbe(item);
+    }
+
+    /// <summary>
     /// Remonta a lista da caixa, se ela estiver na tela — o digest terminou.
     /// <para>
     /// A lista é montada ao ENTRAR no modo e-mail, e só. Com a janela aberta na caixa, uma

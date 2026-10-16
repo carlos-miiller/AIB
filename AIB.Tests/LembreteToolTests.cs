@@ -56,6 +56,31 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task OLembrete_GUARDA_DeQueEmailEDeQueConversaVeio()
+        {
+            // Caso real (16/10/2026): o lembrete do chamado da VipPhone, criado numa conversa de
+            // e-mail, chegaria sozinho, sem caminho de volta ao e-mail. O aviso agora oferece
+            // "Abrir o e-mail" — e para isso o lembrete tem de saber de onde nasceu.
+            ContextoDoTurno.Atual = new ContextoDoTurno("eu@cpaps.com.br|thr:1879", Shadow: false);
+            try
+            {
+                await _tool.ExecuteAsync("""{"action":"create","in_minutes":30,"text":"Checar a VipPhone"}""");
+            }
+            finally
+            {
+                ContextoDoTurno.Atual = null;
+            }
+
+            var l = _lembretes.Listar().Should().ContainSingle().Subject;
+            l.ChaveDoEmail.Should().Be("eu@cpaps.com.br|thr:1879");
+            l.Shadow.Should().BeFalse();
+
+            var adiado = _lembretes.Adiar(l, TimeSpan.FromHours(1), DateTime.UtcNow);
+            adiado!.ChaveDoEmail.Should().Be(l.ChaveDoEmail, "adiar não perde o caminho de volta");
+            adiado.Texto.Should().Be("Checar a VipPhone");
+        }
+
+        [Fact]
         public async Task Criar_Listar_Cancelar()
         {
             string criado = await _tool.ExecuteAsync(

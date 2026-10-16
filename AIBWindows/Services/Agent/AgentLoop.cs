@@ -302,7 +302,7 @@ public sealed class AgentLoop
                 // EXECUÇÃO PARALELA: dispara todas e espera o conjunto. Em CPU lenta, três
                 // leituras de arquivo independentes rodam concorrentes em vez de seriadas.
                 var results = await Task.WhenAll(
-                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel, provider.Name, pulso, jaFalharam, repeticoes)))
+                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel, provider.Name, pulso, jaFalharam, repeticoes, request.Contexto)))
                     .ConfigureAwait(false);
 
                 // Resultados na ordem original, mesmo que tenham terminado fora de ordem.
@@ -580,8 +580,12 @@ public sealed class AgentLoop
 
     private async Task<(ToolCallAccumulator Tc, string Result, string? Decisao, long DuracaoMs, long EsperaMs)> ExecuteToolPairedAsync(
         ToolCallAccumulator tc, int userLevel, string provedor, PulsoDoTurno pulso,
-        Dictionary<string, string> jaFalharam, Dictionary<string, int> repeticoes)
+        Dictionary<string, string> jaFalharam, Dictionary<string, int> repeticoes,
+        ContextoDoTurno? contexto = null)
     {
+        // Antes de tudo: segue pelos await até a ferramenta e o portão (ver ContextoDoTurno).
+        ContextoDoTurno.Atual = contexto;
+
         var relogio = System.Diagnostics.Stopwatch.StartNew();
         // REPETIÇÃO. Visto em produção: quatro chamadas idênticas a ler-planilha com o mesmo
         // caminho inexistente, cada uma custando um modal e um turno inteiro. O prompt de

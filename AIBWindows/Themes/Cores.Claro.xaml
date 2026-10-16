@@ -105,6 +105,9 @@
     <SolidColorBrush x:Key="DangerEdge32Brush"  Color="#59E5484D"/>  <!-- borda da pill destrutiva -->
     <SolidColorBrush x:Key="AccentBlueFill14Brush" Color="#242468A8"/>  <!-- selo "Você iniciou" -->
     <SolidColorBrush x:Key="AccentBlueEdge38Brush" Color="#612468A8"/>  <!-- borda do selo "Você iniciou" -->
+    <SolidColorBrush x:Key="GoldFill12Brush"   Color="#1FB7791F"/>  <!-- pill do lembrete (avisos) -->
+    <SolidColorBrush x:Key="GoldEdge32Brush"   Color="#59B7791F"/>  <!-- borda da pill do lembrete -->
+    <SolidColorBrush x:Key="SuccessEdge30Brush" Color="#5915803D"/>  <!-- borda da pill "respondeu" -->
 
     <SolidColorBrush x:Key="WarnFill10Brush"    Color="#1FE28743"/>  <!-- faixa de contexto cheio -->
     <SolidColorBrush x:Key="ReadFill05Brush"    Color="#0A000000"/>  <!-- marcador de leitura no log -->

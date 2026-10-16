@@ -26,6 +26,7 @@ confirmação antes de ação destrutiva, tooltip fora de área rolável, chips 
 | `SidePanelWindow.xaml.cs` | `Window` | Painel lateral: histórico, arquivos no contexto, histórico de ações |
 | `ShadowAssistantWindow.xaml.cs` | `Window` | O orbe do Shadow Assistant |
 | `MailListItem.xaml.cs` | `UserControl` | Item de e-mail, usado no modo e-mail e no orbe |
+| `AvisoWindow.xaml.cs` | `Window` | Aviso flutuante (triagem, resposta, rajada, lembrete), pela fila das flutuantes |
 | `FirstRunWindow.xaml.cs` | `Window` | Primeiro arranque (assistente em cinco passos) |
 | `SettingsWindow.xaml.cs` | `Window` | Configurações, oito páginas |
 | `ConfirmDialog.xaml.cs` | `Window` | Confirmação modal fora da conversa |
@@ -402,22 +403,25 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   varredura, depois a ferramenta, depois o ✦ (`MostrarSimbolo`). Antes o orbe só girava o anel, e
   com a janela oculta não dava para saber o que ela estava fazendo. O fim da varredura não apaga o
   anel de um turno em curso.
-- **E-mail**: o vigia chama `ComecarAProcessarEmail` (ícone de caixa de entrada no lugar do ✦),
-  `TerminarDeProcessarEmail` (frase do digest e itens) e `PararDeProcessarEmail`. A fala do digest
-  leva até `TetoDeEmails` itens (`ShadowMailPreviewCount`); o excedente vira uma linha de texto.
+- **E-mail**: o vigia chama `ComecarAProcessarEmail` (ícone de caixa de entrada no lugar do ✦) e
+  `PararDeProcessarEmail`. O resultado do digest NÃO vai mais para o orbe: vai para a janela de
+  aviso (ver "Janelas flutuantes"). `TerminarDeProcessarEmail` e a pilha de e-mails do orbe ficaram
+  sem chamador.
 
-### Fala por iniciativa (lembretes)
+### Lembretes e fala por iniciativa
 
-A persona também fala sem ter sido chamada. `App.IniciarAgenda` roda um `DispatcherTimer` de 20 s
-que retira os lembretes vencidos (`Lembretes.Retirar`) e os entrega por `FalarPorIniciativa`; o
-primeiro passe é no arranque, para os que venceram com o app fechado, que chegam com "(Era para
-15:00.)" (`Lembretes.Atrasado`). Com turno em andamento (`ChatWindow.Ocupada`), espera a batida
-seguinte.
+`App.IniciarAgenda` roda um `DispatcherTimer` de 20 s que retira os lembretes vencidos
+(`Lembretes.Retirar`) e os entrega na **janela de aviso** (`Avisos.DeLembrete`): pill dourada
+"Lembrete · HH:mm" (ou "Era para HH:mm", atrasado), a fala escrita no pedido e os botões "Abrir o
+e-mail" (lembrete criado numa conversa de e-mail — `Lembrete.ChaveDoEmail`, vindo de
+`ContextoDoTurno`), "Abrir no Shadow" (criado no orbe — `Lembrete.Shadow`, com o selo), "Adiar
+1 h" (`Lembretes.Adiar`, sem modelo; não aparece no atrasado) e "Feito". Todos os lembretes vão
+para lá (decisão do usuário, 16/10/2026); antes entravam como fala no orbe ou na conversa. Com
+turno em andamento (`ChatWindow.Ocupada`), espera a batida seguinte.
 
-`FalarPorIniciativa`, com orbe, põe a fala na conversa do orbe (`ReceberFalaPropria`, para a
-resposta pela barra continuar o assunto) e pulsa (`EnfileirarFala`, texto só no clique). Sem
-orbe (só lembrete chega aqui), vai para a conversa da janela (`ChatWindow.ReceberIniciativa`) e,
-com ela fechada, para a bandeja. A fala por iniciativa entra no histórico vivo, mas não no
+`FalarPorIniciativa` (a conversa espontânea), com orbe, põe a fala na conversa do orbe
+(`ReceberFalaPropria`) e pulsa (`EnfileirarFala`, texto só no clique). Sem orbe, vai para a
+conversa da janela (`ChatWindow.ReceberIniciativa`) e, com ela fechada, para a bandeja. A fala por iniciativa entra no histórico vivo, mas não no
 `raw.jsonl`, que só grava dentro de um turno.
 Lembrete não chama o modelo: o texto foi escrito pela persona no pedido.
 
@@ -631,6 +635,26 @@ inteiro, o histórico de chat, as preferências e o conteúdo de `memory/` e `em
 "Cancelar" (pede confirmação se há
 mudança) e "Salvar". Depois de salvar, a janela chama `ChatWindow.ApplyCharacterUI` e
 `App.AplicarEstadoDoOrbe`, para as mudanças valerem na hora.
+
+## Janelas flutuantes
+
+Tudo o que aparece fora da janela principal usa a mesma casca (moldura `NeonBrush`, vidro
+`GlassBrush`, pill do tipo, título, caixa de conteúdo, rodapé com botões) — mockup "Janelas
+flutuantes do AIB", 16/10/2026 — e entra pela **fila** (`Flutuantes.Mostrar` →
+`FilaDeJanelas<Window>`): uma janela por vez; a pergunta (confirmação, senha) tira um aviso da tela e
+ele volta depois; entre avisos, a ordem é rajada, resposta sua, lembrete, resposta pronta, triagem.
+
+- **`AvisoWindow`**: o aviso. Não rouba o foco (`ShowActivated=False`, fora da barra de tarefas).
+  Montado por `AvisoWindow.Montar(Receita)`; o que cada aviso diz mora em `Avisos` (`DeDigesto`,
+  `DeLembrete`), que é puro e testável. Tons: lilás (e-mail), azul (você iniciou), vermelho
+  (rajada), dourado (lembrete), verde (resposta pronta). Linhas de e-mail clicáveis (até 3), selo
+  "Shadow", "+N" da fila, X, e contagem que fecha sozinha (para com o mouse em cima e com a janela
+  escondida pela fila). Posição: `PertoDoOrbe.PosicionarOuNaBandeja` — perto do orbe ou, sem ele,
+  no canto de baixo à direita.
+- Botões dos avisos: `App.AcoesDosAvisos` — "Abrir com <NOME>" (`AbrirEmailDoOrbe`), "Ver na
+  caixa" (`ChatWindow.MostrarCaixa`, com o item aberto), "Abrir o e-mail" do lembrete
+  (`ChatWindow.AbrirConversaDoEmail`, retoma a conversa), "Abrir no Shadow" (`AbrirBarra` do
+  orbe), "Adiar 1 h".
 
 ## ConfirmDialog
 

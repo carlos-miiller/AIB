@@ -1,0 +1,134 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using AIB.Services;
+using AIB.Services.Mail;
+
+namespace AIB.Views;
+
+/// <summary>
+/// O que cada aviso diz — mockup "Janelas flutuantes do AIB", família "Aviso" (16/10/2026).
+/// <para>
+/// Puro: devolve a receita e a vez na fila, e não abre janela nenhuma. Os botões chamam as
+/// ações que o App passa (<see cref="Acoes"/>), porque é o App que conhece a janela de chat e o
+/// orbe.
+/// </para>
+/// <para>
+/// Nasceu de um pedido do usuário: "vamos remover todo o input de e-mail dentro da orbe". A
+/// triagem e os lembretes entravam como FALA no orbe (e na conversa dele); agora vêm aqui. O
+/// anel girando enquanto a triagem lê fica no orbe, por decisão dele.
+/// </para>
+/// </summary>
+public static class Avisos
+{
+    /// <summary>Por quanto tempo o aviso da triagem comum fica antes de fechar sozinho.</summary>
+    public static readonly TimeSpan PrazoDaTriagem = TimeSpan.FromSeconds(30);
+
+    /// <summary>Quantas linhas de e-mail cabem no aviso; o resto fica em "+N na caixa".</summary>
+    public const int LinhasNoAviso = 3;
+
+    /// <summary>O que os botões fazem. Quem preenche é o App.</summary>
+    public sealed record Acoes(
+        string NomeDaIA,
+        Action<MailSummary> AbrirComIA,
+        Action<MailSummary?> VerNaCaixa,
+        Action<Lembrete> AbrirEmailDoLembrete,
+        Action AbrirShadow,
+        Action<Lembrete> Adiar);
+
+    /// <summary>
+    /// O aviso de um digest: rajada, resposta a uma conversa sua ou triagem comum, nessa ordem
+    /// de importância. Nulo quando não há o que dizer.
+    /// </summary>
+    public static (AvisoWindow.Receita Receita, VezDaJanela Vez)? DeDigesto(DigestoDeEmail d, Acoes a)
+    {
+        if (d == null || !d.TemAlgoADizer) return null;
+
+        var itens = d.Itens ?? Array.Empty<MailSummary>();
+        var primeiro = itens.FirstOrDefault();
+
+        if (d.Rajadas.Count > 0)
+        {
+            return (new AvisoWindow.Receita(
+                AvisoWindow.Tom.Perigo, "Rajada", AvisoWindow.IconeAlerta,
+                Titulo: d.Frase(),
+                Emails: itens.Take(1).ToList(),
+                Botoes: Botoes(
+                    primeiro == null ? null : new AvisoWindow.Botao($"Abrir com {a.NomeDaIA}", () => a.AbrirComIA(primeiro), Principal: true),
+                    new AvisoWindow.Botao("Ver na caixa", () => a.VerNaCaixa(primeiro), Principal: primeiro == null))),
+                VezDaJanela.Rajada);
+        }
+
+        // Resposta a uma conversa que VOCÊ começou, posta na tela pela sondagem antes do digest.
+        if (itens.Count > 0 && itens.All(i => i.Iniciada && i.Description == MailDigestService.RespostaPendente))
+        {
+            string titulo = itens.Count == 1 ? "Responderam sua conversa" : $"{itens.Count} respostas às suas conversas";
+            string sub = itens.Count == 1
+                ? $"{primeiro!.Name} · {AvisoWindow.NomeDe(primeiro.De)} respondeu às {primeiro.LastMessageAt:HH:mm}."
+                : "";
+
+            return (new AvisoWindow.Receita(
+                AvisoWindow.Tom.Azul, "Você iniciou", AvisoWindow.IconeSaida,
+                Titulo: titulo, Sub: sub,
+                Emails: itens.Count == 1 ? null : itens.Take(LinhasNoAviso).ToList(),
+                Botoes: Botoes(
+                    new AvisoWindow.Botao($"Abrir com {a.NomeDaIA}", () => a.AbrirComIA(primeiro!), Principal: true),
+                    new AvisoWindow.Botao("Ver na caixa", () => a.VerNaCaixa(primeiro)))),
+                VezDaJanela.RespostaSua);
+        }
+
+        int urgentes = itens.Count(i => i.Urgency == MailUrgency.Maxima);
+        string tituloDaTriagem = (itens.Count == 1 ? "1 e-mail pede você" : $"{itens.Count} e-mails pedem você")
+                                 + (urgentes > 0 ? $", {urgentes} urgente{(urgentes == 1 ? "" : "s")}" : "");
+        int fora = Math.Max(0, itens.Count - LinhasNoAviso);
+
+        return (new AvisoWindow.Receita(
+            AvisoWindow.Tom.Lilas, "E-mail", AvisoWindow.IconeEnvelope,
+            Titulo: tituloDaTriagem,
+            Sub: d.Lidas > 0 ? $"Li {d.Lidas} e-mail{(d.Lidas == 1 ? "" : "s")}." + (fora > 0 ? $" Mais {fora} na caixa." : "") : "",
+            Emails: itens.Take(LinhasNoAviso).ToList(),
+            Botoes: itens.Count == 1
+                ? Botoes(
+                    new AvisoWindow.Botao($"Abrir com {a.NomeDaIA}", () => a.AbrirComIA(primeiro!), Principal: true),
+                    new AvisoWindow.Botao("Ver na caixa", () => a.VerNaCaixa(primeiro)))
+                : Botoes(
+                    new AvisoWindow.Botao("Ver na caixa", () => a.VerNaCaixa(null), Principal: true),
+                    new AvisoWindow.Botao("Depois", () => { })),
+            FechaSozinho: PrazoDaTriagem),
+            VezDaJanela.Triagem);
+    }
+
+    /// <summary>
+    /// O aviso de um lembrete. A fala é a que a persona escreveu ao criar; o atrasado diz para
+    /// quando era na pill, e não mais grudado na frente da fala.
+    /// </summary>
+    public static (AvisoWindow.Receita Receita, VezDaJanela Vez) DeLembrete(Lembrete l, DateTime agoraUtc, Acoes a)
+    {
+        bool atrasado = agoraUtc - l.QuandoUtc > Lembretes.Tolerancia;
+        var local = l.QuandoUtc.ToLocalTime();
+        string hora = local.Date == agoraUtc.ToLocalTime().Date ? local.ToString("HH:mm") : local.ToString("dd/MM HH:mm");
+
+        bool comEmail = !string.IsNullOrWhiteSpace(l.ChaveDoEmail);
+        var principal = comEmail
+            ? new AvisoWindow.Botao(l.Shadow ? "Abrir no Shadow" : "Abrir o e-mail",
+                                    () => { if (l.Shadow) a.AbrirShadow(); else a.AbrirEmailDoLembrete(l); }, Principal: true)
+            : l.Shadow
+                ? new AvisoWindow.Botao("Abrir no Shadow", a.AbrirShadow, Principal: true)
+                : null;
+
+        return (new AvisoWindow.Receita(
+            AvisoWindow.Tom.Ouro, atrasado ? $"Era para {hora}" : $"Lembrete · {hora}", AvisoWindow.IconeSino,
+            Fala: l.Texto,
+            Sub: atrasado ? "O AIB estava fechado na hora. Entregue agora." : "",
+            Shadow: l.Shadow,
+            Botoes: Botoes(
+                principal,
+                // Adiar o que já passou da hora não faz sentido: adiar de um passado.
+                atrasado ? null : new AvisoWindow.Botao("Adiar 1 h", () => a.Adiar(l)),
+                new AvisoWindow.Botao("Feito", () => { }, Principal: principal == null))),
+            VezDaJanela.Lembrete);
+    }
+
+    private static IReadOnlyList<AvisoWindow.Botao> Botoes(params AvisoWindow.Botao?[] botoes) =>
+        botoes.Where(b => b != null).Select(b => b!).ToList();
+}

@@ -1,6 +1,8 @@
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using AIB.Services;
+using AIB.Services.Mail;
 using AIB.Views;
 using FluentAssertions;
 using Xunit;
@@ -31,6 +33,97 @@ namespace AIB.Tests
             // Pedido do usuário (16/10/2026): "Ação destrutiva" em vermelho até para um
             // Get-ChildItem ensina a não ler o alarme. Vermelho fica para o que não tem volta.
             ConfirmCardView.RiscoDe(ferramenta, alvo, bloqueado).Risco.Should().Be(esperado);
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Avisos — o e-mail saiu do orbe
+        // ─────────────────────────────────────────────────────────────────
+
+        private static readonly Avisos.Acoes SemAcao = new(
+            "Ellen", _ => { }, _ => { }, _ => { }, () => { }, _ => { });
+
+        private static MailSummary Email(string assunto, MailUrgency u, bool iniciada = false, string resumo = "responder") =>
+            new(assunto, resumo, u, Account: "eu@x.com", ThreadId: assunto, De: "Ana <ana@x.com>", Iniciada: iniciada);
+
+        private static DigestoDeEmail Digesto(params MailSummary[] itens) =>
+            new(itens, 171, System.Array.Empty<Descartada>(), System.Array.Empty<Rajada>(), System.DateTime.UtcNow);
+
+        [Fact]
+        public void ATriagem_ViraAvisoLilas_QueFechaSozinho()
+        {
+            // Pedido do usuário (16/10/2026): "vamos remover todo o input de e-mail dentro da
+            // orbe" — o digest entrava como fala no orbe, com a pilha de e-mails.
+            var (receita, vez) = Avisos.DeDigesto(Digesto(
+                Email("Chamado #4821", MailUrgency.Maxima), Email("Contrato", MailUrgency.Media)), SemAcao)!.Value;
+
+            vez.Should().Be(VezDaJanela.Triagem);
+            receita.Tom.Should().Be(AvisoWindow.Tom.Lilas);
+            receita.Titulo.Should().Be("2 e-mails pedem você, 1 urgente");
+            receita.Emails.Should().HaveCount(2);
+            receita.FechaSozinho.Should().Be(Avisos.PrazoDaTriagem);
+        }
+
+        [Fact]
+        public void ARespostaAUmaConversaSua_ViraAvisoAzul_QueNaoFechaSozinho()
+        {
+            var (receita, vez) = Avisos.DeDigesto(Digesto(
+                Email("Re: Proposta", MailUrgency.Media, iniciada: true, resumo: MailDigestService.RespostaPendente)), SemAcao)!.Value;
+
+            vez.Should().Be(VezDaJanela.RespostaSua);
+            receita.Pill.Should().Be("Você iniciou");
+            receita.FechaSozinho.Should().BeNull("é a resposta que você estava esperando");
+            receita.Botoes![0].Texto.Should().Be("Abrir com Ellen");
+        }
+
+        [Fact]
+        public void DigestoSemNadaADizer_NaoViraAviso() =>
+            Avisos.DeDigesto(Digesto(), SemAcao).Should().BeNull();
+
+        [Fact]
+        public void OLembreteDeEmail_TemAbrirOEmail_EOAtrasado_NaoTemAdiar()
+        {
+            var agora = new System.DateTime(2026, 10, 19, 12, 0, 0, System.DateTimeKind.Utc);
+            var deEmail = new Lembrete("c37f", agora, "Checar a VipPhone", "VipPhone", "eu@x.com|thr:1879");
+
+            var (naHora, vez) = Avisos.DeLembrete(deEmail, agora, SemAcao);
+            vez.Should().Be(VezDaJanela.Lembrete);
+            naHora.Botoes!.Select(b => b.Texto).Should().Equal("Abrir o e-mail", "Adiar 1 h", "Feito");
+
+            var (atrasado, _) = Avisos.DeLembrete(deEmail, agora.AddHours(3), SemAcao);
+            atrasado.Pill.Should().StartWith("Era para");
+            atrasado.Botoes!.Select(b => b.Texto).Should().Equal("Abrir o e-mail", "Feito");
+
+            var (doShadow, _) = Avisos.DeLembrete(deEmail with { ChaveDoEmail = "", Shadow = true }, agora, SemAcao);
+            doShadow.Shadow.Should().BeTrue();
+            doShadow.Botoes![0].Texto.Should().Be("Abrir no Shadow");
+        }
+
+        [Fact]
+        public void SemOrbe_OAvisoFicaAcimaDaBandeja()
+        {
+            var area = new Rect(0, 0, 1920, 1040);
+            var p = PertoDoOrbe.NaBandeja(new Size(440, 300), area, sombraEmbaixo: 30);
+
+            p.X.Should().Be(1480);
+            p.Y.Should().Be(770, "a sombra pode sobrar abaixo da área de trabalho");
+        }
+
+        [Fact]
+        public void AJanelaDeAviso_Monta_SemRoubarOFoco()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var (receita, _) = Avisos.DeDigesto(Digesto(Email("Contrato", MailUrgency.Media)), SemAcao)!.Value;
+                var janela = AvisoWindow.Montar(receita);
+
+                janela.ShowActivated.Should().BeFalse("quem está digitando continua digitando");
+                janela.ShowInTaskbar.Should().BeFalse();
+                ((TextBlock)janela.FindName("TituloTexto")).Text.Should().Be("1 e-mail pede você");
+                ((Panel)janela.FindName("Botoes")).Children.Count.Should().Be(2);
+                janela.Close();
+            });
         }
 
         // ─────────────────────────────────────────────────────────────────

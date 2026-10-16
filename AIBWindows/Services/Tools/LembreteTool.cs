@@ -198,12 +198,16 @@ public sealed class LembreteTool : ITool
         var (quando, _) = Resolver(a.Em, a.Minutos, agora);
         string assunto = a.Assunto.Length > 0 ? a.Assunto : Resumo(a.Texto);
 
-        var novo = _lembretes.Criar(quando!.Value.ToUniversalTime(), a.Texto, assunto);
+        // De onde o pedido veio: a conversa de e-mail (o aviso oferece "Abrir o e-mail") e se é o
+        // Shadow (o aviso leva o selo). Ver ContextoDoTurno.
+        var contexto = ContextoDoTurno.Atual;
+        var novo = _lembretes.Criar(quando!.Value.ToUniversalTime(), a.Texto, assunto,
+                                    contexto?.ChaveDoEmail ?? "", contexto?.Shadow ?? false);
         if (novo == null)
             return $"ERRO: já há {Lembretes.Teto} lembretes pendentes. Peça ao usuário para cancelar algum.";
 
         return $"Agendado (id {novo.Id}) para {Quando(quando.Value, agora)}: {assunto}. "
-               + "O aviso chega pelo orbe, ou pela bandeja com ele desligado.";
+               + "O aviso chega numa janela perto do orbe, ou acima da bandeja com ele desligado.";
     }
 
     private string Listar(DateTime agora)

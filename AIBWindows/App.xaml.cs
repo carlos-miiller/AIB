@@ -264,8 +264,13 @@ public partial class App : System.Windows.Application
     /// com o orbe fora, o digest acontecia e morria ali.
     /// </para>
     /// <para>
-    /// As superfícies já existem, e são estas duas: a lista de e-mails da janela de conversa e
-    /// o aviso da bandeja. Nenhuma tela nova.
+    /// As superfícies são a lista de e-mails da janela de conversa e a JANELA DE AVISO
+    /// (<see cref="Views.AvisoWindow"/>), perto do orbe ou, sem ele, acima da bandeja.
+    /// </para>
+    /// <para>
+    /// O ORBE NÃO RECEBE MAIS E-MAIL. Pedido do usuário (16/10/2026): o digest entrava como fala
+    /// no orbe, com a pilha de e-mails; agora o orbe só gira o anel enquanto a triagem lê (isso
+    /// fica, por decisão dele) e o resultado vem no aviso.
     /// </para>
     /// </summary>
     private void AnunciarDigesto(Services.Mail.DigestoDeEmail digesto)
@@ -274,20 +279,22 @@ public partial class App : System.Windows.Application
         // não aparecia até o usuário sair do modo e voltar.
         _chatWindow?.AtualizarCaixaDeEntrada();
 
-        if (_orbe != null)
-        {
-            // RAJADA é o incidente aberto — doze alertas do mesmo monitor em quarenta minutos —
-            // e é o que pinta o pulso de vermelho. O argumento existia no orbe desde o começo e
-            // nunca chegava até aqui: o pulso vermelho era código que não rodava.
-            _orbe.TerminarDeProcessarEmail(digesto.Frase(), digesto.Itens,
-                                           urgente: digesto.Rajadas.Count > 0);
-            return;
-        }
+        _orbe?.PararDeProcessarEmail();
 
-        // Sem orbe não há pulso, e o pulso era o único aviso. A bandeja é o que sobra, e é a
-        // mesma porta que o fim de turno com a janela escondida já usa.
-        ShowNotification("AIB", digesto.Frase());
+        var aviso = Views.Avisos.DeDigesto(digesto, AcoesDosAvisos());
+        if (aviso is { } a) Views.Flutuantes.Mostrar(Views.AvisoWindow.Montar(a.Receita), a.Vez);
     }
+
+    /// <summary>O que os botões dos avisos fazem — a janela de chat e o orbe moram aqui.</summary>
+    private Views.Avisos.Acoes AcoesDosAvisos() => new(
+        NomeDaIA: string.IsNullOrWhiteSpace(_settingsService.LoadSettings().ActiveCharacter)
+            ? "AIB"
+            : _settingsService.LoadSettings().ActiveCharacter!.Trim(),
+        AbrirComIA: item => _chatWindow?.AbrirEmailDoOrbe(item),
+        VerNaCaixa: item => _chatWindow?.MostrarCaixa(item),
+        AbrirEmailDoLembrete: l => _chatWindow?.AbrirConversaDoEmail(l.ChaveDoEmail, l.Assunto),
+        AbrirShadow: () => _orbe?.AbrirBarra(),
+        Adiar: l => _lembretes.Adiar(l, TimeSpan.FromHours(1), DateTime.UtcNow));
 
     /// <summary>
     /// Roda um digest agora, a pedido. Mesmo caminho do laço — nada de uma segunda
@@ -513,9 +520,15 @@ public partial class App : System.Windows.Application
         // turno, entre a chamada de uma ferramenta e o resultado dela.
         if (_chatWindow == null || _chatWindow.Ocupada || _conversaDoOrbe.Ocupada) return;
 
+        // Na JANELA DE AVISO, e não mais como fala no orbe ou na conversa: pedido do usuário
+        // (16/10/2026), todos os lembretes, venham ou não de um e-mail. O aviso traz o caminho de
+        // volta ("Abrir o e-mail", "Abrir no Shadow") e o "Adiar 1 h".
         var agora = DateTime.UtcNow;
         foreach (var lembrete in _lembretes.Retirar(agora))
-            FalarPorIniciativa(Lembretes.Atrasado(lembrete, agora));
+        {
+            var (receita, vez) = Views.Avisos.DeLembrete(lembrete, agora, AcoesDosAvisos());
+            Views.Flutuantes.Mostrar(Views.AvisoWindow.Montar(receita), vez);
+        }
     }
 
     /// <summary>
@@ -536,8 +549,8 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        // Sem orbe (só lembrete chega aqui): na conversa da janela, e pela bandeja se ela
-        // estiver fechada.
+        // Sem orbe: na conversa da janela, e pela bandeja se ela estiver fechada. (Os lembretes
+        // não passam mais por aqui: vão para a janela de aviso.)
         _chatWindow.ReceberIniciativa(texto);
         if (!_chatWindow.IsVisible)
             ShowNotification(_settingsService.LoadSettings().ActiveCharacter ?? "AIB", QuebraDeFala.Limpar(texto));

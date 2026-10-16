@@ -364,8 +364,11 @@ O orbe (`ShadowAssistantWindow`) só existe com `ShadowAssistantEnabled`; o vigi
 independentemente dele. Ligações em `App.xaml.cs`:
 
 - `Trabalhando` → `ComecarAProcessarEmail`: ícone de caixa de entrada no lugar do glifo, anel girando.
-- `Pronto` → `TerminarDeProcessarEmail(digesto.Frase(), digesto.Itens)`: **enfileira** a fala e pulsa;
-  nunca abre o balão sozinho. Os itens acompanham a fala quando ela é aberta.
+- `Pronto` → **janela de aviso** (`Avisos.DeDigesto` → `AvisoWindow`, pela fila das flutuantes): rajada
+  (vermelha), resposta a uma conversa sua (azul, "Você iniciou") ou triagem comum (lilás, até 3
+  linhas, fecha sozinha em 30 s). O orbe NÃO recebe mais fala nem pilha de e-mails (pedido do
+  usuário, 16/10/2026); dele só fica o anel com o ícone enquanto a triagem lê. Sem orbe, o aviso
+  aparece acima da bandeja, no lugar do balão do Windows.
 - `Terminou` → `PararDeProcessarEmail`: volta ao normal (idempotente).
 - `Reconstituir` repovoa a lista no arranque **sem** disparar `Pronto` — o orbe não anuncia e-mail
   velho como novidade.
