@@ -240,7 +240,7 @@ da mesma linha da grade; a janela não muda de tamanho. São três estados, e s�
 | Estado | Mostra |
 |---|---|
 | Convite | Nenhuma caixa com senha no cofre (`HaCaixaDeEmailPronta`): "Nenhum e-mail conectado" e o botão "Configurar e-mail". |
-| Lista | `MontarCaixaDeEntrada`: os `MailListItem` vindos do vigia, já ordenados por urgência, e a linha "N e-mail(s) · N urgente(s) · N tokens · N aguardando". Barra de entrada e rodapé somem. Havendo conversa em espera, a lista abre com a seção **"Aguardando retorno · N"** (`MontarEsperas`, `EsperaItem`; no máximo `EsperasVisiveis` = 3 antes de "Mostrar mais N") e segue com **"Para você responder · N"**. Uma conversa só aparece num lugar (`ForaDaEspera`). |
+| Lista | `MontarCaixaDeEntrada`: os `MailListItem` vindos do vigia, já ordenados por urgência, e a linha "N e-mail(s) · N urgente(s) · N tokens · N aguardando". Barra de entrada e rodapé somem. Havendo conversa em espera, a lista abre com a seção **"Aguardando retorno · N"** (`MontarEsperas`, `EsperaItem`; no máximo `EsperasVisiveis` = 3 antes de "Mostrar mais N ▾", que depois de aberto vira "Mostrar menos ▴" — `RotuloDoAlternar`) e segue com **"Para você responder · N"**. Uma conversa só aparece num lugar (`ForaDaEspera`). |
 | Leitura | O cabeçalho vira caminho "Caixa de entrada › assunto", com "Abrir no cliente", "Recarregar" e "Descartar esta conversa". A conversa é a mesma do chat. |
 
 A janela não conhece o vigia. O `App` injeta seis delegados: `FonteDeEmails` (último digest),

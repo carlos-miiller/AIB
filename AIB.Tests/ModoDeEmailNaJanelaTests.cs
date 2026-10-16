@@ -680,6 +680,17 @@ namespace AIB.Tests
             });
         }
 
+        [Theory]
+        [InlineData(3, false, null)]
+        [InlineData(9, false, "Mostrar mais 6 ▾")]
+        [InlineData(9, true, "Mostrar menos ▴")]
+        public void ASecaoDeEspera_ABRE_EVoltaARECOLHER(int total, bool todas, string? rotulo)
+        {
+            // Pedido do usuário (16/10/2026): havia "Mostrar mais", mas depois de abrir não
+            // havia como esconder de novo.
+            ChatWindow.RotuloDoAlternar(total, todas).Should().Be(rotulo);
+        }
+
         [Fact]
         public void AsAcoesDaEspera_PEDEM_ENaVencida_PararViraDispensar()
         {

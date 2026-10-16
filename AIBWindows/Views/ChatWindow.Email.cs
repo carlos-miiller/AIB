@@ -392,24 +392,40 @@ public partial class ChatWindow
             ListaDaCaixa.Children.Add(item);
         }
 
-        int escondidas = esperas.Count - visiveis.Count;
-        if (escondidas <= 0) return;
+        string? rotulo = RotuloDoAlternar(esperas.Count, _esperasTodas);
+        if (rotulo == null) return;
 
-        var mais = new System.Windows.Controls.Button
+        var alternar = new System.Windows.Controls.Button
         {
-            Content = $"Mostrar mais {escondidas} ▾",
+            Content = rotulo,
             Style = (Style)FindResource("CaminhoDeVolta"),
             HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
             Margin = new Thickness(2, 0, 0, 8)
         };
 
-        mais.Click += (_, _) =>
+        alternar.Click += (_, _) =>
         {
-            _esperasTodas = true;
+            _esperasTodas = !_esperasTodas;
             MontarCaixaDeEntrada();
         };
 
-        ListaDaCaixa.Children.Add(mais);
+        ListaDaCaixa.Children.Add(alternar);
+    }
+
+    /// <summary>
+    /// O botão no fim da seção: "Mostrar mais N ▾" com ela recolhida, "Mostrar menos ▴" com ela
+    /// aberta, e nenhum quando cabe tudo em <see cref="EsperasVisiveis"/>.
+    /// <para>
+    /// Pedido do usuário (16/10/2026): só existia o "Mostrar mais", e depois de abrir não havia
+    /// como recolher de novo — a seção ficava inteira empurrando a caixa para baixo.
+    /// </para>
+    /// </summary>
+    public static string? RotuloDoAlternar(int total, bool todas)
+    {
+        int escondidas = total - EsperasVisiveis;
+        if (escondidas <= 0) return null;
+
+        return todas ? "Mostrar menos ▴" : $"Mostrar mais {escondidas} ▾";
     }
 
     /// <summary>
