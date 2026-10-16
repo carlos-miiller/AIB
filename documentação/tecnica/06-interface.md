@@ -561,7 +561,9 @@ hora pela instância viva do `App`.
 
 O mesmo item nas duas telas (orbe e modo e-mail). As diferenças são propriedades
 (`CornerRadius`, `RealceLilas`, `EscalaDeJanela`, `MostrarMetadados`, `TemConversa`,
-`PodeIgnorar`), não arquivos. Clique no item expande (acordeão, um aberto por vez); os botões do
+`PodeIgnorar`), não arquivos. O selo azul "Você iniciou" (`SeloIniciou`, tokens `AccentBlueFill14Brush`
+e `AccentBlueEdge38Brush`) acende pelo `DataContext` quando `MailSummary.Iniciada`; fica ao lado do
+selo de urgência, e não do nome, porque o nome encolhe com reticências. Clique no item expande (acordeão, um aberto por vez); os botões do
 corpo disparam `PediuAbrirComIA`, `PediuAbrirNoCliente`, `PediuIgnorar` e
 `PediuDescartarConversa`. Quem decide o que fazer é a tela dona. `AbrirNoNavegador` é o único
 caminho para sair do app e ignora URL vazia. Cor e rótulo de urgência vêm de

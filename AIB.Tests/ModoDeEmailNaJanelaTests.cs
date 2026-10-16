@@ -610,6 +610,30 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void OSelo_VOCE_INICIOU_SoAparece_NaConversaQueVoceComecou()
+        {
+            // Pedido do usuário (16/10/2026): quando chega a resposta a uma proposta que ele
+            // enviou, o item precisa dizer que a conversa é dele — senão ela se perde entre os
+            // e-mails que chegaram sozinhos.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var comum = new MailListItem { DataContext = Email() };
+                var dele = new MailListItem { DataContext = Email() with { Iniciada = true } };
+
+                foreach (var item in new[] { comum, dele })
+                {
+                    item.Measure(new Size(600, 200));
+                    item.Arrange(new Rect(0, 0, 600, 200));
+                }
+
+                ((FrameworkElement)comum.FindName("SeloIniciou")).Visibility.Should().Be(Visibility.Collapsed);
+                ((FrameworkElement)dele.FindName("SeloIniciou")).Visibility.Should().Be(Visibility.Visible);
+            });
+        }
+
+        [Fact]
         public void ODescarteDaConversa_ESTA_NoItemDaLista_SoQuandoHaConversa()
         {
             // O descarte só existia na leitura (§3.11), e chegar lá é "Abrir com <NOME>" — que

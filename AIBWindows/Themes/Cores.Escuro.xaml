@@ -98,6 +98,8 @@
     <SolidColorBrush x:Key="DangerFill16Brush"  Color="#29E5484D"/>  <!-- hover do botão fechar -->
     <SolidColorBrush x:Key="SuccessFill10Brush" Color="#1A4ADE80"/>  <!-- linha que entra no antes e depois -->
     <SolidColorBrush x:Key="DangerEdge32Brush"  Color="#52E5484D"/>  <!-- borda da pill destrutiva -->
+    <SolidColorBrush x:Key="AccentBlueFill14Brush" Color="#243182CE"/>  <!-- selo "Você iniciou" -->
+    <SolidColorBrush x:Key="AccentBlueEdge38Brush" Color="#613182CE"/>  <!-- borda do selo "Você iniciou" -->
 
     <SolidColorBrush x:Key="WarnFill10Brush"    Color="#1AE28743"/>  <!-- faixa de contexto cheio -->
     <SolidColorBrush x:Key="ReadFill05Brush"    Color="#0DFFFFFF"/>  <!-- marcador de leitura no log -->

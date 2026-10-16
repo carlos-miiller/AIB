@@ -52,7 +52,11 @@ e-mails"), lida **a cada batida** — ligar a chave vale sem reiniciar. Roda com
 - **Sondagem**: a cada **20 min** (`IntervaloDaSondagem`), **só código** — lê, agrupa, conta, procura
   rajada. Ela só acorda o modelo se `MailDigestService.Urgente(rajadas)` for verdadeiro, e o único
   motivo é a **rajada**. Resposta chegando numa conversa vigiada **não** acorda: espera o próximo
-  digest. (Havia um `Acorda9b` por vigia que prometia interromper na hora; ele era gravado sempre
+  digest. A exceção, sem modelo, é a resposta a uma conversa que **o usuário iniciou**
+  (`AnunciarRespostas`): ela entra na tela na hora, com urgência média e o resumo pendente
+  (`RespostaPendente`), anotada no histórico com origem `sondagem`; o digest seguinte a tria e
+  acrescenta a anotação dele (`vigia`) sem contar a mensagem duas vezes. O aviso (`Pronto`) leva só
+  as respostas, e uma resposta já anotada não é anunciada de novo. (Havia um `Acorda9b` por vigia que prometia interromper na hora; ele era gravado sempre
   falso e nunca teve interface — o campo saiu.)
 - `BaterAsync` registra no console **por que está parado**, uma linha por mudança de motivo.
 
@@ -139,6 +143,10 @@ Toda queda vai para a lista de `Descartada` com o motivo — a triagem tem de se
 - Mensagem sem veredito **não some**: ganha resumo de código ("o resumo não saiu desta vez") e
   urgência média.
 - Urgência **baixa** não vai para a tela, mas é contada e entra no diário e na lista de descartados.
+- **Piso de quem iniciou** (`MailDigestService.Piso`): numa conversa que o usuário começou
+  (`Estado.Iniciada`, ver §3 passo 3), a resposta nunca fica abaixo de **média** — o modelo pode
+  subir, não descer. Vale na passada viva e no `Reconstituir`. O item leva `MailSummary.Iniciada`, que
+  acende o selo "Você iniciou".
 - `DigestoDeEmail.Frase` — a fala do orbe — é montada **por código** a partir dos números.
 
 ---
