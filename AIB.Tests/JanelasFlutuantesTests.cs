@@ -99,6 +99,21 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ARespostaPronta_SaiDoBalaoDaBandeja_ECOmErroNaoFechaSozinha()
+        {
+            // Era o balão do Windows, cortado em 200 caracteres e sem botão.
+            var (ok, vez) = Avisos.DePronta("Encontrei os 10 PDFs.", null, "Ellen", shadow: false, abrir: () => { });
+            vez.Should().Be(VezDaJanela.Pronta);
+            ok.Pill.Should().Be("Ellen respondeu");
+            ok.FechaSozinho.Should().Be(Avisos.PrazoDaResposta);
+            ok.Botoes![0].Texto.Should().Be("Abrir conversa");
+
+            var (erro, _) = Avisos.DePronta("", "limite de uso por minuto", "Ellen", shadow: false, abrir: () => { });
+            erro.Tom.Should().Be(AvisoWindow.Tom.Perigo);
+            erro.FechaSozinho.Should().BeNull("um erro escondido vira uma resposta que você acha que veio");
+        }
+
+        [Fact]
         public void SemOrbe_OAvisoFicaAcimaDaBandeja()
         {
             var area = new Rect(0, 0, 1920, 1040);

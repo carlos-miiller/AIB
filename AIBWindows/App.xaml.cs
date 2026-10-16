@@ -285,6 +285,21 @@ public partial class App : System.Windows.Application
         if (aviso is { } a) Views.Flutuantes.Mostrar(Views.AvisoWindow.Montar(a.Receita), a.Vez);
     }
 
+    /// <summary>
+    /// A resposta da conversa principal chegou com a janela escondida: aviso verde (ou vermelho,
+    /// com erro), no lugar do balão da bandeja. "Abrir conversa" traz a janela de volta.
+    /// </summary>
+    public void AvisarRespostaPronta(string texto, string? erro)
+    {
+        var (receita, vez) = Views.Avisos.DePronta(texto, erro, AcoesDosAvisos().NomeDaIA, shadow: false,
+            abrir: () =>
+            {
+                if (_chatWindow != null && !_chatWindow.IsVisible) _chatWindow.ToggleWindow();
+            });
+
+        Views.Flutuantes.Mostrar(Views.AvisoWindow.Montar(receita), vez);
+    }
+
     /// <summary>O que os botões dos avisos fazem — a janela de chat e o orbe moram aqui.</summary>
     private Views.Avisos.Acoes AcoesDosAvisos() => new(
         NomeDaIA: string.IsNullOrWhiteSpace(_settingsService.LoadSettings().ActiveCharacter)
@@ -779,11 +794,11 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
-            System.Windows.MessageBox.Show(
-                $"Erro crítico ao iniciar o AIB:\n\n{ex.Message}",
-                "AIB — Erro de Inicialização",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            // Na casca das flutuantes, com "Copiar detalhes"; se nem ela montar (o erro pode ser
+            // o tema), o Informar cai no MessageBox.
+            Views.AvisoWindow.Informar(null, Views.AvisoWindow.Tom.Perigo, "O AIB não abriu",
+                "Erro ao iniciar o AIB", "Algo falhou antes de a janela abrir. O AIB vai fechar.",
+                detalhe: $"{ex.GetType().Name}: {ex.Message}", botao: "Fechar o AIB", copiar: true);
             Current.Shutdown();
         }
     }

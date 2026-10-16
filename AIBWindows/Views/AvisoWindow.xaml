@@ -100,6 +100,18 @@
                            TextWrapping="Wrap" TextTrimming="WordEllipsis"
                            MaxHeight="117" Margin="0,10,0,0"/>
 
+                <!-- DETALHE: texto técnico (o erro), em fonte de código e com rolagem. -->
+                <Border x:Name="DetalheBox" Background="{StaticResource SurfaceCodeBrush}"
+                        CornerRadius="{StaticResource RadiusCard}" Padding="12,10" Margin="0,11,0,0"
+                        Visibility="Collapsed">
+                    <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <TextBlock x:Name="DetalheTexto" FontFamily="{StaticResource MonoFontFamily}"
+                                   FontSize="12" LineHeight="17" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextBodyBrush}"/>
+                    </ScrollViewer>
+                </Border>
+
                 <!-- AS LINHAS: até três e-mails, clicáveis. -->
                 <Border x:Name="CaixaDeLinhas" Background="{StaticResource SurfaceCodeBrush}"
                         CornerRadius="{StaticResource RadiusCard}" Padding="4" Margin="0,11,0,0">

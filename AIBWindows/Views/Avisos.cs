@@ -129,6 +129,42 @@ public static class Avisos
             VezDaJanela.Lembrete);
     }
 
+    /// <summary>Por quanto tempo a resposta pronta fica antes de fechar sozinha.</summary>
+    public static readonly TimeSpan PrazoDaResposta = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// A resposta chegou com a janela escondida (ela se esconde sozinha ao perder o foco — então
+    /// é sempre que o usuário não está olhando). Era o balão da bandeja, cortado em 200
+    /// caracteres e sem botão.
+    /// <para>
+    /// Com erro, não fecha sozinho: um erro escondido vira uma resposta que você acha que veio.
+    /// </para>
+    /// </summary>
+    public static (AvisoWindow.Receita Receita, VezDaJanela Vez) DePronta(
+        string texto, string? erro, string nome, bool shadow, Action abrir)
+    {
+        var botao = new AvisoWindow.Botao(shadow ? "Abrir no Shadow" : "Abrir conversa", abrir, Principal: true);
+
+        if (!string.IsNullOrWhiteSpace(erro))
+        {
+            return (new AvisoWindow.Receita(
+                AvisoWindow.Tom.Perigo, "Não deu certo", AvisoWindow.IconeAlerta,
+                Titulo: "A resposta parou no meio",
+                Sub: erro.Length > 300 ? erro[..297] + "..." : erro,
+                Shadow: shadow,
+                Botoes: Botoes(botao)),
+                VezDaJanela.Pronta);
+        }
+
+        return (new AvisoWindow.Receita(
+            AvisoWindow.Tom.Verde, $"{nome} respondeu", AvisoWindow.IconeOk,
+            Fala: string.IsNullOrWhiteSpace(texto) ? "Ação executada." : texto,
+            Shadow: shadow,
+            Botoes: Botoes(botao),
+            FechaSozinho: PrazoDaResposta),
+            VezDaJanela.Pronta);
+    }
+
     private static IReadOnlyList<AvisoWindow.Botao> Botoes(params AvisoWindow.Botao?[] botoes) =>
         botoes.Where(b => b != null).Select(b => b!).ToList();
 }

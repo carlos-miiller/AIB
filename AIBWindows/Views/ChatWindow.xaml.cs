@@ -1422,14 +1422,12 @@ public partial class ChatWindow : Window
             string textoDoTurno = QuebraDeFala.Limpar(allText + fullText).Trim();
             TurnoConcluido?.Invoke(errorText ?? textoDoTurno);
 
-            // Se a janela estiver invisível ou sem foco (usuário fazendo outra coisa), emite notificação
-            if (!this.IsActive || this.Visibility != Visibility.Visible)
+            // Com a janela escondida, a resposta vem numa janela de aviso (era o balão da
+            // bandeja, cortado em 200 caracteres e sem botão). Só "escondida": a janela se
+            // esconde sozinha ao perder o foco, então é sempre que o usuário não está olhando.
+            if (this.Visibility != Visibility.Visible)
             {
-                string turnText = textoDoTurno;
-                string notifyText = errorText ?? (string.IsNullOrWhiteSpace(turnText) ? "*Ação executada com sucesso.*" : turnText);
-                if (notifyText.Length > 200) notifyText = notifyText.Substring(0, 197) + "...";
-                
-                ((App)System.Windows.Application.Current).ShowNotification("AIB", notifyText);
+                (System.Windows.Application.Current as App)?.AvisarRespostaPronta(textoDoTurno, errorText);
             }
         }
     }

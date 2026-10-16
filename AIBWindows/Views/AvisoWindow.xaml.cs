@@ -40,7 +40,8 @@ public partial class AvisoWindow : Window
         bool Shadow = false,
         DateTime? Hora = null,
         TimeSpan? FechaSozinho = null,
-        string Dica = "");
+        string Dica = "",
+        string Detalhe = "");
 
     /// <summary>Margem transparente abaixo da casca (ver o XAML).</summary>
     private const double SombraEmbaixo = 30;
@@ -65,6 +66,55 @@ public partial class AvisoWindow : Window
     public const string IconeSino = "M5,12 V8 A4,4 0 0 1 13,8 V12 L14.5,14 H3.5 Z M7.5,16 H10.5";
     public const string IconeSaida = "M3,9 L9,3 M4.5,3 H9 V7.5";
     public const string IconeOk = "M4,9.5 L7.2,12.5 L14,5.5";
+
+    /// <summary>
+    /// Um aviso que ESPERA o usuário: erro, ou o aviso de uma tela ("promova outra conta").
+    /// Modal, recebe o foco e fica no centro de quem avisou — no lugar do <c>MessageBox</c> do
+    /// Windows, que ignorava a paleta. Não passa pela fila: é a resposta a algo que o usuário
+    /// acabou de fazer, e um modal não espera a vez.
+    /// <para>
+    /// Se a própria janela não monta (tema que não carregou, no arranque), cai no MessageBox.
+    /// </para>
+    /// </summary>
+    public static void Informar(Window? dono, Tom tom, string pill, string titulo, string sub,
+                                string detalhe = "", string botao = "Entendi", bool copiar = false)
+    {
+        try
+        {
+            var botoes = new List<Botao>();
+            if (copiar && !string.IsNullOrWhiteSpace(detalhe))
+                botoes.Add(new Botao("Copiar detalhes",
+                    () => CopiarSemFalhar(string.Join(Environment.NewLine, titulo, sub, "", detalhe)), Fecha: false));
+            botoes.Insert(0, new Botao(botao, () => { }, Principal: true));
+
+            var janela = new AvisoWindow
+            {
+                ShowActivated = true,
+                ShowInTaskbar = dono == null,
+                WindowStartupLocation = dono == null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner
+            };
+            if (dono != null && dono.IsLoaded) janela.Owner = dono;
+
+            janela.Desenhar(new Receita(tom, pill, tom == Tom.Verde ? IconeOk : IconeAlerta, Titulo: titulo, Sub: sub, Detalhe: detalhe,
+                                        Botoes: botoes));
+            janela.FecharButton.Visibility = Visibility.Collapsed;
+            janela.HoraTexto.Visibility = Visibility.Collapsed;
+            janela.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[AVISO] janela de aviso não montou ({ex.GetType().Name}); usando o MessageBox.");
+            System.Windows.MessageBox.Show(
+                string.IsNullOrWhiteSpace(detalhe) ? sub : string.Join(Environment.NewLine, sub, "", detalhe),
+                titulo);
+        }
+    }
+
+    private static void CopiarSemFalhar(string texto)
+    {
+        try { System.Windows.Clipboard.SetText(texto); }
+        catch (Exception ex) { Console.WriteLine($"[AVISO] não consegui copiar: {ex.Message}"); }
+    }
 
     /// <summary>Monta a janela a partir da receita. Não mostra: quem mostra é a fila.</summary>
     public static AvisoWindow Montar(Receita receita)
@@ -95,6 +145,8 @@ public partial class AvisoWindow : Window
         Mostrar(SubTexto, r.Sub);
         Mostrar(FalaTexto, r.Fala);
         DicaTexto.Text = r.Dica;
+        DetalheTexto.Text = r.Detalhe ?? "";
+        DetalheBox.Visibility = string.IsNullOrWhiteSpace(r.Detalhe) ? Visibility.Collapsed : Visibility.Visible;
 
         var emails = r.Emails ?? Array.Empty<MailSummary>();
         CaixaDeLinhas.Visibility = emails.Count > 0 ? Visibility.Visible : Visibility.Collapsed;

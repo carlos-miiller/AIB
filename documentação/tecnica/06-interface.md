@@ -132,8 +132,10 @@ O que aparece durante o turno:
 
 Os três pontos somem depois de 3 s sem novidade (`idleTimer`) e voltam com o próximo pedaço. No
 `finally`, a última fala vira balão; se o turno inteiro não teve fala, entra "*Ação executada com
-sucesso.*". Erros viram balão com "❌ **Erro:**". Com a janela escondida ou sem foco, o fim do
-turno gera uma notificação da bandeja (`App.ShowNotification`) com até 200 caracteres. O evento
+sucesso.*". Erros viram balão com "❌ **Erro:**". Com a janela escondida, o fim do turno gera
+uma **janela de aviso** (`App.AvisarRespostaPronta` → `Avisos.DePronta`): verde "<NOME> respondeu"
+com até 6 linhas da fala e "Abrir conversa", fechando em 15 s; com erro, vermelha ("A resposta
+parou no meio") e sem fechar sozinha. Era o balão da bandeja, cortado em 200 caracteres. O evento
 `TurnoConcluido` entrega o texto final ao orbe.
 
 **Falas separadas.** A persona pode dividir uma resposta em mensagens (a reação a uma piada, depois
@@ -655,6 +657,11 @@ ele volta depois; entre avisos, a ordem é rajada, resposta sua, lembrete, respo
   caixa" (`ChatWindow.MostrarCaixa`, com o item aberto), "Abrir o e-mail" do lembrete
   (`ChatWindow.AbrirConversaDoEmail`, retoma a conversa), "Abrir no Shadow" (`AbrirBarra` do
   orbe), "Adiar 1 h".
+
+- **`AvisoWindow.Informar`**: o aviso que ESPERA o usuário (modal, recebe o foco, no centro de quem
+  avisou), no lugar do `MessageBox` do Windows — erro ao iniciar (com "Copiar detalhes"), "promova
+  outra conta a principal", reset concluído. Se a janela não monta (tema que falhou no arranque), cai
+  no `MessageBox`.
 
 ## ConfirmDialog
 

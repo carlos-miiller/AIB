@@ -1154,11 +1154,9 @@ public partial class SettingsWindow : Window
 
         if (!_contas.PodeRemover(conta))
         {
-            System.Windows.MessageBox.Show(
+            AvisoWindow.Informar(this, AvisoWindow.Tom.Cuidado, "Não dá ainda",
                 "Promova outra conta a principal antes de remover esta.",
-                "Conta principal",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                "A conta principal é a que a triagem usa por padrão.");
             return;
         }
 
@@ -2250,15 +2248,15 @@ public partial class SettingsWindow : Window
 
         var limpeza = ResetDeFabrica.Limpar();
 
-        System.Windows.MessageBox.Show(
-            "O AIB foi resetado e será encerrado. Inicie-o novamente."
-                + (limpeza.Falhas > 0
-                    ? $"\n\n{limpeza.Falhas} arquivo(s) não puderam ser removidos (em uso?). "
-                      + $"Feche o que estiver usando a pasta e apague o que restou em {DirectoryService.DataDir}."
-                    : ""),
+        AvisoWindow.Informar(this, limpeza.Falhas > 0 ? AvisoWindow.Tom.Cuidado : AvisoWindow.Tom.Verde,
             "Reset concluído",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+            "O AIB foi resetado e será encerrado.",
+            "Inicie-o novamente para começar como na primeira vez.",
+            detalhe: limpeza.Falhas > 0
+                ? $"{limpeza.Falhas} arquivo(s) não puderam ser removidos (em uso?). Feche o que estiver "
+                  + $"usando a pasta e apague o que restou em {DirectoryService.DataDir}."
+                : "",
+            botao: "Encerrar");
 
         // Segunda passada, colada na saída: enquanto a mensagem esteve na tela, um turno em
         // curso ou o vigia de e-mail podem ter gravado de novo. E Exit em vez de Shutdown: o
