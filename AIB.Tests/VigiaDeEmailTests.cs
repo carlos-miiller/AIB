@@ -485,20 +485,136 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void VigiaVENCIDA_MORRE_Sozinha()
+        public void VigiaVENCIDA_FICA_AteVoceDecidir_MasNaoAbreOFunil()
         {
-            // Sem prazo a lista so cresce, e em um mes toda a caixa estaria vigiada — que e o
-            // mesmo que nenhuma estar.
+            // Decisão do usuário (16/10/2026): a conversa que venceu sem resposta continua em
+            // "Aguardando retorno", em vermelho, até ele estender ou dispensar. Antes ela morria
+            // sozinha — e a proposta sem resposta sumia sem ninguém notar.
             var agora = new DateTime(2026, 9, 20, 12, 0, 0, DateTimeKind.Utc);
 
             var velha = new VigiaDeThread
             {
                 Thrid = "antiga",
+                RespondidaEm = new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc),
                 Ate = new DateTime(2026, 9, 10, 0, 0, 0, DateTimeKind.Utc)
             };
 
-            VigiasDoEmail.Atualizar(new[] { velha }, Array.Empty<ThreadRespondida>(), agora)
+            var vigias = VigiasDoEmail.Atualizar(new[] { velha }, Array.Empty<ThreadRespondida>(), agora);
+
+            vigias.Should().ContainSingle();
+            vigias[0].Ativa(agora).Should().BeFalse("vencida não fura mais o filtro");
+        }
+
+        [Fact]
+        public void AMesmaMensagemRELIDA_NaoDESFAZ_OQueVoceDecidiu()
+        {
+            // A pasta de enviados é relida a cada passada. Antes, cada releitura regravava a
+            // vigia do zero — o "+7 dias" e o "Parar de vigiar" durariam vinte minutos.
+            var agora = new DateTime(2026, 9, 4, 12, 0, 0, DateTimeKind.Utc);
+            var enviada = agora.AddDays(-2);
+
+            var parada = new VigiaDeThread
+            {
+                Thrid = "17ab", RespondidaEm = enviada, Ate = enviada.AddDays(14), Parada = true
+            };
+
+            var vigias = VigiasDoEmail.Atualizar(
+                new[] { parada }, new[] { new ThreadRespondida("17ab", enviada) }, agora);
+
+            vigias.Should().ContainSingle();
+            vigias[0].Parada.Should().BeTrue();
+            vigias[0].Ate.Should().Be(enviada.AddDays(14));
+
+            // Uma mensagem sua NOVA é outra espera.
+            var nova = VigiasDoEmail.Atualizar(
+                vigias, new[] { new ThreadRespondida("17ab", agora) }, agora);
+
+            nova[0].Parada.Should().BeFalse();
+            nova[0].RespondidaEm.Should().Be(agora);
+        }
+
+        [Fact]
+        public void APARADA_SaiDoArquivo_QuandoAMensagemSaiDaJanelaDosEnviados()
+        {
+            // Dali em diante nada a ressuscita, e a marca não tem mais o que impedir.
+            var agora = new DateTime(2026, 9, 30, 12, 0, 0, DateTimeKind.Utc);
+
+            var parada = new VigiaDeThread
+            {
+                Thrid = "17ab", RespondidaEm = agora.AddDays(-20), Ate = agora.AddDays(-13), Parada = true
+            };
+
+            VigiasDoEmail.Atualizar(new[] { parada }, Array.Empty<ThreadRespondida>(), agora)
                 .Should().BeEmpty();
+        }
+
+        [Fact]
+        public void ESTENDER_UmaVencida_ContaDeHoje()
+        {
+            string pasta = Path.Combine(Path.GetTempPath(), "aib-vigias-" + Guid.NewGuid().ToString("N"));
+            var vigias = new VigiasDoEmail(pasta);
+            var agora = new DateTime(2026, 9, 30, 12, 0, 0, DateTimeKind.Utc);
+
+            vigias.Gravar(new[]
+            {
+                new VigiaDeThread { Thrid = "17ab", RespondidaEm = agora.AddDays(-10), Ate = agora.AddDays(-3) }
+            });
+
+            vigias.Estender("17ab", 7, agora).Should().BeTrue();
+            vigias.Ler().Single().Ate.Should().Be(agora.AddDays(7), "estender o passado não daria prazo nenhum");
+
+            vigias.Parar("17ab").Should().BeTrue();
+            vigias.Ler().Single().Parada.Should().BeTrue();
+
+            vigias.Estender("nao-existe", 7, agora).Should().BeFalse();
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // A seção "Aguardando retorno"
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task APropostaEnviada_ENTRA_EmAguardandoRetorno_ESAI_QuandoRespondem()
+        {
+            // Caso real (16/10/2026): duas propostas de parceria enviadas. Elas só existiam
+            // como vigias invisíveis — não havia lista onde o usuário as visse esperando.
+            var (vigia, _, email, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), "[]");
+
+            email.Respondidas = new[]
+            {
+                new ThreadRespondida("77", DateTime.UtcNow.AddHours(-2),
+                    "Proposta de Parceria - Google Workspace", "ana@parceiro.com", Abriu: true)
+            };
+
+            await vigia.ExecutarAsync(comModelo: false, CancellationToken.None);
+
+            var espera = vigia.Esperas().Should().ContainSingle().Subject;
+            espera.Assunto.Should().Be("Proposta de Parceria - Google Workspace");
+            espera.Para.Should().Be("ana@parceiro.com");
+            espera.Conta.Should().Be("eu@empresa.com");
+            espera.Iniciada.Should().BeTrue();
+
+            JaTriado(pasta, "77", "Re: Proposta de Parceria - Google Workspace", "Media", DateTime.UtcNow);
+
+            vigia.Esperas().Should().BeEmpty("a última palavra agora é deles: vai para Para você responder");
+        }
+
+        [Fact]
+        public void AsEsperas_VENCIDA_EVENCENDO_VemPrimeiro()
+        {
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+            var agora = new DateTime(2026, 10, 22, 15, 0, 0, DateTimeKind.Utc);
+
+            new VigiasDoEmail(pasta).Gravar(new[]
+            {
+                new VigiaDeThread { Thrid = "recente", RespondidaEm = agora.AddHours(-1), Ate = agora.AddDays(7) },
+                new VigiaDeThread { Thrid = "vencendo", RespondidaEm = agora.AddDays(-6), Ate = agora.AddDays(1) },
+                new VigiaDeThread { Thrid = "vencida", RespondidaEm = agora.AddDays(-9), Ate = agora.AddDays(-2) },
+                new VigiaDeThread { Thrid = "parada", RespondidaEm = agora.AddDays(-1), Ate = agora.AddDays(6), Parada = true }
+            });
+
+            vigia.Esperas(agora).Select(e => e.ThreadId)
+                .Should().Equal("vencida", "vencendo", "recente");
         }
 
         [Fact]

@@ -45,6 +45,25 @@ public partial class ChatWindow
     public Func<IReadOnlyList<MailSummary>>? FonteDeEmails { get; set; }
 
     /// <summary>
+    /// De onde sai a seção "Aguardando retorno": as conversas em que a última palavra é sua.
+    /// Delegado pelo mesmo motivo de <see cref="FonteDeEmails"/>.
+    /// </summary>
+    public Func<IReadOnlyList<EsperaDeRetorno>>? FonteDeEsperas { get; set; }
+
+    /// <summary>
+    /// Quantas esperas aparecem antes do "Mostrar mais". Decisão do usuário (16/10/2026): com
+    /// a seção no topo, uma dúzia de conversas em espera empurraria para baixo da dobra o que
+    /// pede ação dele.
+    /// </summary>
+    public const int EsperasVisiveis = 3;
+
+    /// <summary>A espera aberta no acordeão, pela thread. Uma por vez, como na lista.</summary>
+    private string? _esperaAberta;
+
+    /// <summary>O "Mostrar mais" da seção foi clicado.</summary>
+    private bool _esperasTodas;
+
+    /// <summary>
     /// O "Ignorar" de §3.10. Delegado, como <see cref="FonteDeEmails"/>: quem guarda o que foi
     /// ignorado é o vigia. Sem ele o botão não aparece — um "Ignorar" que não esconde nada
     /// ensinaria que o botão não funciona.
@@ -216,8 +235,11 @@ public partial class ChatWindow
         // JÁ vem ordenada do vigia — urgência decrescente, mais recente no topo dentro do
         // nível. Reordenar aqui seria a segunda cópia da regra, e foi assim que a ordem se
         // perdeu quando a aba do painel saiu: ela morava na View que morreu junto.
-        var conversas = FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>();
+        var todas = FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>();
+        var esperas = FonteDeEsperas?.Invoke() ?? Array.Empty<EsperaDeRetorno>();
         var agora = DateTime.Now;
+
+        var conversas = ForaDaEspera(todas, esperas);
 
         // As threads que já têm conversa com a IA, lidas UMA vez: perguntar item por item
         // releria o arquivo do histórico uma vez por e-mail da caixa.
@@ -231,13 +253,22 @@ public partial class ChatWindow
         int tokens = TokensDaCaixa(conversas);
 
         MedidasDaCaixa.Text =
-            $"{conversas.Count} e-mail(s) · {urgentes} urgente(s) · {tokens:N0} tokens";
+            $"{conversas.Count} e-mail(s) · {urgentes} urgente(s) · {tokens:N0} tokens"
+            + (esperas.Count > 0 ? $" · {esperas.Count} aguardando" : "");
 
         // Urgente em danger quando HÁ urgente, e apagado quando não há: uma contagem em
         // vermelho dizendo zero treina a pessoa a ignorar o vermelho.
         MedidasDaCaixa.Foreground = urgentes > 0
             ? (System.Windows.Media.Brush)FindResource("DangerTextBrush")
             : (System.Windows.Media.Brush)FindResource("TextMutedBrush");
+
+        // As duas seções só ganham rótulo quando há o que separar: sem nenhuma espera, a caixa
+        // fica exatamente como era.
+        if (esperas.Count > 0)
+        {
+            MontarEsperas(esperas, agora);
+            ListaDaCaixa.Children.Add(RotuloDeSecao($"PARA VOCÊ RESPONDER · {conversas.Count}", icone: false));
+        }
 
         foreach (var conversa in conversas)
         {
@@ -283,6 +314,129 @@ public partial class ChatWindow
 
             ListaDaCaixa.Children.Add(item);
         }
+    }
+
+    /// <summary>
+    /// O que fica em "Para você responder". Uma conversa só aparece num lugar: se a última
+    /// palavra é sua e ela está vigiada, ela mora em "Aguardando retorno" e sai daqui.
+    /// Respondida pelo outro lado, ela volta.
+    /// </summary>
+    public static IReadOnlyList<MailSummary> ForaDaEspera(
+        IReadOnlyList<MailSummary> todas, IReadOnlyList<EsperaDeRetorno> esperas)
+    {
+        var esperando = new HashSet<string>(
+            esperas.Select(e => e.ThreadId).Where(t => t.Length > 0), StringComparer.Ordinal);
+
+        return todas
+            .Where(c => c.AwaitingMe || !esperando.Contains(c.ThreadId ?? ""))
+            .ToList();
+    }
+
+    /// <summary>
+    /// A seção "Aguardando retorno", no topo da caixa — o cenário A escolhido pelo usuário em
+    /// 16/10/2026. No máximo <see cref="EsperasVisiveis"/> antes do "Mostrar mais"; a ordem já
+    /// vem do vigia (vencida, vencendo, mais recente).
+    /// </summary>
+    private void MontarEsperas(IReadOnlyList<EsperaDeRetorno> esperas, DateTime agora)
+    {
+        ListaDaCaixa.Children.Add(RotuloDeSecao($"AGUARDANDO RETORNO · {esperas.Count}", icone: true));
+
+        var visiveis = _esperasTodas ? esperas : esperas.Take(EsperasVisiveis).ToList();
+
+        foreach (var espera in visiveis)
+        {
+            var item = new EsperaItem
+            {
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+
+            item.Preencher(espera, agora);
+            item.Aberto = string.Equals(espera.ThreadId, _esperaAberta, StringComparison.Ordinal);
+
+            var alvo = espera;
+            item.PediuAlternar += (_, _) =>
+            {
+                _esperaAberta = string.Equals(alvo.ThreadId, _esperaAberta, StringComparison.Ordinal)
+                    ? null
+                    : alvo.ThreadId;
+                MontarCaixaDeEntrada();
+            };
+
+            ListaDaCaixa.Children.Add(item);
+        }
+
+        int escondidas = esperas.Count - visiveis.Count;
+        if (escondidas <= 0) return;
+
+        var mais = new System.Windows.Controls.Button
+        {
+            Content = $"Mostrar mais {escondidas} ▾",
+            Style = (Style)FindResource("CaminhoDeVolta"),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            Margin = new Thickness(2, 0, 0, 8)
+        };
+
+        mais.Click += (_, _) =>
+        {
+            _esperasTodas = true;
+            MontarCaixaDeEntrada();
+        };
+
+        ListaDaCaixa.Children.Add(mais);
+    }
+
+    /// <summary>
+    /// O rótulo de uma seção: texto em caixa alta, apagado, e uma linha até a borda. O relógio
+    /// só na de espera, que é a seção nova — a outra é a caixa de sempre.
+    /// </summary>
+    private FrameworkElement RotuloDeSecao(string texto, bool icone)
+    {
+        var grade = new Grid { Margin = new Thickness(0, 6, 0, 8) };
+        grade.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grade.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var rotulo = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+        if (icone)
+        {
+            var relogio = new System.Windows.Shapes.Path
+            {
+                Data = System.Windows.Media.Geometry.Parse("M10,2.5 A7.5,7.5 0 1 1 9.99,2.5 Z M10,5.5 V10 L13,12"),
+                StrokeThickness = 1.6,
+                Width = 11,
+                Height = 11,
+                Stretch = System.Windows.Media.Stretch.Uniform,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            relogio.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "AccentLilacBrush");
+            rotulo.Children.Add(relogio);
+        }
+
+        var tb = new TextBlock
+        {
+            Text = texto,
+            FontSize = 10,
+            FontWeight = FontWeights.Bold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        tb.SetResourceReference(TextBlock.ForegroundProperty, "TextMutedBrush");
+        rotulo.Children.Add(tb);
+
+        var linha = new System.Windows.Shapes.Rectangle
+        {
+            Height = 1,
+            Margin = new Thickness(10, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        linha.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "DividerBrush");
+
+        Grid.SetColumn(rotulo, 0);
+        Grid.SetColumn(linha, 1);
+        grade.Children.Add(rotulo);
+        grade.Children.Add(linha);
+
+        return grade;
     }
 
     /// <summary>

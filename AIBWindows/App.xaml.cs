@@ -666,6 +666,12 @@ public partial class App : System.Windows.Application
                                               ?? (System.Collections.Generic.IReadOnlyList<MailSummary>)
                                                  Array.Empty<MailSummary>();
 
+            // "Aguardando retorno": as conversas em que a última palavra é sua, lidas do disco a
+            // cada vez que a caixa é montada — o prazo anda com o relógio, não com a passada.
+            _chatWindow.FonteDeEsperas = () => _vigia?.Esperas()
+                                               ?? (System.Collections.Generic.IReadOnlyList<Services.Mail.EsperaDeRetorno>)
+                                                  Array.Empty<Services.Mail.EsperaDeRetorno>();
+
             // "Ignorar" (§3.10): tira a conversa da tela até chegar mensagem nova. Não toca o
             // servidor — a caixa continua somente leitura.
             _chatWindow.IgnorarEmail = item => _vigia?.Ignorar(item);

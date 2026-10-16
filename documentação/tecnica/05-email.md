@@ -75,7 +75,15 @@ e-mails"), lida **a cada batida** — ligar a chave vale sem reiniciar. Roda com
    leva o id da primeira mensagem, então a sua abriu a conversa. Entrada sua gravada antes sem assunto
    é completada na passada seguinte, sem contar duas vezes (`ArquivoDeConversas.Completa`). Elas renovam as
    **vigias** (`VigiasDoEmail`, `~/.AIB/email/vigias.json`): conversa em que ele respondeu fica
-   vigiada por 7 dias. Threads com histórico em disco também contam como vigiadas.
+   vigiada por 7 dias. Threads com histórico em disco também contam como vigiadas. Só a vigia
+   **ativa** (`VigiaDeThread.Ativa`: nem vencida, nem `Parada`) abre o funil. A **vencida fica** no
+   arquivo — é a conversa sem resposta que a seção "Aguardando retorno" mostra em vermelho — até o
+   usuário estender ou dispensar; sai sozinha só quando a outra parte respondeu
+   (`SemAsRespondidas`). A mesma mensagem relida da pasta de enviados não regrava a vigia (senão
+   desfaria "+7 dias" e "Parar de vigiar"); uma mensagem sua **mais nova** abre outra. A `Parada` sai
+   do arquivo quando a mensagem passa da janela dos enviados. `MailDigestService.Esperas()` cruza as
+   vigias não paradas com o histórico (assunto, destinatário, quem iniciou), descarta as já
+   respondidas e ordena: vencida, vencendo (≤ 1 dia), mais recente.
 4. `DetectorDeRajada.Encontrar` sobre o conjunto de todas as caixas (§4).
 5. Funil (`PassarPeloFunil` → `FiltroDeTriagem.Avaliar`).
 6. Se é digest (ou sondagem urgente): `ResumirAsync` manda o lote ao modelo (`TriadorDeEmail`),
@@ -157,7 +165,7 @@ Toda queda vai para a lista de `Descartada` com o motivo — a triagem tem de se
 |---|---|---|---|
 | `estado.json` | `EstadoDasCaixas` | Ponteiros de UID e datas por endereço. | Permanente; sai com a conta. |
 | `ultimo-digest.txt` | `MarcoDoVigia` | Um instante. | — |
-| `vigias.json` | `VigiasDoEmail` | Id de thread, frase de motivo, duas datas. | 7 dias por vigia. |
+| `vigias.json` | `VigiasDoEmail` | Id de thread, frase de motivo, duas datas, `Parada`. | 7 dias por vigia; a vencida fica até ser dispensada ou respondida. |
 | `regras.md` | `RegrasDoVigia` | Escrito pelo usuário. | — |
 | `diario/diario-AAAA-MM-DD.json` | `DiarioDeTriagem` | Por passada: lidas, descartadas e cada triada (remetente, nome, assunto, resumo, urgência, conta, data). | `MailJournalDays` |
 | `conversas/<hash>/triagem.jsonl` + `chave.txt` | `ArquivoDeConversas` | Histórico por conversa (`EntradaDaConversa`): remetente, assunto, urgência e resumo; nas suas, também destinatário e se abriu a conversa. Nunca corpo. | `MailJournalDays` |

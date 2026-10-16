@@ -371,10 +371,14 @@ public sealed class MailDigestService : IDisposable
             }
         }
 
-        var vigiadas = VigiasDoEmail.Atualizar(_vigias.Ler(), respondidas, DateTime.UtcNow);
+        var agoraUtc = DateTime.UtcNow;
+        var vigiadas = SemAsRespondidas(VigiasDoEmail.Atualizar(_vigias.Ler(), respondidas, agoraUtc), agoraUtc);
         _vigias.Gravar(vigiadas);
 
-        var threadsVigiadas = new HashSet<string>(vigiadas.Select(v => v.Thrid), StringComparer.Ordinal);
+        // Só as ATIVAS abrem o funil: a vencida e a parada ficam no arquivo para a lista
+        // "Aguardando retorno", não para furar o filtro.
+        var threadsVigiadas = new HashSet<string>(
+            vigiadas.Where(v => v.Ativa(agoraUtc)).Select(v => v.Thrid), StringComparer.Ordinal);
 
         // TER HISTÓRICO é motivo de vigia. Sem isto, a resposta a uma conversa já triada podia
         // ser descartada pelo funil — mala-direta, envio em massa, remetente desconhecido — e o
@@ -906,6 +910,82 @@ public sealed class MailDigestService : IDisposable
             Console.WriteLine($"[VIGIA] não consegui reconstituir a caixa — " +
                               $"{ex.GetType().Name}: {ex.Message}");
             return 0;
+        }
+    }
+
+    /// <summary>
+    /// Tira as vencidas que JÁ TIVERAM resposta. A vencida fica no arquivo para a lista
+    /// "Aguardando retorno" — mas, respondida, ela não aguarda mais nada, e guardá-la só faria o
+    /// arquivo crescer para sempre.
+    /// </summary>
+    private IReadOnlyList<VigiaDeThread> SemAsRespondidas(IReadOnlyList<VigiaDeThread> vigias, DateTime agoraUtc)
+    {
+        if (!vigias.Any(v => v.Vencida(agoraUtc))) return vigias;
+
+        var respondidas = new HashSet<string>(
+            _conversas.Guardadas().Where(g => g.Estado.EsperandoVoce).Select(g => g.ThreadId),
+            StringComparer.Ordinal);
+
+        return vigias.Where(v => !(v.Vencida(agoraUtc) && respondidas.Contains(v.Thrid))).ToList();
+    }
+
+    /// <summary>
+    /// A seção "Aguardando retorno": as conversas vigiadas em que a última palavra é sua.
+    /// <para>
+    /// Vigia (o prazo) cruzada com o histórico (assunto, destinatário, quem iniciou). Sem
+    /// histórico — diário desligado — a linha sai sem assunto e sem conta, mas sai: o prazo é
+    /// o que importa, e ele mora na vigia.
+    /// </para>
+    /// <para>
+    /// Ordem: vencida, vencendo e, dentro de cada uma, a mais recente primeiro. É a ordem do
+    /// que pede decisão sua; a tela mostra as três primeiras.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<EsperaDeRetorno> Esperas(DateTime? agora = null)
+    {
+        var agoraUtc = agora ?? DateTime.UtcNow;
+
+        try
+        {
+            var vigias = _vigias.Ler().Where(v => !v.Parada).ToList();
+            if (vigias.Count == 0) return Array.Empty<EsperaDeRetorno>();
+
+            var guardadas = _conversas.Guardadas()
+                .Where(g => g.ThreadId.Length > 0)
+                .GroupBy(g => g.ThreadId, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+
+            var saida = new List<EsperaDeRetorno>();
+
+            foreach (var v in vigias)
+            {
+                guardadas.TryGetValue(v.Thrid, out var g);
+
+                // A outra parte já respondeu: a conversa está em "Para você responder".
+                if (g != null && g.Estado.EsperandoVoce) continue;
+
+                saida.Add(new EsperaDeRetorno(
+                    Conta: g?.Conta ?? "",
+                    ThreadId: v.Thrid,
+                    Assunto: g?.Estado.Assunto ?? "",
+                    Para: g?.Estado.Para ?? "",
+                    EnviadaEm: v.RespondidaEm,
+                    Ate: v.Ate,
+                    Mensagens: Math.Max(1, g?.Estado.Mensagens ?? 1),
+                    Iniciada: g?.Estado.Iniciada ?? false));
+            }
+
+            return saida
+                .OrderByDescending(e => e.Vencida(agoraUtc))
+                .ThenByDescending(e => e.Vencendo(agoraUtc))
+                .ThenByDescending(e => e.EnviadaEm)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            // A seção é conforto; a caixa não pode deixar de abrir por causa dela.
+            Console.WriteLine($"[VIGIA] não consegui montar as conversas em espera — {ex.GetType().Name}: {ex.Message}");
+            return Array.Empty<EsperaDeRetorno>();
         }
     }
 

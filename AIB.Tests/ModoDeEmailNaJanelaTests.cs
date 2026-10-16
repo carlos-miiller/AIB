@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using AIB.Services;
+using AIB.Services.Mail;
 using AIB.Views;
 using FluentAssertions;
 using Xunit;
@@ -606,6 +607,76 @@ namespace AIB.Tests
                 botao.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
 
                 pediu.Should().BeTrue();
+            });
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // "Aguardando retorno" — cenário A, escolhido pelo usuário em 16/10/2026
+        // ─────────────────────────────────────────────────────────────────
+
+        private static readonly DateTime Envio = new(2026, 10, 16, 19, 24, 0, DateTimeKind.Utc);
+
+        private static EsperaDeRetorno Espera(int mensagens = 1, string thread = "77") =>
+            new("eu@empresa.com", thread, "Proposta de Parceria - Google Workspace", "ana@parceiro.com",
+                Envio, Envio.AddDays(7), mensagens, Iniciada: true);
+
+        [Fact]
+        public void AConversaEmEspera_SAI_DePara_Voce_Responder_EVoltaQuandoRespondem()
+        {
+            // Uma conversa só aparece num lugar. Respondida pelo outro lado (AwaitingMe), ela
+            // volta para a caixa mesmo que a vigia ainda exista.
+            var minha = Email() with { ThreadId = "77", AwaitingMe = false };
+            var deles = Email() with { ThreadId = "77", AwaitingMe = true };
+            var outra = Email() with { ThreadId = "88", AwaitingMe = false };
+
+            ChatWindow.ForaDaEspera(new[] { minha, outra }, new[] { Espera() })
+                .Should().Equal(outra);
+
+            ChatWindow.ForaDaEspera(new[] { deles }, new[] { Espera() })
+                .Should().Equal(deles);
+        }
+
+        [Theory]
+        [InlineData(16, 21, "7 dias", "até 23/10", EsperaItem.Estado.Normal)]
+        [InlineData(22, 12, "1 dia", "até 23/10", EsperaItem.Estado.Vencendo)]
+        [InlineData(23, 12, "hoje", "até 23/10", EsperaItem.Estado.Vencendo)]
+        [InlineData(24, 12, "venceu", "em 23/10", EsperaItem.Estado.Vencida)]
+        public void OPrazo_DizQuantoFalta_ENaCorCerta(int dia, int hora, string prazo, string data,
+                                                       EsperaItem.Estado estado)
+        {
+            var agoraUtc = new DateTime(2026, 10, dia, hora, 0, 0, DateTimeKind.Utc);
+
+            EsperaItem.Prazo(Espera(), agoraUtc).Should().Be((prazo, data));
+            EsperaItem.EstadoDe(Espera(), agoraUtc).Should().Be(estado);
+        }
+
+        [Fact]
+        public void ALinha_DizSeVoceENVIOU_OuSeAConversaJaANDOU()
+        {
+            var agora = Envio.ToLocalTime().AddHours(1);
+
+            EsperaItem.Linha(Espera(1), agora).Should().StartWith("Enviado Hoje").And.EndWith("sem resposta");
+            EsperaItem.Linha(Espera(3), agora).Should().StartWith("Você respondeu Hoje").And.EndWith("3 mensagens");
+            EsperaItem.Assunto(Espera() with { Assunto = "" }).Should().Be("(assunto não guardado)");
+        }
+
+        [Fact]
+        public void OItemEmEspera_MONTA_ComPrazoEBarra()
+        {
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var item = new EsperaItem();
+                item.Preencher(Espera(), new DateTime(2026, 10, 22, 12, 0, 0, DateTimeKind.Utc).ToLocalTime());
+
+                item.Pintado.Should().Be(EsperaItem.Estado.Vencendo);
+                ((TextBlock)item.FindName("PrazoTexto")).Text.Should().Be("1 dia");
+                ((TextBlock)item.FindName("ParaTexto")).Text.Should().Be("Para: ana@parceiro.com");
+                ((FrameworkElement)item.FindName("Corpo")).Visibility.Should().Be(Visibility.Collapsed);
+
+                item.Aberto = true;
+                ((FrameworkElement)item.FindName("Corpo")).Visibility.Should().Be(Visibility.Visible);
             });
         }
 

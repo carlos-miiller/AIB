@@ -240,11 +240,17 @@ da mesma linha da grade; a janela não muda de tamanho. São três estados, e s�
 | Estado | Mostra |
 |---|---|
 | Convite | Nenhuma caixa com senha no cofre (`HaCaixaDeEmailPronta`): "Nenhum e-mail conectado" e o botão "Configurar e-mail". |
-| Lista | `MontarCaixaDeEntrada`: os `MailListItem` vindos do vigia, já ordenados por urgência, e a linha "N e-mail(s) · N urgente(s) · N tokens". Barra de entrada e rodapé somem. |
+| Lista | `MontarCaixaDeEntrada`: os `MailListItem` vindos do vigia, já ordenados por urgência, e a linha "N e-mail(s) · N urgente(s) · N tokens · N aguardando". Barra de entrada e rodapé somem. Havendo conversa em espera, a lista abre com a seção **"Aguardando retorno · N"** (`MontarEsperas`, `EsperaItem`; no máximo `EsperasVisiveis` = 3 antes de "Mostrar mais N") e segue com **"Para você responder · N"**. Uma conversa só aparece num lugar (`ForaDaEspera`). |
 | Leitura | O cabeçalho vira caminho "Caixa de entrada › assunto", com "Abrir no cliente", "Recarregar" e "Descartar esta conversa". A conversa é a mesma do chat. |
 
-A janela não conhece o vigia. O `App` injeta três delegados: `FonteDeEmails` (último digest),
-`IgnorarEmail` e `RecarregarEmail`.
+A janela não conhece o vigia. O `App` injeta quatro delegados: `FonteDeEmails` (último digest),
+`FonteDeEsperas` (`MailDigestService.Esperas`), `IgnorarEmail` e `RecarregarEmail`.
+
+`EsperaItem` (a linha de espera): relógio, assunto, "Para: …", "Enviado … · sem resposta" ou "Você
+respondeu … · N mensagens", o prazo ("7 dias" / "até 23/10", "hoje", "venceu" / "em 23/10") e uma
+barra fina do prazo consumido. Três estados pintados em código: normal (lilás), vencendo — falta um
+dia ou menos — (`WarnBrush`) e vencida (`DangerBrush`, e o relógio vira alerta). Clique abre o
+acordeão com o histórico curto; um aberto por vez.
 
 - **Abrir com a IA** (`AbrirEmailNoChat`): se já existe conversa sobre aquela thread, volta a ela
   sem chamar o modelo (`RetomarConversaDoEmail`). Senão, o turno começa com
