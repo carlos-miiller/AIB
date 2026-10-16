@@ -142,7 +142,7 @@ public sealed class LerEmailTool : ITool
                 .LerConversaAsync(
                     caixa.Address, senha,
                     new ImapEndpoint(caixa.ImapHost, caixa.ImapPort, caixa.UseSsl),
-                    thread, CancellationToken.None, _limites().EmailPorMensagem)
+                    thread, CancellationToken.None, _limites().EmailPorMensagem, comEnviados: true)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)

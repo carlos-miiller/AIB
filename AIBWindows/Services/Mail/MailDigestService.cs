@@ -989,6 +989,22 @@ public sealed class MailDigestService : IDisposable
         }
     }
 
+    /// <summary>"+7 dias" de uma espera: mais uma semana, contada de hoje se já venceu.</summary>
+    public bool EstenderEspera(string thrid)
+    {
+        bool feito = _vigias.Estender(thrid, VigiasDoEmail.DiasDeVigia, DateTime.UtcNow);
+        Console.WriteLine($"[VIGIA] espera estendida por você: {(feito ? "ok" : "conversa não achada")}.");
+        return feito;
+    }
+
+    /// <summary>"Parar de vigiar" e "Dispensar": a conversa sai da seção e do funil.</summary>
+    public bool PararEspera(string thrid)
+    {
+        bool feito = _vigias.Parar(thrid);
+        Console.WriteLine($"[VIGIA] espera parada por você: {(feito ? "ok" : "conversa não achada")}.");
+        return feito;
+    }
+
     /// <summary>
     /// A urgência mínima de uma conversa que VOCÊ começou: Média.
     /// <para>

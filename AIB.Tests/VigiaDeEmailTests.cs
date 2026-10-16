@@ -600,6 +600,26 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void PARAR_TiraDaSecao_EESTENDER_DaMaisUmaSemana()
+        {
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+            var enviada = DateTime.UtcNow.AddDays(-2);
+
+            new VigiasDoEmail(pasta).Gravar(new[]
+            {
+                new VigiaDeThread { Thrid = "a", RespondidaEm = enviada, Ate = enviada.AddDays(7) },
+                new VigiaDeThread { Thrid = "b", RespondidaEm = enviada, Ate = enviada.AddDays(7) }
+            });
+
+            vigia.EstenderEspera("a").Should().BeTrue();
+            vigia.PararEspera("b").Should().BeTrue();
+
+            var espera = vigia.Esperas().Should().ContainSingle().Subject;
+            espera.ThreadId.Should().Be("a");
+            espera.Ate.Should().Be(enviada.AddDays(14));
+        }
+
+        [Fact]
         public void AsEsperas_VENCIDA_EVENCENDO_VemPrimeiro()
         {
             var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);

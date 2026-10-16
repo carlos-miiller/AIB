@@ -513,7 +513,8 @@ public sealed class MailKitMailService : IMailService
         ImapEndpoint endpoint,
         string threadId,
         CancellationToken ct,
-        int tetoDoCorpo = MensagemDeEmail.TetoDoCorpo)
+        int tetoDoCorpo = MensagemDeEmail.TetoDoCorpo,
+        bool comEnviados = false)
     {
         // Sem X-GM-THRID não existe "a conversa" para reler: cada mensagem é a própria, e
         // buscar por assunto traria mensagens de outras pessoas com o mesmo título.
@@ -535,28 +536,25 @@ public sealed class MailKitMailService : IMailService
             var inbox = cliente.Inbox;
             await inbox.OpenAsync(FolderAccess.ReadOnly, ct).ConfigureAwait(false);
 
-            var uids = await inbox
-                .SearchAsync(SearchQuery.GMailThreadId(thrid), ct)
-                .ConfigureAwait(false);
+            var lidas = new List<(DateTimeOffset? Quando, MensagemDeEmail Mensagem)>();
+            await LerDaPastaAsync(inbox, thrid, endereco, tetoDoCorpo, lidas, ct).ConfigureAwait(false);
 
-            if (uids.Count == 0)
+            // A pasta de enviados, pelo PAPEL e não pelo nome (muda com o idioma da conta). Sem
+            // ela, a conversa que você começou e ninguém respondeu não tem o que ler.
+            if (comEnviados && cliente.GetFolder(SpecialFolder.Sent) is { } enviados)
+            {
+                await enviados.OpenAsync(FolderAccess.ReadOnly, ct).ConfigureAwait(false);
+                await LerDaPastaAsync(enviados, thrid, endereco, tetoDoCorpo, lidas, ct).ConfigureAwait(false);
+            }
+
+            if (lidas.Count == 0)
             {
                 Console.WriteLine($"[VIGIA] {endereco}: conversa {threadId} não está mais na caixa.");
                 await DesconectarAsync(cliente).ConfigureAwait(false);
                 return Array.Empty<MensagemDeEmail>();
             }
 
-            var resumos = await inbox.FetchAsync(uids, PedidoDaTriagem(), ct).ConfigureAwait(false);
-
-            var mensagens = new List<MensagemDeEmail>();
-
-            foreach (var r in resumos.OrderBy(r => r.InternalDate))
-            {
-                ct.ThrowIfCancellationRequested();
-
-                string corpo = await CorpoAsync(inbox, r, ct, tetoDoCorpo).ConfigureAwait(false);
-                mensagens.Add(Converter(r, endereco, corpo));
-            }
+            var mensagens = lidas.OrderBy(l => l.Quando).Select(l => l.Mensagem).ToList();
 
             Console.WriteLine($"[VIGIA] {endereco}: conversa {threadId} relida — " +
                               $"{mensagens.Count} mensagem(ns).");
@@ -577,6 +575,28 @@ public sealed class MailKitMailService : IMailService
                               $"{ex.GetType().Name}: {ex.Message}");
             await DesconectarAsync(cliente).ConfigureAwait(false);
             return Array.Empty<MensagemDeEmail>();
+        }
+    }
+
+    /// <summary>
+    /// As mensagens de uma thread numa pasta já aberta, com o corpo encurtado. A pasta tem de
+    /// estar aberta em ReadOnly: EXAMINE, nada marcado como lido.
+    /// </summary>
+    private async Task LerDaPastaAsync(
+        IMailFolder pasta, ulong thrid, string endereco, int tetoDoCorpo,
+        List<(DateTimeOffset? Quando, MensagemDeEmail Mensagem)> saida, CancellationToken ct)
+    {
+        var uids = await pasta.SearchAsync(SearchQuery.GMailThreadId(thrid), ct).ConfigureAwait(false);
+        if (uids.Count == 0) return;
+
+        var resumos = await pasta.FetchAsync(uids, PedidoDaTriagem(), ct).ConfigureAwait(false);
+
+        foreach (var r in resumos)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            string corpo = await CorpoAsync(pasta, r, ct, tetoDoCorpo).ConfigureAwait(false);
+            saida.Add((r.InternalDate, Converter(r, endereco, corpo)));
         }
     }
 

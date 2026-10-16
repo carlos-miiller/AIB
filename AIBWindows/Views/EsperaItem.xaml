@@ -93,6 +93,37 @@
                            FontSize="11" LineHeight="17"
                            TextWrapping="Wrap"
                            Foreground="{StaticResource TextSecondaryBrush}"/>
+
+                <!-- As ações, na geometria do MailListItem. "Abrir com" é o primário: é ele
+                     que leva a uma decisão (um texto de cobrança, uma revisão da proposta).
+                     "Parar de vigiar" vira "Dispensar" quando o prazo já venceu — o gesto é o
+                     mesmo, mas a pergunta que ele responde mudou. -->
+                <WrapPanel Margin="0,12,0,0">
+                    <Button x:Name="BotaoAbrirComIA"
+                            Style="{StaticResource AcaoDoCorpo}"
+                            Margin="0,0,8,6"
+                            Click="AbrirComIA_Click">
+                        <TextBlock>
+                            <Run Text="Abrir com "/><Run x:Name="NomeDaIA" Text="AIB"/>
+                        </TextBlock>
+                    </Button>
+                    <Button x:Name="BotaoAbrirNoCliente"
+                            Style="{StaticResource AcaoSecundariaDoCorpo}"
+                            Margin="0,0,8,6"
+                            Content="Abrir no cliente"
+                            Click="AbrirNoCliente_Click"/>
+                    <Button x:Name="BotaoEstender"
+                            Style="{StaticResource AcaoSecundariaDoCorpo}"
+                            Margin="0,0,8,6"
+                            Content="+7 dias"
+                            ToolTip="Esperar mais uma semana"
+                            Click="Estender_Click"/>
+                    <Button x:Name="BotaoParar"
+                            Style="{StaticResource AcaoSecundariaDoCorpo}"
+                            Margin="0,0,8,6"
+                            Content="Parar de vigiar"
+                            Click="Parar_Click"/>
+                </WrapPanel>
             </StackPanel>
         </Grid>
     </Border>

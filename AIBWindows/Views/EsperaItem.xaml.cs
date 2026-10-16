@@ -56,6 +56,54 @@ namespace AIB.Views
         private void Item_Click(object sender, MouseButtonEventArgs e) =>
             PediuAlternar?.Invoke(this, EventArgs.Empty);
 
+        /// <summary>"Abrir com &lt;NOME&gt;": conversar sobre o que você enviou.</summary>
+        public event EventHandler? PediuAbrirComIA;
+
+        /// <summary>"Abrir no &lt;provedor&gt;": sai do app, para o webmail.</summary>
+        public event EventHandler? PediuAbrirNoCliente;
+
+        /// <summary>"+7 dias".</summary>
+        public event EventHandler? PediuEstender;
+
+        /// <summary>"Parar de vigiar" ou, vencida, "Dispensar".</summary>
+        public event EventHandler? PediuParar;
+
+        // e.Handled em todos: o clique não pode subir e fechar o acordeão.
+        private void AbrirComIA_Click(object sender, RoutedEventArgs e) => Pedir(e, PediuAbrirComIA);
+        private void AbrirNoCliente_Click(object sender, RoutedEventArgs e) => Pedir(e, PediuAbrirNoCliente);
+        private void Estender_Click(object sender, RoutedEventArgs e) => Pedir(e, PediuEstender);
+        private void Parar_Click(object sender, RoutedEventArgs e) => Pedir(e, PediuParar);
+
+        private void Pedir(RoutedEventArgs e, EventHandler? pedido)
+        {
+            e.Handled = true;
+            pedido?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// O nome da personalidade ativa, para "Abrir com &lt;NOME&gt;" — o mesmo campo do
+        /// cabeçalho, nunca a string inteira em hard-code.
+        /// </summary>
+        public string NomeDaInteligencia
+        {
+            get => NomeDaIA.Text;
+            set => NomeDaIA.Text = string.IsNullOrWhiteSpace(value) ? "AIB" : value;
+        }
+
+        /// <summary>
+        /// O rótulo do botão do webmail ("Abrir no Gmail"). Vazio esconde o botão: sem endereço
+        /// não há para onde ir, e um botão que não abre nada ensina que os desta tela não abrem.
+        /// </summary>
+        public string RotuloDoCliente
+        {
+            get => BotaoAbrirNoCliente.Content as string ?? "";
+            set
+            {
+                BotaoAbrirNoCliente.Content = value;
+                BotaoAbrirNoCliente.Visibility = string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
+            }
+        }
+
         /// <summary>Preenche textos, barra e cor a partir da espera e do relógio.</summary>
         public void Preencher(EsperaDeRetorno espera, DateTime agora)
         {
@@ -81,6 +129,7 @@ namespace AIB.Views
             HistoricoTexto.Text = Historico(espera);
 
             Pintado = EstadoDe(espera, agoraUtc);
+            BotaoParar.Content = Pintado == Estado.Vencida ? "Dispensar" : "Parar de vigiar";
             Pintar();
         }
 

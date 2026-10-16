@@ -538,7 +538,8 @@ Os dois varrem com `GlobTool.Opcoes` (`EnumerationOptions`), e não com a sobrec
 ### E-mail (`mail`, `mail_read`)
 
 Somente leitura. `mail` lê o diário da triagem em disco; `mail_read` relê a thread da conversa
-aberta no servidor (EXAMINE/`BODY.PEEK`), sem argumentos, e devolve o corpo embrulhado por
+aberta no servidor (EXAMINE/`BODY.PEEK`) — caixa de entrada **e pasta de enviados** (`comEnviados`),
+para a conversa que o usuário começou e ninguém respondeu ter o que ler —, sem argumentos, e devolve o corpo embrulhado por
 `ConteudoDeTerceiros`. Detalhes em `05-email.md`.
 
 ### `browser` — `BrowserTool`, `NavegadorService`, `LeituraDaPagina`

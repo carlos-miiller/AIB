@@ -522,6 +522,64 @@
         </Setter>
     </Style>
 
+        <!-- AÇÃO DO CORPO — do MailListItem e do EsperaItem. Duas, com a mesma geometria: a primária em lilás traz o
+             e-mail para dentro do chat; a secundária, apagada, leva para fora do app.
+             A hierarquia de cor é o que diz qual é o caminho principal. -->
+        <Style x:Key="AcaoDoCorpo" TargetType="Button">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Padding" Value="13,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentLilacBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Casca" CornerRadius="9"
+                                Background="Transparent"
+                                BorderBrush="{StaticResource AccentBorderStrongBrush}"
+                                BorderThickness="1"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource AccentFill12Brush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AcaoSecundariaDoCorpo" TargetType="Button" BasedOn="{StaticResource AcaoDoCorpo}">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Casca" CornerRadius="9"
+                                Background="Transparent"
+                                BorderBrush="{StaticResource BorderCardBrush}"
+                                BorderThickness="1"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Casca" Property="Background"
+                                        Value="{StaticResource SurfaceHoverSoftBrush}"/>
+                                <Setter Property="Foreground"
+                                        Value="{StaticResource TextBodyBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
     <!-- ═══ §3.11  O "CAIXA DE ENTRADA" DO CAMINHO ═══════════════════════════
          Sem borda e sem fundo: é um caminho, não uma ação. Só a cor muda no
          hover, que é o que diz que ele leva a algum lugar. -->

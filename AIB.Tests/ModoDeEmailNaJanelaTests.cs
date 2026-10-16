@@ -681,6 +681,53 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void AsAcoesDaEspera_PEDEM_ENaVencida_PararViraDispensar()
+        {
+            // Decisões do usuário (16/10/2026): o item em espera ganha "Abrir com <NOME>", e a
+            // conversa vencida continua na seção, com "Dispensar" no lugar de "Parar de vigiar".
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var item = new EsperaItem { NomeDaInteligencia = "Ellen", RotuloDoCliente = "" };
+                item.Preencher(Espera(), new DateTime(2026, 10, 17, 12, 0, 0, DateTimeKind.Utc).ToLocalTime());
+
+                var parar = (Button)item.FindName("BotaoParar");
+                parar.Content.Should().Be("Parar de vigiar");
+                ((Button)item.FindName("BotaoAbrirNoCliente")).Visibility.Should().Be(Visibility.Collapsed,
+                    "sem endereço do webmail o botão não teria para onde ir");
+
+                var pedidos = new System.Collections.Generic.List<string>();
+                item.PediuAbrirComIA += (_, _) => pedidos.Add("abrir");
+                item.PediuEstender += (_, _) => pedidos.Add("estender");
+                item.PediuParar += (_, _) => pedidos.Add("parar");
+
+                foreach (var nome in new[] { "BotaoAbrirComIA", "BotaoEstender", "BotaoParar" })
+                    ((Button)item.FindName(nome)).RaiseEvent(
+                        new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
+                pedidos.Should().Equal("abrir", "estender", "parar");
+
+                item.Preencher(Espera(), new DateTime(2026, 10, 25, 12, 0, 0, DateTimeKind.Utc).ToLocalTime());
+                parar.Content.Should().Be("Dispensar");
+            });
+        }
+
+        [Fact]
+        public void AbrirComIA_NumaEspera_UsaAMesmaChaveDaConversaDaLista()
+        {
+            // Quando a resposta chegar, o item passa para "Para você responder" — e "Abrir com"
+            // ali tem de reencontrar a conversa começada aqui, não abrir outra.
+            var email = ChatWindow.ComoEmail(Espera());
+
+            Services.Mail.ArquivoDeConversas.ChaveDaConversa(email)
+                .Should().Be(Services.Mail.ArquivoDeConversas.Chave("eu@empresa.com", "77", 0));
+            email.AwaitingMe.Should().BeFalse();
+            email.Iniciada.Should().BeTrue();
+            email.Description.Should().Contain("ana@parceiro.com").And.Contain("ainda não houve resposta");
+        }
+
+        [Fact]
         public void OSelo_VOCE_INICIOU_SoAparece_NaConversaQueVoceComecou()
         {
             // Pedido do usuário (16/10/2026): quando chega a resposta a uma proposta que ele

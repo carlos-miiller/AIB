@@ -672,6 +672,10 @@ public partial class App : System.Windows.Application
                                                ?? (System.Collections.Generic.IReadOnlyList<Services.Mail.EsperaDeRetorno>)
                                                   Array.Empty<Services.Mail.EsperaDeRetorno>();
 
+            // "+7 dias" e "Parar de vigiar"/"Dispensar" mexem só no vigias.json — nada no servidor.
+            _chatWindow.EstenderEspera = espera => _vigia?.EstenderEspera(espera.ThreadId);
+            _chatWindow.PararEspera = espera => _vigia?.PararEspera(espera.ThreadId);
+
             // "Ignorar" (§3.10): tira a conversa da tela até chegar mensagem nova. Não toca o
             // servidor — a caixa continua somente leitura.
             _chatWindow.IgnorarEmail = item => _vigia?.Ignorar(item);

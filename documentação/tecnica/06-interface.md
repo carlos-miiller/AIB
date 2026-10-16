@@ -243,14 +243,24 @@ da mesma linha da grade; a janela não muda de tamanho. São três estados, e s�
 | Lista | `MontarCaixaDeEntrada`: os `MailListItem` vindos do vigia, já ordenados por urgência, e a linha "N e-mail(s) · N urgente(s) · N tokens · N aguardando". Barra de entrada e rodapé somem. Havendo conversa em espera, a lista abre com a seção **"Aguardando retorno · N"** (`MontarEsperas`, `EsperaItem`; no máximo `EsperasVisiveis` = 3 antes de "Mostrar mais N") e segue com **"Para você responder · N"**. Uma conversa só aparece num lugar (`ForaDaEspera`). |
 | Leitura | O cabeçalho vira caminho "Caixa de entrada › assunto", com "Abrir no cliente", "Recarregar" e "Descartar esta conversa". A conversa é a mesma do chat. |
 
-A janela não conhece o vigia. O `App` injeta quatro delegados: `FonteDeEmails` (último digest),
-`FonteDeEsperas` (`MailDigestService.Esperas`), `IgnorarEmail` e `RecarregarEmail`.
+A janela não conhece o vigia. O `App` injeta seis delegados: `FonteDeEmails` (último digest),
+`FonteDeEsperas` (`MailDigestService.Esperas`), `EstenderEspera`, `PararEspera`, `IgnorarEmail` e
+`RecarregarEmail`.
 
 `EsperaItem` (a linha de espera): relógio, assunto, "Para: …", "Enviado … · sem resposta" ou "Você
 respondeu … · N mensagens", o prazo ("7 dias" / "até 23/10", "hoje", "venceu" / "em 23/10") e uma
 barra fina do prazo consumido. Três estados pintados em código: normal (lilás), vencendo — falta um
 dia ou menos — (`WarnBrush`) e vencida (`DangerBrush`, e o relógio vira alerta). Clique abre o
-acordeão com o histórico curto; um aberto por vez.
+acordeão com o histórico curto e as ações (estilos `AcaoDoCorpo`/`AcaoSecundariaDoCorpo`, agora em
+`Controls.xaml`, compartilhados com o `MailListItem`); um aberto por vez:
+
+- **Abrir com &lt;NOME&gt;** — `ChatWindow.ComoEmail` vira a espera num `MailSummary` com a mesma chave
+  de conversa da lista (`conta|thr:id`), e segue o caminho de sempre (`AbrirEmailNoChat`). Some sem
+  conta (conversa sem histórico em disco).
+- **Abrir no &lt;provedor&gt;** — `LinkDoEmail`; some sem endereço.
+- **+7 dias** — `EstenderEspera` → `VigiasDoEmail.Estender` (contado de hoje se já venceu).
+- **Parar de vigiar** (ou **Dispensar**, vencida) — confirma e chama `PararEspera` →
+  `VigiasDoEmail.Parar`. Nada no servidor.
 
 - **Abrir com a IA** (`AbrirEmailNoChat`): se já existe conversa sobre aquela thread, volta a ela
   sem chamar o modelo (`RetomarConversaDoEmail`). Senão, o turno começa com

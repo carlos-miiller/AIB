@@ -57,6 +57,12 @@ public partial class ChatWindow
     /// </summary>
     public const int EsperasVisiveis = 3;
 
+    /// <summary>"+7 dias" de uma espera. Delegado: quem guarda as vigias é o vigia.</summary>
+    public Action<EsperaDeRetorno>? EstenderEspera { get; set; }
+
+    /// <summary>"Parar de vigiar" e "Dispensar". Delegado, como <see cref="EstenderEspera"/>.</summary>
+    public Action<EsperaDeRetorno>? PararEspera { get; set; }
+
     /// <summary>A espera aberta no acordeão, pela thread. Uma por vez, como na lista.</summary>
     private string? _esperaAberta;
 
@@ -352,8 +358,29 @@ public partial class ChatWindow
 
             item.Preencher(espera, agora);
             item.Aberto = string.Equals(espera.ThreadId, _esperaAberta, StringComparison.Ordinal);
+            item.NomeDaInteligencia = NomeDaInteligencia();
+
+            // Sem conta (conversa sem histórico em disco) não há caixa onde abrir nem de onde
+            // ler: os dois botões somem em vez de falhar.
+            bool temConta = espera.Conta.Length > 0;
+            item.RotuloDoCliente = temConta && LinkDoEmail.Para(espera.Conta, espera.ThreadId).Length > 0
+                ? LinkDoEmail.Rotulo(espera.Conta, espera.ThreadId)
+                : "";
+            item.BotaoAbrirComIA.Visibility = temConta ? Visibility.Visible : Visibility.Collapsed;
 
             var alvo = espera;
+
+            item.PediuAbrirComIA += (_, _) => AbrirEmailNoChat(ComoEmail(alvo));
+            item.PediuAbrirNoCliente += (_, _) =>
+                MailListItem.AbrirNoNavegador(LinkDoEmail.Para(alvo.Conta, alvo.ThreadId));
+
+            item.PediuEstender += (_, _) =>
+            {
+                EstenderEspera?.Invoke(alvo);
+                MontarCaixaDeEntrada();
+            };
+
+            item.PediuParar += (_, _) => PararDeEsperar(alvo);
             item.PediuAlternar += (_, _) =>
             {
                 _esperaAberta = string.Equals(alvo.ThreadId, _esperaAberta, StringComparison.Ordinal)
@@ -383,6 +410,64 @@ public partial class ChatWindow
         };
 
         ListaDaCaixa.Children.Add(mais);
+    }
+
+    /// <summary>
+    /// Uma espera vista como e-mail, para "Abrir com &lt;NOME&gt;" seguir o MESMO caminho da
+    /// lista — mesma chave de conversa (<c>conta|thr:id</c>), então a conversa aberta aqui é
+    /// reencontrada quando a resposta chegar e o item passar para "Para você responder".
+    /// <para>
+    /// O resumo diz o que se sabe e nada mais: quem escreveu foi você, e não houve triagem. O
+    /// texto da mensagem o modelo lê com <c>mail_read</c>, que agora procura também na pasta
+    /// de enviados.
+    /// </para>
+    /// </summary>
+    public static MailSummary ComoEmail(EsperaDeRetorno e)
+    {
+        string para = e.Para.Length > 0 ? " para " + e.Para : "";
+        string quando = e.EnviadaEm.ToLocalTime().ToString("dd/MM/yyyy, HH:mm");
+
+        return new MailSummary(
+            Name: EsperaItem.Assunto(e),
+            Description: $"Conversa sua aguardando retorno: você escreveu{para} em {quando}, "
+                         + $"e ainda não houve resposta. Prazo da espera: {e.Ate.ToLocalTime():dd/MM}.",
+            Urgency: MailUrgency.Media,
+            Url: LinkDoEmail.Para(e.Conta, e.ThreadId),
+            Account: e.Conta,
+            LastMessageAt: e.EnviadaEm.ToLocalTime(),
+            MessageCount: e.Mensagens,
+            AwaitingMe: false,
+            ThreadId: e.ThreadId,
+            De: e.Conta,
+            Iniciada: e.Iniciada);
+    }
+
+    /// <summary>
+    /// "Parar de vigiar" (ou "Dispensar", vencida), depois de confirmar. Não há desfazer pela
+    /// tela: a conversa só volta com uma mensagem sua nova nela, e a pergunta diz isso.
+    /// </summary>
+    private void PararDeEsperar(EsperaDeRetorno alvo)
+    {
+        if (PararEspera == null) return;
+
+        bool confirmado;
+        using (ModalGuard.Enter())
+        {
+            confirmado = ConfirmDialog.Perguntar(
+                this,
+                "Parar de esperar retorno desta conversa?",
+                "Ela sai de \"Aguardando retorno\". Se responderem, a resposta aparece na caixa como "
+                + "qualquer outra. Nada é apagado no servidor, e ela volta se você escrever de novo nela.",
+                ferramenta: "e-mail",
+                alvo: EsperaItem.Assunto(alvo),
+                dica: "não há desfazer pela tela");
+        }
+
+        if (!confirmado) return;
+
+        PararEspera(alvo);
+        if (string.Equals(_esperaAberta, alvo.ThreadId, StringComparison.Ordinal)) _esperaAberta = null;
+        MontarCaixaDeEntrada();
     }
 
     /// <summary>
