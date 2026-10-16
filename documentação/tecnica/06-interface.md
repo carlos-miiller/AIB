@@ -637,8 +637,12 @@ mudança) e "Salvar". Depois de salvar, a janela chama `ChatWindow.ApplyCharacte
 Confirmação modal para o que não acontece dentro de um turno: excluir conversa do histórico,
 descartar conversa de e-mail, ignorar e-mail, remover conta, reset de fábrica, descartar alterações
 das configurações. Substitui o `MessageBox` do sistema, que ignora a paleta. O caminho de uso é
-`ConfirmDialog.Perguntar(dono, pergunta, consequencia, ferramenta, alvo, dica)`, que devolve `true`
-só no clique em "Permitir"; X, `Esc` e "Recusar" devolvem `false`. Quem chama de dentro da conversa
+`ConfirmDialog.Perguntar(dono, pergunta, consequencia, ferramenta, alvo, dica, acao, temVolta, pill,
+palavra)`, que devolve `true` só no clique no botão da ação; X, `Esc` e "Cancelar" devolvem `false`.
+O botão diz a ação (`acao`: "Descartar", "Ignorar", "Apagar tudo") em vez de "Permitir"; `temVolta`
+pinta pill e botão de laranja (ignorar, parar de vigiar, remover conta), e sem volta fica vermelho;
+a pill diz o que importa ("Não há desfazer", "Volta com mensagem nova"). O reset de fábrica pede
+`palavra: "RESTAURAR"`: o botão só acende com ela digitada, maiúsculas como pedidas. Quem chama de dentro da conversa
 envolve a chamada em `ModalGuard.Enter()`.
 
 ## Código estacionado

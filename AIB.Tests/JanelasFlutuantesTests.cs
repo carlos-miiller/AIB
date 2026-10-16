@@ -33,6 +33,52 @@ namespace AIB.Tests
             ConfirmCardView.RiscoDe(ferramenta, alvo, bloqueado).Risco.Should().Be(esperado);
         }
 
+        // ─────────────────────────────────────────────────────────────────
+        // Pergunta do AIB
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void APergunta_DizAAcaoNoBotao_ENaoPermitirRecusar()
+        {
+            // "Permitir/Recusar" são as palavras do portão de ferramentas; numa ação que o
+            // próprio usuário pediu ("Ignorar esta conversa?") elas não dizem o que acontece.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var janela = ConfirmDialog.Montar(null, "Ignorar esta conversa?", "Ela sai da caixa.",
+                    acao: "Ignorar", temVolta: true, pill: "Volta com mensagem nova");
+
+                ((Button)janela.FindName("PermitirButton")).Content.Should().Be("Ignorar");
+                ((Button)janela.FindName("RecusarButton")).Content.Should().Be("Cancelar");
+                ((TextBlock)janela.FindName("PillTexto")).Text.Should().Be("Volta com mensagem nova");
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void OReset_SoAcende_ComAPalavraDigitada()
+        {
+            // Decisão do usuário (16/10/2026): a ação mais destrutiva do app pede RESTAURAR.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var janela = ConfirmDialog.Montar(null, "Restaurar o AIB?", "Some tudo.",
+                    acao: "Apagar tudo", palavra: "RESTAURAR");
+
+                var botao = (Button)janela.FindName("PermitirButton");
+                var campo = (TextBox)janela.FindName("PalavraTexto");
+
+                botao.IsEnabled.Should().BeFalse();
+                campo.Text = "restaurar";
+                botao.IsEnabled.Should().BeFalse("maiúsculas como pedidas");
+                campo.Text = "RESTAURAR";
+                botao.IsEnabled.Should().BeTrue();
+                janela.Close();
+            });
+        }
+
         [Fact]
         public void SoAFlutuante_MudaDeCor_OCardDaConversaContinuaComoEra()
         {

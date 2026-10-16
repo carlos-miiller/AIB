@@ -35,13 +35,46 @@ public partial class ConfirmDialog : Window
     /// <param name="ferramenta">Nome da ferramenta, quando houver alvo literal.</param>
     /// <param name="alvo">Caminho ou comando exato, quando houver.</param>
     /// <param name="dica">Texto curto à direita do rodapé.</param>
+    /// <param name="acao">
+    /// O botão diz a ação ("Descartar", "Ignorar", "Apagar tudo"). Era "Permitir/Recusar", as
+    /// palavras do portão de ferramentas — que não fazem sentido para uma ação que o próprio
+    /// usuário pediu.
+    /// </param>
+    /// <param name="temVolta">
+    /// A ação dá para desfazer (a conversa ignorada volta, a vigia recomeça): pill e botão em
+    /// laranja. Sem volta, vermelho.
+    /// </param>
+    /// <param name="pill">O que a pill diz; sem ele, "Não há desfazer" ou "Dá para voltar".</param>
+    /// <param name="palavra">
+    /// Uma palavra que o usuário tem de digitar para o botão acender — só no reset de fábrica,
+    /// a ação mais destrutiva do app.
+    /// </param>
     public static bool Perguntar(
         Window? dono,
         string pergunta,
         string consequencia,
         string? ferramenta = null,
         string? alvo = null,
-        string? dica = null)
+        string? dica = null,
+        string acao = "Confirmar",
+        bool temVolta = false,
+        string? pill = null,
+        string? palavra = null) =>
+        Montar(dono, pergunta, consequencia, ferramenta, alvo, dica, acao, temVolta, pill, palavra)
+            .ShowDialog() == true;
+
+    /// <summary>A janela preenchida, sem abrir. Público para o ensaio.</summary>
+    public static ConfirmDialog Montar(
+        Window? dono,
+        string pergunta,
+        string consequencia,
+        string? ferramenta = null,
+        string? alvo = null,
+        string? dica = null,
+        string acao = "Confirmar",
+        bool temVolta = false,
+        string? pill = null,
+        string? palavra = null)
     {
         var janela = new ConfirmDialog
         {
@@ -60,12 +93,44 @@ public partial class ConfirmDialog : Window
         }
 
         janela.DicaText.Text = dica ?? "";
+        janela.PermitirButton.Content = acao;
+        janela.PillTexto.Text = pill ?? (temVolta ? "Dá para voltar" : "Não há desfazer");
 
-        // O foco nasce no "Recusar". Enter sem ler o texto não pode executar a ação.
-        janela.Loaded += (_, _) => janela.RecusarButton.Focus();
+        if (temVolta)
+        {
+            janela.Pill.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "WarnFill10Brush");
+            janela.Pill.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "WarnBorderBrush");
+            janela.PillTexto.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "WarnBrush");
+            janela.PillIcone.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "WarnBrush");
+            janela.AlvoFerramentaText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "WarnBrush");
+            janela.PermitirButton.SetResourceReference(StyleProperty, "WarnFilledButton");
+        }
 
-        return janela.ShowDialog() == true;
+        if (!string.IsNullOrWhiteSpace(palavra))
+        {
+            janela._palavra = palavra;
+            janela.PalavraRotulo.Text = $"Para confirmar, digite {palavra}";
+            janela.PalavraBox.Visibility = Visibility.Visible;
+            janela.PermitirButton.IsEnabled = false;
+        }
+
+        // O foco nasce no "Cancelar" (ou na palavra). Enter sem ler o texto não pode executar a
+        // ação.
+        janela.Loaded += (_, _) =>
+        {
+            if (janela._palavra != null) janela.PalavraTexto.Focus();
+            else janela.RecusarButton.Focus();
+        };
+
+        return janela;
     }
+
+    private string? _palavra;
+
+    /// <summary>O botão só acende com a palavra inteira, maiúsculas e minúsculas como pedidas.</summary>
+    private void Palavra_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e) =>
+        PermitirButton.IsEnabled = _palavra == null
+                                   || string.Equals(PalavraTexto.Text.Trim(), _palavra, System.StringComparison.Ordinal);
 
     private void Permitir_Click(object sender, RoutedEventArgs e)
     {

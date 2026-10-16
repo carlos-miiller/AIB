@@ -1168,7 +1168,10 @@ public partial class SettingsWindow : Window
             "Remover esta conta de e-mail?",
             $"A caixa {conta.Address} sai da lista e a senha de app dela é apagada do cofre. "
                 + "A conta de e-mail em si não é afetada.",
-            dica: "apaga a senha guardada");
+            dica: "apaga a senha guardada",
+            acao: "Remover conta",
+            temVolta: true,
+            pill: "Dá para conectar de novo");
 
         if (!permitido) return;
 
@@ -2200,7 +2203,8 @@ public partial class SettingsWindow : Window
                 this,
                 "Descartar as alterações?",
                 "As mudanças feitas nesta tela não foram salvas e serão perdidas.",
-                dica: "nada foi gravado ainda");
+                dica: "nada foi gravado ainda",
+                acao: "Descartar");
 
             if (!descartar) return;
         }
@@ -2228,7 +2232,12 @@ public partial class SettingsWindow : Window
                 + "Não é possível desfazer. O AIB será encerrado e volta como na primeira vez.",
             ferramenta: "factory_reset",
             alvo: DirectoryService.DataDir,
-            dica: "irreversível");
+            acao: "Apagar tudo",
+            pill: "Apaga tudo",
+
+            // Pedido do usuário (16/10/2026): a ação mais destrutiva do app pede uma palavra
+            // digitada, e não só um clique.
+            palavra: "RESTAURAR");
 
         if (!permitido) return;
 

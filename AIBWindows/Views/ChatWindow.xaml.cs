@@ -2467,7 +2467,7 @@ public partial class ChatWindow : Window
                 + "agora não é alterado.",
                 ferramenta: "histórico",
                 alvo: titulo,
-                dica: "não há desfazer");
+                acao: "Excluir");
         }
 
         if (!confirmado) return;

@@ -476,7 +476,9 @@ public partial class ChatWindow
                 + "qualquer outra. Nada é apagado no servidor, e ela volta se você escrever de novo nela.",
                 ferramenta: "e-mail",
                 alvo: EsperaItem.Assunto(alvo),
-                dica: "não há desfazer pela tela");
+                acao: "Parar de vigiar",
+                temVolta: true,
+                pill: "Volta se você escrever de novo");
         }
 
         if (!confirmado) return;
@@ -984,7 +986,7 @@ public partial class ChatWindow
                 + "memory/sessions continua onde está.",
                 ferramenta: "histórico",
                 alvo: alvo.Name,
-                dica: "não há desfazer");
+                acao: "Descartar");
         }
     }
 
@@ -1036,7 +1038,9 @@ public partial class ChatWindow
                 + "IA, se houver, continua no histórico.",
                 ferramenta: "e-mail",
                 alvo: alvo.Name,
-                dica: "não há desfazer pela tela");
+                acao: "Ignorar",
+                temVolta: true,
+                pill: "Volta com mensagem nova");
         }
 
         if (!confirmado) return;
