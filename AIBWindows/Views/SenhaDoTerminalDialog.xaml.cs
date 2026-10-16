@@ -1,8 +1,10 @@
 using System;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using AIB.Services;
 using AIB.Services.Terminal;
 
 namespace AIB.Views;
@@ -95,10 +97,18 @@ public partial class SenhaDoTerminalDialog : Window
         return (titulo, explicacao, aviso, rotulo);
     }
 
-    /// <summary>Abre a janela e devolve a resposta, ou null se o usuário cancelou.</summary>
-    public static RespostaDoUsuario? Perguntar(PedidoDeSenha pedido)
+    /// <summary>
+    /// Abre a janela e devolve a resposta, ou null se o usuário cancelou.
+    /// <para>
+    /// Pela fila das flutuantes, e não por <c>ShowDialog</c>: dois pedidos ao mesmo tempo (dois
+    /// comandos em paralelo, cada um com o seu ssh) abriam um diálogo modal DENTRO do outro, e
+    /// as janelas nasciam empilhadas. Agora o segundo espera o primeiro ser respondido.
+    /// </para>
+    /// </summary>
+    public static Task<RespostaDoUsuario?> PerguntarAsync(PedidoDeSenha pedido)
     {
         var janela = Montar(pedido);
+        var resposta = new TaskCompletionSource<RespostaDoUsuario?>();
 
         // Com o orbe na tela, logo acima dele; sem orbe, no centro. 45 é a margem de baixo da
         // casca no XAML, reservada para a sombra.
@@ -106,8 +116,10 @@ public partial class SenhaDoTerminalDialog : Window
 
         // A janela nasce no meio de um comando, com a AIB talvez em segundo plano.
         janela.Loaded += (_, _) => janela.Activate();
-        janela.ShowDialog();
-        return janela._resposta;
+        janela.Closed += (_, _) => resposta.TrySetResult(janela._resposta);
+
+        Flutuantes.Mostrar(janela, VezDaJanela.Pergunta);
+        return resposta.Task;
     }
 
     /// <summary>A janela preenchida, sem abrir. Público para o ensaio.</summary>

@@ -732,8 +732,10 @@ public partial class ChatWindow : Window
             // tomava a tela de quem só pediu uma coisa rápida ao orbe.
             if (DeveUsarJanelaDoOrbe(IsVisible, PertoDoOrbe.Ativo))
             {
+                // Pela fila: várias ferramentas na mesma volta pedem confirmação ao mesmo
+                // tempo, e cada uma abria a sua janela em cima da outra.
                 var janela = new ConfirmacaoDoOrbeWindow(novo);
-                janela.Show();
+                Flutuantes.Mostrar(janela, VezDaJanela.Pergunta);
                 return (novo, (ConfirmacaoDoOrbeWindow?)janela);
             }
 
@@ -774,6 +776,9 @@ public partial class ChatWindow : Window
                 // tooltip. Uma recusa vira ícone vermelho, com o mesmo registro.
                 if (janelaDoOrbe is not null)
                 {
+                    // Saiu explícito: descartada enquanto esperava a vez, ela nunca apareceu,
+                    // e não se conta com o Closed de uma janela que não chegou a abrir.
+                    Flutuantes.Fila.Saiu(janelaDoOrbe);
                     janelaDoOrbe.Close();
                     return;
                 }

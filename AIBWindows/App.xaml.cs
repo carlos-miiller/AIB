@@ -605,7 +605,7 @@ public partial class App : System.Windows.Application
             PertoDoOrbe.Ancora = () => _orbe?.RetanguloDoOrbe();
 
             Services.Terminal.AskpassServidor.Padrao = new Services.Terminal.AskpassServidor(
-                pedido => Dispatcher.InvokeAsync(() => SenhaDoTerminalDialog.Perguntar(pedido)).Task);
+                pedido => Dispatcher.InvokeAsync(() => SenhaDoTerminalDialog.PerguntarAsync(pedido)).Task.Unwrap());
             _toolRegistry = new ToolRegistry(_confirmationPrompt, _settingsService);
             _tokenCounter = new TokenCounter();
             _healer = new RegexToolCallHealer();

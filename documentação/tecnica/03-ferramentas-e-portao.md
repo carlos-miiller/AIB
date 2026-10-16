@@ -225,7 +225,10 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
   desconectada, a resposta é recusa.
 - **No modo orbe** (conversa fora da tela, orbe visível — `ChatWindow.DeveUsarJanelaDoOrbe`), o
   MESMO `ConfirmCardView` vai para uma `ConfirmacaoDoOrbeWindow` logo acima do orbe, em vez de
-  abrir a conversa. Fechar a janela ou Esc é recusa. A posição vem de `PertoDoOrbe` (centrada na
+  abrir a conversa. Fechar a janela ou Esc é recusa. As duas janelas de pergunta (esta e a de
+  senha) entram pela **fila das flutuantes** (`Flutuantes.Mostrar`, `FilaDeJanelas`): uma por vez,
+  na ordem em que chegaram; a pergunta tira um aviso da tela e ele volta depois. Antes, várias
+  ferramentas na mesma volta abriam cada uma a sua janela, empilhadas. A posição vem de `PertoDoOrbe` (centrada na
   casca do orbe, `ShadowAssistantWindow.RetanguloDoOrbe`; sem espaço acima, abaixo; sempre dentro
   da área de trabalho), que também posiciona a janela de senha do terminal. Sem orbe, as duas
   ficam como antes: card na conversa, senha no centro da tela.
