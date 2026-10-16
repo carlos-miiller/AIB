@@ -76,6 +76,7 @@
     <SolidColorBrush x:Key="DangerTextBrush"       Color="#FFC02A2F"/>
     <SolidColorBrush x:Key="DangerHoverBrush"      Color="#FFF05257"/>
     <SolidColorBrush x:Key="WarnBrush"             Color="#FFC2601A"/>
+    <SolidColorBrush x:Key="TextOnWarnBrush"       Color="#FFFFFFFF"/>  <!-- texto sobre o botão laranja das flutuantes -->
     <SolidColorBrush x:Key="MagentaBrush"          Color="#FFC0307A"/>
 
     <!-- Link e destaque azul (o azul do degradê, um tom abaixo para contraste). Ouro:

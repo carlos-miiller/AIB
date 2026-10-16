@@ -228,7 +228,13 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
   abrir a conversa. Fechar a janela ou Esc é recusa. As duas janelas de pergunta (esta e a de
   senha) entram pela **fila das flutuantes** (`Flutuantes.Mostrar`, `FilaDeJanelas`): uma por vez,
   na ordem em que chegaram; a pergunta tira um aviso da tela e ele volta depois. Antes, várias
-  ferramentas na mesma volta abriam cada uma a sua janela, empilhadas. A posição vem de `PertoDoOrbe` (centrada na
+  ferramentas na mesma volta abriam cada uma a sua janela, empilhadas. Na janela, o card perde a
+  casca de bolha (`ConfirmCardView.ParaFlutuante`) e a pill e o "Permitir" seguem o **risco**
+  (`RiscoDe`): vermelho (`DangerFilledButton`) só para o que apaga ou sobrescreve sem volta (write
+  sobre arquivo, edit, comando da lista de negação); laranja (`WarnFilledButton`) para o que
+  executa ou dá para desfazer (shell, Lixeira, navegador, lembrete, criar arquivo); lilás
+  (`AccentFilledButton`) para o que só guarda ou lê (memória, nota, manual de habilidade). O antes
+  e depois do edit ganha fundo vermelho/verde por linha. O card DENTRO da conversa não muda. A posição vem de `PertoDoOrbe` (centrada na
   casca do orbe, `ShadowAssistantWindow.RetanguloDoOrbe`; sem espaço acima, abaixo; sempre dentro
   da área de trabalho), que também posiciona a janela de senha do terminal. Sem orbe, as duas
   ficam como antes: card na conversa, senha no centro da tela.

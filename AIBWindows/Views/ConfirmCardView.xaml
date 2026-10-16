@@ -10,7 +10,7 @@
         conteúdo — pill, título e botão vermelho —, não da moldura. Uma borda
         vermelha faria o card gritar antes de o usuário ler o que ele diz.
     -->
-    <Border MaxWidth="560"
+    <Border x:Name="Casca" MaxWidth="560"
             Padding="18,16"
             CornerRadius="{StaticResource RadiusBubble}"
             Background="{StaticResource SurfaceCardBrush}"
@@ -20,18 +20,18 @@
         <StackPanel>
 
             <!-- (a) PILL — geometria da pill de nível, em vermelho. -->
-            <Border Style="{StaticResource PillBorder}"
+            <Border x:Name="Pill" Style="{StaticResource PillBorder}"
                     Background="{StaticResource DangerFill14Brush}"
                     BorderBrush="{StaticResource DangerEdge32Brush}"
                     HorizontalAlignment="Left">
                 <StackPanel Orientation="Horizontal">
-                    <Path Data="M6,1 L11.5,10.5 L0.5,10.5 Z M6,4.6 L6,7.4 M6,8.8 L6,9.2"
+                    <Path x:Name="PillIcone" Data="M6,1 L11.5,10.5 L0.5,10.5 Z M6,4.6 L6,7.4 M6,8.8 L6,9.2"
                           Stroke="{StaticResource DangerTextBrush}" StrokeThickness="1.2"
                           StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                           StrokeLineJoin="Round"
                           Width="12" Height="11" Stretch="None"
                           VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <TextBlock Text="Ação destrutiva" Style="{StaticResource PillText}"
+                    <TextBlock x:Name="PillTexto" Text="Ação destrutiva" Style="{StaticResource PillText}"
                                Foreground="{StaticResource DangerTextBrush}"/>
                 </StackPanel>
             </Border>

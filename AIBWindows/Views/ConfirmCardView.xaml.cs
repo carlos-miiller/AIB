@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using AIB.Services;
@@ -38,6 +39,10 @@ public partial class ConfirmCardView : UserControl
     {
         string ferramenta = contexto.Tool ?? "";
         string alvo = contexto.Command ?? "";
+
+        _ferramenta = ferramenta;
+        _alvo = alvo;
+        _bloqueado = contexto.DenylistHit;
 
         // CRIAR e SOBRESCREVER são decisões diferentes. O card dizia "o conteúdo atual será
         // substituído" também para um arquivo que ainda não existe — e um aviso que erra no caso
@@ -252,6 +257,110 @@ public partial class ConfirmCardView : UserControl
         _relogio?.Stop();
         if (SempreCheck.IsMouseCaptured) SempreCheck.ReleaseMouseCapture();
         if (SempreCheck.IsChecked != true) SempreCheck.Content = RotuloDeSegurar;
+    }
+
+    // ── A versão flutuante (perto do orbe) ─────────────────────────────────
+
+    private string _ferramenta = "";
+    private string _alvo = "";
+    private bool _bloqueado;
+
+    /// <summary>O que a pill da janela flutuante diz, e em que cor.</summary>
+    public enum Risco { Destrutivo, Cuidado, Leitura }
+
+    /// <summary>
+    /// O risco de uma ação, para a janela flutuante. VERMELHO só para o que apaga ou
+    /// sobrescreve sem volta; LARANJA para o que executa ou dá para desfazer; LILÁS para o que
+    /// só guarda ou lê.
+    /// <para>
+    /// Pedido do usuário (16/10/2026): o card dizia "Ação destrutiva" em vermelho para tudo,
+    /// até um Get-ChildItem — um alarme que toca sempre ensina a não ouvir o alarme. Só nas
+    /// janelas flutuantes: o card dentro da conversa continua como está, por decisão dele.
+    /// </para>
+    /// </summary>
+    public static (Risco Risco, string Rotulo) RiscoDe(string ferramenta, string alvo, bool bloqueado)
+    {
+        bool comeca(string prefixo) => alvo.StartsWith(prefixo, StringComparison.Ordinal);
+
+        if (bloqueado) return (Risco.Destrutivo, "Ação destrutiva");
+
+        return ferramenta switch
+        {
+            Ferramentas.Gravar when comeca("CRIAR ") => (Risco.Cuidado, "Cria um arquivo"),
+            Ferramentas.Gravar => (Risco.Destrutivo, "Ação destrutiva"),
+            Ferramentas.Editar => (Risco.Destrutivo, "Ação destrutiva"),
+            Ferramentas.Shell => (Risco.Cuidado, "Executa na sua máquina"),
+            Ferramentas.Habilidade when comeca("LER MANUAL ") => (Risco.Leitura, "Só leitura"),
+            Ferramentas.Habilidade => (Risco.Cuidado, "Executa na sua máquina"),
+            Ferramentas.Arquivos when comeca("APAGAR ") => (Risco.Cuidado, "Dá para restaurar"),
+            Ferramentas.Arquivos => (Risco.Cuidado, "Mexe em arquivos"),
+            Ferramentas.Navegador when comeca("ABRIR SITE NOVO ") => (Risco.Cuidado, "Abre um site"),
+            Ferramentas.Navegador when comeca("ANOTAR ") => (Risco.Leitura, "Guarda uma nota"),
+            Ferramentas.Navegador => (Risco.Cuidado, "Age no site, com seu login"),
+            Ferramentas.Lembrar => (Risco.Leitura, "Guarda na memória"),
+            Ferramentas.Lembrete => (Risco.Cuidado, "Agenda uma fala"),
+            _ => (Risco.Destrutivo, "Ação destrutiva")
+        };
+    }
+
+    /// <summary>O risco pintado — para o ensaio conferir sem comparar pincel.</summary>
+    public Risco Pintado { get; private set; } = Risco.Destrutivo;
+
+    /// <summary>
+    /// Prepara o card para a janela flutuante: sem a casca de bolha (a janela já tem a dela),
+    /// pill e "Permitir" na cor do risco, e o antes e depois do edit com as linhas coloridas.
+    /// </summary>
+    public void ParaFlutuante()
+    {
+        Casca.Background = System.Windows.Media.Brushes.Transparent;
+        Casca.BorderThickness = new Thickness(0);
+        Casca.Padding = new Thickness(0);
+        Casca.Effect = null;
+
+        var (risco, rotulo) = RiscoDe(_ferramenta, _alvo, _bloqueado);
+        Pintado = risco;
+        PillTexto.Text = rotulo;
+
+        var (texto, fundo, borda, botao) = risco switch
+        {
+            Risco.Cuidado => ("WarnBrush", "WarnFill10Brush", "WarnBorderBrush", "WarnFilledButton"),
+            Risco.Leitura => ("AccentLilacBrush", "AccentFill12Brush", "AccentBorderStrongBrush", "AccentFilledButton"),
+            _ => ("DangerTextBrush", "DangerFill14Brush", "DangerEdge32Brush", "DangerFilledButton")
+        };
+
+        Pill.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, fundo);
+        Pill.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, borda);
+        PillTexto.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, texto);
+        PillIcone.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, texto);
+        PermitirButton.SetResourceReference(StyleProperty, botao);
+        FerramentaText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, texto);
+
+        if (_ferramenta == Ferramentas.Editar && PreviaBorder.Visibility == Visibility.Visible)
+            ColorirDiferenca(PreviaText);
+    }
+
+    /// <summary>
+    /// As linhas "-" com fundo vermelho e as "+" com fundo verde. Só o fundo: a fonte e os
+    /// sinais ficam, e a captura em tons de cinza continua legível pelo - e pelo +.
+    /// </summary>
+    private void ColorirDiferenca(System.Windows.Controls.TextBlock alvo)
+    {
+        string texto = alvo.Text ?? "";
+        alvo.Inlines.Clear();
+
+        var linhas = texto.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
+        for (int i = 0; i < linhas.Length; i++)
+        {
+            var run = new System.Windows.Documents.Run(linhas[i]);
+
+            if (linhas[i].StartsWith("-", StringComparison.Ordinal))
+                run.SetResourceReference(System.Windows.Documents.TextElement.BackgroundProperty, "DangerFill12Brush");
+            else if (linhas[i].StartsWith("+", StringComparison.Ordinal))
+                run.SetResourceReference(System.Windows.Documents.TextElement.BackgroundProperty, "SuccessFill10Brush");
+
+            alvo.Inlines.Add(run);
+            if (i < linhas.Length - 1) alvo.Inlines.Add(new System.Windows.Documents.LineBreak());
+        }
     }
 
     private void Permitir_Click(object sender, RoutedEventArgs e) => Encerrar(true);

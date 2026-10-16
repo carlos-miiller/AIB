@@ -27,6 +27,7 @@ public partial class ConfirmacaoDoOrbeWindow : Window
         InitializeComponent();
         _card = card;
         _card.Margin = new Thickness(0);
+        _card.ParaFlutuante();
         Lugar.Content = _card;
 
         PertoDoOrbe.Posicionar(this, SombraEmbaixo);
