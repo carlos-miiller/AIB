@@ -963,6 +963,34 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task ASondagem_NaoMARCA_ComoTriado_OQueSoLeu()
+        {
+            // Defeito real (16/10/2026, achado ao ler o código): a sondagem de vinte em vinte
+            // minutos lia as mensagens novas, gravava o ponteiro da triagem e voltava sem chamar
+            // o modelo. O digest seguinte partia desse ponteiro — às 12:55 só se triava o que
+            // chegara depois das 12:40, e o resto da manhã ficava "triado" sem nunca ter sido.
+            var (vigia, provider, _, pasta) = MontarComPasta(
+                lidas: new[] { Msg(uid: 500, assunto: "Proposta") },
+                resposta: "[{\"uid\":500,\"urgencia\":\"media\",\"resumo\":\"responder\"}]");
+
+            var estado = new EstadoDasCaixas(pasta);
+            estado.Gravar("eu@empresa.com", new EstadoDaCaixa
+            {
+                UidValidity = 1, LastUid = 9999, LastTriagedUid = 400
+            });
+
+            await vigia.ExecutarAsync(comModelo: false, CancellationToken.None);
+
+            provider.Chamadas.Should().Be(0, "a sondagem não tria");
+            estado.Ler("eu@empresa.com")!.LastTriagedUid.Should().Be(400,
+                "o que a sondagem só leu continua por triar para o digest");
+
+            await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            estado.Ler("eu@empresa.com")!.LastTriagedUid.Should().Be(500, "o digest triou");
+        }
+
+        [Fact]
         public void MarketingENDERECADO_AVoce_CONTINUA_Marketing()
         {
             // Defeito real: um e-mail da Wellhub, de no-reply@, endereçado diretamente ao

@@ -312,6 +312,7 @@ public sealed class MailDigestService : IDisposable
         var regras = RegrasDoVigia.Ler(_caminhoDasRegras);
         var lidas = new List<MensagemDeEmail>();
         var respondidas = new List<ThreadRespondida>();
+        var progresso = new List<(string Endereco, EstadoDaCaixa? Guardado, LeituraDaCaixa Leitura)>();
 
         foreach (var caixa in caixas)
         {
@@ -329,7 +330,9 @@ public sealed class MailDigestService : IDisposable
                 guardado, caixa.Address, ct).ConfigureAwait(false);
 
             lidas.AddRange(leitura.Mensagens);
-            GravarProgresso(caixa.Address, guardado, leitura);
+
+            // O progresso só é gravado se esta passada TRIAR — ver o fim do laço.
+            progresso.Add((caixa.Address, guardado, leitura));
 
             // A pasta de enviados diz em que conversas ELE escreveu. Sai de graça, sem modelo,
             // e é o que sustenta "quem responde geralmente espera retorno".
@@ -392,7 +395,16 @@ public sealed class MailDigestService : IDisposable
         // significa rajadas vazias. O ramo que publicava um digest de rajada daqui era
         // inalcançável, e escondia que o caminho da rajada é o de baixo — com modelo,
         // resumindo o incidente.
+        //
+        // E SEM GRAVAR O PROGRESSO. A sondagem lê as mensagens novas mas não as tria; marcar
+        // até onde leu fazia o digest seguinte partir dali e nunca ver o que ela tinha lido.
+        // Com a sondagem de vinte em vinte minutos, o digest das 12:55 só triava o que chegara
+        // depois das 12:40 — tudo o que entrou de manhã ficava marcado como triado sem ter
+        // passado pelo modelo. Sem gravar, a sondagem seguinte relê o mesmo trecho; é só IMAP.
         if (!comModelo && !Urgente(rajadas)) return DigestoDeEmail.Vazio;
+
+        foreach (var (endereco, guardado, leitura) in progresso)
+            GravarProgresso(endereco, guardado, leitura);
 
         _ignoradasPeloModelo = 0;
         var itens = await ResumirAsync(sobem, config, ct).ConfigureAwait(false);

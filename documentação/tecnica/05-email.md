@@ -81,6 +81,9 @@ quem acende o anel tem de apagá-lo, inclusive em erro).
 Ponteiros em `~/.AIB/email/estado.json` (`EstadoDasCaixas`), chaveado pelo endereço: `LastUid`
 (contagem da tela de configurações) e `LastTriagedUid` (triagem) são **separados** — quando eram um
 só, abrir as configurações "consumia" a fila do vigia. `UidValidity` trocado descarta os ponteiros.
+`LastTriagedUid` só avança numa passada que **tria** (digest ou sondagem com rajada): a sondagem
+comum lê e não grava o ponteiro, e a seguinte relê o mesmo trecho. Antes ela gravava, e o digest só
+via o que chegara depois da última sondagem — o resto ficava "triado" sem ter passado pelo modelo.
 
 ---
 
