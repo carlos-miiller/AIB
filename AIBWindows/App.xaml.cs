@@ -131,7 +131,7 @@ public partial class App : System.Windows.Application
         // fechado, que continuava recebendo o fim de cada turno e mexendo numa janela morta.
         SoltarOrbe();
 
-        if (_chatWindow != null) _soltarOrbe = LigarOrbe(_chatWindow, orbe, _conversaDoOrbe);
+        if (_chatWindow != null) _soltarOrbe = LigarOrbe(_chatWindow, orbe, _conversaDoOrbe, AvisarRespostaDoShadow);
 
         return orbe;
     }
@@ -176,7 +176,12 @@ public partial class App : System.Windows.Application
     /// A conversa própria do orbe. Com ela, a barra fala com ela, e não com a janela. Nula nos
     /// ensaios antigos: aí a barra cai na conversa principal, escondida, como era antes.
     /// </param>
-    public static Action LigarOrbe(ChatWindow conversa, ShadowAssistantWindow orbe, ConversaDoOrbe? doOrbe = null)
+    /// <param name="avisarResposta">
+    /// A resposta da conversa do orbe chegou com a barra fechada: o App a mostra numa janela de
+    /// aviso com o selo "Shadow" (pedido do usuário, 16/10/2026). Nulo nos ensaios.
+    /// </param>
+    public static Action LigarOrbe(ChatWindow conversa, ShadowAssistantWindow orbe, ConversaDoOrbe? doOrbe = null,
+                                   Action<string>? avisarResposta = null)
     {
         void Enviou(string texto)
         {
@@ -194,7 +199,12 @@ public partial class App : System.Windows.Application
 
         // O turno da conversa do orbe: o passo acende o anel, e a resposta volta para a barra.
         void AndouNoOrbe(string passo, string? ferramenta) => orbe.MostrarEstado(passo, ferramenta);
-        void RespondeuNoOrbe(string texto) => orbe.ResponderTurno(texto);
+        void RespondeuNoOrbe(string texto)
+        {
+            bool barraFechada = !orbe.EmModoBarra;
+            orbe.ResponderTurno(texto);
+            if (barraFechada) avisarResposta?.Invoke(texto);
+        }
 
         // O contador da barra. O evento pode chegar de fora da thread da interface.
         void ContouNoOrbe(TokenReport r) => orbe.Dispatcher.BeginInvoke(() => orbe.MostrarTokens(r));
@@ -289,6 +299,15 @@ public partial class App : System.Windows.Application
     /// A resposta da conversa principal chegou com a janela escondida: aviso verde (ou vermelho,
     /// com erro), no lugar do balão da bandeja. "Abrir conversa" traz a janela de volta.
     /// </summary>
+    /// <summary>A resposta da conversa do orbe chegou com a barra fechada: aviso com o selo "Shadow".</summary>
+    private void AvisarRespostaDoShadow(string texto)
+    {
+        var (receita, vez) = Views.Avisos.DePronta(texto, null, AcoesDosAvisos().NomeDaIA, shadow: true,
+            abrir: () => _orbe?.AbrirBarra());
+
+        Views.Flutuantes.Mostrar(Views.AvisoWindow.Montar(receita), vez);
+    }
+
     public void AvisarRespostaPronta(string texto, string? erro)
     {
         var (receita, vez) = Views.Avisos.DePronta(texto, erro, AcoesDosAvisos().NomeDaIA, shadow: false,
@@ -633,7 +652,11 @@ public partial class App : System.Windows.Application
             PertoDoOrbe.Ancora = () => _orbe?.RetanguloDoOrbe();
 
             Services.Terminal.AskpassServidor.Padrao = new Services.Terminal.AskpassServidor(
-                pedido => Dispatcher.InvokeAsync(() => SenhaDoTerminalDialog.PerguntarAsync(pedido)).Task.Unwrap());
+                // O pedido chega por um pipe, fora do fluxo do turno: de quem é o comando se deduz
+                // de quem está trabalhando. Só o orbe ocupado é "do Shadow"; os dois, ou só a
+                // janela, ficam sem selo.
+                pedido => Dispatcher.InvokeAsync(() => SenhaDoTerminalDialog.PerguntarAsync(pedido,
+                    shadow: _conversaDoOrbe?.Ocupada == true && _chatWindow?.Ocupada != true)).Task.Unwrap());
             _toolRegistry = new ToolRegistry(_confirmationPrompt, _settingsService);
             _tokenCounter = new TokenCounter();
             _healer = new RegexToolCallHealer();

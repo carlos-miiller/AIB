@@ -36,6 +36,21 @@
                 </StackPanel>
             </Border>
 
+            <!-- SELO "SHADOW": o pedido veio da conversa do orbe. Só na janela flutuante
+                 (ParaFlutuante); dentro da conversa não há dúvida de onde veio. -->
+            <Border x:Name="SeloShadow" Style="{StaticResource PillBorder}"
+                    Margin="0,6,0,0" HorizontalAlignment="Left" Visibility="Collapsed"
+                    Background="{StaticResource AccentFill08Brush}"
+                    BorderBrush="{StaticResource AccentBorderBrush}"
+                    ToolTip="Pedido pela conversa do orbe">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="8" Height="8" Fill="{StaticResource AccentLilacBrush}"
+                             VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <TextBlock Text="Shadow" Style="{StaticResource PillText}"
+                               Foreground="{StaticResource TextStrongBrush}"/>
+                </StackPanel>
+            </Border>
+
             <!-- (b) TÍTULO em forma de PERGUNTA. -->
             <TextBlock x:Name="TituloText" FontSize="14" FontWeight="SemiBold"
                        Foreground="{StaticResource TextStrongBrush}"

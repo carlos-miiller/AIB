@@ -105,9 +105,11 @@ public partial class SenhaDoTerminalDialog : Window
     /// as janelas nasciam empilhadas. Agora o segundo espera o primeiro ser respondido.
     /// </para>
     /// </summary>
-    public static Task<RespostaDoUsuario?> PerguntarAsync(PedidoDeSenha pedido)
+    /// <param name="shadow">O comando é da conversa do orbe: mostra o selo "Shadow".</param>
+    public static Task<RespostaDoUsuario?> PerguntarAsync(PedidoDeSenha pedido, bool shadow = false)
     {
         var janela = Montar(pedido);
+        janela.SeloShadow.Visibility = shadow ? Visibility.Visible : Visibility.Collapsed;
         var resposta = new TaskCompletionSource<RespostaDoUsuario?>();
 
         // Com o orbe na tela, logo acima dele; sem orbe, no centro. 45 é a margem de baixo da

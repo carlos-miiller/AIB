@@ -22,12 +22,12 @@ public partial class ConfirmacaoDoOrbeWindow : Window
 
     private readonly ConfirmCardView _card;
 
-    public ConfirmacaoDoOrbeWindow(ConfirmCardView card)
+    public ConfirmacaoDoOrbeWindow(ConfirmCardView card, bool shadow = false)
     {
         InitializeComponent();
         _card = card;
         _card.Margin = new Thickness(0);
-        _card.ParaFlutuante();
+        _card.ParaFlutuante(shadow);
         Lugar.Content = _card;
 
         PertoDoOrbe.Posicionar(this, SombraEmbaixo);

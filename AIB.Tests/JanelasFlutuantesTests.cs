@@ -187,6 +187,40 @@ namespace AIB.Tests
             });
         }
 
+        // ─────────────────────────────────────────────────────────────────
+        // Shadow — o que veio da conversa do orbe
+        // ─────────────────────────────────────────────────────────────────
+
+        [Theory]
+        [InlineData(false, true, false, true, "conversa fora da tela, orbe na tela: perto do orbe")]
+        [InlineData(true, true, false, false, "conversa na tela: o card entra nela")]
+        [InlineData(true, true, true, true, "pedido do Shadow: perto do orbe mesmo com a janela aberta")]
+        [InlineData(false, false, true, false, "sem orbe não há onde ancorar")]
+        public void APerguntaDoShadow_VaiSempreParaPertoDoOrbe(bool conversa, bool orbe, bool shadow, bool esperado, string porque)
+        {
+            // Pedido do usuário (16/10/2026): o que vem do Shadow ganha o selo e fica no Shadow.
+            // Antes, com a janela aberta, o card do orbe entrava no meio de outra conversa.
+            ChatWindow.DeveUsarJanelaDoOrbe(conversa, orbe, shadow).Should().Be(esperado, porque);
+        }
+
+        [Fact]
+        public void AConfirmacaoDoShadow_LevaOSelo_EARespostaDoShadow_AbreNoShadow()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = new ConfirmCardView();
+                card.Preencher(new CommandConfirmationContext { Tool = Ferramentas.Shell, Command = "dir", Level = 1 });
+                card.ParaFlutuante(shadow: true);
+                ((FrameworkElement)card.FindName("SeloShadow")).Visibility.Should().Be(Visibility.Visible);
+            });
+
+            var (receita, _) = Avisos.DePronta("Pronto.", null, "Ellen", shadow: true, abrir: () => { });
+            receita.Shadow.Should().BeTrue();
+            receita.Botoes![0].Texto.Should().Be("Abrir no Shadow");
+        }
+
         [Fact]
         public void SoAFlutuante_MudaDeCor_OCardDaConversaContinuaComoEra()
         {

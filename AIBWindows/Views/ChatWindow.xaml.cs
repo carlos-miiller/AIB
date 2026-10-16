@@ -714,6 +714,9 @@ public partial class ChatWindow : Window
     /// </summary>
     public async Task<(bool, bool)> PerguntarConfirmacaoAsync(CommandConfirmationContext contexto)
     {
+        // Lido AQUI, ainda no fluxo do turno: é a ferramenta da conversa do orbe pedindo?
+        bool doShadow = ContextoDoTurno.Atual?.Shadow ?? false;
+
         var (card, janelaDoOrbe) = await Dispatcher.InvokeAsync(() =>
         {
             var novo = new ConfirmCardView { Margin = new Thickness(0, 0, 0, 14) };
@@ -730,11 +733,11 @@ public partial class ChatWindow : Window
             // No modo orbe — conversa fora da tela, orbe visível — a pergunta aparece numa
             // janela pequena logo acima dele. Abrir a conversa inteira para mostrar um card
             // tomava a tela de quem só pediu uma coisa rápida ao orbe.
-            if (DeveUsarJanelaDoOrbe(IsVisible, PertoDoOrbe.Ativo))
+            if (DeveUsarJanelaDoOrbe(IsVisible, PertoDoOrbe.Ativo, doShadow))
             {
                 // Pela fila: várias ferramentas na mesma volta pedem confirmação ao mesmo
                 // tempo, e cada uma abria a sua janela em cima da outra.
-                var janela = new ConfirmacaoDoOrbeWindow(novo);
+                var janela = new ConfirmacaoDoOrbeWindow(novo, doShadow);
                 Flutuantes.Mostrar(janela, VezDaJanela.Pergunta);
                 return (novo, (ConfirmacaoDoOrbeWindow?)janela);
             }
@@ -796,8 +799,13 @@ public partial class ChatWindow : Window
     /// conversa está fora da tela e há orbe onde ancorar. Com o orbe desligado, abrir a
     /// conversa continua sendo o único lugar onde perguntar.
     /// </summary>
-    public static bool DeveUsarJanelaDoOrbe(bool conversaNaTela, bool orbeNaTela) =>
-        !conversaNaTela && orbeNaTela;
+    /// <param name="doShadow">
+    /// O pedido é da conversa do orbe. Aí a pergunta vai SEMPRE para a janela perto dele,
+    /// mesmo com a janela de chat aberta: o card entrava no meio de outra conversa, que não
+    /// tinha pedido nada.
+    /// </param>
+    public static bool DeveUsarJanelaDoOrbe(bool conversaNaTela, bool orbeNaTela, bool doShadow = false) =>
+        orbeNaTela && (!conversaNaTela || doShadow);
 
     /// <summary>
     /// Descarta uma confirmação pendente, devolvendo recusa a quem espera.

@@ -310,8 +310,11 @@ public partial class ConfirmCardView : UserControl
     /// Prepara o card para a janela flutuante: sem a casca de bolha (a janela já tem a dela),
     /// pill e "Permitir" na cor do risco, e o antes e depois do edit com as linhas coloridas.
     /// </summary>
-    public void ParaFlutuante()
+    /// <param name="shadow">O pedido veio da conversa do orbe: mostra o selo "Shadow".</param>
+    public void ParaFlutuante(bool shadow = false)
     {
+        SeloShadow.Visibility = shadow ? Visibility.Visible : Visibility.Collapsed;
+
         Casca.Background = System.Windows.Media.Brushes.Transparent;
         Casca.BorderThickness = new Thickness(0);
         Casca.Padding = new Thickness(0);

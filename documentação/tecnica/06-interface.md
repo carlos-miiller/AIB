@@ -658,6 +658,13 @@ ele volta depois; entre avisos, a ordem é rajada, resposta sua, lembrete, respo
   (`ChatWindow.AbrirConversaDoEmail`, retoma a conversa), "Abrir no Shadow" (`AbrirBarra` do
   orbe), "Adiar 1 h".
 
+- **Selo "Shadow"**: o que vem da conversa do orbe leva o selo e o caminho de volta é o orbe
+  ("Abrir no Shadow" → `AbrirBarra`). Confirmação: `ContextoDoTurno.Shadow`, lido em
+  `PerguntarConfirmacaoAsync`; a pergunta do Shadow vai SEMPRE para a janela perto do orbe, mesmo
+  com a janela de chat aberta (`DeveUsarJanelaDoOrbe(..., doShadow)`). Senha do terminal: o pedido
+  chega por pipe, fora do turno, e é "do Shadow" quando só o orbe está ocupado. Lembrete: guardado
+  no próprio lembrete. Resposta: `LigarOrbe(..., avisarResposta)` mostra o aviso quando a resposta
+  do orbe chega com a barra fechada.
 - **`AvisoWindow.Informar`**: o aviso que ESPERA o usuário (modal, recebe o foco, no centro de quem
   avisou), no lugar do `MessageBox` do Windows — erro ao iniciar (com "Copiar detalhes"), "promova
   outra conta a principal", reset concluído. Se a janela não monta (tema que falhou no arranque), cai
