@@ -52,6 +52,14 @@ public sealed class UserAppSettings
     /// <summary>Modelo da triagem, no provedor dela. Vazio usa o modelo do perfil daquele provedor.</summary>
     public string MailTriageModel { get; set; } = "";
 
+    /// <summary>
+    /// <c>mail</c> e <c>mail_read</c> recusam quando o modelo que receberia o resultado está na
+    /// nuvem. Opt-in: com a conversa no OpenRouter, perguntar "tem algo urgente?" passa a ser
+    /// negado. A conversa ABERTA sobre um e-mail não depende disto: ela já roda no provedor da
+    /// triagem (<see cref="ParaTriagem"/>), e só é barrada se a própria triagem estiver na nuvem.
+    /// </summary>
+    public bool EmailSoLocal { get; set; } = false;
+
     /// <summary>Se a migração para perfis por provedor já rodou neste arquivo.</summary>
     public bool PerfisMigrados { get; set; }
 
@@ -134,7 +142,8 @@ public sealed class UserAppSettings
 
     /// <summary>
     /// Uma cópia destas configurações com o provedor e o modelo DA TRIAGEM no lugar dos da conversa
-    /// — é o que a fábrica de provider recebe quando quem pede é o vigia de e-mail.
+    /// — é o que a fábrica de provider recebe quando quem pede é o vigia de e-mail, e o que a
+    /// conversa aberta sobre um e-mail usa em tudo: turno, resumo de capítulo, título e cota.
     /// </summary>
     public UserAppSettings ParaTriagem()
     {
@@ -148,6 +157,13 @@ public sealed class UserAppSettings
         copia.Ativar(provedor, perfil);
         return copia;
     }
+
+    /// <summary>
+    /// A janela de contexto destas configurações. Método, e não propriedade, para não ir ao
+    /// arquivo. Existe pela conversa de e-mail: com ela no Ollama e a conversa no OpenRouter, a
+    /// janela em vigor no app (<see cref="Ai.ChatRequestOptions.JanelaAtual"/>) não é a dela.
+    /// </summary>
+    public int Janela() => ContextWindow > 0 ? ContextWindow : Ai.ChatRequestOptions.JanelaAtual;
     public bool SendSystemPrompt { get; set; } = true;
     public bool EnableIntelligentTools { get; set; } = true;
     // Opt-in: a funcionalidade Shadow Assistant fica desligada por default.

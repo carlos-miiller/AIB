@@ -146,7 +146,7 @@ namespace AIB.Tests
             public ProviderRoteirizado(Func<IReadOnlyList<ChatMessage>, IReadOnlyList<StreamChunk>> roteiro) =>
                 _roteiro = roteiro;
 
-            public string Name => "Fake";
+            public string Name { get; init; } = "Fake";
             public string Model => "fake";
 
             public async IAsyncEnumerable<StreamChunk> StreamAsync(
@@ -2390,6 +2390,143 @@ namespace AIB.Tests
 
             conversa.ResetHistory();
             conversa.ChaveDoEmail.Should().BeEmpty();
+        }
+
+        /// <summary>Anota provedor e modelo de cada pedido de provider, e responde "certo".</summary>
+        private sealed class FabricaQueAnota : IChatProviderFactory
+        {
+            public List<(string Provedor, string Modelo)> Pedidos { get; } = new();
+
+            public IChatProvider GetProvider(UserAppSettings settings)
+            {
+                lock (Pedidos) Pedidos.Add((settings.AiProvider, settings.ModelName));
+                return new FakeProvider(new StreamChunk[]
+                {
+                    new StreamChunk.TextDelta("certo", TextChannel.Final),
+                    new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+                });
+            }
+        }
+
+        /// <remarks>
+        /// Salvar põe no ar os valores estáticos do provedor (<c>LimitesDoProvedor.Atual</c>, a
+        /// janela): com OpenRouter, os testes que leem esses estáticos viam os tetos da nuvem —
+        /// <c>LeituraDoEmailTests</c> quebrou assim. Eles voltam logo depois de salvar.
+        /// </remarks>
+        private SettingsService ConversaNaNuvemTriagemLocal(bool emailSoLocal = false)
+        {
+            var janela = ChatRequestOptions.JanelaAtual;
+            var janelaDoOllama = ChatRequestOptions.JanelaDoOllama;
+            var keepAlive = ChatRequestOptions.KeepAliveAtual;
+            var limites = LimitesDoProvedor.Atual;
+
+            var service = new SettingsService(Path.Combine(_dir, Guid.NewGuid().ToString("N") + ".dat"));
+            try { Salvar(); }
+            finally
+            {
+                ChatRequestOptions.JanelaAtual = janela;
+                ChatRequestOptions.JanelaDoOllama = janelaDoOllama;
+                ChatRequestOptions.KeepAliveAtual = keepAlive;
+                LimitesDoProvedor.Atual = limites;
+            }
+            return service;
+
+            void Salvar() => service.SaveSettings(new UserAppSettings
+            {
+                AiProvider = ProvedoresDeIa.OpenRouter,
+                ModelName = "modelo-na-nuvem",
+                MailTriageProvider = ProvedoresDeIa.Ollama,
+                MailTriageModel = "modelo-local",
+                EmailSoLocal = emailSoLocal,
+                PerfisMigrados = true,
+                SendSystemPrompt = false,
+                ActiveCharacter = ""
+            });
+        }
+
+        [Fact]
+        public async Task ConversaDeEmail_RodaNoProvedorDaTriagem_ENaoNoDaConversa()
+        {
+            // Visto em 16/10: conversa no OpenRouter, triagem no Ollama para o e-mail não sair da
+            // máquina — e "Abrir com Ellen" mandava o enquadramento do e-mail, e depois o corpo
+            // lido por mail_read, ao OpenRouter. A triagem era local; a conversa sobre o e-mail não.
+            var settings = ConversaNaNuvemTriagemLocal();
+            var registry = new ToolRegistry();
+            var counter = new TokenCounter();
+            var fabrica = new FabricaQueAnota();
+            var conversa = new ConversationService(
+                settings, registry, new AgentLoop(registry, fabrica, settings, counter), counter, fabrica,
+                memoryRootOverride: Path.Combine(_dir, "memory"));
+
+            conversa.VincularAEmail($"eu@x.com|thr:ensaio-{Guid.NewGuid():N}");
+            await foreach (var _ in conversa.StreamResponseAsync("do que trata este e-mail?")) { }
+
+            fabrica.Pedidos.Should().NotBeEmpty();
+            fabrica.Pedidos.Should().OnlyContain(p => p.Provedor == ProvedoresDeIa.Ollama && p.Modelo == "modelo-local",
+                "nada da conversa de um e-mail vai ao provedor da conversa");
+
+            // Conversa comum, de volta ao provedor dela.
+            conversa.ResetHistory();
+            fabrica.Pedidos.Clear();
+            await foreach (var _ in conversa.StreamResponseAsync("oi")) { }
+
+            fabrica.Pedidos.Should().Contain((ProvedoresDeIa.OpenRouter, "modelo-na-nuvem"));
+        }
+
+        [Fact]
+        public async Task EmailSoLocal_ModeloNaNuvemPedeAConsulta_ENegada()
+        {
+            // A outra metade do pedido de 16/10: numa conversa comum no OpenRouter, "tem algo
+            // urgente?" fazia a ferramenta mail devolver remetentes, assuntos e resumos ao
+            // OpenRouter. Com a chave ligada, ela recusa — e quem diz que é nuvem é o provider do
+            // TURNO, não as configurações.
+            int voltas = 0;
+            var provider = new ProviderRoteirizado(_ => ++voltas == 1
+                ? new StreamChunk[]
+                {
+                    new StreamChunk.ToolCallDelta("k0", "id0", Ferramentas.Email, "{}"),
+                    new StreamChunk.Done(StreamFinishReason.ToolCalls, "tool_calls")
+                }
+                : new StreamChunk[]
+                {
+                    new StreamChunk.TextDelta("não consigo ver", TextChannel.Final),
+                    new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+                })
+            { Name = ProvedoresDeIa.OpenRouter };
+
+            var settings = ConversaNaNuvemTriagemLocal(emailSoLocal: true);
+            var registry = new ToolRegistry(settingsService: settings);
+            var counter = new TokenCounter();
+            var fabrica = new FixedProviderFactory(provider);
+            var conversa = new ConversationService(
+                settings, registry, new AgentLoop(registry, fabrica, settings, counter), counter, fabrica,
+                memoryRootOverride: Path.Combine(_dir, "memory"));
+
+            await foreach (var _ in conversa.StreamResponseAsync("tem algo urgente?")) { }
+
+            conversa.SnapshotHistory().OfType<ToolChatMessage>().Single()
+                .Content[0].Text.Should().StartWith("ACESSO NEGADO").And.Contain("nuvem");
+        }
+
+        [Theory]
+        [InlineData(true, ProvedoresDeIa.OpenRouter, true)]
+        [InlineData(true, ProvedoresDeIa.Google, true)]
+        [InlineData(true, null, true)]                       // não saber é nuvem
+        [InlineData(true, ProvedoresDeIa.Ollama, false)]
+        [InlineData(false, ProvedoresDeIa.OpenRouter, false)] // a chave nasce desligada
+        public async Task EmailSoLocal_BarraMailEMailRead_SoNaNuvem(bool ligada, string? provedor, bool barra)
+        {
+            var registry = new ToolRegistry(settingsService: ConversaNaNuvemTriagemLocal(ligada));
+
+            foreach (string ferramenta in new[] { Ferramentas.Email, Ferramentas.LerEmail })
+            {
+                string resultado = await registry.ExecuteToolAsync(ferramenta, "{}", 1, provedor: provedor);
+                resultado.Contains("modelos na nuvem").Should().Be(barra, ferramenta);
+            }
+
+            // Outra ferramenta não é assunto da chave.
+            (await registry.ExecuteToolAsync(Ferramentas.Lembrete, "{}", 1, provedor: provedor))
+                .Should().NotContain("modelos na nuvem");
         }
 
         [Fact]

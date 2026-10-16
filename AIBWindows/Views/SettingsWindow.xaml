@@ -1336,6 +1336,25 @@
                                                           Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
                                         </Grid>
                                     </Border>
+                                    <!-- E-mail só com modelo local. A conversa aberta sobre um e-mail já usa o
+                                         provedor da triagem; isto fecha o resto: mail e mail_read pedidos de
+                                         uma conversa que está na nuvem. -->
+                                    <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource DividerFieldBrush}">
+                                        <Grid Margin="0,13">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="{StaticResource ControlColumnGrid}"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                                                <TextBlock Text="E-mail só com modelo local" Style="{StaticResource FieldLabelText}"/>
+                                                <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
+                                                           Text="Com o modelo na nuvem (OpenRouter, Google), a IA não consulta a caixa nem relê e-mails: as ferramentas recusam. As conversas abertas por &quot;Abrir com&quot; já rodam no provedor da triagem acima, e só são barradas se ele também estiver na nuvem. A triagem segue o provedor dela."/>
+                                            </StackPanel>
+                                            <ToggleButton x:Name="EmailSoLocalSwitch" Grid.Column="1"
+                                                          Style="{StaticResource Switch}"
+                                                          Checked="Campo_Mudou" Unchecked="Campo_Mudou"/>
+                                        </Grid>
+                                    </Border>
 
                                     <!-- RESTAURAR — só os campos DESTA página. Um botão único
                                          para a tela inteira faria quem quer voltar um número de

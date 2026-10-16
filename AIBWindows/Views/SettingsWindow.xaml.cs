@@ -188,6 +188,7 @@ public partial class SettingsWindow : Window
         KeepAssistantSpeechSwitch.IsChecked = _currentSettings.KeepAssistantSpeech;
         ThinkingInHistorySwitch.IsChecked = _currentSettings.ThinkingInHistory;
         MailTriageThinkingSwitch.IsChecked = _currentSettings.MailTriageThinking;
+        EmailSoLocalSwitch.IsChecked = _currentSettings.EmailSoLocal;
 
             TriagemProvedorComboBox.ItemsSource = ProvedoresDeIa.Todos.ToList();
             TriagemProvedorComboBox.SelectedItem = _currentSettings.MailTriageProvider;
@@ -1471,6 +1472,7 @@ public partial class SettingsWindow : Window
                 MailTimeoutTextBox.Text = padrao.MailTimeoutSeconds.ToString();
                 MailJournalTextBox.Text = padrao.MailJournalDays.ToString();
                 MailTriageThinkingSwitch.IsChecked = padrao.MailTriageThinking;
+                EmailSoLocalSwitch.IsChecked = padrao.EmailSoLocal;
                 TriagemProvedorComboBox.SelectedItem = padrao.MailTriageProvider;
                 TriagemModeloComboBox.Text = padrao.MailTriageModel;
                 break;
@@ -2012,10 +2014,10 @@ public partial class SettingsWindow : Window
         string? escolhido = TriagemProvedorComboBox.SelectedItem as string;
         bool fora = ProvedoresDeIa.EhNuvem(escolhido);
         TriagemAviso.Text = escolhido == ProvedoresDeIa.Google
-            ? "No Google, remetente, assunto e o começo do corpo de cada e-mail triado são enviados ao Google. No nível gratuito ele pode usar esse conteúdo para treinar."
+            ? "No Google, remetente, assunto e o começo do corpo de cada e-mail triado são enviados ao Google — e as conversas abertas por \"Abrir com\" também rodam nele. No nível gratuito ele pode usar esse conteúdo para treinar."
             : fora
-            ? "No OpenRouter, remetente, assunto e o começo do corpo de cada e-mail triado são enviados ao OpenRouter e ao modelo escolhido."
-            : "Quem lê os e-mails para classificar. No Ollama, nada sai desta máquina.";
+            ? "No OpenRouter, remetente, assunto e o começo do corpo de cada e-mail triado são enviados ao OpenRouter e ao modelo escolhido — e as conversas abertas por \"Abrir com\" também rodam nele."
+            : "Quem lê os e-mails para classificar e quem conversa sobre o e-mail aberto por \"Abrir com\". No Ollama, nada sai desta máquina.";
         TriagemAviso.Foreground = (System.Windows.Media.Brush)FindResource(fora ? "WarnBrush" : "TextMutedBrush");
     }
 
@@ -2152,6 +2154,7 @@ public partial class SettingsWindow : Window
         if (fatos != _fatosAbertos && new AIB.Services.Memory.FactStore().Regravar(fatos)) _fatosAbertos = fatos;
         _currentSettings.ThinkingInHistory = ThinkingInHistorySwitch.IsChecked ?? false;
         _currentSettings.MailTriageThinking = MailTriageThinkingSwitch.IsChecked ?? false;
+        _currentSettings.EmailSoLocal = EmailSoLocalSwitch.IsChecked ?? false;
 
         _currentSettings.ShadowMailPreviewCount =
             Numero(ShadowMailPreviewTextBox, _currentSettings.ShadowMailPreviewCount);

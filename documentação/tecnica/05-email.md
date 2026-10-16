@@ -117,6 +117,7 @@ Toda queda vai para a lista de `Descartada` com o motivo — a triagem tem de se
 - Chamada **fora de banda**: sem ferramentas, sem histórico, não passa pela conversa. Um lote só.
 - Provedor e modelo **da triagem** (`config.ParaTriagem()`, `MailTriageProvider`/`MailTriageModel`),
   que pode ser diferente do da conversa — dá para conversar pela nuvem e manter os e-mails no Ollama.
+  A conversa aberta por "Abrir com" também roda nele (ver §9).
   Raciocínio opcional (`MailTriageThinking`, triplica o teto de resposta).
 - Lote: as mais recentes, até `LimitesDoProvedor.LoteDaTriagem` (25 local, 60 OpenRouter).
 - O prompt leva, por mensagem, `[uid] de`, `assunto`, `recebida` e o corpo limpo. O corpo vai
@@ -227,6 +228,13 @@ Guarda **todas** as triadas, inclusive as baixas. Nenhum corpo: `EmailTriado` n�
 | Devolve | Contagens, horário da última passada ("chegadas depois disso não foram lidas") e até 15 vereditos. Nunca corpo. | O texto original, mais recente primeiro dentro do teto (`LimitesDoProvedor.EmailPorLeitura`/`EmailPorMensagem`); remetente, data e assunto fora do embrulho, **corpo dentro de `ConteudoDeTerceiros.Embrulhar`**. |
 | Falhas | Triagem desligada, diário em 0, sem caixas → diz isso. | Sem thread (`X-GM-THRID`), conta desconectada, sem senha no cofre → `ERRO` explicando. |
 
+**`EmailSoLocal`** (Configurações › E-mail › "E-mail só com modelo local", nasce desligada): as duas
+ferramentas recusam com `ACESSO NEGADO` quando o modelo que receberia o resultado está na nuvem
+(`ProvedoresDeIa.EhNuvem`). O provedor vem **da chamada** — o `AgentLoop` passa o do turno a
+`ToolRegistry.ExecuteToolAsync` —, e não de um gancho da conversa: o registry é dividido com a conversa
+do orbe, que pode estar em outro provedor. Provedor desconhecido conta como nuvem. A decisão vai ao
+`raw.jsonl` como `email_so_local`.
+
 `mail_read` lê pelo mesmo caminho do "Recarregar" (`LerConversaAsync`: INBOX em `EXAMINE`, corpo com
 `BODY.PEEK`). Credenciais e conta são lidas **na chamada** — a conta pode ter mudado desde que o app
 abriu.
@@ -313,6 +321,13 @@ Parte da mesma `ChatWindow`, com três estados decididos só por `AplicarEstadoD
   (`ChatHistoryService.ConversaDoEmail`), **retoma** sem mandar turno. Senão, abre **conversa nova**
   (arquivando a anterior), vincula ao e-mail (`VincularAEmail`) **antes** do primeiro turno e envia o
   enquadramento. O cartão aparece no lugar da bolha do usuário.
+- **Provedor da conversa de e-mail.** Com a chave do e-mail ligada (`ConversationService.UsaTriagem`),
+  tudo o que manda texto da conversa a um modelo usa `ParaTriagem()` — o provedor e o modelo **da
+  triagem**: o turno (`AgentTurnRequest.UsaTriagem`), o resumo de capítulo, o título, a iniciativa e o
+  contador de raciocínio. A cota e a poda usam a janela desse provedor (`ConversationService.Janela`).
+  Antes o enquadramento e o corpo lido por `mail_read` iam ao provedor da conversa — o OpenRouter —
+  mesmo com a triagem no Ollama. `mail_read`, que só existe nessa conversa, usa os tetos
+  (`LimitesDoProvedor`) do provedor da triagem.
 - **"Recarregar"** (`RecarregarItemAsync` → `RecarregarConversaAsync`): relê a thread, chama o modelo
   e **acrescenta** os vereditos ao histórico. Custa uma chamada ao modelo; o botão desabilita
   enquanto roda. A lista não é reescrita daqui.

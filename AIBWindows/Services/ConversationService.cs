@@ -516,6 +516,34 @@ public sealed class ConversationService : IMessageStore
     public void VincularAEmail(string? chaveDaThread) =>
         ChaveDoEmail = (chaveDaThread ?? "").Trim();
 
+    /// <summary>
+    /// Se esta conversa roda no provedor DA TRIAGEM, e não no da conversa: é a conversa aberta
+    /// sobre um e-mail.
+    /// <para>
+    /// "Abrir com" mandava o enquadramento do e-mail e, depois, o corpo lido por <c>mail_read</c>
+    /// ao provedor da conversa — o OpenRouter —, mesmo com a triagem posta no Ollama justamente
+    /// para o e-mail não sair da máquina (visto em 16/10). A separação valia só para a triagem.
+    /// </para>
+    /// </summary>
+    public bool UsaTriagem => !string.IsNullOrEmpty(ChaveDoEmail);
+
+    /// <summary>
+    /// As configurações DESTA conversa: as salvas, ou com o provedor e o modelo da triagem no
+    /// lugar quando ela é sobre um e-mail (<see cref="UsaTriagem"/>). Tudo o que manda texto
+    /// da conversa a um modelo passa por aqui: turno, resumo de capítulo, título e iniciativa.
+    /// </summary>
+    private UserAppSettings Config()
+    {
+        var settings = _settingsService.LoadSettings();
+        return UsaTriagem ? settings.ParaTriagem() : settings;
+    }
+
+    /// <summary>
+    /// A janela de contexto desta conversa. Fora do e-mail é a em vigor no app, como sempre foi;
+    /// na do e-mail, a do provedor da triagem — o Ollama com 16k não aguenta a cota de 200k.
+    /// </summary>
+    private int Janela() => UsaTriagem ? Config().Janela() : Ai.ChatRequestOptions.JanelaAtual;
+
     /// <summary>Salva a sessão atual e recria o system prompt (SOUL/skills/home dir).</summary>
     public void ResetHistory() => ResetHistory(conversaNova: true);
 
@@ -1286,7 +1314,7 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private Compactor NovoCompactor(IReadOnlyList<Habito>? jeitos = null)
     {
-        var settings = _settingsService.LoadSettings();
+        var settings = Config();
         return new Compactor(
             _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
             comModelo: settings.MemoriaComModelo,
@@ -1606,7 +1634,7 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private int CapitulosPorAto()
     {
-        var settings = _settingsService.LoadSettings();
+        var settings = Config();
         return settings.CapitulosPorAto > 0
             ? settings.CapitulosPorAto
             : LimitesDoProvedor.Para(settings.AiProvider).CapitulosPorAto;
@@ -1741,7 +1769,7 @@ public sealed class ConversationService : IMessageStore
     private MemoryQuota CotaCom(int userLevel, int prefixo)
     {
         return MemoryBudget.Compute(
-            LevelService.GetMaxTokensForLevel(userLevel), prefixo,
+            LevelService.GetMaxTokensForLevel(userLevel, Janela()), prefixo,
             _settingsService.LoadSettings().MemoryFraction);
     }
 
@@ -1804,7 +1832,7 @@ public sealed class ConversationService : IMessageStore
         if (disponiveis <= 0) return new List<Turn>();
 
         // Provedor DESTA conversa, como em CapitulosPorAto e no Compactor — não o Atual global.
-        var settings = _settingsService.LoadSettings();
+        var settings = Config();
         // O alvo acompanha o gatilho: a mesma fração, da cota ou do teto de tokens soltos, a
         // que for menor. Com o teto em 100 mil e a cota em 800 mil, mirar 30% da cota seria
         // nunca compactar nada.
@@ -1981,7 +2009,7 @@ public sealed class ConversationService : IMessageStore
         string userMessage,
         Action<string>? onTechnicalContent = null)
     {
-        var settings = _settingsService.LoadSettings();
+        var settings = Config();
         int userLevel = LevelService.GetLevel(settings.MessageCount);
 
         // A espera pelo portão NÃO usa o token deste turno: o CTS só nasce depois que o
@@ -2038,7 +2066,8 @@ public sealed class ConversationService : IMessageStore
                 _toolRegistry.GetActiveTools(userLevel),
                 userLevel,
                 OpcoesDoTurno(settings),
-                settings.VerboseConsoleLogging);
+                settings.VerboseConsoleLogging,
+                UsaTriagem);
 
             await foreach (var evt in _agentLoop.RunAsync(request, ct).WithCancellation(ct).ConfigureAwait(false))
             {
@@ -2262,7 +2291,7 @@ public sealed class ConversationService : IMessageStore
             var primeiro = turnos[0];
             string material = ChatTitler.Material(primeiro.UserText, primeiro.AssistantText);
 
-            var settings = _settingsService.LoadSettings();
+            var settings = Config();
             var titulador = new ChatTitler(_providerFactory.GetProvider(settings));
 
             using var timeout = new CancellationTokenSource(TitleTimeout);
@@ -2297,7 +2326,7 @@ public sealed class ConversationService : IMessageStore
 
         try
         {
-            var settings = _settingsService.LoadSettings();
+            var settings = Config();
             var titulador = new ChatTitler(_providerFactory.GetProvider(settings));
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -2343,7 +2372,7 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     public async Task<string?> EscreverIniciativaAsync(ContextoDaIniciativa contexto, CancellationToken ct)
     {
-        var settings = _settingsService.LoadSettings();
+        var settings = Config();
 
         try
         {
@@ -2697,7 +2726,7 @@ public sealed class ConversationService : IMessageStore
     {
         try
         {
-            return _providerFactory.GetProvider(_settingsService.LoadSettings())
+            return _providerFactory.GetProvider(Config())
                 .RaciocinioReenviado(mensagens, _tokenCounter.CountText);
         }
         catch (Exception)
@@ -2777,11 +2806,14 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     public static int TetoDaPoda => Ai.ChatRequestOptions.Default.NumCtx - MargemDaResposta;
 
+    /// <summary>O mesmo teto sobre a janela DESTA conversa — ver <see cref="Janela"/>.</summary>
+    private int TetoDaPodaAgora => Janela() - MargemDaResposta;
+
     public void Trim(int userLevel)
     {
         // O teto do NÍVEL não entra mais aqui. Ele governa a compactação, que substitui o que
         // tira; a poda descarta sem substituto e por isso só age quando não há alternativa.
-        int maxTokens = TetoDaPoda;
+        int maxTokens = TetoDaPodaAgora;
 
         int cortadas = 0;
         int antes, depois;
@@ -2874,7 +2906,7 @@ public sealed class ConversationService : IMessageStore
     /// </para>
     /// </summary>
     private TokenReport MontarRelatorio(int userLevel) =>
-        Relatorio(CountTokens(), LevelService.GetMaxTokensForLevel(userLevel));
+        Relatorio(CountTokens(), LevelService.GetMaxTokensForLevel(userLevel, Janela()));
 
     /// <summary>
     /// O cru já engolido, somado dos REGISTROS dos capítulos.
@@ -3112,7 +3144,7 @@ public sealed class ConversationService : IMessageStore
             _tokensDeResumo,
             _memory.TokensDaMemoria,
             _descartadoAoReabrir,
-            TetoDaPoda,
+            TetoDaPodaAgora,
             _memory.Chapters.Count,
             _memory.Acts.Count,
             _memory.MedidaCompleta || _crusSemMedida == 0,

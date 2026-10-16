@@ -54,21 +54,29 @@ public sealed class LerEmailTool : ITool
     private readonly Func<IReadOnlyList<MailAccountSettings>> _contas;
     private readonly Func<string, string?> _senhaDe;
     private readonly Func<IMailService> _servico;
+    private readonly Func<LimitesDoProvedor> _limites;
 
     /// <param name="chaveDaConversa">A thread ligada à conversa aberta: <c>conta|thr:id</c>. Vazia fora de §3.11.</param>
     /// <param name="contas">As caixas conectadas, lidas na hora da chamada.</param>
     /// <param name="senhaDe">A senha de app de uma caixa, do cofre.</param>
     /// <param name="servico">O cliente IMAP. Criado na chamada: a ferramenta vive o app inteiro.</param>
+    /// <param name="limites">
+    /// Os tetos do provedor que vai LER o e-mail. Nulo usa os da conversa. A conversa de e-mail roda
+    /// no provedor da triagem: os tetos do OpenRouter, num Ollama de janela pequena, mandariam
+    /// mais texto do que cabe.
+    /// </param>
     public LerEmailTool(
         Func<string> chaveDaConversa,
         Func<IReadOnlyList<MailAccountSettings>> contas,
         Func<string, string?> senhaDe,
-        Func<IMailService> servico)
+        Func<IMailService> servico,
+        Func<LimitesDoProvedor>? limites = null)
     {
         _chaveDaConversa = chaveDaConversa ?? throw new ArgumentNullException(nameof(chaveDaConversa));
         _contas = contas ?? throw new ArgumentNullException(nameof(contas));
         _senhaDe = senhaDe ?? throw new ArgumentNullException(nameof(senhaDe));
         _servico = servico ?? throw new ArgumentNullException(nameof(servico));
+        _limites = limites ?? (() => LimitesDoProvedor.Atual);
     }
 
     public string Name => Ferramentas.LerEmail;
@@ -134,7 +142,7 @@ public sealed class LerEmailTool : ITool
                 .LerConversaAsync(
                     caixa.Address, senha,
                     new ImapEndpoint(caixa.ImapHost, caixa.ImapPort, caixa.UseSsl),
-                    thread, CancellationToken.None, LimitesDoProvedor.Atual.EmailPorMensagem)
+                    thread, CancellationToken.None, _limites().EmailPorMensagem)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -142,7 +150,7 @@ public sealed class LerEmailTool : ITool
             return $"ERRO ao ler o e-mail no servidor: {ex.Message}";
         }
 
-        return Formatar(mensagens);
+        return Formatar(mensagens, _limites().EmailPorLeitura);
     }
 
     /// <summary>
@@ -158,7 +166,11 @@ public sealed class LerEmailTool : ITool
     /// mensagens foram lidas.
     /// </para>
     /// </summary>
-    public static string Formatar(IReadOnlyList<MensagemDeEmail>? mensagens)
+    public static string Formatar(IReadOnlyList<MensagemDeEmail>? mensagens) =>
+        Formatar(mensagens, LimitesDoProvedor.Atual.EmailPorLeitura);
+
+    /// <summary>O mesmo, com o teto da leitura dado — o do provedor que vai ler.</summary>
+    public static string Formatar(IReadOnlyList<MensagemDeEmail>? mensagens, int teto)
     {
         if (mensagens == null || mensagens.Count == 0)
             return "Não consegui reler esta conversa no servidor agora — ela pode ter saído da caixa "
@@ -174,7 +186,7 @@ public sealed class LerEmailTool : ITool
 
             // A mais recente entra sempre, mesmo sozinha passando do teto: sem ela a leitura não
             // teria o que ler. O corpo dela já veio aparado em TetoPorMensagem.
-            if (escolhidas.Count > 0 && usados + custo > LimitesDoProvedor.Atual.EmailPorLeitura) break;
+            if (escolhidas.Count > 0 && usados + custo > teto) break;
 
             escolhidas.Add(m);
             usados += custo;

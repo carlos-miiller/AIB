@@ -170,7 +170,8 @@ Os campos `AiProvider`, `ApiUrl`, `ModelName`, `KeepAlive`, `ContextWindow` e `R
 | `UserAppSettings.PerfilDe(provedor)` | O perfil do ativo, o guardado, ou o de fábrica (`ProvedoresDeIa.PerfilPadrao`). |
 | `UserAppSettings.Ativar(provedor, perfil)` | Guarda o perfil do ativo anterior e torna `provedor` o ativo. |
 | `UserAppSettings.AplicarPerfis(escolhido, perfis)` | O "Salvar" da tela: **ativa primeiro**, depois grava os outros perfis. Na ordem inversa, `Ativar` guardava o perfil do anterior a partir dos campos antigos e passava por cima do que a tela acabara de gravar — mudar o modelo do Ollama e trocar para o OpenRouter no mesmo Salvar perdia o modelo novo. |
-| `UserAppSettings.ParaTriagem` | Uma cópia com o provedor e o modelo **da triagem de e-mail** no lugar dos da conversa. A triagem tem provedor próprio (`MailTriageProvider`, `MailTriageModel`) para poder conversar pelo OpenRouter e manter a leitura dos e-mails no Ollama. |
+| `UserAppSettings.ParaTriagem` | Uma cópia com o provedor e o modelo **da triagem de e-mail** no lugar dos da conversa. A triagem tem provedor próprio (`MailTriageProvider`, `MailTriageModel`) para poder conversar pelo OpenRouter e manter a leitura dos e-mails no Ollama. A conversa aberta sobre um e-mail também a usa (`ConversationService.UsaTriagem`). |
+| `UserAppSettings.Janela()` | `ContextWindow`, ou a `JanelaAtual` quando zero. Método para não ir ao arquivo. |
 
 `PerfilDeProvedor` não tem chave de API: o perfil vai para o arquivo de configurações, a chave vai para o cofre.
 
@@ -216,7 +217,7 @@ Além disso, `LoadSettings` e `SaveSettings` chamam `PastasSemConfirmacao.Config
 
 ### Chaves que nascem desligadas
 
-Várias opções nascem desligadas por decisão registrada no comentário de cada uma: `ShadowAssistantEnabled` e `ShadowHandlesMail` (ninguém ganha um programa lendo o próprio e-mail por ter atualizado; e querer o orbe não é querer que ele abra a caixa), `ModelThinking` (medido: em CPU, turnos inteiros terminavam só pensando), `ThinkingInHistory`, `MailTriageThinking`, `ExecutionLogging`, `CompactionLogging`, `EsconderResultadosDepoisDe`. `OpenRouterSemColetaDeDados` nasce **ligada**, porque o prompt leva arquivos e e-mails. `KeepAssistantSpeech` nasce ligada porque o contrário é defeito. `IniciativaLogging` nasce ligada porque o diário só tem números e, sem ele, não há como saber por que a persona não puxou assunto. `AprenderHabitos` nasce ligada a pedido do usuário: a pergunta pelo jeito vai na chamada de resumo que já é paga, e o prompt só muda quando um hábito se firma.
+Várias opções nascem desligadas por decisão registrada no comentário de cada uma: `ShadowAssistantEnabled` e `ShadowHandlesMail` (ninguém ganha um programa lendo o próprio e-mail por ter atualizado; e querer o orbe não é querer que ele abra a caixa), `ModelThinking` (medido: em CPU, turnos inteiros terminavam só pensando), `ThinkingInHistory`, `MailTriageThinking`, `EmailSoLocal` (com a conversa na nuvem, perguntar pela caixa passa a ser negado), `ExecutionLogging`, `CompactionLogging`, `EsconderResultadosDepoisDe`. `OpenRouterSemColetaDeDados` nasce **ligada**, porque o prompt leva arquivos e e-mails. `KeepAssistantSpeech` nasce ligada porque o contrário é defeito. `IniciativaLogging` nasce ligada porque o diário só tem números e, sem ele, não há como saber por que a persona não puxou assunto. `AprenderHabitos` nasce ligada a pedido do usuário: a pergunta pelo jeito vai na chamada de resumo que já é paga, e o prompt só muda quando um hábito se firma.
 
 ## Credenciais
 

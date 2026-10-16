@@ -120,7 +120,7 @@ Todo turno termina com uma fala de assistente. Quando não há, entra a marca `A
 
 ### 2.8 Poda de emergência (`Trim`)
 
-- Age só acima de `TetoDaPoda` = `ChatRequestOptions.Default.NumCtx - MargemDaResposta` (2048). O teto do **nível** não entra aqui: ele é orçamento de compactação, não limite do modelo. Podar no teto do nível destruía material que cabia com folga.
+- Age só acima de `TetoDaPoda` = `ChatRequestOptions.Default.NumCtx - MargemDaResposta` (2048) — na conversa de e-mail, sobre a janela do provedor da triagem (`ConversationService.Janela`). O teto do **nível** não entra aqui: ele é orçamento de compactação, não limite do modelo. Podar no teto do nível destruía material que cabia com folga.
 - Não pode ser removida: mensagens de sistema do começo e a **mensagem de usuário que abriu o turno em andamento** (`UltimoIndiceDeUsuario`). Comê-la deixava o modelo trabalhando sem saber o pedido e fazia o turno sumir do `raw.jsonl`.
 - Ao remover um assistant com tool_calls, remove junto os `tool` seguintes (par órfão é rejeitado pela API).
 - A poda existe porque, passando da janela, o Ollama trunca sozinho **pelo começo** — leva o prompt de sistema e a alma.
