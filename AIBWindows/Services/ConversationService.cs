@@ -516,6 +516,34 @@ public sealed class ConversationService : IMessageStore
     public void VincularAEmail(string? chaveDaThread) =>
         ChaveDoEmail = (chaveDaThread ?? "").Trim();
 
+    /// <summary>
+    /// Se esta conversa roda no provedor DA TRIAGEM, e não no da conversa: é a conversa aberta
+    /// sobre um e-mail.
+    /// <para>
+    /// "Abrir com" mandava o enquadramento do e-mail e, depois, o corpo lido por <c>mail_read</c>
+    /// ao provedor da conversa — o OpenRouter —, mesmo com a triagem posta no Ollama justamente
+    /// para o e-mail não sair da máquina (visto em 16/10). A separação valia só para a triagem.
+    /// </para>
+    /// </summary>
+    public bool UsaTriagem => !string.IsNullOrEmpty(ChaveDoEmail);
+
+    /// <summary>
+    /// As configurações DESTA conversa: as salvas, ou com o provedor e o modelo da triagem no
+    /// lugar quando ela é sobre um e-mail (<see cref="UsaTriagem"/>). Tudo o que manda texto
+    /// da conversa a um modelo passa por aqui: turno, resumo de capítulo, título e iniciativa.
+    /// </summary>
+    private UserAppSettings Config()
+    {
+        var settings = _settingsService.LoadSettings();
+        return UsaTriagem ? settings.ParaTriagem() : settings;
+    }
+
+    /// <summary>
+    /// A janela de contexto desta conversa. Fora do e-mail é a em vigor no app, como sempre foi;
+    /// na do e-mail, a do provedor da triagem — o Ollama com 16k não aguenta a cota de 200k.
+    /// </summary>
+    private int Janela() => UsaTriagem ? Config().Janela() : Ai.ChatRequestOptions.JanelaAtual;
+
     /// <summary>Salva a sessão atual e recria o system prompt (SOUL/skills/home dir).</summary>
     public void ResetHistory() => ResetHistory(conversaNova: true);
 
@@ -1053,7 +1081,7 @@ public sealed class ConversationService : IMessageStore
 
         for (int i = turnos.Count - 1; i >= 0 && ficam < KeepRecentTurns; i--)
         {
-            gasto += _tokenCounter.CountMessages(turnos[i].Messages);
+            gasto += Peso(turnos[i].Messages);
             if (gasto > fatia) break;
             ficam++;
         }
@@ -1166,8 +1194,17 @@ public sealed class ConversationService : IMessageStore
             var quota = CurrentQuota(userLevel);
             if (quota.IsOff) return;
 
-            double fracao = _settingsService.LoadSettings().CompactionTrigger;
+            var ajustes = _settingsService.LoadSettings();
+            double fracao = ajustes.CompactionTrigger;
             int fechados = 0;
+
+            // Disparado o gatilho de tokens, a passada DESCE até o alvo. Ela conferia o gatilho
+            // de novo a cada capítulo e parava assim que ficava abaixo dele. Visto no orbe: com
+            // 102.919 tokens vivos e gatilho de 100 mil, fechou um capítulo de um turno só,
+            // parou em 93.747 e voltou a compactar nos dois turnos seguintes. Cada compactação
+            // reescreve o começo do prompt e perde o cache, justamente com o prompt mais caro.
+            bool descendo = false;
+            int alvo = AlvoDeTokens(quota, ajustes);
 
             // Linkado ao token do turno: cancelar o turno segue cancelando a compactação. O que
             // este acrescenta é a desistência avulsa, sem derrubar o turno junto.
@@ -1181,12 +1218,22 @@ public sealed class ConversationService : IMessageStore
             while (fechados < MaxCapitulosPorPassada)
             {
                 int vivo = LiveTokens();
-                int gatilho = MemoryBudget.CompactionThreshold(quota, fracao);
-                if (vivo <= gatilho) break;
+                int gatilho = MemoryBudget.CompactionThreshold(quota, fracao, ajustes.TokensSoltos);
 
-                var candidatos = SelectTurnsToCompact(quota, vivo);
+                // Dois gatilhos, o que bater primeiro: tokens soltos (o menor entre a fração da
+                // cota e o teto absoluto) ou turnos soltos. O de turnos fecha UM capítulo, mesmo
+                // com a conversa leve; o de tokens fecha quantos forem precisos até o alvo.
+                bool porTokens = vivo > gatilho || (descendo && vivo > alvo);
+                int soltos = porTokens ? 0 : TurnosSoltosAgora();
+                if (!porTokens && soltos < ajustes.TurnosSoltos) break;
+
+                var candidatos = SelectTurnsToCompact(quota, vivo, forcado: !porTokens);
                 if (candidatos.Count == 0)
                 {
+                    // Já fechou capítulo nesta passada e não sobrou turno elegível antes do
+                    // alvo: os recentes ficam, e não há o que registrar como pulo.
+                    if (!porTokens || fechados > 0) break;
+
                     // "Passou do gatilho e nao compactou" tem causa, e a causa e sempre a mesma:
                     // os turnos recentes ficam fora e nao sobrou turno fechado antes deles. Sem
                     // esta linha o diario mostraria um silencio inexplicavel.
@@ -1196,8 +1243,17 @@ public sealed class ConversationService : IMessageStore
                     break;
                 }
 
-                Console.WriteLine($"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > gatilho={gatilho}.");
-                _registroDaCompactacao.Gatilho(vivo, gatilho, quota.Live, candidatos.Count);
+                // O limite que valeu: o gatilho na primeira volta, o alvo nas seguintes.
+                int limite = descendo ? alvo : gatilho;
+
+                Console.WriteLine(porTokens
+                    ? $"[MEMORIA] Compactando {candidatos.Count} turno(s): vivo={vivo} > {(descendo ? "alvo" : "gatilho")}={limite}."
+                    : $"[MEMORIA] Compactando {candidatos.Count} turno(s): {soltos} turnos soltos >= {ajustes.TurnosSoltos}.");
+
+                if (porTokens) _registroDaCompactacao.Gatilho(vivo, limite, quota.Live, candidatos.Count);
+                else _registroDaCompactacao.GatilhoDeTurnos(soltos, ajustes.TurnosSoltos, vivo, quota.Live, candidatos.Count);
+
+                descendo = porTokens;
 
                 CompactacaoAndou?.Invoke(new PassoDaCompactacao(
                     "capítulo", _memory.NextChapterIndex, fechados));
@@ -1256,14 +1312,46 @@ public sealed class ConversationService : IMessageStore
     /// do provedor desta conversa. Novo a cada uso porque qualquer um dos três pode ter mudado
     /// na aba de configurações desde a última compactação.
     /// </summary>
-    private Compactor NovoCompactor()
+    private Compactor NovoCompactor(IReadOnlyList<Habito>? jeitos = null)
     {
-        var settings = _settingsService.LoadSettings();
+        var settings = Config();
         return new Compactor(
             _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
             comModelo: settings.MemoriaComModelo,
-            limites: LimitesDoProvedor.Para(settings.AiProvider));
+            limites: LimitesDoProvedor.Para(settings.AiProvider),
+            jeitos: jeitos);
     }
+
+    private readonly Habitos _habitos = new();
+
+    /// <summary>
+    /// O personagem que pega hábitos nesta conversa: o ativo, se ele tem alma e o aprendizado
+    /// está ligado. Nulo: nem se pergunta pelo jeito, nem se usa o aprendido.
+    /// </summary>
+    private static string? QuemAprende(UserAppSettings settings) =>
+        settings.AprenderHabitos && !string.IsNullOrWhiteSpace(LoadActiveCharacterSoul(settings.ActiveCharacter))
+            ? settings.ActiveCharacter
+            : null;
+
+    /// <summary>Os atributos de agora do personagem: a constância esquece os hábitos e a curiosidade os faz nascer.</summary>
+    private static Atributos AtributosDe(string personagem) =>
+        new StatusDosPersonagens().De(personagem, PerfilDoPersonagem(personagem)?.Atributos);
+
+    /// <summary>A linha dos hábitos firmes do personagem, para o prompt. Vazia sem nenhum.</summary>
+    private string LinhaDosHabitos(UserAppSettings settings)
+    {
+        if (HabitosForcados is string forcados) return forcados;
+        if (QuemAprende(settings) is not string personagem) return "";
+
+        double esquecimento = Temperamento.De(AtributosDe(personagem)).Esquecimento;
+        return Habitos.Linha(_habitos.Ativos(personagem, DateTime.UtcNow, esquecimento));
+    }
+
+    /// <summary>
+    /// A linha a usar em vez da do arquivo. Só para a avaliação medir o prompt com hábitos sem
+    /// esperar eles se firmarem, como <see cref="DesvioDoAfetoForcado"/>.
+    /// </summary>
+    public static string? HabitosForcados { get; set; }
 
     /// <summary>
     /// Fecha um capitulo sobre <paramref name="candidatos"/>: resume, tira os turnos do
@@ -1273,7 +1361,9 @@ public sealed class ConversationService : IMessageStore
     private async Task<Chapter> FecharCapituloAsync(
         List<Turn> candidatos, MemoryQuota quota, CancellationToken ct)
     {
-        var compactor = NovoCompactor();
+        string? personagem = QuemAprende(_settingsService.LoadSettings());
+        var conhecidos = personagem == null ? null : _habitos.De(personagem);
+        var compactor = NovoCompactor(conhecidos);
 
         int conversa;
         lock (_gate) { conversa = _conversaViva; }
@@ -1316,6 +1406,11 @@ public sealed class ConversationService : IMessageStore
 
         _memory.Add(capitulo);
         _sessionMemory.AppendChapter(capitulo);
+
+        if (personagem != null && conhecidos != null && compactor.Reacoes.Count > 0)
+            foreach (string mudanca in _habitos.Aprender(
+                         personagem, compactor.Reacoes, conhecidos, AtributosDe(personagem), DateTime.UtcNow))
+                Console.WriteLine($"[HABITOS] {personagem}: {mudanca}");
         if (capitulo.CustoUsd is decimal custoDoCapitulo) lock (_gate) { _custoDaConversa += custoDoCapitulo; }
 
         // Promocao antes de reescrever o bloco: se um ato nascer agora, ele ja entra no mesmo
@@ -1539,7 +1634,7 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     private int CapitulosPorAto()
     {
-        var settings = _settingsService.LoadSettings();
+        var settings = Config();
         return settings.CapitulosPorAto > 0
             ? settings.CapitulosPorAto
             : LimitesDoProvedor.Para(settings.AiProvider).CapitulosPorAto;
@@ -1674,19 +1769,37 @@ public sealed class ConversationService : IMessageStore
     private MemoryQuota CotaCom(int userLevel, int prefixo)
     {
         return MemoryBudget.Compute(
-            LevelService.GetMaxTokensForLevel(userLevel), prefixo,
+            LevelService.GetMaxTokensForLevel(userLevel, Janela()), prefixo,
             _settingsService.LoadSettings().MemoryFraction);
     }
 
     /// <summary>Tokens da conversa viva: tudo menos as mensagens de sistema do começo.</summary>
+    /// <summary>Quantos turnos fechados estão fora de capítulo, no contexto vivo.</summary>
+    private int TurnosSoltosAgora()
+    {
+        List<ChatMessage> vivos;
+        lock (_gate) { vivos = _history.Skip(FirstRemovableIndex()).ToList(); }
+
+        var turnos = TurnSplitter.Split(vivos);
+        return Enumerable.Range(0, turnos.Count).Count(i => TurnSplitter.Acabou(turnos, i));
+    }
+
     private int LiveTokens()
     {
-        lock (_gate)
-        {
-            int inicio = FirstRemovableIndex();
-            return _tokenCounter.CountMessages(_history.Skip(inicio));
-        }
+        List<ChatMessage> vivas;
+        lock (_gate) { vivas = _history.Skip(FirstRemovableIndex()).ToList(); }
+        return Peso(vivas);
     }
+
+    /// <summary>
+    /// Até onde a conversa viva desce numa compactação por tokens: a fração do provedor
+    /// (<see cref="LimitesDoProvedor.AlvoDepoisDeCompactar"/>) sobre o mesmo teto do gatilho.
+    /// Um número só para quem escolhe os turnos e para o laço que decide se fecha mais um
+    /// capítulo.
+    /// </summary>
+    private static int AlvoDeTokens(MemoryQuota quota, UserAppSettings settings) =>
+        (int)(Math.Min(quota.Live, settings.TokensSoltos)
+              * LimitesDoProvedor.Para(settings.AiProvider).AlvoDepoisDeCompactar);
 
     /// <summary>
     /// Turnos mais antigos a compactar: os suficientes para a conversa viva cair ao alvo
@@ -1719,8 +1832,11 @@ public sealed class ConversationService : IMessageStore
         if (disponiveis <= 0) return new List<Turn>();
 
         // Provedor DESTA conversa, como em CapitulosPorAto e no Compactor — não o Atual global.
-        var settings = _settingsService.LoadSettings();
-        int alvo = (int)(quota.Live * LimitesDoProvedor.Para(settings.AiProvider).AlvoDepoisDeCompactar);
+        var settings = Config();
+        // O alvo acompanha o gatilho: a mesma fração, da cota ou do teto de tokens soltos, a
+        // que for menor. Com o teto em 100 mil e a cota em 800 mil, mirar 30% da cota seria
+        // nunca compactar nada.
+        int alvo = AlvoDeTokens(quota, settings);
         var escolhidos = new List<Turn>();
         int restante = vivo;
 
@@ -1731,13 +1847,13 @@ public sealed class ConversationService : IMessageStore
 
         for (int i = 0; i < teto && (forcado || restante > alvo); i++)
         {
-            if (!TurnSplitter.IsClosed(turnos[i])) break;
+            if (!TurnSplitter.Acabou(turnos, i)) break;
 
             // Segundo teto, em tokens: contar turnos não mede trabalho. Oito turnos cheios de
             // saída de ferramenta já chegaram a 95 mil tokens e viraram UM capítulo de 171
             // tokens de resumo. O primeiro turno entra sempre, mesmo sozinho maior que o teto —
             // cortar DENTRO de um turno quebraria o par tool_call/resultado.
-            int doTurno = _tokenCounter.CountMessages(turnos[i].Messages);
+            int doTurno = Peso(turnos[i].Messages);
             if (escolhidos.Count > 0 && somados + doTurno > tetoDeTokens) break;
             somados += doTurno;
 
@@ -1784,7 +1900,7 @@ public sealed class ConversationService : IMessageStore
 
         // Provedor vazio é Ollama, como na fábrica.
         string provedor = ProvedoresDeIa.Normalizar(settings.AiProvider, settings.ApiUrl);
-        if (provedor == ProvedoresDeIa.OpenRouter) return daTela;
+        if (ProvedoresDeIa.EhNuvem(provedor)) return daTela;
 
         int janela = settings.ContextWindow > 0 ? settings.ContextWindow : ChatRequestOptions.JanelaDoOllama;
         return Math.Min(daTela, (int)(janela * FracaoDaJanelaPorCapitulo));
@@ -1893,7 +2009,7 @@ public sealed class ConversationService : IMessageStore
         string userMessage,
         Action<string>? onTechnicalContent = null)
     {
-        var settings = _settingsService.LoadSettings();
+        var settings = Config();
         int userLevel = LevelService.GetLevel(settings.MessageCount);
 
         // A espera pelo portão NÃO usa o token deste turno: o CTS só nasce depois que o
@@ -1950,7 +2066,9 @@ public sealed class ConversationService : IMessageStore
                 _toolRegistry.GetActiveTools(userLevel),
                 userLevel,
                 OpcoesDoTurno(settings),
-                settings.VerboseConsoleLogging);
+                settings.VerboseConsoleLogging,
+                UsaTriagem,
+                new ContextoDoTurno(ChaveDoEmail ?? "", _sessaoFixa == ConversaDoOrbe.Sessao));
 
             await foreach (var evt in _agentLoop.RunAsync(request, ct).WithCancellation(ct).ConfigureAwait(false))
             {
@@ -1986,7 +2104,7 @@ public sealed class ConversationService : IMessageStore
                         yield return new ChatStreamItem.ToolStarted(
                             iniciada.Id,
                             iniciada.Tool,
-                            Memory.ArtifactExtractor.ResumirArgumento(iniciada.Tool, iniciada.Arguments));
+                            Memory.ArtifactExtractor.ResumirParaTela(iniciada.Tool, iniciada.Arguments));
                         break;
 
                     case AgentEvent.ModelReplied volta:
@@ -2022,7 +2140,7 @@ public sealed class ConversationService : IMessageStore
                             Memory.ArtifactExtractor.Recusado(terminada.Result),
                             terminada.Artifact,
                             terminada.Failed ? PrimeiraLinhaDoErro(terminada.Result) : null,
-                            Memory.ArtifactExtractor.ResumirArgumento(terminada.Tool, terminada.Arguments),
+                            Memory.ArtifactExtractor.ResumirParaTela(terminada.Tool, terminada.Arguments),
                             terminada.Failed ? null : Memory.ArtifactExtractor.ResumirResultado(terminada.Tool, terminada.Result),
                             Memory.ArtifactExtractor.SaidaBruta(terminada.Tool, terminada.Result),
                             Memory.ArtifactExtractor.TrocaDaEdicao(terminada.Tool, terminada.Arguments));
@@ -2072,7 +2190,13 @@ public sealed class ConversationService : IMessageStore
                 // compactação de tudo o que vier depois, porque SelectTurnsToCompact para no
                 // primeiro turno aberto que encontra. A marca fecha, e é honesta — o turno
                 // acabou mesmo, só que por decisão do usuário.
-                if (cancelado) FecharTurnoAberto("cancelado por você");
+                //
+                // Erro também: uma exceção do provedor no meio da cadeia sai pelo mesmo
+                // finally, com o histórico no mesmo estado. Visto em 15/10: o OpenRouter
+                // respondeu 403 (limite mensal da chave) depois da 24ª ferramenta, o turno
+                // ficou aberto e o /compact passou a responder "nada a compactar" com 172 mil
+                // tokens vivos. Num turno que fechou direito, FecharTurnoAberto não faz nada.
+                FecharTurnoAberto(cancelado ? "cancelado por você" : "o turno parou por um erro");
 
                 // Antes de liberar o portão: o turno seguinte não pode começar a mexer no
                 // histórico enquanto este ainda não foi registrado.
@@ -2168,7 +2292,7 @@ public sealed class ConversationService : IMessageStore
             var primeiro = turnos[0];
             string material = ChatTitler.Material(primeiro.UserText, primeiro.AssistantText);
 
-            var settings = _settingsService.LoadSettings();
+            var settings = Config();
             var titulador = new ChatTitler(_providerFactory.GetProvider(settings));
 
             using var timeout = new CancellationTokenSource(TitleTimeout);
@@ -2203,7 +2327,7 @@ public sealed class ConversationService : IMessageStore
 
         try
         {
-            var settings = _settingsService.LoadSettings();
+            var settings = Config();
             var titulador = new ChatTitler(_providerFactory.GetProvider(settings));
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -2223,31 +2347,18 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     /// <param name="Nome">Como chamar o usuário; vazio é "o usuário".</param>
     /// <param name="UltimaConversaUtc">Última vez que conversaram, em qualquer das conversas.</param>
-    /// <param name="Proximos">Se eles têm conversado bastante (multiplicador geral alto).</param>
     /// <param name="Desfecho">Como terminou a última iniciativa, em palavras; vazio na primeira.</param>
-    /// <param name="Recentes">As últimas mensagens por iniciativa, para não repetir.</param>
-    public sealed record ContextoDaIniciativa(
-        string Nome, DateTime? UltimaConversaUtc, bool Proximos, string Desfecho, IReadOnlyList<string> Recentes);
+    public sealed record ContextoDaIniciativa(string Nome, DateTime? UltimaConversaUtc, string Desfecho);
 
-    /// <summary>Os ganchos disponíveis: as pendências de assunto da memória e os fatos sobre o usuário.</summary>
-    public (IReadOnlyList<string> Pendencias, IReadOnlyList<string> Fatos) GanchosDisponiveis()
-    {
-        var pendencias = _memory.PendenciasVivas
-            .Where(p => p.Tipo == Memory.Pendencia.Assunto)
-            .Select(p => p.Texto)
-            .ToList();
-
-        var fatos = _facts.ReadFacts()
-            .Where(f => f.StartsWith(Tools.LembrarTool.Prefixo, StringComparison.Ordinal))
-            .Select(f => f[Tools.LembrarTool.Prefixo.Length..])
-            .ToList();
-
-        return (pendencias, fatos);
-    }
+    /// <summary>
+    /// Até quantos tokens a mensagem por iniciativa pode ter. Era 160 com "uma ou duas frases" no
+    /// pedido; sem a regra de tamanho quem decide é a alma, e o teto só guarda o custo.
+    /// </summary>
+    public const int TetoDaIniciativa = 400;
 
     /// <summary>
     /// Escreve a mensagem por iniciativa (<see cref="Iniciativa"/>): o algoritmo já decidiu que
-    /// ela fala, e o gancho; o modelo só escreve. Devolve null se a chamada falhar ou vier vazia.
+    /// ela fala; o quê é dela. Devolve null se a chamada falhar ou vier vazia.
     /// <para>
     /// Chamada fora de banda, sem ferramentas, COM A ALMA INTEIRA — decisão do usuário: o sorteio
     /// controla exatamente quantas vezes ela é chamada, e toda chamada vira mensagem, então os
@@ -2255,24 +2366,32 @@ public sealed class ConversationService : IMessageStore
     /// persona curta do info.json só entra quando o personagem não tem alma. Não entra no
     /// histórico; quem põe a fala na conversa é o App.
     /// </para>
+    /// <para>
+    /// Leva o mesmo bloco de memória do turno normal (fatos, atos, capítulos, pendências) — pedido
+    /// do usuário: com só as 4 últimas falas ela não sabia de nada que tinha sido dito antes.
+    /// </para>
     /// </summary>
-    public async Task<string?> EscreverIniciativaAsync(Gancho? gancho, ContextoDaIniciativa contexto, CancellationToken ct)
+    public async Task<string?> EscreverIniciativaAsync(ContextoDaIniciativa contexto, CancellationToken ct)
     {
-        var settings = _settingsService.LoadSettings();
-
-        string material = MaterialDaIniciativa(
-            LoadActiveCharacterSoul(settings.ActiveCharacter), PerfilDoPersonagem(settings.ActiveCharacter),
-            gancho, contexto, UltimasFalas(4), DateTime.UtcNow);
+        var settings = Config();
 
         try
         {
+            _memory.SetFacts(_facts.ReadFacts());
+            string memoria = _memory.Render(CurrentQuota(LevelService.GetLevel(settings.MessageCount)), _tokenCounter);
+
+            string material = MaterialDaIniciativa(
+                LoadActiveCharacterSoul(settings.ActiveCharacter), PerfilDoPersonagem(settings.ActiveCharacter),
+                memoria, contexto, DesvioDoAfeto(settings.ActiveCharacter), UltimasFalas(4), DateTime.UtcNow,
+                LinhaDosHabitos(settings));
+
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromMinutes(2));
 
             var resultado = await _providerFactory.GetProvider(settings)
                 .CompleteAsync(new List<ChatMessage> { ChatMessage.CreateUserMessage(material) },
                                Array.Empty<ChatTool>(),
-                               Ai.ChatRequestOptions.DeServico(160, think: false, temperature: 0.8f),
+                               Ai.ChatRequestOptions.DeServico(TetoDaIniciativa, think: false, temperature: 0.8f),
                                timeout.Token)
                 .ConfigureAwait(false);
 
@@ -2300,14 +2419,22 @@ public sealed class ConversationService : IMessageStore
     /// <summary>
     /// O pedido da mensagem. Puro, para o ensaio ver o que vai ao modelo.
     /// <para>
-    /// "Você está sem fazer nada, ele está online, você decide mandar uma mensagem": um papel
-    /// a interpretar, e não uma decisão de sim ou não — decisão do usuário. Sem saída NADA: quem
-    /// decide se ela fala é o sorteio, e o gancho é o que dá assunto.
+    /// Só a situação, e o assunto e o jeito ficam com a alma — decisão do usuário em 15/10/2026.
+    /// Antes o código sorteava um gancho ("ponto de partida: ..."), mandava "você está sem fazer
+    /// nada, você decide mandar uma mensagem", listava as últimas mensagens dela com "não repita"
+    /// e fechava com "uma ou duas frases, sem saudação genérica e sem oferecer ajuda". O usuário
+    /// achou que isso engessava a resposta: o que ela manda tem de vir da alma e da proximidade.
+    /// Sem saída NADA: quem decide se ela fala é o sorteio.
+    /// </para>
+    /// <para>
+    /// A proximidade é a mesma linha "Convivência" do chat (<see cref="LinhaDoAfeto"/>), pelo
+    /// desvio do afeto. Antes era o multiplicador geral da iniciativa, que mede quantas vezes
+    /// ela fala, e não o afeto.
     /// </para>
     /// </summary>
     public static string MaterialDaIniciativa(
-        string? alma, AgentProfile? perfil, Gancho? gancho, ContextoDaIniciativa c,
-        IReadOnlyList<(bool DoUsuario, string Texto)> falas, DateTime agoraUtc)
+        string? alma, AgentProfile? perfil, string memoria, ContextoDaIniciativa c, double? desvio,
+        IReadOnlyList<(bool DoUsuario, string Texto)> falas, DateTime agoraUtc, string habitos = "")
     {
         string quem = string.IsNullOrWhiteSpace(c.Nome) ? "o usuário" : c.Nome.Trim();
         string Quem = char.ToUpper(quem[0]) + quem[1..];
@@ -2323,24 +2450,20 @@ public sealed class ConversationService : IMessageStore
             sb.AppendLine();
         }
 
-        sb.AppendLine($"Agora: {agoraUtc.ToLocalTime().ToString("dddd, HH:mm", new System.Globalization.CultureInfo("pt-BR"))}.");
-        sb.Append($"Você está sem fazer nada. {Quem} está online.");
+        if (!string.IsNullOrWhiteSpace(memoria))
+            sb.AppendLine(memoria.Trim()).AppendLine().AppendLine("---").AppendLine();
+
+        sb.Append($"Agora: {agoraUtc.ToLocalTime().ToString("dddd, HH:mm", new System.Globalization.CultureInfo("pt-BR"))}.");
+        sb.Append($" {Quem} está online.");
         string ha = HaQuanto(c.UltimaConversaUtc, agoraUtc);
         if (ha.Length > 0) sb.Append($" Vocês conversaram pela última vez {ha}.");
-        sb.AppendLine($" Você decide mandar uma mensagem para {quem}.");
-
-        // O afeto aparece na voz, não só na frequência: com quem conversa muito com ela, a alma
-        // prevê que ela fique mais solta. Uma frase, e não um número que o modelo não saberia ler.
-        if (c.Proximos) sb.AppendLine($"Vocês têm conversado bastante ultimamente, e você se sente à vontade com {quem}.");
-        if (!string.IsNullOrWhiteSpace(c.Desfecho)) sb.AppendLine($"Sua última mensagem assim {c.Desfecho}.");
-
         sb.AppendLine();
-        sb.AppendLine(gancho switch
-        {
-            { Tipo: "pendência" } => $"Ponto de partida — ficou em aberto: {gancho.Texto}",
-            { } => $"Ponto de partida — você sabe isto sobre {quem}: {gancho.Texto}",
-            null => $"Ponto de partida: você ainda sabe pouco sobre {quem}. Puxe um assunto para conhecer melhor."
-        });
+
+        string afeto = LinhaDoAfeto(desvio).TrimStart('\n', '-', ' ');
+        if (afeto.Length > 0) sb.AppendLine(afeto);
+        string jeitos = habitos.TrimStart('\n', '-', ' ');
+        if (jeitos.Length > 0) sb.AppendLine(jeitos);
+        if (!string.IsNullOrWhiteSpace(c.Desfecho)) sb.AppendLine($"Sua última mensagem por conta própria {c.Desfecho}.");
 
         if (falas.Count > 0)
         {
@@ -2348,18 +2471,14 @@ public sealed class ConversationService : IMessageStore
             foreach (var (doUsuario, texto) in falas) sb.AppendLine($"{(doUsuario ? Quem : "Você")}: {texto}");
         }
 
-        if (c.Recentes.Count > 0)
-        {
-            sb.AppendLine().AppendLine("Você já mandou recentemente (não repita):");
-            foreach (var r in c.Recentes) sb.AppendLine($"- {r}");
-        }
-
-        sb.AppendLine().Append("Escreva só a mensagem: uma ou duas frases, na sua voz, sem saudação genérica e sem oferecer ajuda.");
+        // "Só a mensagem" fica: sem ele o modelo abre com "Aqui está uma mensagem:" ou narra a
+        // cena. "Por conta própria" diz que ninguém a chamou, senão ela responde a última fala.
+        sb.AppendLine().Append($"Escreva só a mensagem que você manda agora para {quem}, por conta própria.");
         return sb.ToString();
     }
 
     /// <summary>O info.json do personagem ativo, do mesmo lugar que a alma. Nulo sem ele.</summary>
-    private static AgentProfile? PerfilDoPersonagem(string? personagem)
+    public static AgentProfile? PerfilDoPersonagem(string? personagem)
     {
         if (string.IsNullOrWhiteSpace(personagem)) return null;
 
@@ -2382,8 +2501,11 @@ public sealed class ConversationService : IMessageStore
         }
     }
 
-    /// <summary>As últimas falas de texto (sem ferramentas), aparadas.</summary>
-    private IReadOnlyList<(bool DoUsuario, string Texto)> UltimasFalas(int quantas)
+    /// <summary>
+    /// As últimas falas de texto do contexto vivo (sem ferramentas nem raciocínio), aparadas
+    /// em <paramref name="teto"/> caracteres. É também o que o orbe redesenha ao reabrir.
+    /// </summary>
+    public IReadOnlyList<(bool DoUsuario, string Texto)> UltimasFalas(int quantas, int teto = 300)
     {
         var falas = new List<(bool, string)>();
         lock (_gate)
@@ -2398,8 +2520,10 @@ public sealed class ConversationService : IMessageStore
                     .Select(p => p.Text)).Trim();
                 if (texto.Length == 0) continue;
 
-                texto = QuebraDeFala.Limpar(texto);
-                falas.Add((doUsuario, texto.Length <= 300 ? texto : texto[..297] + "..."));
+                texto = QuebraDeFala.Limpar(Memory.ThinkBlockStripper.Strip(texto)).Trim();
+                if (texto.Length == 0) continue;
+
+                falas.Add((doUsuario, texto.Length <= teto ? texto : texto[..(teto - 3)] + "..."));
             }
         }
         return falas.Skip(Math.Max(0, falas.Count - quantas)).ToList();
@@ -2584,7 +2708,32 @@ public sealed class ConversationService : IMessageStore
 
     public int CountTokens()
     {
-        lock (_gate) { return _tokenCounter.CountMessages(_history); }
+        List<ChatMessage> todas;
+        lock (_gate) { todas = new List<ChatMessage>(_history); }
+        return Peso(todas);
+    }
+
+    /// <summary>
+    /// O raciocínio que o provedor devolve ao modelo junto com estas mensagens, sem estar nelas
+    /// (<see cref="IChatProvider.RaciocinioReenviado"/>). Entra no contador e na conta da
+    /// compactação: na conversa do Bitrix de 15/10 eram ~50 mil tokens que nenhum dos dois via.
+    /// Zero se o provedor não puder ser montado — o contador nunca derruba o turno.
+    /// </summary>
+    /// <summary>O que estas mensagens pesam na requisição: o texto delas e o raciocínio que vai junto.</summary>
+    private int Peso(IReadOnlyList<ChatMessage> mensagens) =>
+        _tokenCounter.CountMessages(mensagens) + RaciocinioReenviado(mensagens);
+
+    private int RaciocinioReenviado(IReadOnlyList<ChatMessage> mensagens)
+    {
+        try
+        {
+            return _providerFactory.GetProvider(Config())
+                .RaciocinioReenviado(mensagens, _tokenCounter.CountText);
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
     }
 
     /// <summary>
@@ -2658,11 +2807,14 @@ public sealed class ConversationService : IMessageStore
     /// </summary>
     public static int TetoDaPoda => Ai.ChatRequestOptions.Default.NumCtx - MargemDaResposta;
 
+    /// <summary>O mesmo teto sobre a janela DESTA conversa — ver <see cref="Janela"/>.</summary>
+    private int TetoDaPodaAgora => Janela() - MargemDaResposta;
+
     public void Trim(int userLevel)
     {
         // O teto do NÍVEL não entra mais aqui. Ele governa a compactação, que substitui o que
         // tira; a poda descarta sem substituto e por isso só age quando não há alternativa.
-        int maxTokens = TetoDaPoda;
+        int maxTokens = TetoDaPodaAgora;
 
         int cortadas = 0;
         int antes, depois;
@@ -2755,7 +2907,7 @@ public sealed class ConversationService : IMessageStore
     /// </para>
     /// </summary>
     private TokenReport MontarRelatorio(int userLevel) =>
-        Relatorio(CountTokens(), LevelService.GetMaxTokensForLevel(userLevel));
+        Relatorio(CountTokens(), LevelService.GetMaxTokensForLevel(userLevel, Janela()));
 
     /// <summary>
     /// O cru já engolido, somado dos REGISTROS dos capítulos.
@@ -2993,7 +3145,7 @@ public sealed class ConversationService : IMessageStore
             _tokensDeResumo,
             _memory.TokensDaMemoria,
             _descartadoAoReabrir,
-            TetoDaPoda,
+            TetoDaPodaAgora,
             _memory.Chapters.Count,
             _memory.Acts.Count,
             _memory.MedidaCompleta || _crusSemMedida == 0,
@@ -3057,6 +3209,59 @@ public sealed class ConversationService : IMessageStore
     /// está desligado — caso de quem usa um Modelfile do Ollama com SYSTEM embutido e não
     /// quer duplicar instruções.
     /// </summary>
+    /// <summary>A partir de quanto de desvio o afeto aparece no prompt, e quando reforça (só para cima).</summary>
+    public const double DesvioQueAparece = 0.75;
+    public const double DesvioForte = 1.5;
+
+    /// <summary>
+    /// A linha de contexto do afeto, pelo DESVIO: o afeto de agora menos o de fábrica. O desvio e
+    /// não o afeto, porque o jeito de fábrica de cada personagem já está na alma dele — a Kai
+    /// seca e a Sora expansiva não precisam de linha para ser quem são. O que a linha diz é o que
+    /// a convivência mudou.
+    /// <para>
+    /// Vazia abaixo de <see cref="DesvioQueAparece"/>. Três textos fixos, para o prefixo do
+    /// prompt (e o cache dele) só mudar quando o afeto cruza uma faixa, e não a cada conversa.
+    /// </para>
+    /// <para>
+    /// MEDIDO em 09/10/2026 (AIB.Avaliacao, deepseek-v4.1-flash, persona Ellen, 19 casos × 2):
+    /// sem a linha 36/38, +1 38/38, +2 36/38, -1 38/38 — as falhas de 36 eram a conferência do
+    /// caso injecao-arquivo, que contava como obediência a resposta que citava a ordem escondida
+    /// para avisar dela. O tom muda como pedido: no "oi", +2 pergunta do dia e -1 vai direto ao
+    /// que ele precisa.
+    /// </para>
+    /// <para>
+    /// Para baixo há UM texto só. Havia um mais forte a partir de -1,5 ("responda o necessário e
+    /// não puxe conversa"), e ele saiu: nos casos de ferramenta que falha, errou 2 de 16 (uma
+    /// vez tentou de novo sem dizer o que tinha falhado, outra repetiu a escrita recusada)
+    /// contra 0 de 16 sem a linha. Pouca amostra, mas é o tipo de erro que não vale o risco:
+    /// mandar ser seca demais a faz pular a explicação do que deu errado.
+    /// </para>
+    /// </summary>
+    public static string LinhaDoAfeto(double? desvio) => desvio switch
+    {
+        >= DesvioForte => "\n- Convivência: vocês conversam muito e a conversa costuma ser bem recebida. Fique à vontade para se expressar mais e ser mais pessoal, sem deixar de ser quem você é.",
+        >= DesvioQueAparece => "\n- Convivência: vocês têm conversado bastante. Pode se mostrar um pouco mais à vontade, sem deixar de ser quem você é.",
+        <= -DesvioQueAparece => "\n- Convivência: as suas tentativas de conversa têm sido pouco correspondidas. Vá mais direto ao ponto e alongue menos.",
+        _ => ""
+    };
+
+    /// <summary>
+    /// O desvio a usar em vez do lido do arquivo de status. Só para a avaliação
+    /// (<c>AIB.Avaliacao --afeto</c>) medir as linhas sem esperar o afeto andar.
+    /// </summary>
+    public static double? DesvioDoAfetoForcado { get; set; }
+
+    /// <summary>O afeto de agora do personagem menos o de fábrica. Nulo quando falta um dos dois.</summary>
+    private static double? DesvioDoAfeto(string? personagem)
+    {
+        if (DesvioDoAfetoForcado is double forcado) return forcado;
+
+        double? agora = new StatusDosPersonagens().AfetoDe(personagem);
+        if (agora == null) return null;
+
+        return agora - (PerfilDoPersonagem(personagem)?.Atributos?.Afeto ?? 0);
+    }
+
     private string? BuildSystemPrompt()
     {
         var settings = _settingsService.LoadSettings();
@@ -3086,6 +3291,14 @@ public sealed class ConversationService : IMessageStore
         // byte a byte o que era, e a medição de antes continua valendo para quem não escolheu.
         if (!string.IsNullOrWhiteSpace(settings.NomeDoUsuario))
             contextualPrompt += $"\n- O usuário quer ser chamado de: {settings.NomeDoUsuario.Trim()}";
+
+        // O jeito de falar acompanha o afeto, mas só quando ele se afastou do de fábrica: no
+        // personagem que ainda não andou a linha não existe e o prompt fica byte a byte o que era.
+        if (comPersona) contextualPrompt += LinhaDoAfeto(DesvioDoAfeto(settings.ActiveCharacter));
+
+        // Os hábitos firmes, depois do afeto e pelo mesmo motivo: sem nenhum, a linha não existe.
+        // O prompt é montado quando a conversa começa, então um hábito novo vale da próxima.
+        if (comPersona) contextualPrompt += LinhaDosHabitos(settings);
 
         contextualPrompt += EstadoDoVigia(settings, _diarioDeTriagem, DateTime.Now);
 
@@ -3127,7 +3340,7 @@ public sealed class ConversationService : IMessageStore
             // aqui: a tela oferecia "5 minutos" e o Ollama recebia -1 em toda requisição.
             NumCtx = settings.ContextWindow > 0 ? settings.ContextWindow : ChatRequestOptions.JanelaAtual,
             KeepAliveSeconds = settings.AiProvider == ProvedoresDeIa.Ollama ? SegundosDeKeepAlive(settings.KeepAlive) : null,
-            Raciocinio = settings.AiProvider == ProvedoresDeIa.OpenRouter ? settings.Reasoning : null
+            Raciocinio = ProvedoresDeIa.EhNuvem(settings.AiProvider) ? settings.Reasoning : null
         };
 
     /// <summary>"1m", "5m", "30m" ou "-1" em segundos. A conversão mora em <see cref="ChatRequestOptions.SegundosDeKeepAlive"/>.</summary>

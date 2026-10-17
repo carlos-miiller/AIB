@@ -17,20 +17,21 @@
             Effect="{StaticResource WindowShadow}">
         <Border Background="{StaticResource GlassBrush}"
                 CornerRadius="{StaticResource RadiusWindowInner}" ClipToBounds="True">
-            <StackPanel Margin="18,16">
+            <StackPanel Margin="16,15,16,14">
 
-                <!-- (a) PILL — geometria idêntica à pill de nível, em vermelho. -->
-                <Border Style="{StaticResource PillBorder}"
+                <!-- (a) PILL — diz o que importa da ação ("Não há desfazer", "Volta com mensagem
+                     nova"); vermelha ou laranja conforme tenha volta. Pintada em código. -->
+                <Border x:Name="Pill" Style="{StaticResource PillBorder}"
                         Background="{StaticResource DangerFill14Brush}"
                         BorderBrush="{StaticResource DangerEdge32Brush}"
                         HorizontalAlignment="Left">
                     <StackPanel Orientation="Horizontal">
-                        <Path Data="M6,1 L11.5,10.5 L0.5,10.5 Z M6,4.6 L6,7.4 M6,8.8 L6,9.2"
+                        <Path x:Name="PillIcone" Data="M6,1 L11.5,10.5 L0.5,10.5 Z M6,4.6 L6,7.4 M6,8.8 L6,9.2"
                               Stroke="{StaticResource DangerTextBrush}" StrokeThickness="1.2"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                               Width="12" Height="11" Stretch="None"
                               VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBlock Text="Ação destrutiva" Style="{StaticResource PillText}"
+                        <TextBlock x:Name="PillTexto" Text="Não há desfazer" Style="{StaticResource PillText}"
                                    Foreground="{StaticResource DangerTextBrush}"/>
                     </StackPanel>
                 </Border>
@@ -60,7 +61,16 @@
                     </StackPanel>
                 </Border>
 
-                <!-- (e) RODAPÉ separado por divisória. -->
+                <!-- (e) A PALAVRA, só no reset de fábrica: o botão acende com ela completa. -->
+                <StackPanel x:Name="PalavraBox" Visibility="Collapsed" Margin="0,12,0,0">
+                    <TextBlock x:Name="PalavraRotulo" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBodyBrush}" Margin="0,0,0,6"/>
+                    <TextBox x:Name="PalavraTexto" Style="{StaticResource ControlTextBox}"
+                             FontFamily="{StaticResource MonoFontFamily}"
+                             TextChanged="Palavra_TextChanged"/>
+                </StackPanel>
+
+                <!-- (f) RODAPÉ separado por divisória. -->
                 <Rectangle Height="1" Fill="{StaticResource DividerBrush}" Margin="0,16,0,0"/>
                 <Grid Margin="0,14,0,0">
                     <Grid.ColumnDefinitions>
@@ -69,10 +79,10 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <Button x:Name="PermitirButton" Grid.Column="0" Content="Permitir"
+                    <Button x:Name="PermitirButton" Grid.Column="0" Content="Confirmar"
                             Style="{StaticResource DangerFilledButton}"
                             Click="Permitir_Click" Margin="0,0,10,0"/>
-                    <Button x:Name="RecusarButton" Grid.Column="1" Content="Recusar"
+                    <Button x:Name="RecusarButton" Grid.Column="1" Content="Cancelar"
                             Style="{StaticResource OutlineButton}" Padding="18,8"
                             Click="Recusar_Click" IsCancel="True"/>
                     <TextBlock x:Name="DicaText" Grid.Column="2" FontSize="11"

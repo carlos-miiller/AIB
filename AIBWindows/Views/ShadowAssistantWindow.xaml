@@ -4,7 +4,7 @@
         xmlns:ui="clr-namespace:AIB.Ui"
         xmlns:v="clr-namespace:AIB.Views"
         Title="AIB"
-        Width="640"
+        Width="744"
         SizeToContent="Height"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -34,7 +34,9 @@
           orbShadow  28 de blur                       -> ~28 em volta do orbe
           onda do pulso  64/2 x 2,34                  -> ~75 do centro do orbe
 
-        Daí MargemDaSombra = 56 e Width = 640: 520 + 56 + 56 = 632, com folga.
+        Daí MargemDaSombra = 56 e Width = 744: 624 + 56 + 56 = 736, com folga.
+        (A barra era de 520, a da spec; o usuário pediu 20% a mais de largura, na
+        barra e nas bolhas: 624, 456 e 528.)
         A LARGURA DA JANELA PRECISA ACOMPANHAR A MARGEM. Mexer numa e esquecer a
         outra corta a sombra e a onda em linha reta nas laterais — foi exatamente o
         que aconteceu quando a margem subiu para 48 e a largura ficou em 600.
@@ -67,20 +69,25 @@
 
     <Grid x:Name="Raiz" Background="{x:Null}">
 
-        <!-- LARGURA FIXA de 520 (a da barra, a maior das duas formas). Sem isto o
-             balão de fala, que pode ter 440, mudaria a largura do palco e deslocaria
+        <!-- LARGURA FIXA de 624 (a da barra, a maior das duas formas). Sem isto o
+             balão de fala, que pode ter 528, mudaria a largura do palco e deslocaria
              o orbe do centro toda vez que aparecesse — a armadilha A8, agora pelo
              eixo do conteúdo em vez do da janela. -->
         <Grid x:Name="Palco"
-              Width="520"
+              Width="624"
               Margin="56"
               HorizontalAlignment="Center"
               VerticalAlignment="Bottom"
               Background="{x:Null}">
 
+            <!-- A linha da casca tem PISO de 56, a altura do orbe. Era Auto sem piso, e a casca
+                 anima a altura entre 56 e 52 no morph: a cada quadro a linha mudava, a janela
+                 (SizeToContent) era redimensionada e reposicionada, e o desenho inteiro
+                 saltava até a animação acabar. Acima do piso ela cresce: é a barra com texto
+                 de várias linhas. -->
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto" MinHeight="56"/>
             </Grid.RowDefinitions>
 
             <VisualStateManager.VisualStateGroups>
@@ -131,12 +138,12 @@
                         </Storyboard>
                     </VisualState>
 
-                    <!-- §5.3 COMPOSING — a mesma casca, agora pílula de 520x52. -->
+                    <!-- §5.3 COMPOSING — a mesma casca, agora pílula de 624x52. -->
                     <VisualState x:Name="Barra">
                         <Storyboard>
                             <DoubleAnimation Storyboard.TargetName="Casca"
                                              Storyboard.TargetProperty="Width"
-                                             To="520" Duration="0:0:0.28">
+                                             To="624" Duration="0:0:0.28">
                                 <DoubleAnimation.EasingFunction>
                                     <CubicEase EasingMode="EaseOut"/>
                                 </DoubleAnimation.EasingFunction>
@@ -216,7 +223,7 @@
                  só o resto para fechar a conta com a barra. -->
             <ScrollViewer x:Name="RoloDasFalas"
                           Grid.Row="0"
-                          MaxHeight="450"
+                          MaxHeight="608"
                           Margin="0,0,0,2"
                           VerticalScrollBarVisibility="Hidden"
                           HorizontalScrollBarVisibility="Disabled"
@@ -230,7 +237,7 @@
                          se sustenta sobre o desktop sem ajuste. -->
                     <DataTemplate DataType="{x:Type ui:FalaDoUsuario}">
                         <Border Style="{StaticResource UserBubble}"
-                                MaxWidth="380"
+                                MaxWidth="456"
                                 Margin="0,0,0,8">
                             <Border.RenderTransform>
                                 <TranslateTransform x:Name="EntradaDoUsuario" Y="8"/>
@@ -271,7 +278,7 @@
                          balão flutua sozinho e precisa ser o próprio vidro (§0 O6). -->
                     <DataTemplate DataType="{x:Type ui:FalaDaIA}">
                         <Border x:Name="Balao"
-                                MaxWidth="440"
+                                MaxWidth="528"
                                 HorizontalAlignment="Left"
                                 Margin="0,0,0,8"
                                 Padding="14,14,16,14"
@@ -302,11 +309,10 @@
                             </Border.Triggers>
 
                             <StackPanel>
-                                <TextBlock x:Name="TextoDoBalao"
-                                           Text="{Binding Texto}"
-                                           FontSize="13.5" LineHeight="20.25"
-                                           TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextBodyBrush}"/>
+                                <!-- Markdown, como a bolha da janela de chat (o mesmo
+                                     visualizador). Era um TextBlock, e a resposta aparecia
+                                     com os asteriscos e as cercas de código crus. -->
+                                <ui:TextoDaIA x:Name="TextoDoBalao" Texto="{Binding Texto}"/>
 
                                 <!-- §4.8 — a lista de e-mails vive DENTRO do mesmo
                                      balão, abaixo do texto. Nunca um segundo balão.
@@ -386,6 +392,7 @@
             <Border x:Name="Casca"
                     Grid.Row="1"
                     Width="56" Height="56"
+                    VerticalAlignment="Bottom"
                     Background="{StaticResource NeonBrush}"
                     Padding="1.5"
                     Cursor="Hand"
@@ -511,8 +518,10 @@
                                      SelectionBrush="{StaticResource AccentLilacBrush}"
                                      FontSize="14"
                                      VerticalContentAlignment="Center"
-                                     AcceptsReturn="False"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
                                      TextChanged="Campo_TextChanged"
+                                     SizeChanged="Campo_SizeChanged"
                                      PreviewKeyDown="Campo_PreviewKeyDown">
                                 <TextBox.Style>
                                     <Style TargetType="TextBox">
@@ -552,7 +561,8 @@
                                     Margin="4,0,0,0"
                                     Click="BotaoEnviar_Click"
                                     ToolTip="Enviar">
-                                <Path Data="M2,9 L16,2.5 L10.4,15.5 L8.6,10.4 Z"
+                                <Path x:Name="IconeDeEnviar"
+                                      Data="M2,9 L16,2.5 L10.4,15.5 L8.6,10.4 Z"
                                       Stroke="White" StrokeThickness="1.6"
                                       StrokeLineJoin="Round" StrokeStartLineCap="Round"
                                       StrokeEndLineCap="Round" Width="18" Height="18" Stretch="None"/>
@@ -577,6 +587,21 @@
                  3px para cima ao começar a trabalhar e voltava ao terminar. Com -3
                  de cada lado a pegada de LAYOUT volta a ser 56x56 e o anel
                  transborda só no DESENHO, que é o que se quer. -->
+            <!-- O contador de tokens da conversa do orbe, no lugar em que a janela de chat o
+                 tem: abaixo da barra, à direita. Aqui não há janela por trás, então ele flutua
+                 sobre o desktop e leva um halo para se separar do papel de parede. A margem
+                 negativa o desenha na folga do Palco, sem criar linha: uma linha a mais
+                 empurraria o orbe para cima. -->
+            <TextBlock x:Name="Contador"
+                       Grid.Row="1"
+                       HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                       Margin="0,0,16,-22"
+                       FontFamily="{StaticResource MonoFontFamily}"
+                       FontSize="12"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       Effect="{StaticResource FloatingTextShadow}"
+                       Visibility="Collapsed"/>
+
             <Path x:Name="AnelDoOrbe"
                   Grid.Row="1"
                   Data="M 35.5,1 A 34.5,34.5 0 0 1 70,35.5"

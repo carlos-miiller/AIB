@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ClientModel.Primitives;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -67,6 +67,9 @@ public sealed class OpenRouterProvider : IChatProvider
         public RaciocinioGuardado(string json, long vistoEm) { Json = json; VistoEm = vistoEm; }
         public string Json { get; }
         public long VistoEm;
+
+        /// <summary>Os tokens do texto, contados uma vez. -1 até a primeira conta.</summary>
+        public int Tokens = -1;
     }
 
     /// <summary>Contador de requisições montadas. Serve de relógio para a poda.</summary>
@@ -559,6 +562,56 @@ public sealed class OpenRouterProvider : IChatProvider
 
     /// <summary>Quantos raciocínios estão guardados. Para ensaio da poda.</summary>
     public int RaciociniosGuardados => _raciocinioPorChamada.Count;
+
+    /// <summary>
+    /// O raciocínio que <see cref="Mensagens"/> poria de volta neste histórico: o mesmo laço, sem
+    /// mexer no relógio da poda. Conta o texto (<c>text</c>, <c>summary</c>); a parte cifrada
+    /// (<c>data</c>) é opaca e não tem como ser contada aqui.
+    /// </summary>
+    public int RaciocinioReenviado(IReadOnlyList<ChatMessage> messages, Func<string, int> contar)
+    {
+        int total = 0;
+
+        foreach (var m in messages)
+        {
+            if (m is not AssistantChatMessage { ToolCalls.Count: > 0 } assistente) continue;
+
+            foreach (var chamada in assistente.ToolCalls)
+            {
+                if (chamada?.Id == null || !_raciocinioPorChamada.TryGetValue(chamada.Id, out var guardado)) continue;
+
+                if (guardado.Tokens < 0)
+                {
+                    string texto = TextoDoRaciocinio(guardado.Json);
+                    guardado.Tokens = texto.Length == 0 ? 0 : contar(texto);
+                }
+                total += guardado.Tokens;
+                break;
+            }
+        }
+
+        return total;
+    }
+
+    /// <summary>O texto legível de um <c>reasoning_details</c> guardado.</summary>
+    public static string TextoDoRaciocinio(string json)
+    {
+        try
+        {
+            if (JsonNode.Parse(json) is not JsonArray lista) return "";
+
+            var texto = new StringBuilder();
+            foreach (var item in lista.OfType<JsonObject>())
+                foreach (string campo in new[] { "text", "summary" })
+                    if (item[campo] is JsonValue v && v.TryGetValue(out string? s)) texto.Append(s).Append('\n');
+
+            return texto.ToString();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return "";
+        }
+    }
 
     /// <summary>
     /// Junta os pedaços de <c>reasoning_details</c> pelo <c>index</c>. O texto chega aos poucos,

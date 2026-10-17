@@ -38,7 +38,7 @@ UI ──► ConversationService.StreamResponseAsync
           │  respondeu texto? anexa e termina
           ▼
        finally (ainda com o portão):
-          fecha turno cancelado → RecordLastTurn (raw.jsonl) → título (1º turno)
+          fecha turno aberto (cancelado ou erro) → RecordLastTurn (raw.jsonl) → título (1º turno)
           → ArquivarConversaViva → CompactIfNeededAsync → libera o portão
 ```
 
@@ -112,14 +112,15 @@ Todo turno termina com uma fala de assistente. Quando não há, entra a marca `A
 | Stream sem texto e sem ferramenta | `AgentLoop` (`TurnOutcome.EmptyResponse`) |
 | Teto de iterações com ferramenta pendente | `AgentLoop` (`IterationLimitReached`) |
 | Cancelado pelo usuário | `ConversationService.FecharTurnoAberto("cancelado por você")` |
+| Exceção no meio do turno (ex.: provedor respondeu 403) | `ConversationService.FecharTurnoAberto("o turno parou por um erro")`, no mesmo `finally` |
 | Conversa trocada no meio do turno | `ResetHistory` → `FecharTurnoAberto` |
 | App caiu no meio do turno | `SessionMemory.RecuperarTurnoAberto` na reabertura |
 
-**Por quê:** sem a marca o turno não fecha, não vai para o `raw.jsonl` e — pior — `SelectTurnsToCompact` para no primeiro turno aberto, travando a compactação de tudo o que vier depois. Aconteceu numa sessão real: um turno vazio deixou a conversa com sete podas de emergência e nenhum capítulo.
+**Por quê:** sem a marca o turno não fecha, não vai para o `raw.jsonl` e — pior — `SelectTurnsToCompact` para no primeiro turno aberto, travando a compactação de tudo o que vier depois. Aconteceu numa sessão real: um turno vazio deixou a conversa com sete podas de emergência e nenhum capítulo. E de novo em 15/10, com erro: o OpenRouter respondeu 403 (limite mensal da chave) no meio de uma cadeia, e o `/compact` passou a dizer "nada a compactar" com 172 mil tokens vivos. Para as conversas que já ficaram assim, a compactação aceita um turno aberto que tem outro depois dele (`TurnSplitter.Acabou`): ele não muda mais.
 
 ### 2.8 Poda de emergência (`Trim`)
 
-- Age só acima de `TetoDaPoda` = `ChatRequestOptions.Default.NumCtx - MargemDaResposta` (2048). O teto do **nível** não entra aqui: ele é orçamento de compactação, não limite do modelo. Podar no teto do nível destruía material que cabia com folga.
+- Age só acima de `TetoDaPoda` = `ChatRequestOptions.Default.NumCtx - MargemDaResposta` (2048) — na conversa de e-mail, sobre a janela do provedor da triagem (`ConversationService.Janela`). O teto do **nível** não entra aqui: ele é orçamento de compactação, não limite do modelo. Podar no teto do nível destruía material que cabia com folga.
 - Não pode ser removida: mensagens de sistema do começo e a **mensagem de usuário que abriu o turno em andamento** (`UltimoIndiceDeUsuario`). Comê-la deixava o modelo trabalhando sem saber o pedido e fazia o turno sumir do `raw.jsonl`.
 - Ao remover um assistant com tool_calls, remove junto os `tool` seguintes (par órfão é rejeitado pela API).
 - A poda existe porque, passando da janela, o Ollama trunca sozinho **pelo começo** — leva o prompt de sistema e a alma.
@@ -174,7 +175,7 @@ Todo turno termina com uma fala de assistente. Quando não há, entra a marca `A
 | Nada | `Completed(EmptyResponse)` | marca de turno morto |
 | Teto | `Completed(IterationLimitReached, teto)` | marca de turno morto; a UI mostra "Limite de N etapas atingido" com o número **do evento** |
 
-`ParaOHistorico` usa o texto cru do provedor (`Done.RawAssistantText`, com `<think>`) quando `ThinkingInHistory` está ligado; desligado (padrão), o bloco de raciocínio é removido por `ThinkBlockStripper`.
+`ParaOHistorico` usa o texto cru do provedor (`Done.RawAssistantText`, com `<think>`) quando `ThinkingInHistory` está ligado; desligado (padrão), o bloco de raciocínio é removido por `ThinkBlockStripper`. A chave vale só para o raciocínio que vem **no texto** (o `<think>` do Ollama). No OpenRouter e no Google o raciocínio das voltas com ferramenta vai por outro canal e volta sempre (ver §OpenRouter, "Raciocínio devolvido sempre").
 
 ---
 
@@ -235,7 +236,7 @@ Contrato do stream (`StreamChunk`), obrigatório para todo provedor:
 
 ### 6.2 `ChatProviderFactory`
 
-- Escolhe Ollama ou OpenRouter por `ProvedoresDeIa.Normalizar(settings.AiProvider, settings.ApiUrl)`; vazio vira Ollama.
+- Escolhe Ollama, OpenRouter ou Google por `ProvedoresDeIa.Normalizar(settings.AiProvider, settings.ApiUrl)`; vazio vira Ollama.
 - Guarda **uma instância por combinação** `(provedor, modelo, URL, credencial efetiva, sem-coleta, provedor fixo)`, e não só a última: conversa e triagem de e-mail podem usar provedores diferentes e se alternam o tempo todo.
 - A **credencial efetiva** entra na chave: trocar a chave no cofre não muda as configurações, e sem ela o cache reaproveitava um cliente com a chave velha (401 que só sumia reiniciando).
 - `ChaveDe(provedor)` lê do cofre do provedor (`CredentialService.LerDoSistema("openrouter", "ApiKey")`), sem busca global. Ollama não usa chave.
@@ -243,7 +244,7 @@ Contrato do stream (`StreamChunk`), obrigatório para todo provedor:
 
 ### 6.3 `ProvedoresDeIa` e perfis
 
-- Dois provedores, de propósito: `Ollama` (`http://127.0.0.1:11434`) e `OpenRouter` (`https://openrouter.ai/api/v1`). Gravações antigas ("OpenAI", "Anthropic", "LmStudio") são normalizadas: URL do OpenRouter leva ao OpenRouter, o resto ao Ollama.
+- Três provedores: `Ollama` (`http://127.0.0.1:11434`), `OpenRouter` (`https://openrouter.ai/api/v1`) e `Google` (`https://generativelanguage.googleapis.com/v1beta/openai`). `ProvedoresDeIa.EhNuvem` responde pelos dois pagos: sem aquecimento, limites de `LimitesDoProvedor.Nuvem`, raciocínio por esforço. Gravações antigas ("OpenAI", "Anthropic", "LmStudio") são normalizadas: URL do OpenRouter leva ao OpenRouter, o resto ao Ollama.
 - `NormalizarUrlDoOllama`: tira o `/v1` do fim, tira a barra final e troca `localhost` por `127.0.0.1` — no Windows `localhost` resolve primeiro para IPv6, o Ollama escuta só IPv4, e cada conexão esperava até dois minutos.
 - `ModeloPadraoDoOllama` = `qwen2.5:7b` (um nome só para todos os padrões).
 - `ChaveValida`: só formato (`sk-or-` + 20 caracteres ou mais); quem valida é o OpenRouter.
@@ -329,7 +330,7 @@ Record com `Temperature` (0,1), `NumCtx` (32.768), `KeepAliveSeconds`, `Think`, 
 
 ### 9.3 Cache
 
-- **Raciocínio devolvido sempre:** `_raciocinioPorChamada` guarda os `reasoning_details` de cada volta que pediu ferramenta, pelo id da primeira chamada, e os recoloca naquela mensagem em **toda** requisição enquanto ela estiver no histórico. Mandar só no turno corrente mudava o prefixo no turno seguinte. Poda: acima de 2.048 entradas, remove as menos recentemente enviadas até 1.536 — nunca zera o mapa.
+- **Raciocínio devolvido sempre:** `_raciocinioPorChamada` guarda os `reasoning_details` de cada volta que pediu ferramenta, pelo id da primeira chamada, e os recoloca naquela mensagem em **toda** requisição enquanto ela estiver no histórico. Mandar só no turno corrente mudava o prefixo no turno seguinte. Poda: acima de 2.048 entradas, remove as menos recentemente enviadas até 1.536 — nunca zera o mapa. Esse raciocínio vai na requisição sem estar no histórico, então `IChatProvider.RaciocinioReenviado` diz quanto ele pesa (o texto de `text`/`summary`; o cifrado é opaco), e `ConversationService.Peso` o soma ao contador (`CountTokens`), à conta da compactação (`LiveTokens`) e ao peso de cada turno na escolha do capítulo. Visto em 15/10: 239.393 tokens cobrados numa volta em que a conta da AIB dava ~190 mil.
 - **Marcas de cache** (`UsaMarcasDeCache`): só `anthropic/*` e `google/gemini*`. Até `TetoDeMarcasDeCache` = 4: primeira mensagem de sistema, última de sistema (memória), última fala do usuário e **última mensagem da requisição** (a que faz as voltas de ferramenta do mesmo turno acharem o miolo em cache). Toda mensagem de sistema, usuário e ferramenta vira lista de partes, marcada ou não — a mudança de forma entre requisições arriscaria o prefixo.
 - `Usage.CachedTokens` vem de `prompt_tokens_details.cached_tokens`; `Provedor` vem do campo `provider` de cada evento. A `ConversationService` soma entrada e cache por volta e conta voltas por provedor; mais de um provedor no `/memoria` é o sinal de que o cache foi jogado fora.
 
@@ -371,6 +372,35 @@ Uma instância por stream. Separa o texto em canal `Final` e `Reasoning`, com ca
 Remove do canal final tokens de template que vazam (Harmony, ChatML, Llama 3, GPT, marcadores de papel) e tags `<think>`/`</think>` órfãs. Não confundir com `Memory.ThinkBlockStripper`, que remove blocos de raciocínio **inteiros** (usado no histórico, no título e no resumidor).
 
 ### 10.3 `MotivoDeFim`
+
+### Google AI Studio (`GoogleProvider`)
+
+Fala o endpoint do Gemini compatível com a OpenAI (`/chat/completions`, SSE), com a chave do AI
+Studio em `Authorization: Bearer`. Não o nativo `generateContent`: o formato de mensagens,
+ferramentas e stream é o que `OpenRouterProvider.LerTrecho` já lê. Escrito pela documentação do Google e confirmado no uso em 09/10/2026 com `gemini-flash-latest`:
+mais de vinte voltas de ferramenta em dois turnos, a assinatura devolvida em cada uma, nenhum
+400, cache implícito de 70% a 83% da entrada. Chamadas em paralelo e a recusa de desligar o
+raciocínio continuam só nos testes.
+
+- **Chave:** cofre `google` (`ProvedoresDeIa.SistemaDaChave`), guardada pela aba Conexão LLM.
+  O formato aceito é frouxo (30+ caracteres sem espaço): o Google emite mais de um.
+- **Modelo:** padrão `gemini-flash-latest`; `ProvedoresDeIa.ModelosDoGoogle` é só a lista de
+  sugestões da tela, e a caixa é editável.
+- **Raciocínio:** `reasoning_effort` (`none`, `low`, `medium`, `high`; "padrão do modelo" não
+  manda o campo). Modelo que recusa `none` com 400 (os Pro) recebe o pedido de novo sem o
+  campo, e o provider lembra (`_naoDesliga`).
+- **Assinatura de pensamento:** o `extra_content` de cada chamada de ferramenta é guardado pelo
+  id (`_extraPorChamada`) e devolvido na mesma chamada em toda requisição em que ela estiver no
+  histórico. Sem ele os modelos que raciocinam recusam a volta seguinte.
+- **Chamadas em paralelo:** `GoogleProvider.JuntaDeChamadas` começa uma chamada a cada NOME,
+  sem confiar no índice nem no id (o Gemini pode repetir o 0 e omitir o id); sem id, a AIB dá
+  um.
+- **Uso:** `prompt_tokens`, `completion_tokens` e `prompt_tokens_details.cached_tokens`. O
+  Google não relata custo: `CustoUsd` fica nulo e o rodapé do turno não mostra valor.
+- **Erros:** 408, 429 e 5xx se repetem antes de a resposta começar; 400, 401, 403 e 404 não.
+- **Não tem:** catálogo de modelos, marcas de cache (o cache do Gemini é implícito) e tela de
+  primeiro arranque — o Google se escolhe nas configurações. O texto do raciocínio não é pedido,
+  mas o `gemini-flash-latest` o manda mesmo assim, e o indicador de "pensando" acende.
 
 `MotivoDeFim.De(raw)` traduz "stop", "tool_calls" e "length" para `StreamFinishReason`; o resto é `Unknown`. Um lugar só para os dois provedores — estava copiado e uma cópia podia divergir.
 

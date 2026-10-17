@@ -76,6 +76,7 @@
     <SolidColorBrush x:Key="DangerTextBrush"       Color="#FFC02A2F"/>
     <SolidColorBrush x:Key="DangerHoverBrush"      Color="#FFF05257"/>
     <SolidColorBrush x:Key="WarnBrush"             Color="#FFC2601A"/>
+    <SolidColorBrush x:Key="TextOnWarnBrush"       Color="#FFFFFFFF"/>  <!-- texto sobre o botão laranja das flutuantes -->
     <SolidColorBrush x:Key="MagentaBrush"          Color="#FFC0307A"/>
 
     <!-- Link e destaque azul (o azul do degradê, um tom abaixo para contraste). Ouro:
@@ -102,6 +103,11 @@
     <SolidColorBrush x:Key="DangerFill16Brush"  Color="#26E5484D"/>  <!-- hover do botão fechar -->
     <SolidColorBrush x:Key="SuccessFill10Brush" Color="#2615803D"/>  <!-- linha que entra no antes e depois -->
     <SolidColorBrush x:Key="DangerEdge32Brush"  Color="#59E5484D"/>  <!-- borda da pill destrutiva -->
+    <SolidColorBrush x:Key="AccentBlueFill14Brush" Color="#242468A8"/>  <!-- selo "Você iniciou" -->
+    <SolidColorBrush x:Key="AccentBlueEdge38Brush" Color="#612468A8"/>  <!-- borda do selo "Você iniciou" -->
+    <SolidColorBrush x:Key="GoldFill12Brush"   Color="#1FB7791F"/>  <!-- pill do lembrete (avisos) -->
+    <SolidColorBrush x:Key="GoldEdge32Brush"   Color="#59B7791F"/>  <!-- borda da pill do lembrete -->
+    <SolidColorBrush x:Key="SuccessEdge30Brush" Color="#5915803D"/>  <!-- borda da pill "respondeu" -->
 
     <SolidColorBrush x:Key="WarnFill10Brush"    Color="#1FE28743"/>  <!-- faixa de contexto cheio -->
     <SolidColorBrush x:Key="ReadFill05Brush"    Color="#0A000000"/>  <!-- marcador de leitura no log -->
@@ -163,4 +169,10 @@
                       Direction="270" Opacity="0.55" Color="Black"/>
     <DropShadowEffect x:Key="BarShadow"      BlurRadius="44" ShadowDepth="16"
                       Direction="270" Opacity="0.58" Color="Black"/>
+
+    <!-- Texto solto sobre o papel de parede (o contador de tokens sob a barra do orbe). Sem
+         placa por trás, é o halo que o separa do que estiver no desktop: fechado, sem
+         deslocamento, na cor oposta à do texto do tema. -->
+    <DropShadowEffect x:Key="FloatingTextShadow" BlurRadius="5" ShadowDepth="0"
+                      Opacity="0.95" Color="White"/>
 </ResourceDictionary>

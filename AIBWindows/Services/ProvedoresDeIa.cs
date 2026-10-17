@@ -13,8 +13,9 @@ namespace AIB.Services;
 /// Ollama. O OpenRouter, que é o que de fato se usa na nuvem, nem estava na lista.
 /// </para>
 /// <para>
-/// Dois provedores, de propósito: o Ollama, local, e o OpenRouter, que dá acesso aos modelos de
-/// nuvem por uma API só. Acrescentar um terceiro é acrescentar aqui, na fábrica e na tela.
+/// Poucos provedores, de propósito: o Ollama, local; o OpenRouter, que dá acesso aos modelos de
+/// nuvem por uma API só; e o Google AI Studio, direto, com a chave dele. Acrescentar outro é
+/// acrescentar aqui, na fábrica e na tela.
 /// </para>
 /// </summary>
 public static class ProvedoresDeIa
@@ -22,10 +23,36 @@ public static class ProvedoresDeIa
     public const string Ollama = "Ollama";
     public const string OpenRouter = "OpenRouter";
 
-    public static IReadOnlyList<string> Todos { get; } = new[] { Ollama, OpenRouter };
+    /// <summary>O Google AI Studio (Gemini API), pela chave do AI Studio.</summary>
+    public const string Google = "Google";
+
+    public static IReadOnlyList<string> Todos { get; } = new[] { Ollama, OpenRouter, Google };
+
+    /// <summary>
+    /// Se o provedor é de nuvem: pago por token, sem modelo a carregar nesta máquina, e com os
+    /// limites largos de <see cref="LimitesDoProvedor.Nuvem"/>. Um lugar só: cada "é o
+    /// OpenRouter?" espalhado tratava o provedor novo como Ollama.
+    /// </summary>
+    public static bool EhNuvem(string? provedor) => provedor is OpenRouter or Google;
 
     public const string UrlDoOllama = "http://127.0.0.1:11434";
     public const string UrlDoOpenRouter = "https://openrouter.ai/api/v1";
+
+    /// <summary>O endpoint do Gemini compatível com a OpenAI. Ver <see cref="Ai.GoogleProvider"/>.</summary>
+    public const string UrlDoGoogle = "https://generativelanguage.googleapis.com/v1beta/openai";
+
+    /// <summary>O apelido que o Google aponta para o Flash corrente; é o do início rápido do AI Studio.</summary>
+    public const string ModeloPadraoDoGoogle = "gemini-flash-latest";
+
+    /// <summary>
+    /// Sugestões para a lista da tela, dos mais baratos aos mais caros. A caixa é editável: o
+    /// Google lança modelo mais depressa do que esta lista é corrigida.
+    /// </summary>
+    public static IReadOnlyList<string> ModelosDoGoogle { get; } = new[]
+    {
+        ModeloPadraoDoGoogle, "gemini-flash-lite-latest", "gemini-2.5-flash-lite", "gemini-2.5-flash",
+        "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-pro"
+    };
 
     /// <summary>
     /// O modelo que o Ollama recebe quando ninguém escolheu outro — padrão das configurações, do
@@ -71,9 +98,25 @@ public static class ProvedoresDeIa
     public static bool ChaveValida(string? chave) =>
         !string.IsNullOrEmpty(chave) && _formatoDaChave.IsMatch(chave.Trim());
 
+    private static readonly System.Text.RegularExpressions.Regex _formatoDaChaveDoGoogle =
+        new(@"^[A-Za-z0-9_.\-]{30,}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// O formato da chave do provedor. A do Google é frouxa de propósito — trinta ou mais letras,
+    /// números, <c>_</c>, <c>-</c> ou <c>.</c>, sem espaço: as do AI Studio começavam todas com
+    /// <c>AIza</c>, o Google já emite outras, e exigir o prefixo recusaria uma chave boa.
+    /// </summary>
+    public static bool ChaveValida(string provedor, string? chave) => provedor == Google
+        ? !string.IsNullOrEmpty(chave) && _formatoDaChaveDoGoogle.IsMatch(chave.Trim())
+        : ChaveValida(chave);
+
     /// <summary>Onde a chave do provedor mora no cofre. Nulo para quem não usa chave.</summary>
-    public static string? SistemaDaChave(string provedor) =>
-        provedor == OpenRouter ? "openrouter" : null;
+    public static string? SistemaDaChave(string provedor) => provedor switch
+    {
+        OpenRouter => "openrouter",
+        Google => "google",
+        _ => null
+    };
 
     public const string NomeDaChave = "ApiKey";
 
@@ -88,6 +131,7 @@ public static class ProvedoresDeIa
 
         if (string.Equals(p, Ollama, StringComparison.OrdinalIgnoreCase)) return Ollama;
         if (string.Equals(p, OpenRouter, StringComparison.OrdinalIgnoreCase)) return OpenRouter;
+        if (string.Equals(p, Google, StringComparison.OrdinalIgnoreCase)) return Google;
         if (p.Length == 0) return "";
 
         return (url ?? "").Contains("openrouter.ai", StringComparison.OrdinalIgnoreCase)
@@ -105,6 +149,15 @@ public static class ProvedoresDeIa
             JanelaDeContexto = PerfilDeProvedor.JanelaPadrao,
             Raciocinio = PerfilDeProvedor.RaciocinioDesligado
         }
+        : provedor == Google
+        ? new PerfilDeProvedor
+        {
+            Url = UrlDoGoogle,
+            Modelo = ModeloPadraoDoGoogle,
+            KeepAlive = "",
+            JanelaDeContexto = PerfilDeProvedor.JanelaPadrao,
+            Raciocinio = PerfilDeProvedor.RaciocinioDesligado
+        }
         : new PerfilDeProvedor
         {
             Url = UrlDoOllama,
@@ -116,7 +169,7 @@ public static class ProvedoresDeIa
 
     /// <summary>Os valores de raciocínio que fazem sentido em cada provedor, na ordem da tela.</summary>
     public static IReadOnlyList<(string Valor, string Rotulo)> OpcoesDeRaciocinio(string provedor) =>
-        provedor == OpenRouter
+        EhNuvem(provedor)
             ? new[]
             {
                 (PerfilDeProvedor.RaciocinioDesligado, "Desligado"),
@@ -182,10 +235,10 @@ public sealed class PerfilDeProvedor
         if (!ProvedoresDeIa.OpcoesDeRaciocinio(provedor).Any(o => o.Valor == Raciocinio))
             Raciocinio = RaciocinioDesligado;
 
-        if (provedor == ProvedoresDeIa.OpenRouter)
+        if (ProvedoresDeIa.EhNuvem(provedor))
         {
-            // O endereço do OpenRouter não é escolha: é onde a API está.
-            Url = ProvedoresDeIa.UrlDoOpenRouter;
+            // O endereço da nuvem não é escolha: é onde a API está.
+            Url = provedor == ProvedoresDeIa.Google ? ProvedoresDeIa.UrlDoGoogle : ProvedoresDeIa.UrlDoOpenRouter;
             KeepAlive = "";
         }
         else
@@ -261,7 +314,7 @@ public sealed record LimitesDoProvedor(
     public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3, 24, 10, 700);
 
     public static LimitesDoProvedor Para(string? provedor) =>
-        provedor == ProvedoresDeIa.OpenRouter ? Nuvem : Local;
+        ProvedoresDeIa.EhNuvem(provedor) ? Nuvem : Local;
 
     /// <summary>
     /// Os do provedor da conversa. Configurado pelo <see cref="SettingsService"/> ao carregar e

@@ -59,6 +59,22 @@ public class ToolRegistry
 
     private bool EmConversaDeEmail => !string.IsNullOrWhiteSpace(ChaveDaConversaDeEmail?.Invoke());
 
+    /// <summary>
+    /// Se a chamada a uma ferramenta de e-mail é barrada por <see cref="UserAppSettings.EmailSoLocal"/>.
+    /// <para>
+    /// O provedor vem DA CHAMADA, e não de um gancho da conversa: o registry é dividido entre a
+    /// conversa principal e a do orbe, e as duas podem estar em provedores diferentes — a do
+    /// e-mail no Ollama, a do orbe no OpenRouter. Um gancho único responderia pela última que o
+    /// ligou.
+    /// </para>
+    /// </summary>
+    private bool EmailBarrado(string toolName, string? provedor)
+    {
+        if (toolName != Ferramentas.Email && toolName != Ferramentas.LerEmail) return false;
+        if (_settingsService?.LoadSettings().EmailSoLocal != true) return false;
+        return provedor == null || ProvedoresDeIa.EhNuvem(provedor);
+    }
+
     /// <remarks>
     /// <c>mail_read</c> só é oferecida na conversa DE um e-mail. Fora dela não há o que ler, e o
     /// schema custaria tokens em toda requisição para uma ferramenta que só responderia erro.
@@ -85,13 +101,18 @@ public class ToolRegistry
     /// Recebe COMO a chamada passou pelo portão, numa palavra: <c>automatica</c> (não pede
     /// confirmação), <c>pasta_dispensada</c>, <c>permitida</c>, <c>permitida_sempre</c>,
     /// <c>sempre_na_sessao</c>, <c>recusada</c>, <c>barrada_pelo_piso</c>, <c>negada_sem_contexto</c>,
-    /// <c>negada_sem_interface</c>, <c>nivel_insuficiente</c>, <c>recusada_no_pre_voo</c> ou
-    /// <c>ferramenta_desconhecida</c>. Vai para o raw.jsonl com o resultado: sem ela, um comando
-    /// que você autorizou e um que nunca pediu confirmação ficam iguais no registro.
+    /// <c>negada_sem_interface</c>, <c>nivel_insuficiente</c>, <c>recusada_no_pre_voo</c>,
+    /// <c>email_so_local</c> ou <c>ferramenta_desconhecida</c>. Vai para o raw.jsonl com o
+    /// resultado: sem ela, um comando que você autorizou e um que nunca pediu confirmação ficam
+    /// iguais no registro.
+    /// </param>
+    /// <param name="provedor">
+    /// O provedor que vai RECEBER o resultado — o do turno que pediu a chamada. Nulo é "não sei",
+    /// e para <see cref="UserAppSettings.EmailSoLocal"/> não saber conta como nuvem.
     /// </param>
     public async Task<string> ExecuteToolAsync(
         string toolName, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null,
-        Action<string>? aoDecidir = null)
+        Action<string>? aoDecidir = null, string? provedor = null)
     {
         if (_tools.TryGetValue(toolName, out var tool))
         {
@@ -99,6 +120,15 @@ public class ToolRegistry
             {
                 aoDecidir?.Invoke("nivel_insuficiente");
                 return $"ACESSO NEGADO: A ferramenta '{toolName}' exige Nível {tool.RequiredLevel}, mas o seu nível atual é {userLevel}.";
+            }
+
+            if (EmailBarrado(toolName, provedor))
+            {
+                Console.WriteLine($"[REGISTRY] {toolName} barrada: e-mail só com modelo local.");
+                aoDecidir?.Invoke("email_so_local");
+                return $"ACESSO NEGADO: '{toolName}' está desligada para modelos na nuvem (Configurações › "
+                       + "E-mail › \"E-mail só com modelo local\"). Nada foi lido. Diga isso ao usuário; "
+                       + "não tente outro caminho para chegar à caixa de entrada.";
             }
 
             // ANTES do portão humano: chamada impossível não vira pergunta. Ver ITool.Validar.
@@ -110,15 +140,15 @@ public class ToolRegistry
                 return recusa;
             }
 
-            // A memória sobre o usuário não aceita pedido que pode ter vindo de um e-mail ou de
-            // uma página: "anote que o usuário quer X" valeria em todas as conversas seguintes.
-            if (tool.SoComFalaDoUsuario && ConteudoDeEmailNoContexto?.Invoke() == true)
-            {
-                Console.WriteLine($"[REGISTRY] {toolName} recusada: texto de terceiros no contexto.");
-                aoDecidir?.Invoke("recusada_no_pre_voo");
-                return $"ACESSO NEGADO: '{toolName}' não roda com texto de e-mail ou de página no contexto. "
-                       + "Se o usuário contou isso, guarde numa próxima conversa.";
-            }
+            // A memória sobre o usuário não aceita, sem ele ver, pedido que pode ter vindo de um
+            // e-mail ou de uma página: "anote que o usuário quer X" valeria em todas as conversas
+            // seguintes. Com texto de terceiros no contexto, a chamada vai ao cartão.
+            // Era recusa direta, e pegava também o que ele mesmo tinha ditado: depois de navegar,
+            // "lembre que <frase>" foi negado cinco vezes seguidas, e a conversa inteira ficava
+            // sem memória.
+            bool terceiros = false;
+            try { terceiros = tool.PedeFalaDoUsuario(argumentsJson) && ConteudoDeEmailNoContexto?.Invoke() == true; }
+            catch { terceiros = true; }
 
             // O que foi autorizado viaja até a execução: a ferramenta confere se ainda é aquilo.
             // Ver ITool.ExecutarAutorizadoAsync.
@@ -126,12 +156,12 @@ public class ToolRegistry
 
             // Na dúvida, pergunta: exceção ao decidir é pedir confirmação, nunca pular.
             bool pede;
-            try { pede = tool.PedeConfirmacao(argumentsJson); }
+            try { pede = terceiros || tool.PedeConfirmacao(argumentsJson); }
             catch { pede = true; }
 
             if (pede)
             {
-                if (DispensaPelaPasta(tool, argumentsJson))
+                if (!terceiros && DispensaPelaPasta(tool, argumentsJson))
                 {
                     var (liberado, motivo, ctxDispensa) = await DispensarAsync(tool, argumentsJson, userLevel, aoDecidir);
                     if (!liberado) return motivo!;
@@ -465,7 +495,11 @@ public class ToolRegistry
                 () => _settingsService?.LoadSettings().MailAccounts ?? new List<MailAccountSettings>(),
                 endereco => new MailVault().Ler(endereco),
                 () => new MailKitMailService(
-                    _settingsService?.LoadSettings().MailTimeoutSeconds ?? new UserAppSettings().MailTimeoutSeconds))
+                    _settingsService?.LoadSettings().MailTimeoutSeconds ?? new UserAppSettings().MailTimeoutSeconds),
+                // mail_read só existe na conversa de um e-mail, e essa roda no provedor da triagem.
+                () => _settingsService == null
+                    ? LimitesDoProvedor.Atual
+                    : LimitesDoProvedor.Para(_settingsService.LoadSettings().ParaTriagem().AiProvider))
         };
 
         foreach (var tool in nativeTools)

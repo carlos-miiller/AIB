@@ -155,8 +155,25 @@ public partial class ShadowAssistantWindow : Window
     /// <summary>Se há um turno em andamento disparado por esta barra.</summary>
     public bool Trabalhando { get; private set; }
 
+    /// <summary>
+    /// O usuário pediu para parar o turno em andamento (o botão da barra, que vira "parar"
+    /// enquanto a AIB trabalha). Quem cancela é o dono do turno; o orbe só avisa.
+    /// </summary>
+    public event Action? ParadaPedida;
+
+    /// <summary>
+    /// Se há um turno de conversa rodando, pelo passo que a conversa anuncia. Não é
+    /// <see cref="Trabalhando"/>: o anel também gira na varredura de e-mail, que não se para
+    /// por aqui.
+    /// </summary>
+    public bool EmTurno => _passoAtual != null;
+
     /// <summary>Se há fala na tela. Diagnóstico e ensaio.</summary>
-    public bool BalaoVisivel => RoloDasFalas.Visibility == Visibility.Visible && _falas.Count > 0;
+    public bool BalaoVisivel => _pilhaAMostra && _falas.Count > 0;
+
+    // Se a pilha está à mostra. Não é a Visibility do rolo: ao fechar a barra ele some por
+    // opacidade e só depois fica Hidden, e fechado guarda o lugar (ver MostrarPilha).
+    private bool _pilhaAMostra;
 
     /// <summary>Texto da ÚLTIMA fala da IA. Diagnóstico e ensaio.</summary>
     public string TextoDaFala
@@ -323,11 +340,13 @@ public partial class ShadowAssistantWindow : Window
         VisualStateManager.GoToElementState(Palco, "Barra", true);
         AnimarMargemDaCelula(MargemNaBarra, DuracaoDoMorph, EasingMode.EaseOut);
         AtualizarAnelDeProgresso();
+        AtualizarContador();
 
         // A pilha volta com o que já estava nela. Fechar a barra ESCONDE as bolhas; só o X
         // descarta. Sem isto, sair da barra por um clique fora apagava a resposta que o
         // usuário tinha acabado de pedir, e reabrir dava uma barra vazia.
-        if (_falas.Count > 0) RoloDasFalas.Visibility = Visibility.Visible;
+        if (_falas.Count > 0) MostrarPilha(true);
+        Surgir(Contador);
 
         // §5.4 — clicar num orbe que estava pulsando faz as duas coisas de uma vez: a barra
         // abre E a fala aparece acima dela. É o único caminho pelo qual uma fala proativa
@@ -340,7 +359,14 @@ public partial class ShadowAssistantWindow : Window
         relogio.Tick += (s, _) =>
         {
             relogio.Stop();
-            if (_emModoBarra && !_fechando) Campo.Focus();
+            if (!_emModoBarra || _fechando) return;
+
+            // O cursor vai para o fim: reabrir com texto guardado é continuar a frase.
+            Campo.Focus();
+            Campo.CaretIndex = Campo.Text.Length;
+
+            // O rascunho guardado pode ter várias linhas: a barra abre em 52 e cresce aqui.
+            AjustarAltura();
         };
         relogio.Start();
 
@@ -356,40 +382,141 @@ public partial class ShadowAssistantWindow : Window
         if (!_emModoBarra) return;
 
         _emModoBarra = false;
+        AlturaPedidaDaBarra = AlturaDaBarraDeUmaLinha;
         VisualStateManager.GoToElementState(Palco, "Orbe", true);
         AnimarMargemDaCelula(MargemQueCentraliza(LarguraDaCelula()), TimeSpan.FromSeconds(0.22), EasingMode.EaseIn);
         AtualizarAnelDeProgresso();
+        AtualizarContador();
 
-        // §6 — o rascunho curto é descartado ao fechar; o longo sobrevive para a próxima
-        // abertura, porque perder um parágrafo digitado por causa de um clique fora seria
-        // pior que a barra reabrir com texto velho.
-        if (Campo.Text.Trim().Length <= RascunhoPreservadoAcimaDe) Campo.Clear();
-
-        AtualizarDica();
+        // O que foi digitado e não enviado fica no campo, qualquer que seja o tamanho: só
+        // Enviar o esvazia. Antes o rascunho de até 40 caracteres era descartado aqui, e um
+        // clique fora ou um Esc no meio da frase apagava o que a pessoa estava escrevendo.
 
         // As bolhas são ancoradas na barra: sem ela ficariam flutuando sozinhas sobre o
         // desktop, apontando para nada. Some a PILHA, e não o conteúdo dela — reabrir a
         // barra devolve a conversa onde estava.
-        RoloDasFalas.Visibility = Visibility.Collapsed;
+        MostrarPilha(false);
     }
+
+    /// <summary>
+    /// Mostra ou esconde a pilha de falas junto com o morph da barra, sem mexer no tamanho da
+    /// janela.
+    /// <para>
+    /// A pilha aparecia e sumia por <c>Visibility</c>, de uma vez, enquanto a barra ainda
+    /// animava. E sumir era <c>Collapsed</c>: a janela encolhia centenas de pixels no meio do
+    /// morph e era reposicionada em seguida. Visto no uso: ao abrir, as bolhas surgiam todas de
+    /// uma vez; ao fechar, o desenho inteiro aparecia espremido na base até a barra terminar.
+    /// </para>
+    /// <para>
+    /// Agora ela surge e some por opacidade, no tempo do morph, e fechada fica <c>Hidden</c>:
+    /// continua ocupando o lugar, então a janela não muda de tamanho ao abrir nem ao fechar.
+    /// A área é transparente e não participa do hit-test: o clique continua indo ao desktop.
+    /// </para>
+    /// </summary>
+    private void MostrarPilha(bool mostrar)
+    {
+        _pilhaAMostra = mostrar;
+
+        if (mostrar)
+        {
+            RoloDasFalas.Visibility = Visibility.Visible;
+            Surgir(RoloDasFalas);
+            return;
+        }
+
+        if (RoloDasFalas.Visibility != Visibility.Visible) return;
+
+        var sumico = new DoubleAnimation(0, TimeSpan.FromSeconds(0.12));
+        sumico.Completed += (_, _) =>
+        {
+            // Reaberta no meio do sumiço: a pilha é de quem abriu.
+            if (!_pilhaAMostra) RoloDasFalas.Visibility = Visibility.Hidden;
+        };
+        RoloDasFalas.BeginAnimation(OpacityProperty, sumico);
+    }
+
+    /// <summary>
+    /// Aparece junto com o conteúdo da barra: começa aos 0,10 s do morph, como o cross-fade do
+    /// campo, e termina com ele.
+    /// </summary>
+    private static void Surgir(UIElement elemento) =>
+        elemento.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.18))
+        {
+            BeginTime = TimeSpan.FromSeconds(0.10)
+        });
 
     // ─────────────────────────────────────────────────────────────────────────
     // §4.7  Barra de input
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Acima disto o rascunho sobrevive ao fechamento — §6.</summary>
-    private const int RascunhoPreservadoAcimaDe = 40;
+    private void Campo_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        AtualizarDica();
+        AjustarAlturaDepois();
+    }
 
-    private void Campo_TextChanged(object sender, TextChangedEventArgs e) => AtualizarDica();
+    // A largura do campo muda no morph, e com ela onde o texto quebra.
+    private void Campo_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.WidthChanged) AjustarAlturaDepois();
+    }
+
+    /// <summary>A altura da barra de uma linha — §2.</summary>
+    public const double AlturaDaBarraDeUmaLinha = 52;
+
+    /// <summary>Até quantas linhas a barra cresce; passando disso o campo rola.</summary>
+    public const int LinhasDaBarra = 5;
+
+    /// <summary>
+    /// A altura da barra para um texto de <paramref name="linhas"/> linhas: a de uma linha mais
+    /// uma altura de linha por linha a mais, até <see cref="LinhasDaBarra"/>.
+    /// </summary>
+    public static double AlturaDaBarra(int linhas, double alturaDaLinha) =>
+        AlturaDaBarraDeUmaLinha + (Math.Clamp(linhas, 1, LinhasDaBarra) - 1) * alturaDaLinha;
+
+    /// <summary>A altura que a barra tem (ou para a qual está indo). Diagnóstico e ensaio.</summary>
+    public double AlturaPedidaDaBarra { get; private set; } = AlturaDaBarraDeUmaLinha;
+
+    // Depois do layout: só então o campo sabe em quantas linhas o texto quebrou.
+    private void AjustarAlturaDepois() =>
+        Dispatcher.BeginInvoke(new Action(AjustarAltura), DispatcherPriority.Loaded);
+
+    /// <summary>
+    /// Faz a barra acompanhar o texto: ele quebra na largura do campo e a barra cresce para
+    /// cima, linha a linha. Visto no uso: o campo era de uma linha só, sem quebra, e um texto
+    /// maior que a barra corria para fora da vista.
+    /// <para>
+    /// A altura da casca é do morph (o storyboard a segura em 52). Uma animação curta por cima
+    /// a leva à altura nova; ao fechar, o storyboard do orbe a retoma de onde estiver.
+    /// </para>
+    /// </summary>
+    public void AjustarAltura()
+    {
+        if (!_emModoBarra || _fechando) return;
+
+        // No meio do morph o campo ainda é estreito e o texto quebra em linhas demais: a barra
+        // daria um pulo para cima e voltaria. O fim do morph chama de novo.
+        if (IsVisible && Casca.ActualWidth < Palco.Width - 1) return;
+
+        // LineCount é -1 sem layout válido; as quebras digitadas valem de piso.
+        int digitadas = 1;
+        foreach (char c in Campo.Text) if (c == '\n') digitadas++;
+        int linhas = Math.Max(Campo.LineCount, digitadas);
+
+        double altura = AlturaDaBarra(linhas, Math.Ceiling(Campo.FontFamily.LineSpacing * Campo.FontSize));
+        if (Math.Abs(altura - AlturaPedidaDaBarra) < 0.5) return;
+
+        AlturaPedidaDaBarra = altura;
+        Casca.BeginAnimation(HeightProperty, new DoubleAnimation(altura, TimeSpan.FromSeconds(0.10)));
+    }
 
     private void AtualizarDica() =>
         Dica.Visibility = string.IsNullOrEmpty(Campo.Text) ? Visibility.Visible : Visibility.Collapsed;
 
     private void Campo_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // Shift+Enter quebraria linha, mas a barra é de uma linha só: o campo tem
-        // AcceptsReturn=False, então aqui só o Enter puro tem efeito. Quem quer escrever um
-        // parágrafo faz isso na janela de chat, que é onde a conversa acontece.
+        // Enter envia; Shift+Enter passa adiante e quebra a linha (AcceptsReturn), como na
+        // janela de chat. A barra cresce com o texto — ver AjustarAltura.
         if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
         {
             Enviar();
@@ -397,7 +524,67 @@ public partial class ShadowAssistantWindow : Window
         }
     }
 
-    private void BotaoEnviar_Click(object sender, RoutedEventArgs e) => Enviar();
+    /// <summary>
+    /// O contador de tokens, abaixo da barra e à direita, como no rodapé da janela de chat:
+    /// quanto a conversa do orbe pesa no prompt agora e o teto do nível, na cor da ocupação. A
+    /// dica traz a memória e o gasto. Só existe com a conversa própria do orbe ligada, e só
+    /// aparece com a barra aberta: sob o círculo ficaria solto no desktop.
+    /// </summary>
+    public void MostrarTokens(TokenReport r)
+    {
+        // O mesmo texto do rodapé da janela: com compactação, o custo cru riscado e a seta.
+        AIB.Ui.ContadorDeTokens.Escrever(Contador, r);
+        Contador.ToolTip = DicaDoContador(r);
+        _temTokens = true;
+        AtualizarContador();
+    }
+
+    private bool _temTokens;
+
+    private void AtualizarContador() =>
+        Contador.Visibility = _temTokens && _emModoBarra ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>A conta atrás do número, curta: a barra não tem /memoria para o detalhe.</summary>
+    public static string DicaDoContador(TokenReport r)
+    {
+        string dica = $"No prompt: {r.Contexto:N0} de {r.Max:N0} tokens.";
+
+        dica += r.Capitulos == 0 && r.Atos == 0
+            ? "\nNada compactado ainda."
+            : $"\n{r.Capitulos} capítulo(s), {r.Atos} ato(s): {r.Economia:N0} tokens poupados.";
+
+        if (r.CustoUsd is decimal custo) dica += $"\nGasto na conversa: {TokenReport.Dolares(custo)}";
+
+        return dica;
+    }
+
+    private void BotaoEnviar_Click(object sender, RoutedEventArgs e)
+    {
+        // Com turno em andamento o botão é PARAR, como na janela de chat.
+        if (EmTurno) ParadaPedida?.Invoke();
+        else Enviar();
+    }
+
+    /// <summary>
+    /// O botão da barra: aviãozinho parado, quadrado vermelho com turno rodando (o mesmo
+    /// desenho do "parar" da janela de chat). Visto no uso: o orbe não tinha como parar, e com
+    /// a IA em laço a única saída era encerrar o programa.
+    /// </summary>
+    private void AtualizarBotao()
+    {
+        if (EmTurno == BotaoEnviar.Content is Border) return;
+
+        BotaoEnviar.Content = EmTurno
+            ? new Border
+            {
+                Width = 13,
+                Height = 13,
+                CornerRadius = new CornerRadius(3),
+                Background = (System.Windows.Media.Brush)FindResource("DangerBrush")
+            }
+            : IconeDeEnviar;
+        BotaoEnviar.ToolTip = EmTurno ? "Parar" : "Enviar";
+    }
 
     /// <summary>
     /// §5.3 — manda o texto para a janela de chat e volta ao orbe. A barra não responde nada:
@@ -408,6 +595,11 @@ public partial class ShadowAssistantWindow : Window
     {
         string texto = Campo.Text.Trim();
         if (texto.Length == 0) return;
+
+        // Com turno rodando o Enter não envia, e o texto fica no campo para depois. Antes ele
+        // virava bolha na pilha e sumia do campo, mas a conversa, ocupada, o ignorava: a
+        // mensagem parecia enviada e nunca chegava ao modelo.
+        if (EmTurno) return;
 
         Campo.Clear();
         AtualizarDica();
@@ -702,6 +894,7 @@ public partial class ShadowAssistantWindow : Window
             _passoAtual = null;
             _ferramentaAtual = null;
             MostrarSimbolo();
+            AtualizarBotao();
 
             // A varredura de e-mail tem o estado DELA — ícone de inbox e tooltip próprios — e
             // roda em paralelo com o turno. Deixar o fim de um turno apagar o anel dela é o
@@ -717,6 +910,7 @@ public partial class ShadowAssistantWindow : Window
         _passoAtual = passo;
         _ferramentaAtual = string.IsNullOrWhiteSpace(ferramenta) ? null : ferramenta;
         MostrarSimbolo();
+        AtualizarBotao();
 
         // Durante a varredura o tooltip é dela; o do turno volta quando ela acabar.
         if (!ProcessandoEmail) Casca.ToolTip = passo;
@@ -845,6 +1039,26 @@ public partial class ShadowAssistantWindow : Window
     }
 
     /// <summary>
+    /// Devolve à pilha as falas da conversa do orbe que veio do disco, SEM mostrar: elas
+    /// aparecem quando a barra abrir, como qualquer pilha escondida. Só numa pilha vazia —
+    /// religar o orbe com a conversa na tela não a duplica.
+    /// </summary>
+    public void RestaurarFalas(IEnumerable<(bool DoUsuario, string Texto)> falas)
+    {
+        if (_falas.Count > 0) return;
+
+        foreach (var (doUsuario, texto) in falas)
+        {
+            if (string.IsNullOrWhiteSpace(texto)) continue;
+            _falas.Add(doUsuario ? new FalaDoUsuario(texto) : new FalaDaIA(texto));
+        }
+
+        // Hidden, e não Collapsed: a janela já nasce do tamanho que terá com a barra aberta, e
+        // o primeiro clique não a redimensiona no meio do morph.
+        if (_falas.Count > 0) RoloDasFalas.Visibility = Visibility.Hidden;
+    }
+
+    /// <summary>
     /// Empilha mais uma bolha, mostra a pilha e desce para o fim dela.
     /// <para>
     /// A pilha NÃO tem teto de bolhas: o que a limita é a ALTURA do rolo. Um teto de
@@ -856,7 +1070,11 @@ public partial class ShadowAssistantWindow : Window
     private void AdicionarFala(FalaDoOrbe fala)
     {
         _falas.Add(fala);
+        _pilhaAMostra = true;
         RoloDasFalas.Visibility = Visibility.Visible;
+
+        // Solta o que o abrir ou o fechar da barra deixou animando: a bolha nova aparece já.
+        RoloDasFalas.BeginAnimation(OpacityProperty, null);
 
         // O layout precisa acontecer ANTES do ScrollToEnd: sem ele o rolo ainda não sabe que
         // ficou mais alto e desce para o fim ANTIGO, deixando a bolha recém-chegada fora da
@@ -904,6 +1122,7 @@ public partial class ShadowAssistantWindow : Window
     public void DispensarFala()
     {
         _falas.Clear();
+        _pilhaAMostra = false;
         RoloDasFalas.Visibility = Visibility.Collapsed;
     }
 

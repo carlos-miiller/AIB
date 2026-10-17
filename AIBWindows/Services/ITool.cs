@@ -114,10 +114,14 @@ public interface ITool
     bool PassaPelaFloorList => false;
 
     /// <summary>
-    /// Se a chamada só vale quando o pedido só pode ter vindo do usuário: com texto de terceiros
-    /// no contexto (e-mail, página), o registry recusa. Ver <see cref="Tools.LembrarTool"/>.
+    /// Se a chamada só vale quando o pedido veio do usuário: com texto de terceiros no contexto
+    /// (e-mail, página), o registry leva a chamada ao cartão, mesmo que a ferramenta não peça
+    /// confirmação — é o usuário quem diz se o pedido foi dele. Ver <see cref="Tools.LembrarTool"/>.
     /// </summary>
     bool SoComFalaDoUsuario => false;
+
+    /// <summary>A mesma pergunta, para ESTA chamada: ler o que já existe não precisa de cartão.</summary>
+    bool PedeFalaDoUsuario(string argumentsJson) => SoComFalaDoUsuario;
 
     /// <summary>
     /// A mesma pergunta, para uma operação já descrita. É o que o registry consulta.

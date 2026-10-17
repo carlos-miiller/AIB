@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -282,6 +282,12 @@ public partial class ChatWindow : Window
     /// <summary>Se há turno em andamento. A fala por iniciativa espera ele acabar.</summary>
     public bool Ocupada => _isSending;
 
+    /// <summary>Para o turno em andamento, como o botão de parar. É o que o orbe chama.</summary>
+    public void PararTurno()
+    {
+        if (_isSending) _conversation.CancelGeneration();
+    }
+
     /// <summary>
     /// Uma fala que a persona puxa sozinha (lembrete, iniciativa): entra na conversa como fala
     /// dela, em balão e no histórico, para que a resposta do usuário continue o assunto. Quem
@@ -350,6 +356,10 @@ public partial class ChatWindow : Window
         if (_painelAberto && _painel != null)
         {
             PosicionarPainel();
+
+            // Escondido, o painel não acompanha o histórico (AtualizarPainelDeHistorico só
+            // remonta o que está na tela): o que mudou enquanto isso entra agora.
+            _painel.Recarregar();
             _painel.Show();
         }
     }
@@ -704,6 +714,9 @@ public partial class ChatWindow : Window
     /// </summary>
     public async Task<(bool, bool)> PerguntarConfirmacaoAsync(CommandConfirmationContext contexto)
     {
+        // Lido AQUI, ainda no fluxo do turno: é a ferramenta da conversa do orbe pedindo?
+        bool doShadow = ContextoDoTurno.Atual?.Shadow ?? false;
+
         var (card, janelaDoOrbe) = await Dispatcher.InvokeAsync(() =>
         {
             var novo = new ConfirmCardView { Margin = new Thickness(0, 0, 0, 14) };
@@ -720,10 +733,12 @@ public partial class ChatWindow : Window
             // No modo orbe — conversa fora da tela, orbe visível — a pergunta aparece numa
             // janela pequena logo acima dele. Abrir a conversa inteira para mostrar um card
             // tomava a tela de quem só pediu uma coisa rápida ao orbe.
-            if (DeveUsarJanelaDoOrbe(IsVisible, PertoDoOrbe.Ativo))
+            if (DeveUsarJanelaDoOrbe(IsVisible, PertoDoOrbe.Ativo, doShadow))
             {
-                var janela = new ConfirmacaoDoOrbeWindow(novo);
-                janela.Show();
+                // Pela fila: várias ferramentas na mesma volta pedem confirmação ao mesmo
+                // tempo, e cada uma abria a sua janela em cima da outra.
+                var janela = new ConfirmacaoDoOrbeWindow(novo, doShadow);
+                Flutuantes.Mostrar(janela, VezDaJanela.Pergunta);
                 return (novo, (ConfirmacaoDoOrbeWindow?)janela);
             }
 
@@ -764,6 +779,9 @@ public partial class ChatWindow : Window
                 // tooltip. Uma recusa vira ícone vermelho, com o mesmo registro.
                 if (janelaDoOrbe is not null)
                 {
+                    // Saiu explícito: descartada enquanto esperava a vez, ela nunca apareceu,
+                    // e não se conta com o Closed de uma janela que não chegou a abrir.
+                    Flutuantes.Fila.Saiu(janelaDoOrbe);
                     janelaDoOrbe.Close();
                     return;
                 }
@@ -781,8 +799,13 @@ public partial class ChatWindow : Window
     /// conversa está fora da tela e há orbe onde ancorar. Com o orbe desligado, abrir a
     /// conversa continua sendo o único lugar onde perguntar.
     /// </summary>
-    public static bool DeveUsarJanelaDoOrbe(bool conversaNaTela, bool orbeNaTela) =>
-        !conversaNaTela && orbeNaTela;
+    /// <param name="doShadow">
+    /// O pedido é da conversa do orbe. Aí a pergunta vai SEMPRE para a janela perto dele,
+    /// mesmo com a janela de chat aberta: o card entrava no meio de outra conversa, que não
+    /// tinha pedido nada.
+    /// </param>
+    public static bool DeveUsarJanelaDoOrbe(bool conversaNaTela, bool orbeNaTela, bool doShadow = false) =>
+        orbeNaTela && (!conversaNaTela || doShadow);
 
     /// <summary>
     /// Descarta uma confirmação pendente, devolvendo recusa a quem espera.
@@ -888,42 +911,8 @@ public partial class ChatWindow : Window
     private MarkdownViewer AddAgentBubble(string? initialText = null)
     {
 
-        var viewer = new MarkdownViewer
-        {
-            // Antes do texto: trocar o interpretador depois obrigaria a remontar o documento.
-            Pipeline = AIB.Ui.MarkdownPipelines.Conversa,
-            Markdown = initialText ?? "",
-            Foreground = (System.Windows.Media.Brush)FindResource("TextBodyBrush"),
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-            FontSize = (double)FindResource("FontSizeBubble"),
-        };
-
-        // O documento de fluxo nasce com margem própria de página, e ela se somava ao padding
-        // da bolha. A margem negativa que existia aqui compensava isso puxando o conteúdo para
-        // fora nos quatro lados — o que também comia o padding de 17x13 que a spec pede.
-        // Zerar na fonte é o certo.
-        ZerarMargemDoDocumento(viewer);
-
-        // §5.5 — código inline em lilás sobre surfaceCode; bloco em textBody sobre
-        // surfaceCodeBlock. Os dois em mono 12,5. Antes o inline saía ciano, uma cor que não
-        // existe em nenhum dos dois arquivos de spec.
-        var fonteMono = (System.Windows.Media.FontFamily)FindResource("MonoFontFamily");
-        var tamanhoCodigo = (double)FindResource("FontSizeCode");
-
-        var inlineCodeStyle = new Style();
-        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.BackgroundProperty, FindResource("SurfaceCodeBrush")));
-        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.ForegroundProperty, FindResource("AccentLilacBrush")));
-        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontFamilyProperty, fonteMono));
-        inlineCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontSizeProperty, tamanhoCodigo));
-
-        var blockCodeStyle = new Style();
-        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.BackgroundProperty, FindResource("SurfaceCodeBlockBrush")));
-        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.ForegroundProperty, FindResource("TextBodyBrush")));
-        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontFamilyProperty, fonteMono));
-        blockCodeStyle.Setters.Add(new Setter(System.Windows.Documents.TextElement.FontSizeProperty, tamanhoCodigo));
-
-        viewer.Resources.Add(Markdig.Wpf.Styles.CodeStyleKey, inlineCodeStyle);
-        viewer.Resources.Add(Markdig.Wpf.Styles.CodeBlockStyleKey, blockCodeStyle);
+        // O mesmo visualizador das falas do orbe: interpretador, cores e margem num lugar só.
+        var viewer = AIB.Ui.VisorDeMarkdown.Criar(initialText, this);
 
         // Permite que o scroll do mouse funcione mesmo com o ponteiro sobre a bolha Markdown
         viewer.PreviewMouseWheel += (s, e) =>
@@ -947,42 +936,12 @@ public partial class ChatWindow : Window
         // A medição vai por fora, sobre o documento: perguntar ao visualizador não adianta,
         // porque ele devolve como desejada a mesma largura que recebeu. Os 2px de folga cobrem
         // o arredondamento entre a medição do texto e o desenho dele.
-        var encolhido = new AIB.Ui.ShrinkWrap
-        {
-            Child = viewer,
-            MedirNatural = () => AIB.Ui.FlowDocumentMeasure.LarguraNatural(viewer.Document) + 2
-        };
+        var encolhido = AIB.Ui.VisorDeMarkdown.Encolhido(viewer);
 
         var linha = NovaLinha(CascaDaIa(encolhido, new Thickness(17, 13, 17, 13)), doUsuario: false);
         AnimateBubbleIn(linha);
         ChatScrollViewer.ScrollToEnd();
         return viewer;
-    }
-
-    /// <summary>
-    /// Zera a margem de página do <c>FlowDocument</c> do visualizador, agora e a cada vez que
-    /// ele for trocado.
-    /// <para>
-    /// Reaplicar não é zelo: atribuir <c>Markdown</c> reconstrói o documento inteiro, e o
-    /// streaming da resposta faz isso a cada pedaço que chega. Zerar uma vez só valeria até a
-    /// primeira letra da resposta.
-    /// </para>
-    /// </summary>
-    private static void ZerarMargemDoDocumento(MarkdownViewer viewer)
-    {
-        static void Aplicar(MarkdownViewer v)
-        {
-            if (v.Document == null) return;
-            v.Document.PagePadding = new Thickness(0);
-            v.Document.PageWidth = double.NaN;
-        }
-
-        Aplicar(viewer);
-
-        var descritor = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(
-            MarkdownViewer.DocumentProperty, typeof(MarkdownViewer));
-
-        descritor?.AddValueChanged(viewer, (_, _) => Aplicar(viewer));
     }
 
     /// <summary>
@@ -1471,14 +1430,12 @@ public partial class ChatWindow : Window
             string textoDoTurno = QuebraDeFala.Limpar(allText + fullText).Trim();
             TurnoConcluido?.Invoke(errorText ?? textoDoTurno);
 
-            // Se a janela estiver invisível ou sem foco (usuário fazendo outra coisa), emite notificação
-            if (!this.IsActive || this.Visibility != Visibility.Visible)
+            // Com a janela escondida, a resposta vem numa janela de aviso (era o balão da
+            // bandeja, cortado em 200 caracteres e sem botão). Só "escondida": a janela se
+            // esconde sozinha ao perder o foco, então é sempre que o usuário não está olhando.
+            if (this.Visibility != Visibility.Visible)
             {
-                string turnText = textoDoTurno;
-                string notifyText = errorText ?? (string.IsNullOrWhiteSpace(turnText) ? "*Ação executada com sucesso.*" : turnText);
-                if (notifyText.Length > 200) notifyText = notifyText.Substring(0, 197) + "...";
-                
-                ((App)System.Windows.Application.Current).ShowNotification("AIB", notifyText);
+                (System.Windows.Application.Current as App)?.AvisarRespostaPronta(textoDoTurno, errorText);
             }
         }
     }
@@ -2101,47 +2058,6 @@ public partial class ChatWindow : Window
     }
 
     /// <summary>
-    /// Cor do contador por ECONOMIA de contexto, nao por ocupacao — §3.8.
-    /// <para>
-    /// A tela antiga pintava de verde a laranja conforme o historico enchia. A spec inverte o
-    /// que o numero comunica. O que ele mede mudou de novo: era a fatia do prompt que o cache
-    /// do Ollama nao precisou reprocessar, e agora e quanto o sistema de capitulos e atos
-    /// esta poupando. Verde quer dizer "a memoria esta trabalhando"; magenta, "a conversa vai
-    /// quase inteira em toda requisicao".
-    /// </para>
-    /// <para>
-    /// Sem economia medida a cor e neutra, e nao magenta: antes do primeiro capitulo nao ha
-    /// falha nenhuma a sinalizar.
-    /// </para>
-    /// </summary>
-    /// <summary>
-    /// A cor da barra mede OCUPAÇÃO do contexto, e não economia.
-    /// <para>
-    /// Antes ela media a economia, e a escala punia conversa curta: um capítulo que resumiu 200
-    /// tokens em 128 fez o trabalho dele e a barra saía MAGENTA, acusando o sistema de falhar.
-    /// É a mesma armadilha do "-0%" que a nota do primeiro turno já evitava, um nível acima.
-    /// </para>
-    /// <para>
-    /// Ocupação é acionável: passar de 75% avisa que a compactação vai disparar; passar de 90%
-    /// avisa que a poda de emergência está perto — e a poda descarta sem substituto.
-    /// </para>
-    /// </summary>
-    private System.Windows.Media.Brush CorDaOcupacao(TokenReport r)
-    {
-        // A REDE em primeiro lugar: é o único ponto em que algo é perdido de verdade. Passar
-        // dela é a poda de emergência voltando a descartar sem substituto.
-        if (r.OcupacaoDaRedePct >= 90) return (System.Windows.Media.Brush)FindResource("DangerTextBrush");
-
-        // Passar do teto do NÍVEL não interrompe nada e virou rotina desde que a janela ficou
-        // bem maior que ele. Vale laranja — "vai compactar no fim do turno" — e não vermelho:
-        // alarme que dispara todo turno deixa de ser alarme.
-        if (r.AcimaDoOrcamento || r.OcupacaoPct >= 90)
-            return (System.Windows.Media.Brush)FindResource("WarnBrush");
-
-        return (System.Windows.Media.Brush)FindResource("TextSecondaryBrush");
-    }
-
-    /// <summary>
     /// Escreve o contador do rodape: quanto a conversa inteira pesaria, quanto ela pesa agora
     /// e quanto o sistema de capitulos e atos esta poupando.
     /// <para>
@@ -2155,42 +2071,8 @@ public partial class ChatWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            // O teto do nivel no lugar da porcentagem. Os dois numeros da esquerda ja dizem
-            // quanto foi poupado — a porcentagem repetia isso em outra forma, e ocupava o
-            // espaco do unico dado que faltava: o quanto ainda cabe.
-            //
-            // A condição é o TOTAL diferir do contexto, e não haver economia. Uma conversa
-            // reaberta sem capítulo nenhum não poupou nada, mas o custo cru dela continua sendo
-            // maior que o contexto — e esconder isso é o que fazia 9.144 tokens virarem 1.838
-            // sem explicação.
-            bool temTotal = relatorio.Total > relatorio.Contexto;
-
-            TokenCounterText.Inlines.Clear();
-
-            if (temTotal)
-            {
-                // TACHADO e apagado: é o preço que a conversa NÃO está pagando. Riscar diz isso
-                // sem precisar de legenda, e deixa o número vivo ser o que salta aos olhos.
-                TokenCounterText.Inlines.Add(new Run($"{relatorio.Total:N0}")
-                {
-                    TextDecorations = System.Windows.TextDecorations.Strikethrough,
-                    Foreground = (System.Windows.Media.Brush)FindResource("TextMutedBrush")
-                });
-
-                // A seta fica. O risco diz que aquele preço não está sendo pago; a seta diz
-                // que um número VIROU o outro. São duas informações, não uma repetida.
-                TokenCounterText.Inlines.Add(new Run(" > "));
-            }
-
-            TokenCounterText.Inlines.Add(new Run(
-                $"{relatorio.Contexto:N0} tokens | {relatorio.Max:N0}"));
-
-            // O dinheiro, quando há. Só o OpenRouter cobra; no Ollama o campo é nulo e o rodapé
-            // continua como sempre foi.
-            if (relatorio.CustoUsd is decimal custo)
-                TokenCounterText.Inlines.Add(new Run($" | {TokenReport.Dolares(custo)}"));
-
-            TokenCounterText.Foreground = CorDaOcupacao(relatorio);
+            // O mesmo texto do contador do orbe: total riscado, seta, contexto, teto e gasto.
+            AIB.Ui.ContadorDeTokens.Escrever(TokenCounterText, relatorio);
 
             // A conta atrás do número. Dois números e uma cor respondem "está economizando?",
             // e não respondem "de onde vem isso?" — que é a pergunta do dia em que a conta
@@ -2427,12 +2309,14 @@ public partial class ChatWindow : Window
     /// A conversa que estava aberta não se perde: o ResetHistory lá dentro a arquiva antes.
     /// </para>
     /// </summary>
-    private void AbrirChat(ChatSession sessao)
+    private async void AbrirChat(ChatSession sessao)
     {
+        if (_abrindo) return;
+
         var falas = ChatHistoryService.Parse(sessao.Content);
         if (falas.Count == 0) return;
 
-        RestaurarConversaGravada(sessao, falas);
+        await RestaurarConversaGravadaAsync(sessao, falas);
 
         AtualizarEstadoVazio();
         ChatScrollViewer.ScrollToEnd();
@@ -2441,6 +2325,12 @@ public partial class ChatWindow : Window
         // tela foi arquivada e agora é o item mais recente.
         _painel?.Recarregar();
     }
+
+    /// <summary>Uma conversa está sendo aberta: o carregamento e o desenho ainda não acabaram.</summary>
+    private bool _abrindo;
+
+    /// <summary>Itens desenhados entre uma pausa e outra, para a janela seguir respondendo.</summary>
+    private const int ItensPorLote = 40;
 
     /// <summary>
     /// Põe uma conversa gravada de volta no lugar da atual: no modelo, no registro de ações, nas
@@ -2455,25 +2345,95 @@ public partial class ChatWindow : Window
     /// Quando presente, entra no lugar da PRIMEIRA fala, se ela for do usuário — é o
     /// enquadramento do e-mail, montado pelo programa, e não algo que o usuário escreveu.
     /// </param>
-    private void RestaurarConversaGravada(
+    private async Task RestaurarConversaGravadaAsync(
         ChatSession sessao, IReadOnlyList<ChatTurn> falas,
         Func<FrameworkElement>? cartaoNoLugarDaPrimeiraFala = null)
     {
         DescartarConfirmacaoPendente();
 
-        _conversation.LoadConversation(falas, sessao.MemorySessionId, sessao.Id);
-
-        // O registro de ações vive só em memória: volta remontado do raw.jsonl da conversa.
-        // Conversa gravada antes da ligação com a memória não tem raw, e a aba fica vazia.
-        ActionLogService.Restaurar(ActionLogService.Reconstruir(_conversation.TurnosGravados()));
-
+        // A conversa do Bitrix (67 turnos, 1,2 MB de raw) congelava a janela inteira ao abrir:
+        // decifrar, remontar e contar tokens rodavam na thread da tela, e depois centenas de
+        // chips eram desenhados de uma vez. A leitura vai para fora da tela; o desenho, em lotes.
+        _abrindo = true;
         MessagesPanel.Children.Clear();
         _cadeiaAtual = null;
+        ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
+        InputBox.IsEnabled = false;
+        SendButton.IsEnabled = false;
+        StatusBar.Visibility = Visibility.Visible;
+        StatusText.Text = "📂 Abrindo a conversa…";
 
-        bool primeira = true;
-
-        foreach (var fala in falas)
+        try
         {
+            var (itens, acoes) = await Task.Run(() =>
+            {
+                _conversation.LoadConversation(falas, sessao.MemorySessionId, sessao.Id);
+
+                // O registro de ações vive só em memória: volta remontado do raw.jsonl da conversa.
+                // Conversa gravada antes da ligação com a memória não tem raw, e a aba fica vazia.
+                var gravados = _conversation.TurnosGravados();
+
+                // Do raw.jsonl, com as ferramentas entre as falas, como a conversa foi vista ao
+                // vivo. Só sem raw (conversa de antes da memória) ficam as falas do arquivo do
+                // histórico, que não têm as ferramentas nem as falas do meio de cada turno. Raw
+                // com MENOS turnos que o arquivo é a conversa antiga continuada depois: o raw só
+                // tem o fim, e desenhá-lo apagaria o começo da tela.
+                IReadOnlyList<ConversaNaTela.Item> montados = gravados.Count > 0 && gravados.Count >= falas.Count(f => f.DoUsuario)
+                    ? ConversaNaTela.Montar(gravados)
+                    : falas.Select(f => (ConversaNaTela.Item)new ConversaNaTela.Fala(f.DoUsuario, f.Texto)).ToList();
+
+                return (montados, ActionLogService.Reconstruir(gravados));
+            });
+
+            ActionLogService.Restaurar(acoes);
+            await DesenharAsync(itens, cartaoNoLugarDaPrimeiraFala);
+        }
+        finally
+        {
+            StatusBar.Visibility = Visibility.Collapsed;
+            StatusText.Text = "🧠 Pensando...";
+            InputBox.IsEnabled = true;
+            SendButton.IsEnabled = true;
+            _abrindo = false;
+        }
+
+        UpdateTokenCounterUI(_conversation.CurrentTokenReport);
+    }
+
+    /// <summary>
+    /// Desenha a conversa reaberta, devolvendo a vez à janela a cada <see cref="ItensPorLote"/>
+    /// itens. As ferramentas entram já concluídas (<see cref="ToolChainView.Repor"/>).
+    /// </summary>
+    private async Task DesenharAsync(IReadOnlyList<ConversaNaTela.Item> itens, Func<FrameworkElement>? cartaoNoLugarDaPrimeiraFala)
+    {
+        bool primeira = true;
+        FrameworkElement? semDigitando = null;
+        int desenhados = 0;
+
+        foreach (var item in itens)
+        {
+            if (++desenhados % ItensPorLote == 0)
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+
+            if (item is ConversaNaTela.Acao acao)
+            {
+                GarantirCadeia(ref semDigitando).Repor(
+                    acao.Id, acao.Ferramenta, acao.Argumento, acao.Falhou, acao.Recusada, acao.Artefato, acao.Detalhe);
+                continue;
+            }
+
+            if (item is ConversaNaTela.Lembrou lembrou)
+            {
+                AddAvisoDeMemoria(lembrou.Fato, null);
+                continue;
+            }
+
+            if (item is not ConversaNaTela.Fala fala) continue;
+
+            // Cada fala fecha a cadeia anterior, como a fronteira de fala faz ao vivo.
+            _cadeiaAtual?.RecolherFalhaPendente();
+            _cadeiaAtual = null;
+
             if (primeira && fala.DoUsuario && cartaoNoLugarDaPrimeiraFala != null)
             {
                 MessagesPanel.Children.Add(cartaoNoLugarDaPrimeiraFala());
@@ -2487,9 +2447,8 @@ public partial class ChatWindow : Window
             else foreach (var parte in QuebraDeFala.Dividir(fala.Texto)) AddAgentBubble(parte);
         }
 
-        ChatTitleText.Text = string.IsNullOrWhiteSpace(sessao.Title) ? "Conversa recuperada" : sessao.Title;
-
-        UpdateTokenCounterUI(_conversation.CurrentTokenReport);
+        _cadeiaAtual?.RecolherFalhaPendente();
+        _cadeiaAtual = null;
     }
 
     /// <summary>
@@ -2514,7 +2473,7 @@ public partial class ChatWindow : Window
                 + "agora não é alterado.",
                 ferramenta: "histórico",
                 alvo: titulo,
-                dica: "não há desfazer");
+                acao: "Excluir");
         }
 
         if (!confirmado) return;

@@ -22,6 +22,12 @@ namespace AIB.Ui;
 /// </summary>
 public sealed class AlturaParaRaioConverter : IValueConverter
 {
+    /// <summary>
+    /// O maior raio: o do orbe. A barra cresce com o texto de várias linhas, e metade de uma
+    /// altura de 120 daria uma cápsula que come os cantos do texto.
+    /// </summary>
+    public const double RaioMaximo = 28;
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         double altura = value is double d ? d : 0;
@@ -31,7 +37,7 @@ public sealed class AlturaParaRaioConverter : IValueConverter
         if (double.IsNaN(altura) || double.IsInfinity(altura) || altura <= 0)
             return new CornerRadius(0);
 
-        return new CornerRadius(altura / 2);
+        return new CornerRadius(Math.Min(altura / 2, RaioMaximo));
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>

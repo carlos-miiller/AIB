@@ -26,6 +26,7 @@ confirmação antes de ação destrutiva, tooltip fora de área rolável, chips 
 | `SidePanelWindow.xaml.cs` | `Window` | Painel lateral: histórico, arquivos no contexto, histórico de ações |
 | `ShadowAssistantWindow.xaml.cs` | `Window` | O orbe do Shadow Assistant |
 | `MailListItem.xaml.cs` | `UserControl` | Item de e-mail, usado no modo e-mail e no orbe |
+| `AvisoWindow.xaml.cs` | `Window` | Aviso flutuante (triagem, resposta, rajada, lembrete), pela fila das flutuantes |
 | `FirstRunWindow.xaml.cs` | `Window` | Primeiro arranque (assistente em cinco passos) |
 | `SettingsWindow.xaml.cs` | `Window` | Configurações, oito páginas |
 | `ConfirmDialog.xaml.cs` | `Window` | Confirmação modal fora da conversa |
@@ -99,7 +100,7 @@ resposta), a exclusão de conversa do histórico, o descarte de conversa de e-ma
   `AplicarTitulo`).
 - **Contador do rodapé** (`UpdateTokenCounterUI`): custo cru riscado e seta quando há compactação
   (`1.204 > 812`), tokens no prompt, teto do nível e, no OpenRouter, o gasto em dólares. A cor mede
-  ocupação (`CorDaOcupacao`): vermelho perto da janela do modelo (a poda de emergência descarta sem
+  ocupação (`TokenReport.PincelDaOcupacao`): vermelho perto da janela do modelo (a poda de emergência descarta sem
   substituto), laranja acima do teto do nível, neutro no resto. O tooltip (`DicaDoContador`) mostra
   a conta parcela por parcela.
 - **Estado vazio:** "Nenhuma conversa ainda" enquanto `MessagesPanel` está vazio
@@ -131,8 +132,10 @@ O que aparece durante o turno:
 
 Os três pontos somem depois de 3 s sem novidade (`idleTimer`) e voltam com o próximo pedaço. No
 `finally`, a última fala vira balão; se o turno inteiro não teve fala, entra "*Ação executada com
-sucesso.*". Erros viram balão com "❌ **Erro:**". Com a janela escondida ou sem foco, o fim do
-turno gera uma notificação da bandeja (`App.ShowNotification`) com até 200 caracteres. O evento
+sucesso.*". Erros viram balão com "❌ **Erro:**". Com a janela escondida, o fim do turno gera
+uma **janela de aviso** (`App.AvisarRespostaPronta` → `Avisos.DePronta`): verde "<NOME> respondeu"
+com até 6 linhas da fala e "Abrir conversa", fechando em 15 s; com erro, vermelha ("A resposta
+parou no meio") e sem fechar sozinha. Era o balão da bandeja, cortado em 200 caracteres. O evento
 `TurnoConcluido` entrega o texto final ao orbe.
 
 **Falas separadas.** A persona pode dividir uma resposta em mensagens (a reação a uma piada, depois
@@ -214,6 +217,16 @@ contexto, que são da conversa. `RecuperarChat` soma uma conversa antiga à atua
 lateral. `RestaurarConversaGravada` é o caminho único de restauração, usado também pela reabertura
 de e-mail.
 
+A tela reaberta sai do `raw.jsonl` (`ConversaNaTela.Montar`): cada fala no seu balão, inclusive as
+do meio da cadeia, e entre elas os chips das ferramentas, pareadas chamada com resultado como no
+registro de ações; `remember` que deu certo volta como o aviso "X lembrará disso…". Antes ela saía
+do arquivo do histórico, que guarda só a fala do usuário e a última do assistente: um turno de 60
+ferramentas que parou no teto voltava como a linha "[turno encerrado sem resposta: …]" e mais nada.
+O arquivo do histórico ainda desenha a tela quando não há raw, ou quando o raw tem menos turnos que
+ele (conversa de antes da memória, continuada depois).
+
+Abrir é assíncrono (`RestaurarConversaGravadaAsync`): `LoadConversation`, a leitura do raw e a montagem rodam fora da thread da tela, com "📂 Abrindo a conversa…" na barra de status e a entrada desligada; o desenho sai em lotes de `ItensPorLote` = 40 itens, devolvendo a vez à janela entre eles. As ferramentas entram já concluídas por `ToolChainView.Repor`, sem spinner e sem a fila de 500 ms do ao vivo. Antes a conversa do Bitrix (67 turnos) congelava a janela ao abrir e depois girava cada ação por meio segundo, uma de cada vez.
+
 ### Botões de visão e voz
 
 `VisionButton_Click` chama `OcrService.ExtractTextFromActiveScreenAsync` e `VoiceButton_Click` usa
@@ -230,11 +243,27 @@ da mesma linha da grade; a janela não muda de tamanho. São três estados, e s�
 | Estado | Mostra |
 |---|---|
 | Convite | Nenhuma caixa com senha no cofre (`HaCaixaDeEmailPronta`): "Nenhum e-mail conectado" e o botão "Configurar e-mail". |
-| Lista | `MontarCaixaDeEntrada`: os `MailListItem` vindos do vigia, já ordenados por urgência, e a linha "N e-mail(s) · N urgente(s) · N tokens". Barra de entrada e rodapé somem. |
+| Lista | `MontarCaixaDeEntrada`: os `MailListItem` vindos do vigia, já ordenados por urgência, e a linha "N e-mail(s) · N urgente(s) · N tokens · N aguardando". Barra de entrada e rodapé somem. Havendo conversa em espera, a lista abre com a seção **"Aguardando retorno · N"** (`MontarEsperas`, `EsperaItem`; no máximo `EsperasVisiveis` = 3 antes de "Mostrar mais N ▾", que depois de aberto vira "Mostrar menos ▴" — `RotuloDoAlternar`) e segue com **"Para você responder · N"**. Uma conversa só aparece num lugar (`ForaDaEspera`). |
 | Leitura | O cabeçalho vira caminho "Caixa de entrada › assunto", com "Abrir no cliente", "Recarregar" e "Descartar esta conversa". A conversa é a mesma do chat. |
 
-A janela não conhece o vigia. O `App` injeta três delegados: `FonteDeEmails` (último digest),
-`IgnorarEmail` e `RecarregarEmail`.
+A janela não conhece o vigia. O `App` injeta seis delegados: `FonteDeEmails` (último digest),
+`FonteDeEsperas` (`MailDigestService.Esperas`), `EstenderEspera`, `PararEspera`, `IgnorarEmail` e
+`RecarregarEmail`.
+
+`EsperaItem` (a linha de espera): relógio, assunto, "Para: …", "Enviado … · sem resposta" ou "Você
+respondeu … · N mensagens", o prazo ("7 dias" / "até 23/10", "hoje", "venceu" / "em 23/10") e uma
+barra fina do prazo consumido. Três estados pintados em código: normal (lilás), vencendo — falta um
+dia ou menos — (`WarnBrush`) e vencida (`DangerBrush`, e o relógio vira alerta). Clique abre o
+acordeão com o histórico curto e as ações (estilos `AcaoDoCorpo`/`AcaoSecundariaDoCorpo`, agora em
+`Controls.xaml`, compartilhados com o `MailListItem`); um aberto por vez:
+
+- **Abrir com &lt;NOME&gt;** — `ChatWindow.ComoEmail` vira a espera num `MailSummary` com a mesma chave
+  de conversa da lista (`conta|thr:id`), e segue o caminho de sempre (`AbrirEmailNoChat`). Some sem
+  conta (conversa sem histórico em disco).
+- **Abrir no &lt;provedor&gt;** — `LinkDoEmail`; some sem endereço.
+- **+7 dias** — `EstenderEspera` → `VigiasDoEmail.Estender` (contado de hoje se já venceu).
+- **Parar de vigiar** (ou **Dispensar**, vencida) — confirma e chama `PararEspera` →
+  `VigiasDoEmail.Parar`. Nada no servidor.
 
 - **Abrir com a IA** (`AbrirEmailNoChat`): se já existe conversa sobre aquela thread, volta a ela
   sem chamar o modelo (`RetomarConversaDoEmail`). Senão, o turno começa com
@@ -261,11 +290,13 @@ Substitui a janela modal: a pergunta aparece na coluna da IA, logo abaixo da aç
 | `shell` | "Executar este comando?" |
 | `skill` | "Executar esta habilidade?" ou "Ler o manual desta habilidade?" |
 
-O cartão mostra a pill "Ação destrutiva", o alvo literal, a prévia do conteúdo ou do trecho
+O cartão mostra a pill "Ação destrutiva", o alvo literal (inteiro e quebrando linha, com rolagem acima de 160 px; antes era uma linha cortada em 330 px com o resto num tooltip sem fim, e uma anotação longa do navegador não se lia), a prévia do conteúdo ou do trecho
 trocado (`ScriptBody`) e, quando cabem, três avisos: motivo de bloqueio, "Há texto de um e-mail
 nesta conversa..." e o aviso de caminho fora das pastas sem confirmação. Botões: **Permitir**
 (`DangerFilledButton`) e **Recusar**. A caixa "Sempre permitir este comando" só aparece para `shell`
-e some quando há e-mail no contexto.
+e `browser`, e some quando há e-mail no contexto. Em botão do navegador que decide algo
+(`SempreSegurando`) ela diz "Sempre permitir este botão neste site (segure 5 s)" e só marca com o
+clique segurado por 5 s (contagem no rótulo; soltar antes zera; Espaço não marca).
 
 Regras que o código garante: o foco nasce em "Recusar" (Enter sem ler não executa nada); a
 resposta é negativa por omissão (`Descartar` devolve recusa); decidir trava os botões.
@@ -277,6 +308,10 @@ e as ferramentas anunciadas pela fala seguinte abrem outra logo abaixo do balão
 
 - `Iniciar` mostra o chip em curso com spinner, rótulo "Executando", nome e argumento. Ferramentas
   paralelas dividem o mesmo chip, com contagem.
+  O argumento vem de `ArtifactExtractor.ResumirParaTela`: igual ao resumo da memória, menos no
+  navegador, onde a ref do elemento vira o nome dele (`clicar botão "OK"`, por `NomesDeElemento`)
+  e a ação sai em português. O nome é texto da página e fica só na tela: o resumo que a memória
+  guarda (`ResumirArgumento`) continua com a ref.
 - `Aguardar` troca o rótulo para "Aguardando" enquanto o cartão de confirmação está na tela.
 - `Concluir` põe a conclusão numa fila; `DesenharProxima` desenha uma a cada 500 ms
   (`TempoMinimoVisivel`). O atraso é só de desenho: a ferramenta já rodou.
@@ -312,7 +347,35 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   fechado, para não perder as falas.
 - **Clique** transforma o círculo em barra de texto (`AbrirBarra`, morph de 0,28 s; o raio segue a
   altura por `Ui/AlturaParaRaioConverter`, porque WPF não anima `CornerRadius`). `Esc` ou perder o
-  foco volta ao círculo.
+  foco volta ao círculo. A janela não muda de tamanho no morph: a linha da casca tem altura fixa
+  (56) e a pilha de falas, fechada, fica `Hidden` em vez de `Collapsed`, surgindo e sumindo por
+  opacidade no tempo da barra (`MostrarPilha`). Com `SizeToContent`, cada mudança de altura era
+  um redimensionar e reposicionar da janela, visível como salto. Ao fechar, o que estava digitado e não foi enviado fica no campo para a próxima
+  abertura (só enviar o esvazia).
+- **Campo de várias linhas:** o texto quebra na largura do campo e Shift+Enter quebra a linha
+  (Enter envia). A barra cresce para cima, uma altura de linha por linha, até `LinhasDaBarra` = 5;
+  depois o campo rola (`AjustarAltura`, `AlturaDaBarra`). O raio dos cantos é metade da altura
+  até o do orbe (`AlturaParaRaioConverter.RaioMaximo` = 28).
+- **Contador de tokens** (`MostrarTokens`), só com a conversa própria do orbe e com a barra
+  aberta: abaixo da barra, à direita, como no rodapé da janela. O texto é o mesmo do rodapé
+  (`Ui/ContadorDeTokens`): custo cru riscado e seta quando há compactação, contexto, teto do
+  nível e gasto, na mesma cor de ocupação (`TokenReport.PincelDaOcupacao`). Como flutua sobre
+  o desktop, leva o halo `FloatingTextShadow` (escuro no tema escuro, claro no claro). A dica
+  traz capítulos e atos, o poupado e o gasto. `App.LigarOrbe` o alimenta pelo
+  `OnTokenCountChanged` da conversa do orbe.
+- **Carimbo de tempo:** cada fala do usuário na conversa do orbe vai ao modelo com o dia e a hora
+  na frente, `[sexta-feira - 09/10/2026 | 14:32]` (`ConversaDoOrbe.Carimbar`). Fica na fala, e
+  não no prompt de sistema, para não perder o cache a cada minuto; só na fala do usuário, para o
+  modelo não imitar. A bolha e as falas restauradas mostram o texto sem ele (`SemCarimbo`). Não
+  foi medido com `AIB.Avaliacao` (decisão do usuário).
+- **Comandos de barra** no orbe (`ConversaDoOrbe.ComandoDe`): `/compact` (a mesma
+  `ForcarCompactacaoAsync`, na conversa do orbe) e `/memoria`, `/memória` ou `/memory`
+  (`MemoriaEmTexto`). A resposta volta como fala. Não vão ao modelo como mensagem, não contam
+  como conversa para o afeto e o botão de parar interrompe a compactação.
+- **Parar:** com um turno rodando (`EmTurno`, pelo passo anunciado), o botão de enviar vira o
+  quadrado vermelho de parar e dispara `ParadaPedida`; `App.LigarOrbe` cancela o turno de quem
+  estiver rodando (`ConversaDoOrbe.Parar` ou `ChatWindow.PararTurno`). A barra recebe o que já
+  tinha sido dito, ou "Parei.". Enquanto o turno roda o Enter não envia: o texto fica no campo.
 - **Enviar** pela barra dispara `MensagemEnviada`, e o turno roda na **conversa do orbe**
   (`Services/ConversaDoOrbe`), separada da janela: um `ConversationService` em sessão fixa
   (`memory/shadow`, fora de `sessions/`: é uma só), reaberto de onde parou no arranque, fora do `chat_history.json` e sem
@@ -320,6 +383,16 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   guardas de e-mail do registry são SOMADOS (o mais restritivo vale). O orbe mostra o passo
   (`PassoMudou`) e o texto final (`Respondeu` → `ResponderTurno`): com a barra aberta, a
   resposta entra na pilha de falas (`Ui/FalaDoOrbe`); fechada, ela é enfileirada e o orbe pulsa.
+  A fala da IA é desenhada em Markdown pelo mesmo visualizador da janela de chat
+  (`Ui/VisorDeMarkdown`, usado no orbe pelo controle `Ui/TextoDaIA`): interpretador, cores de
+  código e margem moram num lugar só. O fundo do balão continua sendo o vidro (`GlassBrush`) e
+  não o `SurfaceCardBrush` da janela, porque o balão flutua sobre a área de trabalho.
+  No arranque (e ao religar o orbe), `LigarOrbe` devolve à pilha as últimas 12 falas do contexto
+  vivo (`ConversationService.UltimasFalas` → `RestaurarFalas`), escondidas até a barra abrir; o
+  que já virou capítulo não volta como bolha.
+  A resposta de um turno da JANELA não entra nessa pilha, nem com a janela fechada no meio do
+  turno: o orbe só acende o anel do passo (`PassoDoTurnoMudou`). `OrbeDeveFalar` vale só para a
+  ligação sem conversa própria (ensaios).
   Ela se mantém leve pela compactação de sempre e por mais uma: parada há 2 h (`Pausa`), com algo
   novo desde a última, roda `ForcarCompactacaoAsync` — rajadas curtas ao longo do dia quase nunca
   enchem o contexto sozinhas. Lembretes e iniciativas, com orbe, caem nesta conversa.
@@ -332,22 +405,25 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   varredura, depois a ferramenta, depois o ✦ (`MostrarSimbolo`). Antes o orbe só girava o anel, e
   com a janela oculta não dava para saber o que ela estava fazendo. O fim da varredura não apaga o
   anel de um turno em curso.
-- **E-mail**: o vigia chama `ComecarAProcessarEmail` (ícone de caixa de entrada no lugar do ✦),
-  `TerminarDeProcessarEmail` (frase do digest e itens) e `PararDeProcessarEmail`. A fala do digest
-  leva até `TetoDeEmails` itens (`ShadowMailPreviewCount`); o excedente vira uma linha de texto.
+- **E-mail**: o vigia chama `ComecarAProcessarEmail` (ícone de caixa de entrada no lugar do ✦) e
+  `PararDeProcessarEmail`. O resultado do digest NÃO vai mais para o orbe: vai para a janela de
+  aviso (ver "Janelas flutuantes"). `TerminarDeProcessarEmail` e a pilha de e-mails do orbe ficaram
+  sem chamador.
 
-### Fala por iniciativa (lembretes)
+### Lembretes e fala por iniciativa
 
-A persona também fala sem ter sido chamada. `App.IniciarAgenda` roda um `DispatcherTimer` de 20 s
-que retira os lembretes vencidos (`Lembretes.Retirar`) e os entrega por `FalarPorIniciativa`; o
-primeiro passe é no arranque, para os que venceram com o app fechado, que chegam com "(Era para
-15:00.)" (`Lembretes.Atrasado`). Com turno em andamento (`ChatWindow.Ocupada`), espera a batida
-seguinte.
+`App.IniciarAgenda` roda um `DispatcherTimer` de 20 s que retira os lembretes vencidos
+(`Lembretes.Retirar`) e os entrega na **janela de aviso** (`Avisos.DeLembrete`): pill dourada
+"Lembrete · HH:mm" (ou "Era para HH:mm", atrasado), a fala escrita no pedido e os botões "Abrir o
+e-mail" (lembrete criado numa conversa de e-mail — `Lembrete.ChaveDoEmail`, vindo de
+`ContextoDoTurno`), "Abrir no Shadow" (criado no orbe — `Lembrete.Shadow`, com o selo), "Adiar
+1 h" (`Lembretes.Adiar`, sem modelo; não aparece no atrasado) e "Feito". Todos os lembretes vão
+para lá (decisão do usuário, 16/10/2026); antes entravam como fala no orbe ou na conversa. Com
+turno em andamento (`ChatWindow.Ocupada`), espera a batida seguinte.
 
-`FalarPorIniciativa`, com orbe, põe a fala na conversa do orbe (`ReceberFalaPropria`, para a
-resposta pela barra continuar o assunto) e pulsa (`EnfileirarFala`, texto só no clique). Sem
-orbe (só lembrete chega aqui), vai para a conversa da janela (`ChatWindow.ReceberIniciativa`) e,
-com ela fechada, para a bandeja. A fala por iniciativa entra no histórico vivo, mas não no
+`FalarPorIniciativa` (a conversa espontânea), com orbe, põe a fala na conversa do orbe
+(`ReceberFalaPropria`) e pulsa (`EnfileirarFala`, texto só no clique). Sem orbe, vai para a
+conversa da janela (`ChatWindow.ReceberIniciativa`) e, com ela fechada, para a bandeja. A fala por iniciativa entra no histórico vivo, mas não no
 `raw.jsonl`, que só grava dentro de um turno.
 Lembrete não chama o modelo: o texto foi escrito pela persona no pedido.
 
@@ -358,32 +434,129 @@ orbe na tela, conversa fora da tela e sem turno; usuário presente (`Presenca`: 
 últimos 5 min e `SHQueryUserNotificationState` aceitando avisos — sem tela cheia nem "não
 perturbe"); 15 min sem conversa; fora da pausa pedida; a última fala dela já respondida; menos
 do teto de mensagens do dia (`MensagensPorDia`, configurável de 1 a 20, padrão 6; cada uma é uma requisição paga). Podendo, **sorteia** de 10 em 10 min:
-`chance = 1,5% × geral × faixa` (`Iniciativa.Chance`; ~1,3 mensagem num dia de 14 h com tudo
-neutro). Sem número fixo de falas por dia e sem intervalo mínimo, por decisão do usuário.
+`chance = 2% × geral × faixa` (`Iniciativa.Chance`, `ChanceBase`; ~1,7 mensagem num dia de 14 h
+com tudo neutro; era 1,5%, subiu a pedido). Sem número fixo de falas por dia e sem intervalo
+mínimo, por decisão do usuário.
 
-**O algoritmo decide quando; ela só escreve** (decisão do usuário). Acertando o sorteio, o código
-escolhe o **gancho** (`Iniciativa.EscolherGancho`): uma pendência de assunto da memória da
-conversa do orbe ou um fato "sobre o usuário", sorteados com o mesmo peso — ela não está ajudando
-no trabalho naquela hora, então a pendência não vale mais que o resto —, evitando os 5 usados por
-último; sem nenhum, "puxe um assunto para conhecer melhor". O gancho é o que evita o "oi, como
-vai?" de quem foi mandado falar sem assunto.
+**Diário** (`RegistroDaIniciativa`, chave `IniciativaLogging`, nasce ligada): em
+`~/.AIB/logs/iniciativa.log`, uma linha por sorteio com a conta inteira da chance e o dado, uma a
+cada MUDANÇA do que segura o sorteio (`App.OQueSegura` separa o que `Impedimento` junta: sem
+orbe, janela aberta, turno rodando, ausente, "não perturbe"), e uma por transição — fala dela,
+leitura, mensagem dele, desfecho, o que os multiplicadores aprenderam, virada do dia, troca de
+personagem, pedido e resposta do modelo. Só números e motivos, nunca o texto das mensagens.
+Passando de 1 MB vira `iniciativa.anterior.log`.
+
+**O algoritmo decide quando; ela decide o quê** (decisão do usuário em 15/10/2026). Até então o
+código sorteava um gancho (uma pendência ou um fato sobre o usuário), e o pedido trazia "você está
+sem fazer nada, você decide mandar uma mensagem", as últimas mensagens dela com "não repita" e
+"uma ou duas frases, sem saudação genérica e sem oferecer ajuda". Isso engessava a resposta e
+saiu: o pedido dá só a situação.
 
 `ConversationService.EscreverIniciativaAsync` chama o modelo fora de banda (sem ferramentas,
-temperatura 0,8, até 160 tokens) com um papel, não uma decisão (`MaterialDaIniciativa`): a
-**alma inteira** — decisão do usuário: o sorteio controla quantas vezes ela é chamada e toda
-chamada vira mensagem, então os ~4.000 tokens só são pagos quando ela fala; sem alma, a persona
-curta do `info.json` (nome, descrição, personalidade, fala de exemplo) —, "Você está sem fazer nada.
-Carlo está online. Vocês conversaram pela última vez há 3 h. Você decide mandar uma mensagem para
-Carlo.", como terminou a última iniciativa (`UltimoDesfecho`), o gancho, as últimas 4 falas e as
-últimas 5 mensagens por iniciativa ("não repita", `Recentes`, sobrevive ao arranque). Sem saída
-NADA: o pedido custa ~4.500–5.000 tokens (a alma é quase tudo) e toda chamada é uma mensagem. Com o geral ≥ 1,5, ganha
-"vocês têm conversado bastante ultimamente": o afeto aparece na voz, não só na frequência.
+temperatura 0,8, até 400 tokens, `TetoDaIniciativa`) com uma mensagem só (`MaterialDaIniciativa`):
+
+1. a **alma inteira** — decisão do usuário: o sorteio controla quantas vezes ela é chamada e toda
+   chamada vira mensagem, então os ~4.000 tokens só são pagos quando ela fala; sem alma, a persona
+   curta do `info.json` (nome, descrição, personalidade, fala de exemplo);
+2. o **bloco de memória** da conversa do orbe, o mesmo do turno normal (`MemoryLayer.Render`:
+   fatos, atos, capítulos, pendências);
+3. "Agora: quarta-feira, 15:40. Carlo está online. Vocês conversaram pela última vez há 3 h.";
+4. a linha "Convivência" do afeto, a mesma do chat (`LinhaDoAfeto`, pelo desvio), quando há;
+5. como terminou a última iniciativa (`UltimoDesfecho`);
+6. as últimas 4 falas da conversa do orbe;
+7. "Escreva só a mensagem que você manda agora para Carlo, por conta própria." — o "só a
+   mensagem" evita o "Aqui está uma mensagem:"; o "por conta própria", que ela responda à última fala.
+
+Sem saída NADA: toda chamada é uma mensagem. O custo é a alma mais a memória.
 
 O nome vem de `NomeDoUsuario` (Configurações > Identidade, e o primeiro passo da primeira
 inicialização); vazio é "o usuário".
 
-**Aprendizado** (`~/.AIB/iniciativa.json`): multiplicador geral e um por faixa de 2 h, entre 0,2 e
-3. Cada fala é classificada uma vez — 30 min depois da primeira resposta na conversa do orbe, ou
+**Aprendizado**: multiplicador geral e um por faixa de 2 h, entre 0,2 e 3. Na memória é um
+estado só (`EstadoDaIniciativa`); no disco são dois arquivos cifrados (`ArquivoCifrado`, DPAPI):
+
+- `~/.AIB/iniciativa.dat` — o que é do **usuário**: as faixas de horário, a pausa do "agora
+  não", o último sorteio e a contagem do dia;
+- `~/.AIB/character/<Nome>/vinculo.dat` — o que é da relação com **um personagem** (`Vinculo`):
+  o geral, a fala que espera resposta, a conversa espontânea aberta e o último desfecho.
+
+`Iniciativa.Trocar` grava o vínculo do personagem que sai e carrega o do que entra (ou começa do
+zero); o `App` chama a cada batida e a cada mensagem no orbe (`AcompanharPersonagem`). O
+`iniciativa.json` em texto claro de antes é lido uma vez, vira o vínculo do personagem ativo e é
+apagado.
+
+**Atributos** (`Atributos`, `StatusDosPersonagens`, `Temperamento.De`): cada personagem tem cinco
+atributos: quatro de 1 a 5 (tabela abaixo) e o afeto. Os **de fábrica** ficam no `info.json` dele (`Atributos`); os **que valem
+agora** ficam no arquivo de status, `~/.AIB/memory/shadow/status.json` (texto claro, editável à
+mão). O arquivo **nasce vazio**: o personagem entra na primeira vez em que é o ativo, com os
+padrões do `info.json` (sem eles, tudo em 3), e dali em diante vale o que está no arquivo — o AIB
+só acrescenta quem falta. O 3 é o comportamento de antes dos
+atributos. Arquivo ilegível não é sobrescrito (valem os neutros); a edição passa a valer na
+batida seguinte. Não são as estrelas da tela de escolha (`AgentStats`, no `info.json`).
+
+| Atributo | O que muda | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| `Iniciativa` | multiplica a chance base do sorteio | ×0,5 | ×0,75 | ×1 | ×1,3 | ×1,6 |
+| `Resiliencia` | fator da fala ignorada / do "agora não" | 0,60 / 0,35 | 0,68 / 0,42 | 0,75 / 0,50 | 0,83 / 0,60 | 0,90 / 0,70 |
+| `Constancia` | quanto o geral volta para 1 por dia | 20% | 15% | 10% | 7% | 5% |
+| `Curiosidade` | força com que um hábito novo nasce (`Habitos.Nasce`) | 0,50 | 0,75 | 1,00 | 1,25 | 1,50 |
+
+O **afeto** (`Afeto`) é o quinto e tem escala própria, de **-5 a 5**, com 0 de neutro: -5 é o
+personagem direto, que evita conversa longa; 5, o expressivo e apegado. Na conta ele é o teto do
+fator de conversa, `1,50 + 0,10 × afeto` (`Temperamento.TetoDoAfeto`): 1,00 com -5 (conversa não
+o faz puxar mais assunto), 1,70 com +2 (o valor que nasceu com a Ellen), 2,00 com +5. O jeito de
+falar muda pelo DESVIO (afeto de agora menos o de fábrica), numa linha "Convivência" do bloco de
+contexto do prompt (`ConversationService.LinhaDoAfeto`): nada abaixo de 0,75 de desvio; para cima, um
+texto a partir de 0,75 e outro a partir de 1,5; para baixo, um só (o mais seco foi medido e
+atrapalhava o relato de ferramenta que falha). Medido em 09/10/2026 — os relatórios `afeto-*`
+estão em `AIB.Avaliacao/resultados/`. Com desvio zero o prompt fica byte a
+byte o que era. O `AIB.Avaliacao --afeto <desvio>` força o desvio para medir cada texto.
+
+O afeto é o único atributo que **anda sozinho**: a cada iniciativa classificada ou conversa
+espontânea encerrada, `Iniciativa.AfetoMoveu` dá o passo e `StatusDosPersonagens.Mover` grava no
+arquivo de status — conversa +0,10, resposta rápida +0,03, conversa puxada pelo usuário (2 turnos
+ou mais) +0,05, lida sem resposta -0,02, ignorada -0,05, "agora não" -0,15. Fica entre -5 e 5 e a
+no máximo 2 pontos do afeto de fábrica do `info.json` (`Atributos.FolgaDoAfeto`).
+
+**Hábitos** (`Habitos`, pedido do usuário em 15/10/2026: "se ela faz algo e eu reajo
+positivamente a isso, de forma orgânica"). O personagem pega jeitos de agir na convivência. **O
+resumidor vê, o código decide:**
+
+- **Quem aprende:** com `AprenderHabitos` ligado (Configurações > Shadow, nasce ligado) e o
+  personagem ativo com alma (`ConversationService.QuemAprende`). Nas duas conversas, janela e orbe.
+- **Onde o jeito é visto:** ao fechar um capítulo, o prompt do resumidor ganha a seção JEITO
+  (`Compactor.SecaoDoJeito`), e o material ganha os hábitos já guardados, numerados. O resumidor
+  devolve até 2 linhas, `- + faz trocadilhos com esgrima | "kkkk adorei"` ou `- - #2 | "resume"`.
+  Sem persona, ou desligado, o prompt do capítulo fica byte a byte o de antes.
+- **A prova:** `Compactor.LerJeito` corta a seção antes de `LerSecoes` (as linhas dela seriam lidas
+  como lições) e só aceita a reação cuja fala entre aspas está nas mensagens **do usuário** do
+  trecho (`Turn.UserText`). Reação inventada, ou tirada de arquivo, e-mail ou página, não passa.
+- **A força:** jeito novo nasce com a força da curiosidade (0,5 a 1,5). A mesma reação de novo soma
+  1 (até 5); a contrária tira 2. A força cai pela constância a cada **semana** sem ser vista
+  (`Habitos.ForcaEm`, a escala do esquecimento do geral, mas por semana: hábito dura mais que
+  humor). Abaixo de 0,25 o jeito sai do arquivo. Guarda até 12, os mais fortes.
+- **No prompt:** só os vistos 2 vezes ou mais e com força ≥ 1,5, no máximo 5
+  (`Habitos.Ativos`), numa linha "Jeitos da convivência" depois da do afeto
+  (`Habitos.Linha`): "o usuário gosta quando você …, e não gosta quando você …. Use isso com
+  naturalidade, de vez em quando, sem deixar de ser quem você é." Vai no prompt de sistema (vale
+  da próxima conversa, que é quando ele é montado) e no pedido da iniciativa. Sem hábito firme, a
+  linha não existe. `ConversationService.HabitosForcados` força a linha, para a avaliação.
+- **Arquivo:** `~/.AIB/memory/shadow/habitos/<Nome>.dat`, cifrado (DPAPI): o texto vem da conversa.
+  A página Shadow lista os hábitos do personagem ativo ("em uso" ou "se firmando") com o botão
+  Esquecer, que vale na hora.
+
+**Saudade** (`Iniciativa.Saudade`): a chance do sorteio é multiplicada pelo tempo sem contato —
+1 até 2 h, 2 com 8 h, 3 com 24 h, e daí não passa. Contato é mensagem do usuário no orbe, turno
+concluído na janela (`Iniciativa.Contato`) ou fala dela; fica no vínculo (`ContatoUtc`). O
+crescimento é multiplicado pelo afeto, 6% por ponto (`Temperamento.SaudadeDoAfeto`): com um dia,
+×2,76 no afeto -2 e ×3,48 no +4. Existe porque, a 1,6% por sorteio, um dia inteiro de orbe na
+tela passava sem mensagem quase metade das vezes.
+
+A constância só mexe no **geral**, que é do personagem; as faixas de horário são do usuário e
+esquecem sempre 10%. O desfecho dito à persona vem do que aconteceu, não do fator
+(`Desfecho(recusou, respondeu, leu, fator)`): o "agora não" de um resiliente vale 0,70.
+
+ Cada fala é classificada uma vez — 30 min depois da primeira resposta na conversa do orbe, ou
 8 h sem resposta (`Classificar`) — e o fator (`Fator`) vai inteiro para a faixa em que ela falou
 e pela raiz para o geral:
 
@@ -396,6 +569,12 @@ e pela raiz para o geral:
 | Não abriu em 8 h | 0,75 |
 | "Agora não" (`EhRecusa`, na primeira resposta) | 0,50, e pausa de 4 h ou até o fim do dia |
 
+Ele puxar conversa também conta: mensagem dele na conversa do orbe sem fala dela esperando abre
+uma conversa espontânea (`ConversaUtc`), fechada 30 min depois de começar. O fator
+(`FatorEspontaneo`) vai para a faixa em que ele começou e pela raiz para o geral: 1,02 com uma
+mensagem, 1,05 com duas, +0,02 por turno a mais, até 1,20. Só sobe, sobe menos que a resposta a
+uma iniciativa (boa parte do que ele manda ali é pedido de trabalho) e não olha "agora não".
+
 A cada dia os multiplicadores voltam 10% para 1 no logaritmo (`Esquecer`). A página Shadow mostra
 o resumo (`Iniciativa.Resumo`: geral e a melhor e a pior faixa) e "Zerar aprendizado", que vale na
 hora pela instância viva do `App`.
@@ -404,7 +583,9 @@ hora pela instância viva do `App`.
 
 O mesmo item nas duas telas (orbe e modo e-mail). As diferenças são propriedades
 (`CornerRadius`, `RealceLilas`, `EscalaDeJanela`, `MostrarMetadados`, `TemConversa`,
-`PodeIgnorar`), não arquivos. Clique no item expande (acordeão, um aberto por vez); os botões do
+`PodeIgnorar`), não arquivos. O selo azul "Você iniciou" (`SeloIniciou`, tokens `AccentBlueFill14Brush`
+e `AccentBlueEdge38Brush`) acende pelo `DataContext` quando `MailSummary.Iniciada`; fica ao lado do
+selo de urgência, e não do nome, porque o nome encolhe com reticências. Clique no item expande (acordeão, um aberto por vez); os botões do
 corpo disparam `PediuAbrirComIA`, `PediuAbrirNoCliente`, `PediuIgnorar` e
 `PediuDescartarConversa`. Quem decide o que fazer é a tela dona. `AbrirNoNavegador` é o único
 caminho para sair do app e ignora URL vazia. Cor e rótulo de urgência vêm de
@@ -457,13 +638,49 @@ inteiro, o histórico de chat, as preferências e o conteúdo de `memory/` e `em
 mudança) e "Salvar". Depois de salvar, a janela chama `ChatWindow.ApplyCharacterUI` e
 `App.AplicarEstadoDoOrbe`, para as mudanças valerem na hora.
 
+## Janelas flutuantes
+
+Tudo o que aparece fora da janela principal usa a mesma casca (moldura `NeonBrush`, vidro
+`GlassBrush`, pill do tipo, título, caixa de conteúdo, rodapé com botões) — mockup "Janelas
+flutuantes do AIB", 16/10/2026 — e entra pela **fila** (`Flutuantes.Mostrar` →
+`FilaDeJanelas<Window>`): uma janela por vez; a pergunta (confirmação, senha) tira um aviso da tela e
+ele volta depois; entre avisos, a ordem é rajada, resposta sua, lembrete, resposta pronta, triagem.
+
+- **`AvisoWindow`**: o aviso. Não rouba o foco (`ShowActivated=False`, fora da barra de tarefas).
+  Montado por `AvisoWindow.Montar(Receita)`; o que cada aviso diz mora em `Avisos` (`DeDigesto`,
+  `DeLembrete`), que é puro e testável. Tons: lilás (e-mail), azul (você iniciou), vermelho
+  (rajada), dourado (lembrete), verde (resposta pronta). Linhas de e-mail clicáveis (até 3), selo
+  "Shadow", "+N" da fila, X, e contagem que fecha sozinha (para com o mouse em cima e com a janela
+  escondida pela fila). Posição: `PertoDoOrbe.PosicionarOuNaBandeja` — perto do orbe ou, sem ele,
+  no canto de baixo à direita.
+- Botões dos avisos: `App.AcoesDosAvisos` — "Abrir com <NOME>" (`AbrirEmailDoOrbe`), "Ver na
+  caixa" (`ChatWindow.MostrarCaixa`, com o item aberto), "Abrir o e-mail" do lembrete
+  (`ChatWindow.AbrirConversaDoEmail`, retoma a conversa), "Abrir no Shadow" (`AbrirBarra` do
+  orbe), "Adiar 1 h".
+
+- **Selo "Shadow"**: o que vem da conversa do orbe leva o selo e o caminho de volta é o orbe
+  ("Abrir no Shadow" → `AbrirBarra`). Confirmação: `ContextoDoTurno.Shadow`, lido em
+  `PerguntarConfirmacaoAsync`; a pergunta do Shadow vai SEMPRE para a janela perto do orbe, mesmo
+  com a janela de chat aberta (`DeveUsarJanelaDoOrbe(..., doShadow)`). Senha do terminal: o pedido
+  chega por pipe, fora do turno, e é "do Shadow" quando só o orbe está ocupado. Lembrete: guardado
+  no próprio lembrete. Resposta: `LigarOrbe(..., avisarResposta)` mostra o aviso quando a resposta
+  do orbe chega com a barra fechada.
+- **`AvisoWindow.Informar`**: o aviso que ESPERA o usuário (modal, recebe o foco, no centro de quem
+  avisou), no lugar do `MessageBox` do Windows — erro ao iniciar (com "Copiar detalhes"), "promova
+  outra conta a principal", reset concluído. Se a janela não monta (tema que falhou no arranque), cai
+  no `MessageBox`.
+
 ## ConfirmDialog
 
 Confirmação modal para o que não acontece dentro de um turno: excluir conversa do histórico,
 descartar conversa de e-mail, ignorar e-mail, remover conta, reset de fábrica, descartar alterações
 das configurações. Substitui o `MessageBox` do sistema, que ignora a paleta. O caminho de uso é
-`ConfirmDialog.Perguntar(dono, pergunta, consequencia, ferramenta, alvo, dica)`, que devolve `true`
-só no clique em "Permitir"; X, `Esc` e "Recusar" devolvem `false`. Quem chama de dentro da conversa
+`ConfirmDialog.Perguntar(dono, pergunta, consequencia, ferramenta, alvo, dica, acao, temVolta, pill,
+palavra)`, que devolve `true` só no clique no botão da ação; X, `Esc` e "Cancelar" devolvem `false`.
+O botão diz a ação (`acao`: "Descartar", "Ignorar", "Apagar tudo") em vez de "Permitir"; `temVolta`
+pinta pill e botão de laranja (ignorar, parar de vigiar, remover conta), e sem volta fica vermelho;
+a pill diz o que importa ("Não há desfazer", "Volta com mensagem nova"). O reset de fábrica pede
+`palavra: "RESTAURAR"`: o botão só acende com ela digitada, maiúsculas como pedidas. Quem chama de dentro da conversa
 envolve a chamada em `ModalGuard.Enter()`.
 
 ## Código estacionado

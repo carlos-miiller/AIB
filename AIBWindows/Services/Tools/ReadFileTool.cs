@@ -161,7 +161,8 @@ public class ReadFileTool : ITool
 
                 if (lidas >= limit) { sobrou = true; break; }
 
-                linhas.Add($"{numero,6}\t{Aparar(linha)}");
+                // Arquivo da memória é cifrado por linha; a leitura já passou pelo cartão.
+                linhas.Add($"{numero,6}\t{Aparar(ArquivoCifrado.Abrir(linha))}");
                 lidas++;
             }
 

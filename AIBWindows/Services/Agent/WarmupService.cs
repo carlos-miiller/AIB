@@ -52,7 +52,7 @@ public sealed class WarmupService
             // Só o Ollama tem modelo a carregar nesta máquina. No OpenRouter o heartbeat seria
             // uma requisição paga, e a interface travada esperando nada.
             // Provedor vazio é Ollama, como na fábrica.
-            if (ProvedoresDeIa.Normalizar(settings.AiProvider, settings.ApiUrl) == ProvedoresDeIa.OpenRouter) return;
+            if (ProvedoresDeIa.EhNuvem(ProvedoresDeIa.Normalizar(settings.AiProvider, settings.ApiUrl))) return;
 
             var provider = _providerFactory.GetProvider(settings);
 

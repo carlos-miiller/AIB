@@ -26,6 +26,7 @@ namespace AIB.Tests
     /// a conversa, e a intenção do usuário sobrevive a esse sumiço.
     /// </para>
     /// </summary>
+    [Collection("Historico")]
     public class SidePanelVisibilityTests
     {
         private static void EmSta(Action acao) => WpfHost.EmSta(acao);
@@ -155,6 +156,68 @@ namespace AIB.Tests
                 painel.Close();
                 chat.Close();
             });
+        }
+
+        [Fact]
+        public void OPainelQueVoltaComAConversa_MostraOHistoricoDeAgora()
+        {
+            // Visto no uso: a conversa foi renomeada quando o capítulo fechou, com a janela
+            // escondida (o usuário aprovava cartões no navegador). O nome novo apareceu no
+            // cabeçalho, e a lista do painel ficou com o antigo até a conversa ser reaberta —
+            // o painel escondido não é remontado, e ao voltar era só mostrado como estava.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var servico = ServicoDescartavel();
+                var chat = new ChatWindow(ConversaDescartavel(servico), servico);
+                var painel = new SidePanelWindow();
+
+                typeof(ChatWindow).GetField("_painel", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(chat, painel);
+                typeof(ChatWindow).GetField("_painelAberto", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(chat, true);
+
+                // Com os dois escondidos, a conversa ganha nome.
+                string nome = "Nome dado depois " + Guid.NewGuid().ToString("N")[..8];
+                ChatHistoryService.SaveCurrentSession(
+                    new System.Collections.Generic.List<OpenAI.Chat.ChatMessage>
+                    {
+                        OpenAI.Chat.ChatMessage.CreateSystemMessage(""),
+                        OpenAI.Chat.ChatMessage.CreateUserMessage("conversa " + nome),
+                        OpenAI.Chat.ChatMessage.CreateAssistantMessage("certo")
+                    },
+                    nome, Guid.NewGuid().ToString());
+
+                Textos(painel).Should().NotContain(t => t.Contains(nome), "o painel foi montado antes");
+
+                chat.ToggleWindow();
+
+                painel.IsVisible.Should().BeTrue();
+                Textos(painel).Should().Contain(t => t.Contains(nome));
+
+                painel.Close();
+                chat.Close();
+            });
+        }
+
+        /// <summary>Todo texto mostrado na árvore de uma janela.</summary>
+        private static System.Collections.Generic.List<string> Textos(DependencyObject raiz)
+        {
+            var achados = new System.Collections.Generic.List<string>();
+            var fila = new System.Collections.Generic.Queue<object>();
+            fila.Enqueue(raiz);
+
+            while (fila.Count > 0)
+            {
+                object atual = fila.Dequeue();
+                if (atual is System.Windows.Controls.TextBlock bloco) achados.Add(bloco.Text ?? "");
+                if (atual is System.Windows.Controls.ContentControl { Content: string s }) achados.Add(s);
+                if (atual is System.Windows.Controls.ItemsControl itens)
+                    foreach (object item in itens.Items) fila.Enqueue(item);
+                if (atual is DependencyObject d)
+                    foreach (object filho in LogicalTreeHelper.GetChildren(d)) fila.Enqueue(filho);
+            }
+
+            return achados;
         }
 
         // ── Andaimes ────────────────────────────────────────────────────────

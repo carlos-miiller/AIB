@@ -39,6 +39,13 @@
         public bool SemSempre { get; set; }
 
         /// <summary>
+        /// O "sempre" desta operação só se marca SEGURANDO o clique na caixa por 5 s. No
+        /// navegador, botão que decide (aprovar, salvar, enviar...): o "sempre" vale para aquele
+        /// botão naquele site, e um gesto longo não se dá sem querer no meio de vários cartões.
+        /// </summary>
+        public bool SempreSegurando { get; set; }
+
+        /// <summary>
         /// O "sempre" desta ferramenta continua valendo com texto de terceiros no contexto. Só o
         /// navegador: o texto de terceiros dele é a própria página que o usuário liberou, e sem
         /// isto todo clique perguntaria. O que é perigoso já chega com <see cref="SemSempre"/>.

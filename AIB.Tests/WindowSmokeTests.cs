@@ -377,6 +377,32 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void CadeiaReposta_DesenhaNaHora_SemSpinnerNemFila()
+        {
+            // Caso real, 15/10: ao reabrir a conversa do Bitrix, cada ação do histórico passava
+            // por Iniciar/Concluir e ganhava o meio segundo de "Executando" do ao vivo — as
+            // cadeias ficavam minutos girando, uma ação de cada vez. Reposta, ela já entra pronta.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var cadeia = new ToolChainView();
+                for (int i = 0; i < 5; i++)
+                    cadeia.Repor("t" + i, "browser", "abrir tarefa", falhou: false, recusada: false, artefato: null, detalhe: null);
+
+                cadeia.Concluidas.Should().Be(5, "sem drenar a fila: nada ficou esperando o ritmo");
+                cadeia.TemAcaoEmCurso.Should().BeFalse();
+
+                cadeia.Repor("f", "browser", "clicar", falhou: true, recusada: false, artefato: null, detalhe: "ref não existe");
+                cadeia.TemAcaoEmCurso.Should().BeTrue("a falha fica à vista, como ao vivo");
+
+                cadeia.Repor("g", "browser", "ler", falhou: false, recusada: false, artefato: null, detalhe: null);
+                cadeia.Concluidas.Should().Be(7, "a seguinte recolhe a falha para a trilha");
+                cadeia.TemAcaoEmCurso.Should().BeFalse();
+            });
+        }
+
+        [Fact]
         public void CadeiaDeAcoes_VariasEmParalelo_MostramATodasEmVezDaUltima()
         {
             // O modelo pede várias ferramentas na mesma iteração e elas rodam juntas. O chip é
@@ -592,6 +618,34 @@ namespace AIB.Tests
                     "o card mostra o comando EXATO que vai rodar");
 
                 DesenharSolto(card, "card-confirmacao", 620, 260);
+            });
+        }
+
+        [Fact]
+        public void CardDeConfirmacao_AnotacaoLonga_QuebraLinha_ENaoEstica()
+        {
+            // Caso real, 15/10: a anotação do navegador saía numa linha cortada com "…", e o
+            // texto inteiro só no tooltip — uma linha sem fim que atravessava a tela. O usuário
+            // precisa ler o que autoriza: o alvo vai inteiro, quebrando dentro do cartão.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                string nota = "ANOTAR na página /workgroups/group/{n}/tasks/task/edit/{n}/ de cpaps.bitrix24.com: \""
+                    + string.Concat(Enumerable.Repeat("para trocar o responsável, abra o campo Assignee, digite o nome e espere a lista; ", 6))
+                    + "\"";
+                var card = new ConfirmCardView();
+                card.Preencher(new CommandConfirmationContext { Tool = "browser", Command = nota, Level = 5 });
+
+                card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                card.DesiredSize.Width.Should().BeLessThanOrEqualTo(560, "a janela do orbe se ajusta ao conteúdo: sem limite, ela esticava");
+
+                var alvo = (System.Windows.Controls.TextBlock)card.FindName("AlvoText");
+                alvo.Text.Should().Be(nota, "o texto exato, sem corte");
+                alvo.TextWrapping.Should().Be(TextWrapping.Wrap);
+                alvo.ToolTip.Should().BeNull("o tooltip era a linha sem fim");
+
+                DesenharSolto(card, "card-anotacao-longa", 620, 420);
             });
         }
 

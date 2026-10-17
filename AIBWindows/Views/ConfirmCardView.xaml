@@ -10,7 +10,7 @@
         conteúdo — pill, título e botão vermelho —, não da moldura. Uma borda
         vermelha faria o card gritar antes de o usuário ler o que ele diz.
     -->
-    <Border MaxWidth="560"
+    <Border x:Name="Casca" MaxWidth="560"
             Padding="18,16"
             CornerRadius="{StaticResource RadiusBubble}"
             Background="{StaticResource SurfaceCardBrush}"
@@ -20,19 +20,34 @@
         <StackPanel>
 
             <!-- (a) PILL — geometria da pill de nível, em vermelho. -->
-            <Border Style="{StaticResource PillBorder}"
+            <Border x:Name="Pill" Style="{StaticResource PillBorder}"
                     Background="{StaticResource DangerFill14Brush}"
                     BorderBrush="{StaticResource DangerEdge32Brush}"
                     HorizontalAlignment="Left">
                 <StackPanel Orientation="Horizontal">
-                    <Path Data="M6,1 L11.5,10.5 L0.5,10.5 Z M6,4.6 L6,7.4 M6,8.8 L6,9.2"
+                    <Path x:Name="PillIcone" Data="M6,1 L11.5,10.5 L0.5,10.5 Z M6,4.6 L6,7.4 M6,8.8 L6,9.2"
                           Stroke="{StaticResource DangerTextBrush}" StrokeThickness="1.2"
                           StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                           StrokeLineJoin="Round"
                           Width="12" Height="11" Stretch="None"
                           VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <TextBlock Text="Ação destrutiva" Style="{StaticResource PillText}"
+                    <TextBlock x:Name="PillTexto" Text="Ação destrutiva" Style="{StaticResource PillText}"
                                Foreground="{StaticResource DangerTextBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- SELO "SHADOW": o pedido veio da conversa do orbe. Só na janela flutuante
+                 (ParaFlutuante); dentro da conversa não há dúvida de onde veio. -->
+            <Border x:Name="SeloShadow" Style="{StaticResource PillBorder}"
+                    Margin="0,6,0,0" HorizontalAlignment="Left" Visibility="Collapsed"
+                    Background="{StaticResource AccentFill08Brush}"
+                    BorderBrush="{StaticResource AccentBorderBrush}"
+                    ToolTip="Pedido pela conversa do orbe">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="8" Height="8" Fill="{StaticResource AccentLilacBrush}"
+                             VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <TextBlock Text="Shadow" Style="{StaticResource PillText}"
+                               Foreground="{StaticResource TextStrongBrush}"/>
                 </StackPanel>
             </Border>
 
@@ -50,24 +65,37 @@
             <Border Background="{StaticResource SurfaceCodeBrush}"
                     CornerRadius="{StaticResource RadiusCard}"
                     Padding="12,10" Margin="0,12,0,0">
-                <StackPanel Orientation="Horizontal">
+                <!-- Grade, e não StackPanel horizontal: o alvo recebe a largura que sobra e QUEBRA
+                     linha. Antes era uma linha cortada em 330 px com "…", e o texto inteiro só no
+                     tooltip — uma linha sem fim que atravessava a tela (visto em 15/10 com uma
+                     anotação do navegador). O cartão existe para o usuário ler o que autoriza:
+                     anotação e comando vão inteiros, com rolagem se passarem da altura. -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
                     <Path x:Name="IconeAlvo"
                           Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.3"
                           StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                           Width="22" Height="22" Stretch="Uniform"
-                          VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock x:Name="FerramentaText"
+                          VerticalAlignment="Top" Margin="0,0,10,0"/>
+                    <TextBlock x:Name="FerramentaText" Grid.Column="1"
                                FontFamily="{StaticResource MonoFontFamily}"
                                FontSize="12" FontWeight="SemiBold"
                                Foreground="{StaticResource DangerBrush}"
-                               VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock x:Name="AlvoText"
-                               FontFamily="{StaticResource MonoFontFamily}"
-                               FontSize="12"
-                               Foreground="{StaticResource TextBodyBrush}"
-                               TextTrimming="CharacterEllipsis" MaxWidth="330"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
+                               VerticalAlignment="Top" Margin="0,3,10,0"/>
+                    <ScrollViewer Grid.Column="2" MaxHeight="160"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <TextBlock x:Name="AlvoText"
+                                   FontFamily="{StaticResource MonoFontFamily}"
+                                   FontSize="12" LineHeight="17"
+                                   Foreground="{StaticResource TextBodyBrush}"
+                                   TextWrapping="Wrap" Margin="0,3,8,0"/>
+                    </ScrollViewer>
+                </Grid>
             </Border>
 
             <!-- PRÉVIA do que vai ser gravado: o conteúdo do write, o antes e depois do edit.
@@ -123,16 +151,29 @@
                         Style="{StaticResource OutlineButton}" Padding="18,8"
                         Click="Recusar_Click"/>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal"
-                            HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <CheckBox x:Name="SempreCheck" VerticalAlignment="Center"
+                <!-- Grade, e não StackPanel horizontal: o StackPanel mede o rótulo com largura
+                     infinita, e o rótulo longo ("...neste site (segure 5 s)") não cabia no que
+                     sobrava do cartão — saía por cima dos botões. Aqui o rótulo recebe a largura
+                     que há e quebra linha. -->
+                <Grid Grid.Column="2" VerticalAlignment="Center" Margin="14,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <CheckBox x:Name="SempreCheck" VerticalAlignment="Center" HorizontalAlignment="Right"
                               Foreground="{StaticResource TextMutedBrush}"
                               FontSize="11" Margin="0,0,12,0"
-                              Content="Sempre permitir este comando"/>
-                    <TextBlock x:Name="DicaText" Text="execução pausada"
+                              Content="Sempre permitir este comando">
+                        <CheckBox.ContentTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                            </DataTemplate>
+                        </CheckBox.ContentTemplate>
+                    </CheckBox>
+                    <TextBlock x:Name="DicaText" Grid.Column="1" Text="execução pausada"
                                FontSize="11" Foreground="{StaticResource TextMutedBrush}"
                                VerticalAlignment="Center"/>
-                </StackPanel>
+                </Grid>
             </Grid>
         </StackPanel>
     </Border>

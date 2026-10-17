@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -86,6 +86,11 @@ namespace AIB.Tests
                 WarmupCalls++;
                 return Task.CompletedTask;
             }
+
+            /// <summary>O raciocínio que o provedor diria reenviar junto com o histórico.</summary>
+            public int Raciocinio { get; set; }
+
+            public int RaciocinioReenviado(IReadOnlyList<ChatMessage> messages, Func<string, int> contar) => Raciocinio;
         }
 
         /// <summary>
@@ -141,7 +146,7 @@ namespace AIB.Tests
             public ProviderRoteirizado(Func<IReadOnlyList<ChatMessage>, IReadOnlyList<StreamChunk>> roteiro) =>
                 _roteiro = roteiro;
 
-            public string Name => "Fake";
+            public string Name { get; init; } = "Fake";
             public string Model => "fake";
 
             public async IAsyncEnumerable<StreamChunk> StreamAsync(
@@ -361,6 +366,71 @@ namespace AIB.Tests
 
             conversation.Chapters.Count.Should().BeGreaterThan(1,
                 "uma passada fecha quantos forem precisos, e não um por turno");
+        }
+
+        [Fact]
+        public async Task PassadoOGatilho_APassadaDesceAteOAlvo_ENaoSoAteOGatilho()
+        {
+            // Visto no orbe: 102.919 tokens vivos contra o gatilho de 100 mil. O capítulo fechou
+            // no teto de tokens com um turno só, a conversa ficou em 93.747 — abaixo do gatilho —
+            // e a passada parou. Os dois turnos seguintes compactaram de novo, cada um perdendo
+            // o cache do prompt inteiro. O alvo era 30% do teto.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var s = settings.LoadSettings();
+            s.TurnosPorCapitulo = 2;
+            settings.SaveSettings(s.Sanear());
+
+            var provider = new FakeProvider { CompleteReply = "Resumo do trecho." };
+            var conversation = BuildConversation(settings, provider, out _);
+
+            // No nível 1 a cota viva fica perto de 7 mil tokens: gatilho em uns 5.900 (85%) e
+            // alvo em uns 3.500 (metade). Quinze turnos de uns 430 tokens passam do gatilho, e
+            // cada capítulo só leva dois: o primeiro já deixa a conversa abaixo dele.
+            for (int i = 0; i < 15; i++)
+                conversation.AppendRecoveredContext($"pedido {i}", Filler(3200));
+
+            await conversation.CompactIfNeededAsync(userLevel: 1);
+
+            conversation.Chapters.Count.Should().BeGreaterThan(1,
+                "um capítulo só deixa a conversa encostada no gatilho, e o turno seguinte compacta de novo");
+            conversation.CurrentTokenReport.Contexto.Should().BeLessThan(4_600,
+                "a passada desce até perto do alvo, e não só até abaixo do gatilho");
+        }
+
+        // Pedido: "no lugar de ser % do modelo, que tal fazermos em 20 turnos ou 100k de tokens
+        // soltos (fora de capítulos)". Caso real: numa sessão de navegador com modelo de janela
+        // enorme, os 85% da cota nunca chegaram e cada requisição reenviava 165 mil tokens.
+        [Fact]
+        public async Task VinteTurnosSoltos_FechamUmCapitulo_MesmoComAConversaLeve()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = new FakeProvider { CompleteReply = "Resumo do trecho." };
+            var conversation = BuildConversation(settings, provider, out _);
+
+            // Turnos de poucas palavras: longe de qualquer gatilho de tokens.
+            for (int i = 0; i < UserAppSettings.PadraoDeTurnosSoltos - 1; i++)
+                conversation.AppendRecoveredContext($"pedido {i}", "ok");
+
+            await conversation.CompactIfNeededAsync(userLevel: 1);
+            conversation.Chapters.Should().BeEmpty("dezenove turnos ainda não são vinte");
+
+            conversation.AppendRecoveredContext("pedido 19", "ok");
+            await conversation.CompactIfNeededAsync(userLevel: 1);
+
+            var capitulo = conversation.Chapters.Should().ContainSingle("o gatilho de turnos fecha um capítulo só").Subject;
+            (capitulo.LastTurn - capitulo.FirstTurn + 1).Should().BeLessThanOrEqualTo(UserAppSettings.PadraoDeTurnosPorCapitulo);
+        }
+
+        [Fact]
+        public void OGatilhoDeTokens_EhOMenorEntreAFracaoDaCotaEOTetoDeSoltos()
+        {
+            // Janela grande: 85% de 800 mil nunca chega; o teto de 100 mil manda.
+            var grande = new AIB.Services.Memory.MemoryQuota(0, 0, 0, 800_000);
+            AIB.Services.Memory.MemoryBudget.CompactionThreshold(grande, 0.85, 100_000).Should().Be(100_000);
+
+            // Janela pequena: o teto absoluto não pode empurrar o gatilho para depois do estouro.
+            var pequena = new AIB.Services.Memory.MemoryQuota(0, 0, 0, 4_000);
+            AIB.Services.Memory.MemoryBudget.CompactionThreshold(pequena, 0.85, 100_000).Should().Be(3_400);
         }
 
         [Fact]
@@ -741,7 +811,7 @@ namespace AIB.Tests
 
             await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
 
             linhas.Should().ContainSingle();
             linhas[0].Should().Contain("oi").And.Contain("olá");
@@ -761,7 +831,7 @@ namespace AIB.Tests
             await foreach (var _ in conversation.StreamResponseAsync("primeira")) { }
             await foreach (var _ in conversation.StreamResponseAsync("segunda")) { }
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"));
 
             linhas.Should().HaveCount(2);
             linhas[0].Should().Contain("\"Index\":0");
@@ -789,7 +859,7 @@ namespace AIB.Tests
             string caminho = Path.Combine(conversation.SessionMemoryDir, "raw.jsonl");
             File.Exists(caminho).Should().BeTrue("o turno aconteceu, e o registro é do que aconteceu");
 
-            string linha = File.ReadAllText(caminho);
+            string linha = Claro.Texto(caminho);
             linha.Should().Contain("oi");
             linha.Should().Contain("turno encerrado sem resposta",
                 "a marca diz POR QUE não houve fala, em vez de deixar um usuário sem resposta");
@@ -810,6 +880,92 @@ namespace AIB.Tests
 
             turnos.Should().HaveCount(1);
             AIB.Services.Memory.TurnSplitter.IsClosed(turnos[0]).Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task OContador_SomaORaciocinioQueOProvedorDevolveAoModelo()
+        {
+            // Caso real, 15/10, conversa do Bitrix: o OpenRouter cobrou 239.393 tokens de entrada
+            // numa volta em que o contador dava ~190 mil. O raciocínio das voltas com ferramenta
+            // vai junto em toda requisição, fora do histórico, e o contador não o via.
+            var provider = new FakeProvider(new StreamChunk[]
+            {
+                new StreamChunk.TextDelta("ok", TextChannel.Final),
+                new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+            });
+            var conversation = BuildConversation(BuildSettings(sendSystemPrompt: false), provider, out _);
+            await foreach (var _ in conversation.StreamResponseAsync("oi")) { }
+
+            int sem = conversation.CountTokens();
+            provider.Raciocinio = 50_000;
+
+            conversation.CountTokens().Should().Be(sem + 50_000);
+        }
+        [Fact]
+        public async Task ErroDoProvedor_NoMeioDaCadeia_FechaOTurnoComAMarca()
+        {
+            // Caso real, 15/10, conversa "Editar tarefa 3103 no Bitrix": depois da 24ª ferramenta
+            // o OpenRouter respondeu 403 (limite mensal da chave). A exceção saiu pelo finally do
+            // turno, que só fechava turno CANCELADO; o histórico ficou terminando num resultado
+            // de ferramenta, e o /compact passou a dizer "nada a compactar" com 172 mil tokens.
+            int chamadas = 0;
+            var provider = new ProviderRoteirizado(_ =>
+            {
+                if (++chamadas == 1)
+                    return new StreamChunk[]
+                    {
+                        new StreamChunk.ToolCallDelta("k0", "id0", "ferramenta_inexistente", "{}"),
+                        new StreamChunk.Done(StreamFinishReason.ToolCalls, "tool_calls")
+                    };
+                throw new System.Net.Http.HttpRequestException("OpenRouter respondeu 403: Key limit exceeded (monthly limit).");
+            });
+            var conversation = BuildConversation(BuildSettings(sendSystemPrompt: false), provider, out _);
+
+            Func<Task> turno = async () => { await foreach (var _ in conversation.StreamResponseAsync("edite a tarefa")) { } };
+            await turno.Should().ThrowAsync<System.Net.Http.HttpRequestException>();
+
+            var turnos = AIB.Services.Memory.TurnSplitter.Split(conversation.SnapshotHistory());
+            AIB.Services.Memory.TurnSplitter.IsClosed(turnos[^1]).Should().BeTrue();
+            TextOf(conversation.SnapshotHistory()[^1]).Should().Contain("o turno parou por um erro");
+            Claro.Texto(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
+                .Should().Contain("o turno parou por um erro", "fechado, o turno vai para o disco na hora");
+        }
+
+        [Fact]
+        public async Task TurnoQueMorreuAberto_NoMeioDaConversa_NaoTravaOCompact()
+        {
+            // A conversa que JÁ ficou presa (o turno 62 dela morreu aberto antes da marca de
+            // erro): o turno aberto tem mensagens do usuário depois dele e não muda mais.
+            // SelectTurnsToCompact parava nele — /compact respondia "nada a compactar" para
+            // sempre, e só a poda de emergência agia.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = new FakeProvider(new StreamChunk[]
+            {
+                new StreamChunk.TextDelta("ok", TextChannel.Final),
+                new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+            });
+            var conversation = BuildConversation(settings, provider, out _);
+
+            string longa = string.Concat(Enumerable.Repeat("uma frase qualquer para gastar tokens. ", 30));
+            await foreach (var _ in conversation.StreamResponseAsync($"{longa} primeiro")) { }
+
+            // O estado que o erro deixava: a cadeia segue e termina num resultado, sem fala.
+            conversation.AppendAssistantToolCalls(new[]
+            {
+                ChatToolCall.CreateFunctionToolCall("id-morto", "browser", BinaryData.FromString("{}"))
+            });
+            conversation.AppendToolResult("id-morto", "resultado da ferramenta");
+
+            for (int i = 0; i < 3; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"{longa} depois {i}")) { }
+
+            var turnos = AIB.Services.Memory.TurnSplitter.Split(conversation.SnapshotHistory());
+            AIB.Services.Memory.TurnSplitter.IsClosed(turnos[0]).Should().BeFalse("o ensaio precisa do turno aberto");
+
+            string resposta = await conversation.ForcarCapituloAsync(userLevel: 1);
+
+            resposta.Should().StartWith("Capitulo 0 fechado");
+            conversation.Chapters.Should().ContainSingle();
         }
 
         [Fact]
@@ -879,7 +1035,7 @@ namespace AIB.Tests
             // O que saiu do contexto vivo continua em disco.
             var turnosVivos = conversation.SnapshotHistory().Count(m => m is UserChatMessage);
             turnosVivos.Should().BeLessThan(turnos, "os turnos antigos viraram capítulo");
-            File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
+            Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
                 .Should().HaveCount(turnos, "raw.jsonl nunca perde turno");
         }
 
@@ -956,7 +1112,7 @@ namespace AIB.Tests
 
             await ConversarAteCompactar(conversation);
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"));
 
             linhas.Should().ContainSingle();
             linhas[0].Should().Contain("\"Index\":0");
@@ -1357,6 +1513,9 @@ namespace AIB.Tests
             // número é 2 para o ensaio exercitar a promoção sem depender do padrão do provedor.
             var s = settings.LoadSettings();
             s.CapitulosPorAto = 2;
+            // Sem o gatilho de turnos soltos: aos 20 ele fecharia um capítulo no caminho, e o
+            // ensaio é do COMANDO fechando vários de uma vez.
+            s.TurnosSoltos = 200;
             settings.SaveSettings(s.Sanear());
 
             var conversation = BuildConversation(settings, provider, out _);
@@ -1618,7 +1777,7 @@ namespace AIB.Tests
             fala.TokensDoCache.Should().BeNull("o Ollama não relata cache, e previsão não é medida");
             fala.Provedor.Should().BeNull();
             conversation.MemoriaEmTexto(1).Should().NotContain("cache").And.NotContain("Provedores");
-            File.ReadAllText(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
+            Claro.Texto(Path.Combine(conversation.SessionMemoryDir, "raw.jsonl"))
                 .Should().NotContainEquivalentOf("TokensDoCache").And.NotContainEquivalentOf("\"Provedor\"");
         }
 
@@ -1693,7 +1852,7 @@ namespace AIB.Tests
 
             string arquivo = Path.Combine(conversation.SessionMemoryDir, "turno-aberto.json");
             File.Exists(arquivo).Should().BeTrue("se o AIB cair agora, é o que sobra do turno");
-            File.ReadAllText(arquivo).Should().Contain("pergunta demorada");
+            Claro.Texto(arquivo).Should().Contain("pergunta demorada");
 
             provider.Liberar.SetResult();
             await turno.WaitAsync(TimeSpan.FromSeconds(10));
@@ -1832,7 +1991,7 @@ namespace AIB.Tests
             string arquivo = System.IO.Path.Combine(conversation.SessionMemoryDir, "raw.jsonl");
             System.IO.File.Exists(arquivo).Should().BeTrue();
 
-            string bruto = System.IO.File.ReadAllText(arquivo);
+            string bruto = Claro.Texto(arquivo);
             bruto.Should().Contain("primeira pergunta");
             bruto.Should().Contain("segunda pergunta", "o turno pulado não pode levar os outros junto");
         }
@@ -1997,7 +2156,7 @@ namespace AIB.Tests
 
             await ConversarAteFecharAto(conversation);
 
-            var linhas = File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "acts.jsonl"));
+            var linhas = Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "acts.jsonl"));
 
             linhas.Should().ContainSingle();
             linhas[0].Should().Contain("\"Index\":0");
@@ -2013,7 +2172,7 @@ namespace AIB.Tests
 
             await ConversarAteFecharAto(conversation);
 
-            File.ReadAllLines(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"))
+            Claro.Linhas(Path.Combine(conversation.SessionMemoryDir, "chapters.jsonl"))
                 .Length.Should().BeGreaterThanOrEqualTo(
                     conversation.Acts[0].LastChapter + 1,
                     "todo capítulo coberto pelo ato continua gravado");
@@ -2233,6 +2392,143 @@ namespace AIB.Tests
             conversa.ChaveDoEmail.Should().BeEmpty();
         }
 
+        /// <summary>Anota provedor e modelo de cada pedido de provider, e responde "certo".</summary>
+        private sealed class FabricaQueAnota : IChatProviderFactory
+        {
+            public List<(string Provedor, string Modelo)> Pedidos { get; } = new();
+
+            public IChatProvider GetProvider(UserAppSettings settings)
+            {
+                lock (Pedidos) Pedidos.Add((settings.AiProvider, settings.ModelName));
+                return new FakeProvider(new StreamChunk[]
+                {
+                    new StreamChunk.TextDelta("certo", TextChannel.Final),
+                    new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+                });
+            }
+        }
+
+        /// <remarks>
+        /// Salvar põe no ar os valores estáticos do provedor (<c>LimitesDoProvedor.Atual</c>, a
+        /// janela): com OpenRouter, os testes que leem esses estáticos viam os tetos da nuvem —
+        /// <c>LeituraDoEmailTests</c> quebrou assim. Eles voltam logo depois de salvar.
+        /// </remarks>
+        private SettingsService ConversaNaNuvemTriagemLocal(bool emailSoLocal = false)
+        {
+            var janela = ChatRequestOptions.JanelaAtual;
+            var janelaDoOllama = ChatRequestOptions.JanelaDoOllama;
+            var keepAlive = ChatRequestOptions.KeepAliveAtual;
+            var limites = LimitesDoProvedor.Atual;
+
+            var service = new SettingsService(Path.Combine(_dir, Guid.NewGuid().ToString("N") + ".dat"));
+            try { Salvar(); }
+            finally
+            {
+                ChatRequestOptions.JanelaAtual = janela;
+                ChatRequestOptions.JanelaDoOllama = janelaDoOllama;
+                ChatRequestOptions.KeepAliveAtual = keepAlive;
+                LimitesDoProvedor.Atual = limites;
+            }
+            return service;
+
+            void Salvar() => service.SaveSettings(new UserAppSettings
+            {
+                AiProvider = ProvedoresDeIa.OpenRouter,
+                ModelName = "modelo-na-nuvem",
+                MailTriageProvider = ProvedoresDeIa.Ollama,
+                MailTriageModel = "modelo-local",
+                EmailSoLocal = emailSoLocal,
+                PerfisMigrados = true,
+                SendSystemPrompt = false,
+                ActiveCharacter = ""
+            });
+        }
+
+        [Fact]
+        public async Task ConversaDeEmail_RodaNoProvedorDaTriagem_ENaoNoDaConversa()
+        {
+            // Visto em 16/10: conversa no OpenRouter, triagem no Ollama para o e-mail não sair da
+            // máquina — e "Abrir com Ellen" mandava o enquadramento do e-mail, e depois o corpo
+            // lido por mail_read, ao OpenRouter. A triagem era local; a conversa sobre o e-mail não.
+            var settings = ConversaNaNuvemTriagemLocal();
+            var registry = new ToolRegistry();
+            var counter = new TokenCounter();
+            var fabrica = new FabricaQueAnota();
+            var conversa = new ConversationService(
+                settings, registry, new AgentLoop(registry, fabrica, settings, counter), counter, fabrica,
+                memoryRootOverride: Path.Combine(_dir, "memory"));
+
+            conversa.VincularAEmail($"eu@x.com|thr:ensaio-{Guid.NewGuid():N}");
+            await foreach (var _ in conversa.StreamResponseAsync("do que trata este e-mail?")) { }
+
+            fabrica.Pedidos.Should().NotBeEmpty();
+            fabrica.Pedidos.Should().OnlyContain(p => p.Provedor == ProvedoresDeIa.Ollama && p.Modelo == "modelo-local",
+                "nada da conversa de um e-mail vai ao provedor da conversa");
+
+            // Conversa comum, de volta ao provedor dela.
+            conversa.ResetHistory();
+            fabrica.Pedidos.Clear();
+            await foreach (var _ in conversa.StreamResponseAsync("oi")) { }
+
+            fabrica.Pedidos.Should().Contain((ProvedoresDeIa.OpenRouter, "modelo-na-nuvem"));
+        }
+
+        [Fact]
+        public async Task EmailSoLocal_ModeloNaNuvemPedeAConsulta_ENegada()
+        {
+            // A outra metade do pedido de 16/10: numa conversa comum no OpenRouter, "tem algo
+            // urgente?" fazia a ferramenta mail devolver remetentes, assuntos e resumos ao
+            // OpenRouter. Com a chave ligada, ela recusa — e quem diz que é nuvem é o provider do
+            // TURNO, não as configurações.
+            int voltas = 0;
+            var provider = new ProviderRoteirizado(_ => ++voltas == 1
+                ? new StreamChunk[]
+                {
+                    new StreamChunk.ToolCallDelta("k0", "id0", Ferramentas.Email, "{}"),
+                    new StreamChunk.Done(StreamFinishReason.ToolCalls, "tool_calls")
+                }
+                : new StreamChunk[]
+                {
+                    new StreamChunk.TextDelta("não consigo ver", TextChannel.Final),
+                    new StreamChunk.Done(StreamFinishReason.Stop, "stop")
+                })
+            { Name = ProvedoresDeIa.OpenRouter };
+
+            var settings = ConversaNaNuvemTriagemLocal(emailSoLocal: true);
+            var registry = new ToolRegistry(settingsService: settings);
+            var counter = new TokenCounter();
+            var fabrica = new FixedProviderFactory(provider);
+            var conversa = new ConversationService(
+                settings, registry, new AgentLoop(registry, fabrica, settings, counter), counter, fabrica,
+                memoryRootOverride: Path.Combine(_dir, "memory"));
+
+            await foreach (var _ in conversa.StreamResponseAsync("tem algo urgente?")) { }
+
+            conversa.SnapshotHistory().OfType<ToolChatMessage>().Single()
+                .Content[0].Text.Should().StartWith("ACESSO NEGADO").And.Contain("nuvem");
+        }
+
+        [Theory]
+        [InlineData(true, ProvedoresDeIa.OpenRouter, true)]
+        [InlineData(true, ProvedoresDeIa.Google, true)]
+        [InlineData(true, null, true)]                       // não saber é nuvem
+        [InlineData(true, ProvedoresDeIa.Ollama, false)]
+        [InlineData(false, ProvedoresDeIa.OpenRouter, false)] // a chave nasce desligada
+        public async Task EmailSoLocal_BarraMailEMailRead_SoNaNuvem(bool ligada, string? provedor, bool barra)
+        {
+            var registry = new ToolRegistry(settingsService: ConversaNaNuvemTriagemLocal(ligada));
+
+            foreach (string ferramenta in new[] { Ferramentas.Email, Ferramentas.LerEmail })
+            {
+                string resultado = await registry.ExecuteToolAsync(ferramenta, "{}", 1, provedor: provedor);
+                resultado.Contains("modelos na nuvem").Should().Be(barra, ferramenta);
+            }
+
+            // Outra ferramenta não é assunto da chave.
+            (await registry.ExecuteToolAsync(Ferramentas.Lembrete, "{}", 1, provedor: provedor))
+                .Should().NotContain("modelos na nuvem");
+        }
+
         [Fact]
         public void ConversaAbertaDeUmEmail_ContaComoConteudoDeTerceiros()
         {
@@ -2327,7 +2623,7 @@ namespace AIB.Tests
             ChatHistoryService.ConversasDoUsuario().Should().NotContain(c => c.Content.Contains(marca));
             // Direto em memory/, e não em memory/sessions/: é uma só, não uma sessão entre muitas.
             orbe.SessionMemoryDir.Should().Be(Path.Combine(_dir, "memory", "shadow"));
-            File.ReadAllText(Path.Combine(orbe.SessionMemoryDir, "raw.jsonl")).Should().Contain(marca, "raw.jsonl guarda tudo");
+            Claro.Texto(Path.Combine(orbe.SessionMemoryDir, "raw.jsonl")).Should().Contain(marca, "raw.jsonl guarda tudo");
         }
 
         [Fact]
@@ -2341,6 +2637,23 @@ namespace AIB.Tests
 
             reaberta.SnapshotHistory().OfType<UserChatMessage>().Select(TextOf)
                 .Should().Contain(t => t.Contains("meu servidor caiu"), "uma conversa só, que nunca termina");
+        }
+
+        // Bug: reiniciado o AIB, a barra do orbe abria vazia. O modelo lembrava (o teste acima),
+        // mas ninguém devolvia as falas à pilha. É daqui que o orbe as tira no arranque.
+        [Fact]
+        public async Task AConversaDoOrbe_DevolveAsFalasParaAPilha_NoArranqueSeguinte()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var primeira = ConversaDoOrbe(settings, new FakeProvider());
+            await foreach (var _ in primeira.StreamResponseAsync("meu servidor caiu", _ => { })) { }
+
+            var falas = ConversaDoOrbe(settings, new FakeProvider()).UltimasFalas(12, int.MaxValue);
+
+            falas.Should().HaveCount(2);
+            falas[0].Should().Be((true, "meu servidor caiu"));
+            falas[1].DoUsuario.Should().BeFalse();
+            falas[1].Texto.Should().NotBeEmpty().And.NotContain("<think>");
         }
 
         [Fact]

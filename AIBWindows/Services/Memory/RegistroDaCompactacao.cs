@@ -83,6 +83,16 @@ public sealed class RegistroDaCompactacao
             + $"(espaço da conversa {Numero(espacoDaConversa)}), "
             + $"{turnos} turno(s) escolhido(s)");
 
+    /// <summary>
+    /// O gatilho de TURNOS soltos. Tinha a mesma linha do de tokens, e o diário dizia
+    /// "vivo=12.498 &gt; limite=100.000" para uma compactação que vinte turnos dispararam.
+    /// </summary>
+    public void GatilhoDeTurnos(int soltos, int limite, int vivo, int espacoDaConversa, int turnos) =>
+        Escrever("GATILHO",
+            $"{soltos} turno(s) solto(s) >= {limite}, vivo={Numero(vivo)} "
+            + $"(espaço da conversa {Numero(espacoDaConversa)}), "
+            + $"{turnos} turno(s) escolhido(s)");
+
     /// <summary>Compactação pedida pelo usuário, sem esperar o gatilho.</summary>
     public void GatilhoManual(int vivo, int espacoDaConversa, int turnos) =>
         Escrever("A PEDIDO",

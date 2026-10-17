@@ -49,7 +49,7 @@ commit**. `Regras de Identidade/` (SEGURANCA, CODIGO_LIMPO, VISUAL) são regras,
   e-mail → orbe → bandeja). Nada pesado em construtor.
 - **Caminho de uma mensagem:** `ChatWindow` → `ConversationService.StreamResponseAsync` (trava de
   turno, memória no prompt) → `AgentLoop.RunAsync` (laço ReAct, ferramentas em paralelo) →
-  `ChatProviderFactory` (só dois provedores: Ollama nativo `/api/chat` e OpenRouter; HTTP direto,
+  `ChatProviderFactory` (três provedores: Ollama nativo `/api/chat`, OpenRouter e Google AI Studio; HTTP direto,
   do pacote `OpenAI` só os tipos) → `ToolRegistry.ExecuteToolAsync` (nível, `Validar`, dispensa
   por pasta, floor list, cartão, auditoria antes de executar) → `ITool.ExecutarAutorizadoAsync`.
 - **O orbe não roda turno próprio:** ele chama `ChatWindow.AbrirComMensagem(..., mostrarJanela: false)`

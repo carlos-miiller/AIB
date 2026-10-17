@@ -38,23 +38,25 @@ O AIB não usa pasta temporária.
 ```
 ~/.AIB/
 ├── profile.dat                      configurações (JSON cifrado com DPAPI)
-├── chat_history.json                conversas arquivadas, para o painel
-├── lembretes.json                   lembretes únicos pendentes (ferramenta remind)
-├── iniciativa.json                  ritmo da iniciativa e contagens do dia
+├── chat_history.json                conversas arquivadas, para o painel (cifrado)
+├── lembretes.json                   lembretes únicos pendentes (ferramenta remind; cifrado)
+├── iniciativa.dat                   iniciativa: faixas de horário e contagens do dia (DPAPI)
 ├── credentials/
 │   ├── openrouter.bin               chave do OpenRouter (DPAPI)
 │   └── mail/<sha256>.bin            senha de app de cada caixa (DPAPI)
-├── character/<Nome>/                personagens: SOUL.MD, info.json
+├── character/<Nome>/                personagens: SOUL.MD, info.json, vinculo.dat (o vínculo com ele, DPAPI)
 ├── skills/<skill>/SKILL.md          skills instaladas
 ├── memory/
-│   ├── facts.md                     fatos duráveis (do usuário)
-│   ├── facts.index.jsonl            registro do que já foi promovido (da máquina)
+│   ├── facts.md                     fatos duráveis (do usuário; cifrado por linha, editado na aba Memória)
+│   ├── facts.index.jsonl            registro do que já foi promovido (da máquina; cifrado por linha)
 │   ├── shadow/                      a conversa do orbe, uma só para sempre (mesmos arquivos de uma sessão)
+│   │   ├── status.json              atributos dos personagens como estão agora; nasce vazio, ganha cada um quando aparece
+│   │   └── habitos/<Nome>.dat       hábitos que o personagem pegou na convivência (cifrado; ver "Hábitos" em 06-interface.md)
 │   └── sessions/<id>/
-│       ├── raw.jsonl                todos os turnos, crus — nunca apagado
-│       ├── chapters.jsonl           capítulos (resumos de turnos)
-│       ├── acts.jsonl               atos (resumos de capítulos)
-│       ├── turno-aberto.json        o turno em curso, regravado a cada passo
+│       ├── raw.jsonl                todos os turnos, crus — nunca apagado (cifrado por linha)
+│       ├── chapters.jsonl           capítulos (resumos de turnos; cifrado por linha)
+│       ├── acts.jsonl               atos (resumos de capítulos; cifrado por linha)
+│       ├── turno-aberto.json        o turno em curso, regravado a cada passo (cifrado)
 │       └── compactacao.log          diário da compactação (opt-in)
 ├── email/
 │   ├── estado.json                  por caixa: validade, último UID, quando
@@ -79,6 +81,7 @@ Detalhes que importam:
 - **`memory/sessions/<id>/`** (`SessionMemory`). O id é o instante de abertura, `yyyyMMdd-HHmmss-fff`; os milissegundos existem porque duas sessões no mesmo segundo misturariam dois `raw.jsonl`. O id passa por `Path.GetFileName`, para não virar caminho fora da pasta. Os JSONL são UTF-8 **sem BOM** (o BOM estragaria a primeira linha para qualquer parser) e sem escapar acentos. Gravar nunca lança: falha de disco vira `false` e linha no console, porque a memória é um acréscimo e não pode derrubar a conversa. O formato e o papel de cada arquivo estão em [04-memoria.md](04-memoria.md).
 - **`raw.jsonl` nunca é apagado.** Resumo é perda irreversível, e um resumo errado aqui não gera só incoerência: gera um agente agindo sobre informação errada com shell na mão. O cru sai do prompt, não sai do disco. Nenhum código do uso normal apaga esse arquivo. A única exceção é o reset de fábrica, que por decisão do usuário é total e apaga `~/.AIB` inteira.
 - **`compactacao.log`** (`RegistroDaCompactacao`) só é escrito com `CompactionLogging` ligado. Guarda contagens e tempos, não o texto dos resumos. A pasta é resolvida a cada escrita, porque a sessão troca quando a conversa é zerada ou restaurada.
+- **`logs/iniciativa.log`** (`RegistroDaIniciativa`) só é escrito com `IniciativaLogging` ligado (nasce ligado). Guarda sorteios, impedimentos e o que a iniciativa aprendeu, em números; não guarda o texto das mensagens. Passando de 1 MB, vira `iniciativa.anterior.log`.
 - **`facts.md`** é do usuário: a AIB só acrescenta linhas no fim, nunca reescreve nem apaga (só o reset de fábrica o leva, com todo o resto). `facts.index.jsonl` é append-only e impede que um fato apagado pelo usuário volte na próxima promoção.
 - **`chat_history.json`** (`ChatHistoryService`) é regravado a cada turno, com a conversa viva por cima da própria entrada. Guarda até 50 conversas do usuário e, num teto à parte, até 50 conversas nascidas de e-mail — com um teto só, uma caixa movimentada expulsava as conversas que o usuário começou. Cada `ChatSession` guarda `MemorySessionId`, que liga a entrada à pasta da sessão, e `MailThreadKey` quando nasceu de um e-mail.
 - **`email/`**: o corpo de uma mensagem **nunca** é gravado. O diário guarda remetente, assunto e o resumo de uma frase; `MailJournalDays` controla a retenção e em zero desliga o diário. A pasta de cada conversa de e-mail tem nome de hash, para o assunto não vazar em listagens. Ver [05-email.md](05-email.md).
@@ -86,6 +89,39 @@ Detalhes que importam:
 - **`logs/audit-*.jsonl`** (`AuditLogService`): append-only, um arquivo por dia (data UTC), sem BOM, gravado **antes** da execução da ação auditada. Falha ao auditar vai para o console e não derruba a conversa. Nos testes, `AuditLogService.LogDirectoryOverride` desvia tudo para uma pasta temporária.
 - **`logs/execucao-*.log`** (`RegistroDeExecucao`): só com `ExecutionLogging` ligado. Espelha o console, que inclui os prompts inteiros — e o da triagem leva assunto e remetente dos e-mails. O **corpo, não**: ele desce para o prompt embrulhado por `ConteudoDeTerceiros` e `RegistroDeExecucao.Redigir` o troca pelo aviso de omissão antes de a linha chegar ao arquivo (era a última exceção documentada à regra 3, e deixou de ser). Ainda assim nasce desligado, e o cabeçalho do arquivo diz o que ele contém. Guarda os 20 mais recentes e só apaga arquivos com o próprio prefixo, porque a pasta também guarda a auditoria.
 - **`logs/prompt-*.txt`** (`RetratoDoEnvio.Gravar`): prefixo diferente de propósito, para a poda do registro de execução não apagá-lo.
+
+### Cifra dos dados (`ArquivoCifrado`, `CifraDaMemoria`)
+
+Conversas, fatos e lembretes são gravados cifrados pelo DPAPI da conta do Windows, como o
+`profile.dat` e os cofres. Protege do disco copiado, do backup e do outro usuário da máquina;
+**não** protege de programa rodando na mesma conta.
+
+- **Binário** (`ArquivoCifrado.Gravar`): arquivo novo, extensão `.dat` — `iniciativa.dat`,
+  `character/<Nome>/vinculo.dat`.
+- **Por linha** (`ArquivoCifrado.Cifrar`/`Acrescentar`/`Linhas`): cada linha vira
+  `aib1:<base64>`. É o dos arquivos em que só se acrescenta (`raw.jsonl`, `chapters.jsonl`,
+  `acts.jsonl`, `facts.md`, `facts.index.jsonl`): continuam arquivos de linhas, e linha em texto
+  claro (de antes da cifra) convive com linha cifrada. Linha que não abre — outra conta, ou
+  cortada — é pulada.
+- **Inteiro** (`ArquivoCifrado.GravarTexto`): o arquivo todo numa linha cifrada, por temporário —
+  `chat_history.json`, `lembretes.json`, `turno-aberto.json`.
+- `ArquivoCifrado.Ler` abre os três e o texto claro.
+
+**Migração** (`CifraDaMemoria.Migrar`, no arranque, antes de qualquer serviço abrir a memória):
+regrava cifrado o que ainda tem texto claro. É a única vez que o AIB reescreve um `raw.jsonl`:
+escreve num `.cifrando`, confere que ele aberto dá as mesmas linhas do original e só então troca;
+se não der, o original fica. Depois da primeira vez, só confere.
+
+**Exportação** (`CifraDaMemoria.Exportar`, botão "Exportar em texto claro…" na aba Memória): a
+cifra é da conta do Windows e **não sobrevive a reinstalação nem a troca de máquina**. A
+exportação copia tudo em texto claro, com a mesma árvore, para a pasta escolhida; é o backup.
+
+`read` e `grep` abrem a linha cifrada (a leitura dentro de `~/.AIB/memory` já passou pelo cartão
+de `DadosProtegidos`). O `facts.md` deixou de ser editável no bloco de notas: a edição é o campo
+"Fatos guardados" da aba Memória (`FactStore.Texto`/`Regravar`).
+
+Continuam em texto claro: os logs e a auditoria, as anotações de site do navegador, os arquivos
+de e-mail e o `compactacao.log`.
 
 ### Reset de fábrica
 
@@ -134,7 +170,8 @@ Os campos `AiProvider`, `ApiUrl`, `ModelName`, `KeepAlive`, `ContextWindow` e `R
 | `UserAppSettings.PerfilDe(provedor)` | O perfil do ativo, o guardado, ou o de fábrica (`ProvedoresDeIa.PerfilPadrao`). |
 | `UserAppSettings.Ativar(provedor, perfil)` | Guarda o perfil do ativo anterior e torna `provedor` o ativo. |
 | `UserAppSettings.AplicarPerfis(escolhido, perfis)` | O "Salvar" da tela: **ativa primeiro**, depois grava os outros perfis. Na ordem inversa, `Ativar` guardava o perfil do anterior a partir dos campos antigos e passava por cima do que a tela acabara de gravar — mudar o modelo do Ollama e trocar para o OpenRouter no mesmo Salvar perdia o modelo novo. |
-| `UserAppSettings.ParaTriagem` | Uma cópia com o provedor e o modelo **da triagem de e-mail** no lugar dos da conversa. A triagem tem provedor próprio (`MailTriageProvider`, `MailTriageModel`) para poder conversar pelo OpenRouter e manter a leitura dos e-mails no Ollama. |
+| `UserAppSettings.ParaTriagem` | Uma cópia com o provedor e o modelo **da triagem de e-mail** no lugar dos da conversa. A triagem tem provedor próprio (`MailTriageProvider`, `MailTriageModel`) para poder conversar pelo OpenRouter e manter a leitura dos e-mails no Ollama. A conversa aberta sobre um e-mail também a usa (`ConversationService.UsaTriagem`). |
+| `UserAppSettings.Janela()` | `ContextWindow`, ou a `JanelaAtual` quando zero. Método para não ir ao arquivo. |
 
 `PerfilDeProvedor` não tem chave de API: o perfil vai para o arquivo de configurações, a chave vai para o cofre.
 
@@ -149,6 +186,8 @@ Os campos `AiProvider`, `ApiUrl`, `ModelName`, `KeepAlive`, `ContextWindow` e `R
 | `MaxTurnIterations` | 1–60 | 18 |
 | `CompactionTrigger` | 0,50–0,99 | 0,85 |
 | `MemoryFraction` | 0,05–0,60 | 0,25 |
+| `TurnosSoltos` | 4–200 (≤ 0 volta ao padrão) | 20 |
+| `TokensSoltos` | 8.000–1.000.000 (≤ 0 volta ao padrão) | 100.000 |
 | `TurnosPorCapitulo` | 2–20 (≤ 0 volta ao padrão) | 15 |
 | `TokensPorCapitulo` | 4.000–60.000 (≤ 0 volta ao padrão) | 20.000 |
 | `CapitulosPorAto` | 0 = automático; senão 2–24 | 0 |
@@ -178,7 +217,7 @@ Além disso, `LoadSettings` e `SaveSettings` chamam `PastasSemConfirmacao.Config
 
 ### Chaves que nascem desligadas
 
-Várias opções nascem desligadas por decisão registrada no comentário de cada uma: `ShadowAssistantEnabled` e `ShadowHandlesMail` (ninguém ganha um programa lendo o próprio e-mail por ter atualizado; e querer o orbe não é querer que ele abra a caixa), `ModelThinking` (medido: em CPU, turnos inteiros terminavam só pensando), `ThinkingInHistory`, `MailTriageThinking`, `ExecutionLogging`, `CompactionLogging`, `EsconderResultadosDepoisDe`. `OpenRouterSemColetaDeDados` nasce **ligada**, porque o prompt leva arquivos e e-mails. `KeepAssistantSpeech` nasce ligada porque o contrário é defeito.
+Várias opções nascem desligadas por decisão registrada no comentário de cada uma: `ShadowAssistantEnabled` e `ShadowHandlesMail` (ninguém ganha um programa lendo o próprio e-mail por ter atualizado; e querer o orbe não é querer que ele abra a caixa), `ModelThinking` (medido: em CPU, turnos inteiros terminavam só pensando), `ThinkingInHistory`, `MailTriageThinking`, `EmailSoLocal` (com a conversa na nuvem, perguntar pela caixa passa a ser negado), `ExecutionLogging`, `CompactionLogging`, `EsconderResultadosDepoisDe`. `OpenRouterSemColetaDeDados` nasce **ligada**, porque o prompt leva arquivos e e-mails. `KeepAssistantSpeech` nasce ligada porque o contrário é defeito. `IniciativaLogging` nasce ligada porque o diário só tem números e, sem ele, não há como saber por que a persona não puxou assunto. `AprenderHabitos` nasce ligada a pedido do usuário: a pergunta pelo jeito vai na chamada de resumo que já é paga, e o prompt só muda quando um hábito se firma.
 
 ## Credenciais
 
@@ -189,6 +228,7 @@ Várias opções nascem desligadas por decisão registrada no comentário de cad
 - Hoje só o OpenRouter usa chave: `ProvedoresDeIa.SistemaDaChave` devolve `"openrouter"` para ele e `null` para o Ollama; o nome da chave é `ProvedoresDeIa.NomeDaChave` (`"ApiKey"`).
 - `CredentialService.StoreCredentialAsync` grava; devolve texto começando com `ERRO` em falha, e quem chama confere.
 - `CredentialService.LerDoSistema(sistema, chave)` lê **só o arquivo daquele sistema**. Uma busca global devolveria a chave de mesmo nome de outro serviço (por exemplo, uma chave da OpenAI gravada por versão antiga) e mandaria a requisição com a credencial errada.
+- Cada provedor de nuvem tem o seu cofre: `openrouter` e `google` (`ProvedoresDeIa.SistemaDaChave`).
 - `ChatProviderFactory.ChaveDe(provedor)` é quem o app usa para obter a chave de um provedor; devolve vazio se não há chave, e a requisição sai sem autorização até o 401 explicar onde configurar. A **credencial efetiva** entra na chave do cache da fábrica: sem isso, trocar a chave no cofre continuava usando o cliente com a chave velha até reiniciar.
 - A chave é gravada no cofre na hora em que o usuário a confirma (`SettingsWindow.GuardarChave_Click`, `FirstRunWindow`), sem esperar o "Salvar". O formato é checado por `ProvedoresDeIa.ChaveValida` (`sk-or-` e ao menos 20 caracteres), o mesmo critério nas duas telas.
 
@@ -238,7 +278,7 @@ O comando `/unlock_level N` no chat ajusta `MessageCount` para o piso do nível 
 Cada personagem é uma pasta `character/<Nome>/` com:
 
 - `SOUL.MD` — a persona, em texto. O marcador `{{usuario}}` é trocado pelo nome de usuário do Windows ao carregar.
-- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`).
+- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`), e `Atributos` (`Iniciativa`, `Resiliencia`, `Constancia`, `Curiosidade`, de 1 a 5, e `Afeto`, de -5 a 5). As estrelas são só da tela de escolha; os atributos são os padrões de fábrica do personagem, copiados para o `memory/shadow/status.json` quando ele aparece (ver "Iniciativa" em `06-interface.md`).
 
 Os de fábrica estão em `AIBWindows/character/` (`Ayano`, `Ellen`, `Kai`, `Sora`). O ativo é `UserAppSettings.ActiveCharacter` (padrão `Ayano`).
 

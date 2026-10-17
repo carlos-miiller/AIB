@@ -131,7 +131,7 @@ public partial class App : System.Windows.Application
         // fechado, que continuava recebendo o fim de cada turno e mexendo numa janela morta.
         SoltarOrbe();
 
-        if (_chatWindow != null) _soltarOrbe = LigarOrbe(_chatWindow, orbe, _conversaDoOrbe);
+        if (_chatWindow != null) _soltarOrbe = LigarOrbe(_chatWindow, orbe, _conversaDoOrbe, AvisarRespostaDoShadow);
 
         return orbe;
     }
@@ -158,7 +158,8 @@ public partial class App : System.Windows.Application
     /// Da conversa para o orbe: o orbe é a JANELA DO QUE A AIB ESTÁ FAZENDO. Ele acende o anel
     /// no passo corrente de qualquer turno — inclusive dos digitados na conversa — e só REPETE
     /// a fala quando ela não tem outro lugar onde aparecer (ver
-    /// <see cref="ShadowAssistantWindow.OrbeDeveFalar"/>).
+    /// <see cref="ShadowAssistantWindow.OrbeDeveFalar"/>). Com a conversa do orbe ligada, ele
+    /// não repete NENHUMA fala da janela: as duas conversas são apartadas, e a pilha é só da dele.
     /// </para>
     /// <para>
     /// Devolve o desfazer, e é estático, porque a conversa VIVE MAIS que o orbe: ela nasce no
@@ -168,11 +169,19 @@ public partial class App : System.Windows.Application
     /// não-duplicação sem subir o App inteiro.
     /// </para>
     /// </summary>
+    /// <summary>Quantas falas da conversa do orbe voltam à pilha no arranque.</summary>
+    public const int FalasAoReabrir = 12;
+
     /// <param name="doOrbe">
     /// A conversa própria do orbe. Com ela, a barra fala com ela, e não com a janela. Nula nos
     /// ensaios antigos: aí a barra cai na conversa principal, escondida, como era antes.
     /// </param>
-    public static Action LigarOrbe(ChatWindow conversa, ShadowAssistantWindow orbe, ConversaDoOrbe? doOrbe = null)
+    /// <param name="avisarResposta">
+    /// A resposta da conversa do orbe chegou com a barra fechada: o App a mostra numa janela de
+    /// aviso com o selo "Shadow" (pedido do usuário, 16/10/2026). Nulo nos ensaios.
+    /// </param>
+    public static Action LigarOrbe(ChatWindow conversa, ShadowAssistantWindow orbe, ConversaDoOrbe? doOrbe = null,
+                                   Action<string>? avisarResposta = null)
     {
         void Enviou(string texto)
         {
@@ -180,14 +189,38 @@ public partial class App : System.Windows.Application
             else conversa.AbrirComMensagem(texto, mostrarJanela: false);
         }
 
+        // O botão de parar da barra para o turno que está rodando, seja de quem for: o da
+        // conversa do orbe ou o da janela, que roda escondida e também acende o anel.
+        void Parou()
+        {
+            if (doOrbe is { Ocupada: true }) doOrbe.Parar();
+            else conversa.PararTurno();
+        }
+
         // O turno da conversa do orbe: o passo acende o anel, e a resposta volta para a barra.
         void AndouNoOrbe(string passo, string? ferramenta) => orbe.MostrarEstado(passo, ferramenta);
-        void RespondeuNoOrbe(string texto) => orbe.ResponderTurno(texto);
+        void RespondeuNoOrbe(string texto)
+        {
+            bool barraFechada = !orbe.EmModoBarra;
+            orbe.ResponderTurno(texto);
+            if (barraFechada) avisarResposta?.Invoke(texto);
+        }
+
+        // O contador da barra. O evento pode chegar de fora da thread da interface.
+        void ContouNoOrbe(TokenReport r) => orbe.Dispatcher.BeginInvoke(() => orbe.MostrarTokens(r));
 
         if (doOrbe != null)
         {
             doOrbe.PassoMudou += AndouNoOrbe;
             doOrbe.Respondeu += RespondeuNoOrbe;
+            doOrbe.Conversa.OnTokenCountChanged += ContouNoOrbe;
+            orbe.MostrarTokens(doOrbe.Conversa.CurrentTokenReport);
+
+            // A conversa do orbe continua de onde parou, e a pilha também: reiniciado o AIB, o
+            // modelo lembrava de tudo e a barra abria vazia, como se a conversa tivesse sumido.
+            // Sem o carimbo de dia e hora: ele é para o modelo, a bolha mostra o que foi digitado.
+            orbe.RestaurarFalas(doOrbe.Conversa.UltimasFalas(FalasAoReabrir, int.MaxValue)
+                .Select(f => (f.DoUsuario, f.DoUsuario ? ConversaDoOrbe.SemCarimbo(f.Texto) : f.Texto)));
         }
 
         // O clique num item da pilha leva ao MESMO lugar que a lista da área central: o e-mail
@@ -199,6 +232,11 @@ public partial class App : System.Windows.Application
 
         void Concluiu(string texto)
         {
+            // Com conversa própria, a pilha do orbe é DELA: a resposta da janela entrava ali
+            // quando a janela era fechada no meio do turno, misturada a outra conversa — e
+            // responder a ela pela barra ia para um modelo que nunca a tinha dito.
+            if (doOrbe != null) return;
+
             // O anel já parou: o passo vazio chega imediatamente antes deste evento. O que
             // sobra decidir aqui é só se a resposta tem de ser DITA outra vez no orbe.
             if (ShadowAssistantWindow.OrbeDeveFalar(conversa.TurnoVeioDoOrbe, conversa.IsVisible))
@@ -206,6 +244,7 @@ public partial class App : System.Windows.Application
         }
 
         orbe.MensagemEnviada += Enviou;
+        orbe.ParadaPedida += Parou;
         orbe.EmailEscolhido += EscolheuEmail;
         conversa.PassoDoTurnoMudou += Andou;
         conversa.TurnoConcluido += Concluiu;
@@ -216,8 +255,10 @@ public partial class App : System.Windows.Application
             {
                 doOrbe.PassoMudou -= AndouNoOrbe;
                 doOrbe.Respondeu -= RespondeuNoOrbe;
+                doOrbe.Conversa.OnTokenCountChanged -= ContouNoOrbe;
             }
             orbe.MensagemEnviada -= Enviou;
+            orbe.ParadaPedida -= Parou;
             orbe.EmailEscolhido -= EscolheuEmail;
             conversa.PassoDoTurnoMudou -= Andou;
             conversa.TurnoConcluido -= Concluiu;
@@ -233,8 +274,13 @@ public partial class App : System.Windows.Application
     /// com o orbe fora, o digest acontecia e morria ali.
     /// </para>
     /// <para>
-    /// As superfícies já existem, e são estas duas: a lista de e-mails da janela de conversa e
-    /// o aviso da bandeja. Nenhuma tela nova.
+    /// As superfícies são a lista de e-mails da janela de conversa e a JANELA DE AVISO
+    /// (<see cref="Views.AvisoWindow"/>), perto do orbe ou, sem ele, acima da bandeja.
+    /// </para>
+    /// <para>
+    /// O ORBE NÃO RECEBE MAIS E-MAIL. Pedido do usuário (16/10/2026): o digest entrava como fala
+    /// no orbe, com a pilha de e-mails; agora o orbe só gira o anel enquanto a triagem lê (isso
+    /// fica, por decisão dele) e o resultado vem no aviso.
     /// </para>
     /// </summary>
     private void AnunciarDigesto(Services.Mail.DigestoDeEmail digesto)
@@ -243,20 +289,46 @@ public partial class App : System.Windows.Application
         // não aparecia até o usuário sair do modo e voltar.
         _chatWindow?.AtualizarCaixaDeEntrada();
 
-        if (_orbe != null)
-        {
-            // RAJADA é o incidente aberto — doze alertas do mesmo monitor em quarenta minutos —
-            // e é o que pinta o pulso de vermelho. O argumento existia no orbe desde o começo e
-            // nunca chegava até aqui: o pulso vermelho era código que não rodava.
-            _orbe.TerminarDeProcessarEmail(digesto.Frase(), digesto.Itens,
-                                           urgente: digesto.Rajadas.Count > 0);
-            return;
-        }
+        _orbe?.PararDeProcessarEmail();
 
-        // Sem orbe não há pulso, e o pulso era o único aviso. A bandeja é o que sobra, e é a
-        // mesma porta que o fim de turno com a janela escondida já usa.
-        ShowNotification("AIB", digesto.Frase());
+        var aviso = Views.Avisos.DeDigesto(digesto, AcoesDosAvisos());
+        if (aviso is { } a) Views.Flutuantes.Mostrar(Views.AvisoWindow.Montar(a.Receita), a.Vez);
     }
+
+    /// <summary>
+    /// A resposta da conversa principal chegou com a janela escondida: aviso verde (ou vermelho,
+    /// com erro), no lugar do balão da bandeja. "Abrir conversa" traz a janela de volta.
+    /// </summary>
+    /// <summary>A resposta da conversa do orbe chegou com a barra fechada: aviso com o selo "Shadow".</summary>
+    private void AvisarRespostaDoShadow(string texto)
+    {
+        var (receita, vez) = Views.Avisos.DePronta(texto, null, AcoesDosAvisos().NomeDaIA, shadow: true,
+            abrir: () => _orbe?.AbrirBarra());
+
+        Views.Flutuantes.Mostrar(Views.AvisoWindow.Montar(receita), vez);
+    }
+
+    public void AvisarRespostaPronta(string texto, string? erro)
+    {
+        var (receita, vez) = Views.Avisos.DePronta(texto, erro, AcoesDosAvisos().NomeDaIA, shadow: false,
+            abrir: () =>
+            {
+                if (_chatWindow != null && !_chatWindow.IsVisible) _chatWindow.ToggleWindow();
+            });
+
+        Views.Flutuantes.Mostrar(Views.AvisoWindow.Montar(receita), vez);
+    }
+
+    /// <summary>O que os botões dos avisos fazem — a janela de chat e o orbe moram aqui.</summary>
+    private Views.Avisos.Acoes AcoesDosAvisos() => new(
+        NomeDaIA: string.IsNullOrWhiteSpace(_settingsService.LoadSettings().ActiveCharacter)
+            ? "AIB"
+            : _settingsService.LoadSettings().ActiveCharacter!.Trim(),
+        AbrirComIA: item => _chatWindow?.AbrirEmailDoOrbe(item),
+        VerNaCaixa: item => _chatWindow?.MostrarCaixa(item),
+        AbrirEmailDoLembrete: l => _chatWindow?.AbrirConversaDoEmail(l.ChaveDoEmail, l.Assunto),
+        AbrirShadow: () => _orbe?.AbrirBarra(),
+        Adiar: l => _lembretes.Adiar(l, TimeSpan.FromHours(1), DateTime.UtcNow));
 
     /// <summary>
     /// Roda um digest agora, a pedido. Mesmo caminho do laço — nada de uma segunda
@@ -292,17 +364,34 @@ public partial class App : System.Windows.Application
     private void IniciarAgenda()
     {
         _lembretes = new Lembretes();
-        _iniciativa = new Iniciativa();
+        string personagem = _settingsService.LoadSettings().ActiveCharacter;
+        _iniciativa = new Iniciativa(personagem: personagem, temperamento: TemperamentoDe(personagem))
+        {
+            Registro = new RegistroDaIniciativa(() => _settingsService.LoadSettings().IniciativaLogging)
+        };
+        _statusLidoUtc = _status.AlteradoUtc;
+
+        // O afeto anda com o desfecho de cada conversa. O arquivo de status muda, e a batida
+        // seguinte relê o temperamento (AcompanharPersonagem).
+        _iniciativa.AfetoMoveu += passo => _status.Mover(
+            _iniciativa.Personagem, passo,
+            ConversationService.PerfilDoPersonagem(_iniciativa.Personagem)?.Atributos?.Afeto ?? 0);
 
         // Conversa na janela: só deixa a hora como recente — ele está ocupado com outra coisa,
         // não respondendo a ela.
-        _chatWindow!.TurnoConcluido += _ => _ultimaConversaUtc = DateTime.UtcNow;
+        _chatWindow!.TurnoConcluido += _ =>
+        {
+            _ultimaConversaUtc = DateTime.UtcNow;
+            _iniciativa.Contato(DateTime.UtcNow);
+        };
 
         // Conversa no orbe: é a resposta à iniciativa, se havia uma esperando — e quanto ele
-        // conversou, e se foi um "agora não", é o que ela aprende.
+        // conversou, e se foi um "agora não", é o que ela aprende. Sem fala esperando, é ele
+        // puxando conversa, e isso também sobe a chance.
         _conversaDoOrbe.UsuarioFalou += texto =>
         {
             _ultimaConversaUtc = DateTime.UtcNow;
+            AcompanharPersonagem(_settingsService.LoadSettings().ActiveCharacter);
             _iniciativa.UsuarioFalou(DateTime.UtcNow, texto);
         };
 
@@ -323,6 +412,30 @@ public partial class App : System.Windows.Application
     private DateTime? _ultimaConversaUtc;
     private bool _ponderando;
 
+    private readonly StatusDosPersonagens _status = new();
+    private DateTime _statusLidoUtc;
+
+    /// <summary>
+    /// Os atributos do arquivo de status; o personagem que não está lá entra com os padrões do
+    /// info.json dele.
+    /// </summary>
+    private Temperamento TemperamentoDe(string? personagem) =>
+        Temperamento.De(_status.De(personagem, ConversationService.PerfilDoPersonagem(personagem)?.Atributos));
+
+    /// <summary>
+    /// O vínculo é por personagem: trocado nas configurações, a iniciativa passa a usar o do
+    /// novo, com o temperamento dele. Só lê o arquivo de status quando o nome muda ou o arquivo
+    /// foi mexido: a edição à mão passa a valer na batida seguinte, sem reiniciar.
+    /// </summary>
+    private void AcompanharPersonagem(string? personagem)
+    {
+        string nome = (personagem ?? "").Trim();
+        if (nome == _iniciativa.Personagem && _status.AlteradoUtc == _statusLidoUtc) return;
+
+        _iniciativa.Trocar(nome, TemperamentoDe(nome));
+        _statusLidoUtc = _status.AlteradoUtc;
+    }
+
     /// <summary>
     /// A cada batida, vê se a persona pode puxar assunto; podendo, sorteia (de 10 em 10 min) e,
     /// acertando, pergunta ao modelo se ela quer, e o quê. As condições e o sorteio são baratos e
@@ -337,7 +450,13 @@ public partial class App : System.Windows.Application
         if (_ponderando || _chatWindow == null) return;
 
         var s = _settingsService.LoadSettings();
-        if (!s.IniciativaLigada) return;
+        if (!s.IniciativaLigada)
+        {
+            _iniciativa.Registro?.Estado("desligada nas configurações");
+            return;
+        }
+
+        AcompanharPersonagem(s.ActiveCharacter);
 
         var agora = DateTime.Now;
         var utc = DateTime.UtcNow;
@@ -350,6 +469,7 @@ public partial class App : System.Windows.Application
             Iniciativa.Hora(s.SilencioInicio) ?? TimeSpan.FromHours(22),
             Iniciativa.Hora(s.SilencioFim) ?? TimeSpan.FromHours(8),
             livre && Presenca.Disponivel(), livre, _ultimaConversaUtc, s.MensagensPorDia);
+        _iniciativa.Registro?.Estado(OQueSegura(impedimento, s.MensagensPorDia));
         if (impedimento != null) return;
 
         if (!_iniciativa.Sortear(utc, agora.TimeOfDay, Random.Shared.NextDouble())) return;
@@ -357,26 +477,30 @@ public partial class App : System.Windows.Application
         _ponderando = true;
         try
         {
-            // O sorteio decidiu que ela fala; o código escolhe o gancho, e ela só escreve.
+            // O sorteio decidiu que ela fala; o que ela diz é dela.
             var conversa = _conversaDoOrbe.Conversa;
-            var (pendencias, fatos) = conversa.GanchosDisponiveis();
-            var gancho = Iniciativa.EscolherGancho(pendencias, fatos, _iniciativa.Estado.GanchosRecentes, Random.Shared);
-
             var contexto = new ConversationService.ContextoDaIniciativa(
                 s.NomeDoUsuario,
                 new[] { _ultimaConversaUtc, _conversaDoOrbe.UltimaAtividadeUtc }.Max(),
-                Proximos: _iniciativa.Estado.Geral >= Iniciativa.Proximidade,
-                _iniciativa.Estado.UltimoDesfecho,
-                _iniciativa.Estado.Recentes.ToList());
+                _iniciativa.Estado.UltimoDesfecho);
 
-            string? fala = await conversa.EscreverIniciativaAsync(gancho, contexto, System.Threading.CancellationToken.None);
+            _iniciativa.Registro?.Escrever("PEDIDO", "ao modelo");
+            var relogio = System.Diagnostics.Stopwatch.StartNew();
+
+            string? fala = await conversa.EscreverIniciativaAsync(contexto, System.Threading.CancellationToken.None);
 
             // Enquanto ela escrevia, o usuário pode ter começado a falar com ela.
-            if (fala != null && _conversaDoOrbe.Ocupada) fala = null;
+            if (fala != null && _conversaDoOrbe.Ocupada)
+            {
+                fala = null;
+                _iniciativa.Registro?.Escrever("DESCARTADA", "ele começou a falar com ela enquanto ela escrevia");
+            }
+            _iniciativa.Registro?.Escrever("RESPOSTA", $"do modelo em {relogio.Elapsed.TotalSeconds:0.0} s: "
+                + (fala == null ? "sem mensagem" : "mensagem pronta"));
 
-            _iniciativa.Falou(DateTime.UtcNow, DateTime.Now.TimeOfDay, fala, gancho);
+            _iniciativa.Falou(DateTime.UtcNow, DateTime.Now.TimeOfDay, fala);
             Console.WriteLine($"[INICIATIVA] {(fala == null ? "sem mensagem" : "falou")} "
-                              + $"(gancho: {gancho?.Tipo ?? "conhecer"}; geral {_iniciativa.Estado.Geral:0.00}, "
+                              + $"(geral {_iniciativa.Estado.Geral:0.00}, "
                               + $"chance {Iniciativa.Chance(_iniciativa.Estado, agora.TimeOfDay):P1}).");
 
             if (fala != null) FalarPorIniciativa(fala);
@@ -387,15 +511,58 @@ public partial class App : System.Windows.Application
         }
     }
 
+    /// <summary>
+    /// O impedimento por extenso, para o diário. <see cref="Iniciativa.Impedimento"/> junta
+    /// "sem orbe", "janela aberta", "turno rodando", "ausente" e "não perturbe" num motivo só,
+    /// e para saber por que ela ficou calada é preciso saber qual deles foi.
+    /// </summary>
+    private string OQueSegura(string? impedimento, int teto)
+    {
+        var e = _iniciativa.Estado;
+        switch (impedimento)
+        {
+            // Entre um sorteio e outro ela continua livre: não é mudança de estado.
+            case null:
+            case "sorteou há pouco":
+                return "livre: sorteia de 10 em 10 min";
+
+            case "ausente ou ocupado":
+            case "turno ou conversa aberta":
+                if (_orbe == null) return "segura: sem orbe na tela";
+                if (_chatWindow!.IsVisible) return "segura: janela de chat aberta";
+                if (_chatWindow.Ocupada) return "segura: turno rodando na janela";
+                if (_conversaDoOrbe.Ocupada) return "segura: turno rodando no orbe";
+                if (Presenca.Ocioso() >= Iniciativa.Ausencia) return "segura: usuário ausente (mais de 5 min sem mexer no PC)";
+                return "segura: o Windows não aceita avisos (tela cheia, apresentação ou não perturbe)";
+
+            case "conversa recente":
+                return "segura: conversa há menos de 15 min";
+            case "esperando resposta":
+                return $"segura: a fala dela das {RegistroDaIniciativa.Hora(e.FalaUtc ?? DateTime.UtcNow)} ainda não teve resposta";
+            case "pausa pedida":
+                return $"segura: pausa pedida até {RegistroDaIniciativa.Hora(e.PausaAteUtc ?? DateTime.UtcNow)}";
+            case "teto de mensagens":
+                return $"segura: teto de mensagens do dia ({e.MensagensHoje} de {teto})";
+            default:
+                return "segura: " + impedimento;
+        }
+    }
+
     private void EntregarLembretes()
     {
         // Com turno rodando, espera a próxima batida: a fala entraria no histórico no meio do
         // turno, entre a chamada de uma ferramenta e o resultado dela.
         if (_chatWindow == null || _chatWindow.Ocupada || _conversaDoOrbe.Ocupada) return;
 
+        // Na JANELA DE AVISO, e não mais como fala no orbe ou na conversa: pedido do usuário
+        // (16/10/2026), todos os lembretes, venham ou não de um e-mail. O aviso traz o caminho de
+        // volta ("Abrir o e-mail", "Abrir no Shadow") e o "Adiar 1 h".
         var agora = DateTime.UtcNow;
         foreach (var lembrete in _lembretes.Retirar(agora))
-            FalarPorIniciativa(Lembretes.Atrasado(lembrete, agora));
+        {
+            var (receita, vez) = Views.Avisos.DeLembrete(lembrete, agora, AcoesDosAvisos());
+            Views.Flutuantes.Mostrar(Views.AvisoWindow.Montar(receita), vez);
+        }
     }
 
     /// <summary>
@@ -416,8 +583,8 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        // Sem orbe (só lembrete chega aqui): na conversa da janela, e pela bandeja se ela
-        // estiver fechada.
+        // Sem orbe: na conversa da janela, e pela bandeja se ela estiver fechada. (Os lembretes
+        // não passam mais por aqui: vão para a janela de aviso.)
         _chatWindow.ReceberIniciativa(texto);
         if (!_chatWindow.IsVisible)
             ShowNotification(_settingsService.LoadSettings().ActiveCharacter ?? "AIB", QuebraDeFala.Limpar(texto));
@@ -466,6 +633,10 @@ public partial class App : System.Windows.Application
             // ApplyFromSettings pode ter movido o diretório de dados: o cache aponta para o caminho antigo.
             _settingsService.InvalidateCache();
 
+            // Antes de qualquer serviço abrir a memória: o que ainda está em texto claro (os
+            // arquivos de antes da cifra) é regravado cifrado. Depois da primeira vez, só confere.
+            AIB.Services.Memory.CifraDaMemoria.Migrar();
+
             // Portão humano ligado aqui: é o único lugar do app onde existe UI para pedir
             // autorização. Sem este argumento o registry recusa toda ferramenta destrutiva.
             //
@@ -481,7 +652,11 @@ public partial class App : System.Windows.Application
             PertoDoOrbe.Ancora = () => _orbe?.RetanguloDoOrbe();
 
             Services.Terminal.AskpassServidor.Padrao = new Services.Terminal.AskpassServidor(
-                pedido => Dispatcher.InvokeAsync(() => SenhaDoTerminalDialog.Perguntar(pedido)).Task);
+                // O pedido chega por um pipe, fora do fluxo do turno: de quem é o comando se deduz
+                // de quem está trabalhando. Só o orbe ocupado é "do Shadow"; os dois, ou só a
+                // janela, ficam sem selo.
+                pedido => Dispatcher.InvokeAsync(() => SenhaDoTerminalDialog.PerguntarAsync(pedido,
+                    shadow: _conversaDoOrbe?.Ocupada == true && _chatWindow?.Ocupada != true)).Task.Unwrap());
             _toolRegistry = new ToolRegistry(_confirmationPrompt, _settingsService);
             _tokenCounter = new TokenCounter();
             _healer = new RegexToolCallHealer();
@@ -541,6 +716,16 @@ public partial class App : System.Windows.Application
             _chatWindow.FonteDeEmails = () => _vigia?.Ultimo.Itens
                                               ?? (System.Collections.Generic.IReadOnlyList<MailSummary>)
                                                  Array.Empty<MailSummary>();
+
+            // "Aguardando retorno": as conversas em que a última palavra é sua, lidas do disco a
+            // cada vez que a caixa é montada — o prazo anda com o relógio, não com a passada.
+            _chatWindow.FonteDeEsperas = () => _vigia?.Esperas()
+                                               ?? (System.Collections.Generic.IReadOnlyList<Services.Mail.EsperaDeRetorno>)
+                                                  Array.Empty<Services.Mail.EsperaDeRetorno>();
+
+            // "+7 dias" e "Parar de vigiar"/"Dispensar" mexem só no vigias.json — nada no servidor.
+            _chatWindow.EstenderEspera = espera => _vigia?.EstenderEspera(espera.ThreadId);
+            _chatWindow.PararEspera = espera => _vigia?.PararEspera(espera.ThreadId);
 
             // "Ignorar" (§3.10): tira a conversa da tela até chegar mensagem nova. Não toca o
             // servidor — a caixa continua somente leitura.
@@ -632,11 +817,11 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
-            System.Windows.MessageBox.Show(
-                $"Erro crítico ao iniciar o AIB:\n\n{ex.Message}",
-                "AIB — Erro de Inicialização",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            // Na casca das flutuantes, com "Copiar detalhes"; se nem ela montar (o erro pode ser
+            // o tema), o Informar cai no MessageBox.
+            Views.AvisoWindow.Informar(null, Views.AvisoWindow.Tom.Perigo, "O AIB não abriu",
+                "Erro ao iniciar o AIB", "Algo falhou antes de a janela abrir. O AIB vai fechar.",
+                detalhe: $"{ex.GetType().Name}: {ex.Message}", botao: "Fechar o AIB", copiar: true);
             Current.Shutdown();
         }
     }
@@ -685,6 +870,10 @@ public partial class App : System.Windows.Application
 
         // Provedor com chave e sem a chave DELE no cofre. Leitura estrita: a busca global do
         // cofre acharia a chave de outro serviço e daria o arranque por concluído.
+        // Só para o OpenRouter: é a única chave que a tela de primeiro arranque sabe pedir. O
+        // Google sem chave fica para o erro do primeiro turno, que diz onde configurar.
+        if (s.AiProvider != ProvedoresDeIa.OpenRouter) return false;
+
         string? sistema = ProvedoresDeIa.SistemaDaChave(s.AiProvider);
         return sistema != null && CredentialService.LerDoSistema(sistema, ProvedoresDeIa.NomeDaChave) == null;
     }

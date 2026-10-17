@@ -71,6 +71,16 @@ public sealed class AgentLoop
         _prefixTracker = new PromptPrefixTracker(_tokenCounter);
     }
 
+    /// <summary>
+    /// As configurações DESTE turno: as da conversa, ou — na conversa sobre um e-mail — as da
+    /// triagem. Ver <see cref="AgentTurnRequest.UsaTriagem"/>.
+    /// </summary>
+    private UserAppSettings Config(AgentTurnRequest request)
+    {
+        var settings = _settingsService.LoadSettings();
+        return request.UsaTriagem ? settings.ParaTriagem() : settings;
+    }
+
     public async IAsyncEnumerable<AgentEvent> RunAsync(
         AgentTurnRequest request,
         [EnumeratorCancellation] CancellationToken ct)
@@ -78,12 +88,14 @@ public sealed class AgentLoop
         if (request == null) throw new ArgumentNullException(nameof(request));
 
         var store = request.Store;
-        int maxTokens = LevelService.GetMaxTokensForLevel(request.UserLevel);
 
         // O teto é lido UMA vez, antes do laço. Reler a cada iteração deixaria o limite mudar
         // no meio de um turno se o usuário salvasse as configurações — um turno com regra
         // trocada na metade é pior de depurar que um turno com a regra velha.
-        int teto = _settingsService.LoadSettings().MaxTurnIterations;
+        var inicial = Config(request);
+        int teto = inicial.MaxTurnIterations;
+        int maxTokens = LevelService.GetMaxTokensForLevel(
+            request.UserLevel, request.UsaTriagem ? inicial.Janela() : ChatRequestOptions.JanelaAtual);
 
         // Chamadas que já falharam NESTE turno, e o erro de cada uma. Vive fora do laço porque
         // a repetição acontece ENTRE iterações: o modelo lê o erro, raciocina, e pede
@@ -101,7 +113,7 @@ public sealed class AgentLoop
             ct.ThrowIfCancellationRequested();
 
             // Uma leitura de settings por iteração, servida do cache do SettingsService.
-            var settings = _settingsService.LoadSettings();
+            var settings = Config(request);
             var provider = _providerFactory.GetProvider(settings);
 
             // Setting "EnableIntelligentTools": desliga todas as tool defs quando o usuário
@@ -290,7 +302,7 @@ public sealed class AgentLoop
                 // EXECUÇÃO PARALELA: dispara todas e espera o conjunto. Em CPU lenta, três
                 // leituras de arquivo independentes rodam concorrentes em vez de seriadas.
                 var results = await Task.WhenAll(
-                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel, pulso, jaFalharam, repeticoes)))
+                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel, provider.Name, pulso, jaFalharam, repeticoes, request.Contexto)))
                     .ConfigureAwait(false);
 
                 // Resultados na ordem original, mesmo que tenham terminado fora de ordem.
@@ -567,9 +579,13 @@ public sealed class AgentLoop
         + "Nada foi executado. Pare e responda ao usuário com o que já sabe, ou peça orientação.";
 
     private async Task<(ToolCallAccumulator Tc, string Result, string? Decisao, long DuracaoMs, long EsperaMs)> ExecuteToolPairedAsync(
-        ToolCallAccumulator tc, int userLevel, PulsoDoTurno pulso,
-        Dictionary<string, string> jaFalharam, Dictionary<string, int> repeticoes)
+        ToolCallAccumulator tc, int userLevel, string provedor, PulsoDoTurno pulso,
+        Dictionary<string, string> jaFalharam, Dictionary<string, int> repeticoes,
+        ContextoDoTurno? contexto = null)
     {
+        // Antes de tudo: segue pelos await até a ferramenta e o portão (ver ContextoDoTurno).
+        ContextoDoTurno.Atual = contexto;
+
         var relogio = System.Diagnostics.Stopwatch.StartNew();
         // REPETIÇÃO. Visto em produção: quatro chamadas idênticas a ler-planilha com o mesmo
         // caminho inexistente, cada uma custando um modal e um turno inteiro. O prompt de
@@ -603,7 +619,7 @@ public sealed class AgentLoop
         string result = await _toolRegistry
             .ExecuteToolAsync(tc.Name, tc.ArgumentsOrEmpty(), userLevel,
                               ms => { esperaMs += ms; pulso.EsperaHumana(tc.Name, ms); },
-                              d => decisao = d)
+                              d => decisao = d, provedor)
             .ConfigureAwait(false);
 
         if (Memory.ArtifactExtractor.Falhou(result)) jaFalharam[assinatura] = Resumir(result);
