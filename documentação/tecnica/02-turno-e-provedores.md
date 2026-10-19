@@ -144,7 +144,7 @@ Todo turno termina com uma fala de assistente. Quando não há, entra a marca `A
 1. Grava **uma** mensagem assistant com todas as tool_calls (cada id precisa de um `tool` correspondente logo em seguida). Com `KeepAssistantSpeech` ligado (padrão), a **fala** do modelo vai junto — sem ela a iteração seguinte via chamada e erro sem saber por que escolheu aquele caminho, e repetia.
 2. Se houve texto, emite `TurnSegment` (fecha o balão antes das ferramentas).
 3. Anuncia **todas** as chamadas (`ToolStarted`) antes de executar a primeira.
-4. **Executa em paralelo**: `Task.WhenAll(calls.Select(ExecuteToolPairedAsync…))`. Os resultados são processados **na ordem original**, não na de término.
+4. **Executa em paralelo**: `Task.WhenAll(calls.Select(tc => Task.Run(() => ExecuteToolPairedAsync…)))`. Os resultados são processados **na ordem original**, não na de término. O `Task.Run` tira a ferramenta da thread de quem consome o laço (a da interface): ferramenta síncrona (`grep`, `glob`, o plano da `doc`) congelava a janela — o Shadow parou ~10 s num `grep` em 19/10/2026. A contagem de repetição do turno fica sob trava.
 5. Para cada resultado: `ToolFinished` (com artefato de `ArtifactExtractor.Construir` — o mesmo extrator da memória, para a bolha e o capítulo nunca discordarem), `store.AppendToolResult(id, ParaOModelo(...))`, lista de arquivos recentes, e `ToolRegistry.ReavaliarSkillsSeTocou` (um `SKILL.md` recém-gravado já vale no próximo pedido; fica fora do lote paralelo porque mexe no dicionário de ferramentas).
 6. `store.Trim` e `NotifyTokenCount`, e volta ao modelo.
 

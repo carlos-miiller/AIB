@@ -301,8 +301,12 @@ public sealed class AgentLoop
 
                 // EXECUÇÃO PARALELA: dispara todas e espera o conjunto. Em CPU lenta, três
                 // leituras de arquivo independentes rodam concorrentes em vez de seriadas.
+                //
+                // Task.Run: depois de um yield, o laço retoma na thread de quem pediu o próximo
+                // evento — a da interface. Ferramenta síncrona (grep, glob, o plano da doc) rodava
+                // ali: em 19/10/2026 o Shadow congelou ~10 s num grep em C:\Users\Carlo\CPAPS.
                 var results = await Task.WhenAll(
-                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel, provider.Name, pulso, jaFalharam, repeticoes, request.Contexto)))
+                    calls.Select(tc => Task.Run(() => ExecuteToolPairedAsync(tc, request.UserLevel, provider.Name, pulso, jaFalharam, repeticoes, request.Contexto))))
                     .ConfigureAwait(false);
 
                 // Resultados na ordem original, mesmo que tenham terminado fora de ordem.
@@ -597,19 +601,25 @@ public sealed class AgentLoop
         // .xls para .csv — e bloquear ali impediria a tentativa que agora daria certo.
         string assinatura = Assinatura(tc.Name, tc.ArgumentsOrEmpty());
 
-        if (jaFalharam.TryGetValue(assinatura, out string? antes))
+        // As chamadas do lote correm de verdade em paralelo (Task.Run no laço): os dois
+        // dicionários do turno são compartilhados, e a trava é a do jaFalharam.
+        string? aviso;
+        lock (jaFalharam)
         {
-            Console.WriteLine($"[REGISTRY] {tc.Name}: repetição bloqueada.");
-            return (tc, RecadoDeRepeticao(tc.Name, antes), "repeticao_bloqueada", relogio.ElapsedMilliseconds, 0);
-        }
+            if (jaFalharam.TryGetValue(assinatura, out string? antes))
+            {
+                Console.WriteLine($"[REGISTRY] {tc.Name}: repetição bloqueada.");
+                return (tc, RecadoDeRepeticao(tc.Name, antes), "repeticao_bloqueada", relogio.ElapsedMilliseconds, 0);
+            }
 
-        var (bloquear, aviso) = ContarRepeticao(repeticoes, assinatura);
-        if (bloquear)
-        {
-            Console.WriteLine($"[REGISTRY] {tc.Name}: teto de repetição no turno.");
-            string recado = RecadoDeTetoDeRepeticao(tc.Name, TetoDeRepeticao);
-            jaFalharam[assinatura] = Resumir(recado);
-            return (tc, recado, "repeticao_bloqueada", relogio.ElapsedMilliseconds, 0);
+            (bool bloquear, aviso) = ContarRepeticao(repeticoes, assinatura);
+            if (bloquear)
+            {
+                Console.WriteLine($"[REGISTRY] {tc.Name}: teto de repetição no turno.");
+                string recado = RecadoDeTetoDeRepeticao(tc.Name, TetoDeRepeticao);
+                jaFalharam[assinatura] = Resumir(recado);
+                return (tc, recado, "repeticao_bloqueada", relogio.ElapsedMilliseconds, 0);
+            }
         }
 
         string? decisao = null;
@@ -623,7 +633,7 @@ public sealed class AgentLoop
                               d => decisao = d, provedor)
             .ConfigureAwait(false);
 
-        if (Memory.ArtifactExtractor.Falhou(result)) jaFalharam[assinatura] = Resumir(result);
+        if (Memory.ArtifactExtractor.Falhou(result)) { lock (jaFalharam) jaFalharam[assinatura] = Resumir(result); }
         else if (aviso != null) result += aviso;
 
         return (tc, result, decisao, relogio.ElapsedMilliseconds, esperaMs);
