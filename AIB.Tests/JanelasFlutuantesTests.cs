@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -280,6 +281,35 @@ namespace AIB.Tests
 
                 confirmacao.Close();
                 aviso.Close();
+            });
+        }
+
+        [Fact]
+        public void OAvisoQuePerdeuOSentido_Fecha_NaTelaOuEsperandoAVez()
+        {
+            // Visto no uso (19/10/2026): "resposta pronta" chamando para abrir a conversa
+            // continuava na tela depois que o usuário já a tinha aberto pelo atalho ou pelo orbe.
+            WpfHost.EmSta(() =>
+            {
+                var naTela = new List<Window>();
+                var fila = new FilaDeJanelas<Window>(naTela.Add, j => naTela.Remove(j));
+
+                var pergunta = new Window();
+                var pronta = new Window();
+                fila.Entrar(pergunta, VezDaJanela.Pergunta);
+                fila.Entrar(pronta, VezDaJanela.Pronta);
+
+                // Esperando a vez atrás da pergunta: sai da fila e não aparece depois.
+                Flutuantes.Fechar(pronta, fila);
+                fila.Contem(pronta).Should().BeFalse();
+                fila.Saiu(pergunta);
+                naTela.Should().NotContain(pronta, "a pergunta saiu e não sobrou ninguém atrás dela");
+
+                // Já fechada por ela mesma: não faz nada.
+                Flutuantes.Fechar(pronta, fila);
+                Flutuantes.Fechar(null, fila);
+
+                pergunta.Close();
             });
         }
     }

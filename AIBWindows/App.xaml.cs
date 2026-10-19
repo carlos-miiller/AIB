@@ -127,6 +127,9 @@ public partial class App : System.Windows.Application
         // "Leu e não respondeu" pesa menos que "nem viu" no aprendizado da iniciativa.
         orbe.FalasLidas += () => _iniciativa?.Leu();
 
+        // A barra aberta é a conversa do Shadow na tela: o aviso dela perde o sentido.
+        orbe.BarraAberta += () => Views.Flutuantes.Fechar(_prontaDoShadow);
+
         // Solta a ligação do orbe ANTERIOR antes de criar a do novo. Sem isto, desligar e
         // religar o orbe deixava a conversa com duas assinaturas: a do orbe vivo e a do orbe
         // fechado, que continuava recebendo o fim de cada turno e mexendo numa janela morta.
@@ -297,18 +300,27 @@ public partial class App : System.Windows.Application
     }
 
     /// <summary>
-    /// A resposta da conversa principal chegou com a janela escondida: aviso verde (ou vermelho,
-    /// com erro), no lugar do balão da bandeja. "Abrir conversa" traz a janela de volta.
+    /// O aviso de "resposta pronta" de cada conversa, enquanto vivo. Abrir a conversa por
+    /// qualquer caminho (atalho, bandeja, clique no orbe) o fecha: visto no uso (19/10/2026), ele
+    /// continuava na tela chamando para abrir o que já estava aberto. Um novo substitui o antigo.
     /// </summary>
+    private Window? _prontaDaJanela, _prontaDoShadow;
+
     /// <summary>A resposta da conversa do orbe chegou com a barra fechada: aviso com o selo "Shadow".</summary>
     private void AvisarRespostaDoShadow(string texto)
     {
         var (receita, vez) = Views.Avisos.DePronta(texto, null, AcoesDosAvisos().NomeDaIA, shadow: true,
             abrir: () => _orbe?.AbrirBarra());
 
-        Views.Flutuantes.Mostrar(Views.AvisoWindow.Montar(receita), vez);
+        Views.Flutuantes.Fechar(_prontaDoShadow);
+        _prontaDoShadow = Views.AvisoWindow.Montar(receita);
+        Views.Flutuantes.Mostrar(_prontaDoShadow, vez);
     }
 
+    /// <summary>
+    /// A resposta da conversa principal chegou com a janela escondida: aviso verde (ou vermelho,
+    /// com erro), no lugar do balão da bandeja. "Abrir conversa" traz a janela de volta.
+    /// </summary>
     public void AvisarRespostaPronta(string texto, string? erro)
     {
         var (receita, vez) = Views.Avisos.DePronta(texto, erro, AcoesDosAvisos().NomeDaIA, shadow: false,
@@ -317,7 +329,9 @@ public partial class App : System.Windows.Application
                 if (_chatWindow != null && !_chatWindow.IsVisible) _chatWindow.ToggleWindow();
             });
 
-        Views.Flutuantes.Mostrar(Views.AvisoWindow.Montar(receita), vez);
+        Views.Flutuantes.Fechar(_prontaDaJanela);
+        _prontaDaJanela = Views.AvisoWindow.Montar(receita);
+        Views.Flutuantes.Mostrar(_prontaDaJanela, vez);
     }
 
     /// <summary>O que os botões dos avisos fazem — a janela de chat e o orbe moram aqui.</summary>
@@ -680,7 +694,11 @@ public partial class App : System.Windows.Application
             // O Shadow some enquanto a conversa está na tela e volta quando ela sai — pelo
             // atalho global, pela bandeja ou por perder o foco. Escutar a VISIBILIDADE, e não
             // cada um desses gestos, é o que garante que os três caminhos concordem.
-            _chatWindow.IsVisibleChanged += (_, _) => SincronizarOrbe();
+            _chatWindow.IsVisibleChanged += (_, _) =>
+            {
+                SincronizarOrbe();
+                if (_chatWindow?.IsVisible == true) Views.Flutuantes.Fechar(_prontaDaJanela);
+            };
 
             // A partir daqui o portão tem onde perguntar. Antes desta linha, e depois que a
             // janela morrer, ele recusa por padrão.

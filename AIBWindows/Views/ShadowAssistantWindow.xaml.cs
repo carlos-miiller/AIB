@@ -330,6 +330,9 @@ public partial class ShadowAssistantWindow : Window
     /// <summary>Se a casca está na forma de barra. Diagnóstico e ensaio.</summary>
     public bool EmModoBarra => _emModoBarra;
 
+    /// <summary>A barra abriu — por clique, pelo aviso ou por quem for.</summary>
+    public event Action? BarraAberta;
+
     /// <summary>§6 — o círculo VIRA a barra. Nada abre ao lado.</summary>
     public void AbrirBarra()
     {
@@ -347,6 +350,8 @@ public partial class ShadowAssistantWindow : Window
         // usuário tinha acabado de pedir, e reabrir dava uma barra vazia.
         if (_falas.Count > 0) MostrarPilha(true);
         Surgir(Contador);
+
+        BarraAberta?.Invoke();
 
         // §5.4 — clicar num orbe que estava pulsando faz as duas coisas de uma vez: a barra
         // abre E a fala aparece acima dela. É o único caminho pelo qual uma fala proativa

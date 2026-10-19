@@ -38,6 +38,21 @@ public static class Flutuantes
     }
 
     /// <summary>
+    /// Fecha uma flutuante que perdeu o sentido — na tela ou ainda esperando a vez. Nula, ou
+    /// já fechada, não faz nada.
+    /// </summary>
+    public static void Fechar(Window? janela) => Fechar(janela, Fila);
+
+    public static void Fechar(Window? janela, FilaDeJanelas<Window> fila)
+    {
+        if (janela == null || !fila.Contem(janela)) return;
+
+        // Saiu explícito: a que nunca apareceu não conta com o Closed.
+        fila.Saiu(janela);
+        janela.Close();
+    }
+
+    /// <summary>
     /// Mostra a janela pertencendo ao orbe.
     /// <para>
     /// As duas são Topmost, e entre duas Topmost fica em cima a última ativada. Visto no uso

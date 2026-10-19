@@ -649,6 +649,9 @@ Com o orbe na tela, a flutuante nasce com ele de **dono** (`Flutuantes.Dono`/`Ex
 Topmost, e reabrir a barra do Shadow punha o orbe por cima da confirmação que ele mesmo pediu. Ao
 desligar o orbe, `Flutuantes.Soltar` desfaz a posse antes do `Close`, que senão fecharia (e recusaria)
 a pergunta na tela.
+O aviso de resposta pronta fecha quando a conversa dele abre por qualquer caminho (janela visível,
+ou `ShadowAssistantWindow.BarraAberta` para o Shadow), via `Flutuantes.Fechar`, que também o tira
+da fila se ainda esperava a vez; um aviso novo da mesma conversa substitui o antigo.
 
 - **`AvisoWindow`**: o aviso. Não rouba o foco (`ShowActivated=False`, fora da barra de tarefas).
   Montado por `AvisoWindow.Montar(Receita)`; o que cada aviso diz mora em `Avisos` (`DeDigesto`,
