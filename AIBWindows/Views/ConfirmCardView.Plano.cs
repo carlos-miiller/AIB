@@ -85,7 +85,9 @@ public partial class ConfirmCardView
         {
             PlanoEfeitosScroll.Visibility = Visibility.Visible;
             PlanoEfeitos.Visibility = Visibility.Visible;
-            PlanoEfeitos.Children.Add(Linha("Efeito nas fórmulas que já existem:", "TextSecondaryBrush"));
+            // Só aparência não mexe em conta: ali as linhas são as regras condicionais que ficam.
+            if (!plano.SoAparencia)
+                PlanoEfeitos.Children.Add(Linha("Efeito nas fórmulas que já existem:", "TextSecondaryBrush"));
             foreach (var e in plano.Efeitos) PlanoEfeitos.Children.Add(Linha(e, "AccentBlueBrush", mono: true));
         }
 
@@ -209,10 +211,14 @@ public partial class ConfirmCardView
                     break;
 
                 default:
-                    var t0 = Celula(m.Onde, 0, "TextSecondaryBrush");
-                    var t1 = Celula(m.Antes ?? "vazia", 1, m.Antes == null ? "TextMutedBrush" : "DangerTextBrush", italico: m.Antes == null);
-                    var t2 = Celula(m.Depois ?? "vazia", 2, m.Depois == null ? "TextMutedBrush" : m.Erro ? "DangerTextBrush" : "SuccessBrush",
-                           italico: m.Depois == null);
+                    UIElement t0 = Celula(m.Onde, 0, "TextSecondaryBrush");
+                    UIElement t1 = m.AmostraAntes is { } aa
+                        ? Amostrada(aa, m.Antes ?? "", 1, "DangerTextBrush")
+                        : Celula(m.Antes ?? "vazia", 1, m.Antes == null ? "TextMutedBrush" : "DangerTextBrush", italico: m.Antes == null);
+                    UIElement t2 = m.AmostraDepois is { } ad
+                        ? Amostrada(ad, m.Depois ?? "", 2, "SuccessBrush")
+                        : Celula(m.Depois ?? "vazia", 2, m.Depois == null ? "TextMutedBrush" : m.Erro ? "DangerTextBrush" : "SuccessBrush",
+                                 italico: m.Depois == null);
                     if (m.Extra)
                     {
                         t0.Visibility = Visibility.Collapsed;
@@ -250,6 +256,24 @@ public partial class ConfirmCardView
             Grid.SetColumn(t, col);
             g.Children.Add(t);
             return t;
+        }
+
+        // A amostra e, embaixo, a descrição em palavras (mockup "Formatação de planilhas do AIB").
+        StackPanel Amostrada(Aparencia aparencia, string descricao, int col, string cor)
+        {
+            var p = new StackPanel { Margin = new Thickness(0, 4, 12, 4) };
+            p.Children.Add(Amostra(aparencia));
+            if (descricao.Length > 0)
+            {
+                var d = Texto(descricao, cor, mono: false);
+                d.FontSize = 11;
+                d.Margin = new Thickness(0, 4, 0, 0);
+                p.Children.Add(d);
+            }
+            Grid.SetRow(p, linha);
+            Grid.SetColumn(p, col);
+            g.Children.Add(p);
+            return p;
         }
 
         Border Inteira(string texto, string cor, FontWeight peso, string? fundo, bool centro = false, bool mono = false)
@@ -332,6 +356,72 @@ public partial class ConfirmCardView
 
         PlanoTabela.Children.Add(painel);
     }
+
+    /// <summary>
+    /// A célula como o Excel a mostra: fundo branco e grade cinza (os tokens Celula*, iguais nos
+    /// dois temas), e por cima as cores que vêm do arquivo — essas são dado, não tema.
+    /// </summary>
+    internal Border Amostra(Aparencia a)
+    {
+        var t = new TextBlock
+        {
+            Text = a.Texto.Length == 0 ? " " : a.Texto,
+            FontFamily = new System.Windows.Media.FontFamily("Calibri, Segoe UI"),
+            FontSize = 12,
+            Foreground = CorDoArquivo(a.Cor) ?? Pincel("CelulaTextoBrush"),
+            FontWeight = a.Negrito ? FontWeights.Bold : FontWeights.Normal,
+            FontStyle = a.Italico ? FontStyles.Italic : FontStyles.Normal,
+            TextDecorations = a.Sublinhado ? TextDecorations.Underline : null,
+            TextAlignment = a.Alinhamento switch { "center" => TextAlignment.Center, "right" => TextAlignment.Right, _ => TextAlignment.Left },
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Padding = new Thickness(6, 2, 6, 2)
+        };
+
+        Brush? fundo = CorDoArquivo(a.Fundo);
+        if (a.Escala is { Count: > 0 } escala)
+        {
+            var gradiente = new System.Windows.Media.LinearGradientBrush { StartPoint = new System.Windows.Point(0, 0.5), EndPoint = new System.Windows.Point(1, 0.5) };
+            for (int i = 0; i < escala.Count; i++)
+                if (Cor(escala[i]) is { } c)
+                    gradiente.GradientStops.Add(new System.Windows.Media.GradientStop(c, escala.Count == 1 ? 0 : (double)i / (escala.Count - 1)));
+            fundo = gradiente;
+        }
+
+        double grossa = 2;
+        var b = a.Bordas;
+        var dentro = new Border
+        {
+            Child = t,
+            Background = fundo ?? Pincel("CelulaFundoBrush"),
+            BorderBrush = Pincel("CelulaTextoBrush"),
+            BorderThickness = new Thickness(
+                b.HasFlag(Bordas.Esquerda) ? grossa : 0,
+                b.HasFlag(Bordas.Cima) ? grossa : 0,
+                b.HasFlag(Bordas.Direita) ? grossa : 0,
+                b.HasFlag(Bordas.BaixoDupla) ? 3 : b.HasFlag(Bordas.Baixo) ? grossa : 0)
+        };
+
+        return new Border
+        {
+            Child = dentro,
+            BorderBrush = Pincel("CelulaGradeBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(2),
+            MinWidth = 92,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            ToolTip = a.Texto
+        };
+    }
+
+    private static System.Windows.Media.Color? Cor(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return null;
+        try { return (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex.StartsWith('#') ? hex : "#" + hex); }
+        catch (System.FormatException) { return null; }
+    }
+
+    private static Brush? CorDoArquivo(string? hex) =>
+        Cor(hex) is { } c ? new System.Windows.Media.SolidColorBrush(c) : null;
 
     private TextBlock Linha(string texto, string cor, bool mono = false)
     {

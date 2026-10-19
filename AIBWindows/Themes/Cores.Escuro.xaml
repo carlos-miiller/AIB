@@ -104,6 +104,11 @@
     <SolidColorBrush x:Key="GoldFill12Brush"   Color="#1FE8B84B"/>  <!-- pill do lembrete (avisos) -->
     <SolidColorBrush x:Key="GoldEdge32Brush"   Color="#52E8B84B"/>  <!-- borda da pill do lembrete -->
     <SolidColorBrush x:Key="SuccessEdge30Brush" Color="#4D4ADE80"/>  <!-- borda da pill "respondeu" -->
+    <!-- A célula do Excel na amostra do cartão de formatação: igual nos dois temas, porque
+         retrata o arquivo, não a interface. -->
+    <SolidColorBrush x:Key="CelulaFundoBrush"   Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="CelulaTextoBrush"   Color="#FF1F1F1F"/>
+    <SolidColorBrush x:Key="CelulaGradeBrush"   Color="#FFD4D4D4"/>
 
     <SolidColorBrush x:Key="WarnFill10Brush"    Color="#1AE28743"/>  <!-- faixa de contexto cheio -->
     <SolidColorBrush x:Key="ReadFill05Brush"    Color="#0DFFFFFF"/>  <!-- marcador de leitura no log -->

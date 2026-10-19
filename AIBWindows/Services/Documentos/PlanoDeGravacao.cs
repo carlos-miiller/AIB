@@ -32,7 +32,48 @@ public enum TipoDeMudanca
 /// <param name="Erro">O depois é um erro de fórmula (#N/D, #REF!): o cartão pinta de vermelho.</param>
 /// <param name="Grupo">Grupo de expansão no cartão (1, 2, 3...). 0 quando não agrupado.</param>
 /// <param name="Extra">Linha escondida inicialmente no cartão, revelada ao expandir o Grupo.</param>
-public sealed record Mudanca(TipoDeMudanca Tipo, string Onde, string? Antes, string? Depois, bool Erro = false, int Grupo = 0, bool Extra = false);
+/// <param name="AmostraAntes">Formatação: a célula como o Excel a mostra hoje. O texto de Antes descreve o mesmo em palavras.</param>
+/// <param name="AmostraDepois">Formatação: a célula como vai ficar.</param>
+public sealed record Mudanca(TipoDeMudanca Tipo, string Onde, string? Antes, string? Depois, bool Erro = false, int Grupo = 0, bool Extra = false,
+                             Aparencia? AmostraAntes = null, Aparencia? AmostraDepois = null);
+
+/// <summary>Bordas de uma célula, na amostra do cartão.</summary>
+[System.Flags]
+public enum Bordas
+{
+    Nenhuma = 0,
+    Cima = 1,
+    Baixo = 2,
+    Esquerda = 4,
+    Direita = 8,
+
+    /// <summary>A borda de baixo é dupla (a de total, no Excel).</summary>
+    BaixoDupla = 16
+}
+
+/// <summary>
+/// Como uma célula aparece no Excel: a amostra que o cartão desenha ao lado da descrição.
+/// <para>
+/// Mockup "Formatação de planilhas do AIB" (19/10/2026): "fundo amarelo claro" não diz se o
+/// amarelo é o que a pessoa quer; a célula desenhada diz. A descrição em palavras fica embaixo,
+/// para quem não distingue as cores.
+/// </para>
+/// </summary>
+/// <param name="Texto">O valor da célula já com o formato de número aplicado ("R$ 1.180,00").</param>
+/// <param name="Cor">Cor do texto, "#RRGGBB". Null: a do Excel (preto).</param>
+/// <param name="Fundo">Cor do fundo, "#RRGGBB". Null: sem preenchimento.</param>
+/// <param name="Alinhamento">"left", "center" ou "right".</param>
+/// <param name="Escala">Escala de cores ou barra de dados: as cores, da menor para a maior.</param>
+public sealed record Aparencia(
+    string Texto,
+    bool Negrito = false,
+    bool Italico = false,
+    bool Sublinhado = false,
+    string? Cor = null,
+    string? Fundo = null,
+    string Alinhamento = "left",
+    Bordas Bordas = Bordas.Nenhuma,
+    IReadOnlyList<string>? Escala = null);
 
 /// <summary>
 /// O que uma gravação de documento VAI fazer, calculado antes de o cartão aparecer.
@@ -56,6 +97,12 @@ public sealed class PlanoDeGravacao
 
     /// <summary>Arquivo novo (cartão laranja). Falso: mexe num que existe (vermelho).</summary>
     public bool Criar { get; init; }
+
+    /// <summary>
+    /// A edição só muda a aparência (estilo, largura, painel, formatação condicional): nenhum
+    /// valor, linha ou aba. O cartão fica laranja (decisão do usuário, 19/10/2026).
+    /// </summary>
+    public bool SoAparencia { get; init; }
 
     /// <summary>A pergunta do cartão: "Gravar 4 células nesta planilha?".</summary>
     public string Titulo { get; init; } = "";
@@ -114,7 +161,7 @@ public sealed class PlanoDeGravacao
 
         if (Efeitos.Count > 0)
         {
-            sb.AppendLine("Efeito nas fórmulas que já existem:");
+            if (!SoAparencia) sb.AppendLine("Efeito nas fórmulas que já existem:");
             foreach (var e in Efeitos) sb.AppendLine("  " + e);
         }
 

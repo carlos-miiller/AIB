@@ -700,8 +700,9 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
      "+ N … · mostrar"; acima de 100, "não cabem no cartão" e a lista inteira fica no histórico.
   4. O cartão (`ConfirmCardView.Plano.cs`) desenha o plano; `ScriptBody` guarda a versão em texto
      para o histórico. Vermelho ("Edita o arquivo original") ao mexer no que existe; laranja
-     ("Cria um arquivo") no arquivo novo e na edição de Word ("Sugere alterações"). Sem "sempre
-     permitir" (`SemSempre`).
+     ("Cria um arquivo") no arquivo novo, na edição de Word ("Sugere alterações") e na edição
+     que só muda a aparência ("Muda a formatação", `PlanoDeGravacao.SoAparencia`, comando
+     `FORMATAR`). Sem "sempre permitir" (`SemSempre`).
   5. Na execução, o plano é refeito e comparado com o autorizado — texto e SHA-256 do arquivo
      (`Impressao`). Mudou entre a pergunta e o "Permitir", nada é gravado. Sem cartão, recusa.
   6. **Travado** (aberto no Excel/Word): `DocTool.AoTravar` — ligado pelo App à janela de escolha
@@ -730,6 +731,17 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
 - Ler um arquivo aberto no Excel funciona (stream com `FileShare.ReadWrite`); gravar, não (item 6).
 - Apagar linhas: antes, `AnularReferencias` troca por `#REF!` a referência que aponta só para as
   linhas apagadas — o ClosedXML a deslocaria para a linha de baixo, em silêncio.
+- **Formatação** (mockup "Formatação de planilhas do AIB", 19/10/2026; `EstiloDePlanilha`,
+  `CondicionalDePlanilha`): `style` junto de `cell`/`range`, com ou sem `value` (fonte, cor,
+  fundo, borda, alinhamento, quebra, `number_format` com atalhos `moeda`, `porcentagem`,
+  `data`…); `columns` + `width` (número ou `auto`, teto 60 — acima disso, 60 e quebra de texto);
+  `freeze` (`'B2'` ou `'none'`); `conditional` (comparação, texto contém, repetidos/únicos,
+  escala de cores, barra de dados, ícones) e `clear_conditional`. Cor em `#RRGGBB` ou nome em
+  português; cor desconhecida é erro, sem cartão. Uma linha do plano por faixa, com a amostra
+  (`Aparencia`: a primeira célula como o Excel vai mostrá-la) e a descrição em palavras; a regra
+  condicional diz quais células ela atinge hoje. Só aparência → sem recálculo nem efeito nas
+  fórmulas, para o cartão abrir rápido em planilha grande. CSV recusa formatação ("ofereça
+  salvar uma cópia em .xlsx").
 - O plano é guardado para o pré-voo e o cartão (`PlanoGuardado`, chave: pedido + data e tamanho
   do arquivo); a gravação o refaz do zero.
 - O resultado leva a marca de conteúdo de terceiros (`AgentLoop.TrazemConteudo`).

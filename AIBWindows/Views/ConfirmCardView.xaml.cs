@@ -311,6 +311,8 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Lembrete => (Risco.Cuidado, "Agenda uma fala"),
             Ferramentas.Documento when comeca("CRIAR ") => (Risco.Cuidado, "Cria um arquivo"),
             Ferramentas.Documento when comeca("LER ") => (Risco.Leitura, "Só leitura"),
+            // Só aparência: nenhum valor se perde, e o Desfazer devolve o original (19/10/2026).
+            Ferramentas.Documento when comeca("FORMATAR ") => (Risco.Cuidado, "Muda a formatação"),
             // Word: a edição entra como controle de alterações — nada se perde, tudo se rejeita lá.
             Ferramentas.Documento when alvo.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)
                 => (Risco.Cuidado, "Sugere alterações"),

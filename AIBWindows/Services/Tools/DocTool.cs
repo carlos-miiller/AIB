@@ -57,7 +57,7 @@ public class DocTool : ITool
         + "para esses formatos. Comece por 'info' (abas, tamanho, cabeçalhos). 'read' traz um trecho "
         + "com a célula ou o ¶ de cada linha; 'find' acha texto; 'query' faz as contas (somar, contar, "
         + "média, agrupar, filtrar): use-a em vez de calcular de cabeça. 'create' e 'edit' gravam "
-        + "(.xlsx, .csv, .docx), com cartão de confirmação.";
+        + "(.xlsx, .csv, .docx), com cartão de confirmação; 'edit' também formata células.";
 
     public int RequiredLevel => 1;
 
@@ -74,7 +74,7 @@ public class DocTool : ITool
                 "range": { "type": "string", "description": "read: 'A1:F200' ou '10:60' (linhas); Word: '¶' '12-40'; PDF: páginas '2-4'." },
                 "text": { "type": "string", "description": "find: o texto." },
                 "query": { "type": "object", "description": "{where:[{col,op:'= != > < >= <= contains',value}], group:col, agg:[{fn:'sum|count|avg|min|max',col}], sort:'-col', limit}. col = cabeçalho ou letra." },
-                "ops": { "type": "array", "items": { "type": "object" }, "description": "edit. Planilha: {cell:'B2',value} ('=' inicia fórmula) | {range:'D2:D50',value:'=B{row}*2'} | {insert_rows:N,rows:[[..]]} (antes da linha N) | {delete_rows:'18:19'} | {add_sheet} | {rename_sheet,to}; todas aceitam sheet. Word: {replace:'texto exato',with} | {insert_after:¶,text,style:'Heading1|Heading2|List|Normal'} | {delete:¶} | {table:1,row,col,value}." },
+                "ops": { "type": "array", "items": { "type": "object" }, "description": "edit. Planilha: {cell:'B2',value} ('=' inicia fórmula) | {range:'D2:D50',value:'=B{row}*2'} | {insert_rows:N,rows:[[..]]} (antes da linha N) | {delete_rows:'18:19'} | {add_sheet} | {rename_sheet,to} | cell/range + style:{bold,italic,underline,color,fill,size,font,border:'all|outline|top|bottom|double|none',align,valign,wrap,number_format:'moeda|porcentagem|data|#,##0.00'} (value opcional) | {columns:'A:F',width:N|'auto'} | {freeze:'B2'|'none'} | {range,conditional:{when:'> < = between contains duplicates',value,style}|{scale:'verde-vermelho'}|{bar:cor}|{icons:'setas|semaforo'}} | {clear_conditional:range}; cor: #RRGGBB ou nome ('amarelo claro'); todas aceitam sheet. Word: {replace:'texto exato',with} | {insert_after:¶,text,style:'Heading1|Heading2|List|Normal'} | {delete:¶} | {table:1,row,col,value}." },
                 "content": { "type": "object", "description": "create. Planilha: {sheets:[{name,rows:[[..]]}]}. Word: {blocks:[{style,text} | {list:[..]} | {table:[[..]]}]}." }
             },
             "required": ["action", "path"]
@@ -223,7 +223,7 @@ public class DocTool : ITool
         return new CommandConfirmationContext
         {
             Tool = Name,
-            Command = (plano.Criar ? "CRIAR " : "EDITAR ") + caminho,
+            Command = (plano.Criar ? "CRIAR " : plano.SoAparencia ? "FORMATAR " : "EDITAR ") + caminho,
             Level = userLevel,
             Cwd = Environment.CurrentDirectory,
             ScriptBody = plano.EmTexto(),

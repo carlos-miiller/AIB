@@ -53,6 +53,16 @@ public static class EditorDePlanilha
         var saem = new List<Mudanca>();
         var outras = new List<Mudanca>();
         var grupos = new List<Grupo>();
+        var formatacoes = new List<Mudanca>();
+        var abasTocadas = new List<string>();
+        var regrasTocadas = new HashSet<IXLConditionalFormat>();
+
+        int faixasFormatadas = 0;
+        int celulasFormatadasTotal = 0;
+        int colunasAjustadas = 0;
+        bool painelAlterado = false;
+        int regrasCriadas = 0;
+        int regrasRemovidas = 0;
         bool estrutural = false;
         int celulas = 0;
 
@@ -62,28 +72,206 @@ public static class EditorDePlanilha
             i++;
             if (op.ValueKind != JsonValueKind.Object) throw new ErroDeDocumento($"a operação {i} não é um objeto.");
 
+            if (formato == Formato.Csv && (
+                op.TryGetProperty("style", out _) ||
+                op.TryGetProperty("columns", out _) ||
+                op.TryGetProperty("freeze", out _) ||
+                op.TryGetProperty("conditional", out _) ||
+                op.TryGetProperty("clear_conditional", out _)))
+            {
+                throw new ErroDeDocumento("CSV não guarda formatação; ofereça salvar uma cópia em .xlsx.");
+            }
+
             var ws = Aba(wb, Texto(op, "sheet") ?? abaPadrao, i);
+            if (!abasTocadas.Contains(ws.Name)) abasTocadas.Add(ws.Name);
 
             if (Texto(op, "cell") is { } celula)
             {
                 var c = Celula(ws, celula, i);
-                mudancas.Add((ws.Name, c.Address.RowNumber, c.Address.ColumnNumber, Mostrar(c)));
-                Escrever(c, Valor(op, i));
-                celulas++;
+                bool temValor = op.TryGetProperty("value", out _);
+                bool temEstilo = op.TryGetProperty("style", out var styleProp);
+
+                if (!temValor && !temEstilo)
+                    throw new ErroDeDocumento($"operação {i}: falta 'value' (null apaga a célula).");
+
+                if (temValor)
+                {
+                    mudancas.Add((ws.Name, c.Address.RowNumber, c.Address.ColumnNumber, Mostrar(c)));
+                    Escrever(c, Valor(op, i));
+                    celulas++;
+                }
+
+                if (temEstilo)
+                {
+                    var antesAmostra = EstiloDePlanilha.ObterAparencia(c);
+                    var antesDesc = EstiloDePlanilha.DescreverEstilo(c, styleProp);
+                    EstiloDePlanilha.AplicarEstilo(c.AsRange(), styleProp, i);
+                    var depoisAmostra = EstiloDePlanilha.ObterAparencia(c);
+                    var depoisDesc = EstiloDePlanilha.DescreverEstilo(c, styleProp);
+                    string onde = Endereco(wb, ws.Name, c.Address.RowNumber, c.Address.ColumnNumber);
+                    formatacoes.Add(new Mudanca(TipoDeMudanca.Valor, onde, antesDesc, depoisDesc, AmostraAntes: antesAmostra, AmostraDepois: depoisAmostra));
+                    faixasFormatadas++;
+                    celulasFormatadasTotal++;
+                }
             }
             else if (Texto(op, "range") is { } faixa)
             {
                 var r = Faixa(ws, faixa, i);
-                var valor = Valor(op, i);
-                var g = new Grupo(ws.Name, r.FirstColumn().ColumnNumber(), r.LastColumn().ColumnNumber(),
-                                  r.FirstRow().RowNumber(), r.LastRow().RowNumber(), valor is string s && s.StartsWith('='));
-                foreach (var c in r.Cells(false))
+                bool temValor = op.TryGetProperty("value", out _);
+                bool temEstilo = op.TryGetProperty("style", out var styleProp);
+                bool temCond = op.TryGetProperty("conditional", out var condProp);
+
+                if (!temValor && !temEstilo && !temCond)
+                    throw new ErroDeDocumento($"operação {i}: falta 'value' (null apaga a célula).");
+
+                if (temValor)
                 {
-                    if (++celulas > TetoDeCelulas) throw new ErroDeDocumento($"a edição passa de {TetoDeCelulas} células.");
-                    g.Celulas.Add((c.Address.RowNumber, c.Address.ColumnNumber, Mostrar(c)));
-                    Escrever(c, valor is string t ? t.Replace("{row}", c.Address.RowNumber.ToString(CultureInfo.InvariantCulture)) : valor);
+                    var valor = Valor(op, i);
+                    var g = new Grupo(ws.Name, r.FirstColumn().ColumnNumber(), r.LastColumn().ColumnNumber(),
+                                      r.FirstRow().RowNumber(), r.LastRow().RowNumber(), valor is string s && s.StartsWith('='));
+                    foreach (var c in r.Cells(false))
+                    {
+                        if (++celulas > TetoDeCelulas) throw new ErroDeDocumento($"a edição passa de {TetoDeCelulas} células.");
+                        g.Celulas.Add((c.Address.RowNumber, c.Address.ColumnNumber, Mostrar(c)));
+                        Escrever(c, valor is string t ? t.Replace("{row}", c.Address.RowNumber.ToString(CultureInfo.InvariantCulture)) : valor);
+                    }
+                    grupos.Add(g);
                 }
-                grupos.Add(g);
+
+                if (temEstilo)
+                {
+                    var primeira = r.FirstCell();
+                    var antesAmostra = EstiloDePlanilha.ObterAparencia(primeira);
+                    var antesDesc = EstiloDePlanilha.DescreverEstilo(primeira, styleProp);
+                    EstiloDePlanilha.AplicarEstilo(r, styleProp, i);
+                    var depoisAmostra = EstiloDePlanilha.ObterAparencia(primeira);
+                    var depoisDesc = EstiloDePlanilha.DescreverEstilo(primeira, styleProp);
+                    int count = r.RowCount() * r.ColumnCount();
+                    string ondeFaixa = wb.Worksheets.Count == 1 ? faixa : $"{ws.Name}!{faixa}";
+                    string onde = count > 1 ? $"{ondeFaixa} · {count} células" : ondeFaixa;
+                    formatacoes.Add(new Mudanca(TipoDeMudanca.Valor, onde, antesDesc, depoisDesc, AmostraAntes: antesAmostra, AmostraDepois: depoisAmostra));
+                    faixasFormatadas++;
+                    celulasFormatadasTotal += count;
+                }
+
+                if (temCond)
+                {
+                    var (mudancaCond, regraCriada) = CondicionalDePlanilha.Processar(ws, r, condProp, i);
+                    formatacoes.Add(mudancaCond);
+                    regrasCriadas++;
+                    regrasTocadas.Add(regraCriada);
+                }
+            }
+            else if (op.TryGetProperty("columns", out var colsProp))
+            {
+                string colsStr = colsProp.GetString() ?? throw new ErroDeDocumento($"operação {i}: 'columns' precisa ser texto ('A' ou 'A:F').");
+                if (!op.TryGetProperty("width", out var wProp))
+                    throw new ErroDeDocumento($"operação {i}: 'columns' precisa de 'width' (número ou 'auto').");
+
+                var (c1, c2) = ParseColunas(colsStr, i);
+                var colunasModificadas = new List<(int Col, string Antes, string Depois)>();
+
+                for (int c = c1; c <= c2; c++)
+                {
+                    var colObj = ws.Column(c);
+                    double wAntes = colObj.Width;
+                    string wAntesTexto = wAntes.ToString("0.##", CultureInfo.GetCultureInfo("pt-BR"));
+                    string depois;
+
+                    if (wProp.ValueKind == JsonValueKind.Number && wProp.TryGetDouble(out double wNova))
+                    {
+                        colObj.Width = wNova;
+                        depois = wNova.ToString("0.0", CultureInfo.GetCultureInfo("pt-BR"));
+                    }
+                    else if (wProp.ValueKind == JsonValueKind.String && wProp.GetString() == "auto")
+                    {
+                        colObj.AdjustToContents();
+                        if (colObj.Width > 60)
+                        {
+                            colObj.Width = 60;
+                            colObj.Style.Alignment.WrapText = true;
+                            depois = "60,0 · ajustada ao texto · quebra o texto na célula";
+                        }
+                        else
+                        {
+                            depois = colObj.Width.ToString("0.0", CultureInfo.GetCultureInfo("pt-BR")) + " · ajustada ao texto";
+                        }
+                    }
+                    else
+                    {
+                        throw new ErroDeDocumento($"operação {i}: 'width' precisa ser número ou 'auto'.");
+                    }
+
+                    colunasModificadas.Add((c, wAntesTexto, depois));
+                }
+
+                // Agrupa colunas contíguas que ficaram com mesma largura de antes e depois
+                int inicio = 0;
+                while (inicio < colunasModificadas.Count)
+                {
+                    int fim = inicio;
+                    while (fim + 1 < colunasModificadas.Count &&
+                           colunasModificadas[fim + 1].Antes == colunasModificadas[inicio].Antes &&
+                           colunasModificadas[fim + 1].Depois == colunasModificadas[inicio].Depois)
+                    {
+                        fim++;
+                    }
+
+                    string onde = inicio == fim
+                        ? $"Coluna {Grade.Letra(colunasModificadas[inicio].Col)}"
+                        : $"Colunas {Grade.Letra(colunasModificadas[inicio].Col)}:{Grade.Letra(colunasModificadas[fim].Col)}";
+
+                    formatacoes.Add(new Mudanca(TipoDeMudanca.Valor, onde, colunasModificadas[inicio].Antes, colunasModificadas[inicio].Depois));
+                    inicio = fim + 1;
+                }
+
+                colunasAjustadas += (c2 - c1 + 1);
+            }
+            else if (op.TryGetProperty("freeze", out var frzProp))
+            {
+                string frz = frzProp.GetString() ?? throw new ErroDeDocumento($"operação {i}: 'freeze' precisa ser 'B2' ou 'none'.");
+                int rAntes = ws.SheetView.SplitRow;
+                int cAntes = ws.SheetView.SplitColumn;
+                string painelAntes = DescreverPainel(rAntes, cAntes);
+                string depois;
+
+                if (frz.Equals("none", StringComparison.OrdinalIgnoreCase))
+                {
+                    ws.SheetView.Freeze(0, 0);
+                    depois = "nada congelado";
+                }
+                else
+                {
+                    var (l, c) = Apresentacao.Ponto(frz.Replace("$", ""), frz);
+                    if (l == null || c == null) throw new ErroDeDocumento($"operação {i}: 'freeze' precisa de célula (ex.: 'B2') ou 'none'.");
+                    int rNovo = Math.Max(0, l.Value - 1);
+                    int cNovo = Math.Max(0, c.Value - 1);
+                    ws.SheetView.Freeze(rNovo, cNovo);
+                    depois = DescreverPainel(rNovo, cNovo);
+                }
+
+                formatacoes.Add(new Mudanca(TipoDeMudanca.Valor, "Painel", painelAntes, depois));
+                painelAlterado = true;
+            }
+            else if (op.TryGetProperty("clear_conditional", out var clrProp))
+            {
+                string faixaLimpar = clrProp.GetString() ?? throw new ErroDeDocumento($"operação {i}: 'clear_conditional' precisa de uma faixa (ex.: 'D2:D41').");
+                var r = Faixa(ws, faixaLimpar, i);
+                var removidos = ws.ConditionalFormats
+                    .Where(cf => cf.Ranges.Any(x => x.Intersects(r)) || cf.Range.Intersects(r))
+                    .ToList();
+
+                if (removidos.Count == 0)
+                    throw new ErroDeDocumento($"operação {i}: nenhuma regra de formatação condicional em {faixaLimpar}.");
+
+                foreach (var cf in removidos)
+                {
+                    string onde = cf.Range?.RangeAddress.ToString() ?? faixaLimpar;
+                    string regraAntes = CondicionalDePlanilha.DescreverRegra(cf);
+                    formatacoes.Add(new Mudanca(TipoDeMudanca.Sai, onde, regraAntes, null));
+                    ws.ConditionalFormats.Remove(x => ReferenceEquals(x, cf));
+                    regrasRemovidas++;
+                }
             }
             else if (op.TryGetProperty("insert_rows", out var ins))
             {
@@ -129,18 +317,25 @@ public static class EditorDePlanilha
             }
             else
             {
-                throw new ErroDeDocumento($"operação {i} desconhecida. Use cell, range, insert_rows, delete_rows, add_sheet ou rename_sheet.");
+                throw new ErroDeDocumento($"operação {i} desconhecida. Use cell, range, insert_rows, delete_rows, add_sheet, rename_sheet, columns, freeze ou clear_conditional.");
             }
         }
 
-        if (formato != Formato.Csv) Recalcular(wb);
+        bool temValores = mudancas.Count > 0 || grupos.Count > 0 || entram.Count > 0 || saem.Count > 0 || outras.Count > 0;
+        bool soAparencia = !temValores && formatacoes.Count > 0;
+
+        if (formato != Formato.Csv && !soAparencia) Recalcular(wb);
 
         // ── o plano ──
         var lista = new List<Mudanca>();
         var contagens = new List<string>();
         int total = mudancas.Count + grupos.Sum(g => g.Celulas.Count);
-        bool resumir = total + entram.Count + saem.Count + outras.Count > PlanoDeGravacao.Visiveis;
+        bool resumir = total + formatacoes.Count + entram.Count + saem.Count + outras.Count > PlanoDeGravacao.Visiveis;
         int proximoGrupo = 1;
+        bool misto = temValores && formatacoes.Count > 0;
+
+        if (misto)
+            lista.Add(new Mudanca(TipoDeMudanca.Grupo, "Valores", null, null));
 
         foreach (var (aba, l, c, ant) in mudancas.Take(PlanoDeGravacao.Visiveis))
         {
@@ -194,6 +389,24 @@ public static class EditorDePlanilha
             }
         }
 
+        if (misto)
+            lista.Add(new Mudanca(TipoDeMudanca.Grupo, "Formatação", null, null));
+
+        if (formatacoes.Count <= PlanoDeGravacao.Visiveis)
+        {
+            lista.AddRange(formatacoes);
+        }
+        else
+        {
+            int grupo = proximoGrupo++;
+            lista.AddRange(formatacoes.Take(PlanoDeGravacao.Visiveis));
+            lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {formatacoes.Count - PlanoDeGravacao.Visiveis} formatações", null, null, Grupo: grupo, Extra: false));
+            foreach (var f in formatacoes.Skip(PlanoDeGravacao.Visiveis).Take(PlanoDeGravacao.NoCartao - PlanoDeGravacao.Visiveis))
+                lista.Add(f with { Grupo = grupo, Extra = true });
+            if (formatacoes.Count > PlanoDeGravacao.NoCartao)
+                lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {formatacoes.Count - PlanoDeGravacao.NoCartao} não cabem no cartão; a lista inteira fica no histórico de ações", null, null, Grupo: 0, Extra: true));
+        }
+
         lista.AddRange(saem.Take(PlanoDeGravacao.Visiveis));
         if (saem.Count > PlanoDeGravacao.Visiveis)
         {
@@ -218,45 +431,116 @@ public static class EditorDePlanilha
         lista.AddRange(outras);
 
         var avisos = new List<string>();
+        if (!soAparencia)
+        {
+            var motivos = new List<string>();
+            if (total > CelulasDeEdicaoPesada) motivos.Add($"{total:N0} células de uma vez");
+            if (antes.Count > FormulasDeEdicaoPesada) motivos.Add($"{antes.Count:N0} fórmulas recalculadas");
+            bool pesada = motivos.Count > 0;
+            if (pesada)
+                avisos.Add($"EDIÇÃO PESADA E LENTA ({string.Join(", ", motivos)}). "
+                           + "Preparar este cartão já demorou, e gravar vai demorar de novo — pode levar minutos.");
+            foreach (var (onde, formula) in FormulasComRef(wb).Where(f => !refsAntes.ContainsKey(f.Key)).Take(5))
+                avisos.Add($"A fórmula de {onde} vai dar #REF! (=" + Apresentacao.Curto(formula, 80) + "): ela apontava para uma linha apagada.");
+        }
 
-        // Sem o tempo medido no texto: o plano é refeito na gravação e comparado com o do
-        // cartão, e um número de segundos nunca sairia igual duas vezes.
-        var motivos = new List<string>();
-        if (total > CelulasDeEdicaoPesada) motivos.Add($"{total:N0} células de uma vez");
-        if (antes.Count > FormulasDeEdicaoPesada) motivos.Add($"{antes.Count:N0} fórmulas recalculadas");
-        bool pesada = motivos.Count > 0;
-        if (pesada)
-            avisos.Add($"EDIÇÃO PESADA E LENTA ({string.Join(", ", motivos)}). "
-                       + "Preparar este cartão já demorou, e gravar vai demorar de novo — pode levar minutos.");
-        foreach (var (onde, formula) in FormulasComRef(wb).Where(f => !refsAntes.ContainsKey(f.Key)).Take(5))
-            avisos.Add($"A fórmula de {onde} vai dar #REF! (=" + Apresentacao.Curto(formula, 80) + "): ela apontava para uma linha apagada.");
+        List<string> efeitos;
+        if (soAparencia)
+        {
+            // Só quando a edição mexe em regras: aí as que ficam são o contexto do que muda
+            // ("nada some sem você ver"). Negritar um cabeçalho não precisa listar regra nenhuma.
+            efeitos = new List<string>();
+            foreach (var abaNome in regrasCriadas + regrasRemovidas > 0 ? abasTocadas : new List<string>())
+            {
+                var wsAba = wb.Worksheet(abaNome);
+                var continuam = wsAba.ConditionalFormats.Where(cf => !regrasTocadas.Contains(cf)).ToList();
+                if (continuam.Count == 1)
+                {
+                    var cf = continuam[0];
+                    efeitos.Add($"Continua: 1 regra que já existia ({cf.Range.RangeAddress}, {CondicionalDePlanilha.DescreverRegra(cf)}).");
+                }
+                else if (continuam.Count > 1)
+                {
+                    efeitos.Add($"Continuam: {continuam.Count} regras que já existiam ({string.Join("; ", continuam.Select(c => $"{c.Range.RangeAddress}, {CondicionalDePlanilha.DescreverRegra(c)}"))}).");
+                }
+            }
+        }
+        else
+        {
+            efeitos = estrutural || formato == Formato.Csv ? new List<string>() : Efeitos(wb, antes, mudancas, grupos);
+        }
 
-        var efeitos = estrutural || formato == Formato.Csv ? new List<string>() : Efeitos(wb, antes, mudancas, grupos);
-
-        string abaTexto = string.Join(", ", mudancas.Select(m => m.Aba).Concat(grupos.Select(g => g.Aba)).Distinct().Select(a => $"\"{a}\""));
+        string abaTexto = string.Join(", ", abasTocadas.Select(a => $"\"{a}\""));
         var partes = new List<string>();
         if (total > 0) partes.Add(total == 1 ? "1 célula" : $"{total} células");
         if (saem.Count > 0) partes.Add(saem.Count == 1 ? "apagar 1 linha" : $"apagar {saem.Count} linhas");
         if (entram.Count > 0) partes.Add(entram.Count == 1 ? "inserir 1 linha" : $"inserir {entram.Count} linhas");
         partes.AddRange(outras.Select(o => o.Onde));
 
-        string titulo = saem.Count > 0 || entram.Count > 0
-            ? Primeira(string.Join(" e ", partes.Where(p => !p.EndsWith("células") && !p.EndsWith("célula")))) + " nesta planilha?"
-            : total > 0 ? $"Gravar {(total == 1 ? "1 célula" : $"{total} células")} nesta planilha?"
-            : "Mudar esta planilha?";
+        string titulo;
+        string consequencia;
+        string resumo;
 
-        string consequencia = (pesada ? "Edição massiva: recalcular e gravar esta planilha é muito lento. " : "") + (saem.Count > 0 || entram.Count > 0
-                ? "As linhas abaixo se deslocam. Fórmulas que apontam para linhas apagadas passam a dar #REF!. "
-                : "Os valores atuais são substituídos. ")
-            + (formato == Formato.Csv ? "" : "A planilha não pode estar aberta no Excel.");
+        if (soAparencia)
+        {
+            if (faixasFormatadas > 0 && colunasAjustadas == 0 && !painelAlterado && regrasCriadas == 0 && regrasRemovidas == 0)
+                titulo = faixasFormatadas == 1 ? "Formatar 1 faixa nesta planilha?" : $"Formatar {faixasFormatadas} faixas nesta planilha?";
+            else if (colunasAjustadas > 0 && faixasFormatadas == 0 && !painelAlterado && regrasCriadas == 0 && regrasRemovidas == 0)
+                titulo = colunasAjustadas == 1 ? "Ajustar 1 coluna nesta planilha?" : $"Ajustar {colunasAjustadas} colunas nesta planilha?";
+            else if (painelAlterado && faixasFormatadas == 0 && colunasAjustadas == 0 && regrasCriadas == 0 && regrasRemovidas == 0)
+                titulo = "Congelar o painel nesta planilha?";
+            else if (regrasCriadas > 0 && faixasFormatadas == 0 && colunasAjustadas == 0 && !painelAlterado && regrasRemovidas == 0)
+                titulo = regrasCriadas == 1 ? "Criar 1 regra de formatação condicional nesta planilha?" : $"Criar {regrasCriadas} regras de formatação condicional nesta planilha?";
+            else if (regrasRemovidas > 0 && faixasFormatadas == 0 && colunasAjustadas == 0 && !painelAlterado && regrasCriadas == 0)
+                titulo = "Remover regras de formatação condicional nesta planilha?";
+            else if (colunasAjustadas > 0 && painelAlterado && faixasFormatadas == 0 && regrasCriadas == 0 && regrasRemovidas == 0)
+                titulo = $"Ajustar {colunasAjustadas} coluna{(colunasAjustadas > 1 ? "s" : "")} e congelar o painel?";
+            else
+                titulo = "Formatar esta planilha?";
+
+            consequencia = "Nenhum valor muda; só a aparência das células. A planilha não pode estar aberta no Excel.";
+
+            var partesResumo = new List<string>();
+            if (celulasFormatadasTotal > 0 && faixasFormatadas > 0)
+                partesResumo.Add($"{celulasFormatadasTotal} célula{(celulasFormatadasTotal > 1 ? "s" : "")} em {faixasFormatadas} faixa{(faixasFormatadas > 1 ? "s" : "")}");
+            if (colunasAjustadas > 0)
+                partesResumo.Add($"{colunasAjustadas} coluna{(colunasAjustadas > 1 ? "s" : "")}");
+            if (painelAlterado)
+                partesResumo.Add("painel");
+            if (regrasCriadas > 0)
+                partesResumo.Add($"{regrasCriadas} regra{(regrasCriadas > 1 ? "s" : "")} condicional{(regrasCriadas > 1 ? "s" : "")}");
+            if (regrasRemovidas > 0)
+                partesResumo.Add($"{regrasRemovidas} regra{(regrasRemovidas > 1 ? "s" : "")} removida{(regrasRemovidas > 1 ? "s" : "")}");
+
+            resumo = (abaTexto.Length > 0 ? $"aba {abaTexto} · " : "") + string.Join(" · ", partesResumo);
+        }
+        else
+        {
+            titulo = saem.Count > 0 || entram.Count > 0
+                ? Primeira(string.Join(" e ", partes.Where(p => !p.EndsWith("células") && !p.EndsWith("célula")))) + " nesta planilha?"
+                : total > 0 ? $"Gravar {(total == 1 ? "1 célula" : $"{total} células")} nesta planilha?"
+                : "Mudar esta planilha?";
+
+            if (faixasFormatadas > 0)
+                titulo = titulo.TrimEnd('?') + $" e formatar {faixasFormatadas} faixa{(faixasFormatadas > 1 ? "s" : "")}?";
+
+            bool pesada = total > CelulasDeEdicaoPesada || antes.Count > FormulasDeEdicaoPesada;
+            consequencia = (pesada ? "Edição massiva: recalcular e gravar esta planilha é muito lento. " : "") + (saem.Count > 0 || entram.Count > 0
+                    ? "As linhas abaixo se deslocam. Fórmulas que apontam para linhas apagadas passam a dar #REF!. "
+                    : "Os valores atuais são substituídos. ")
+                + (formato == Formato.Csv ? "" : "A planilha não pode estar aberta no Excel.");
+
+            resumo = (abaTexto.Length > 0 ? $"aba {abaTexto} · " : "") + string.Join(" · ", partes);
+        }
 
         var plano = new PlanoDeGravacao
         {
             Arquivo = Path.GetFullPath(caminho),
             Criar = false,
+            SoAparencia = soAparencia,
             Titulo = titulo,
             Consequencia = consequencia.Trim(),
-            Resumo = (abaTexto.Length > 0 ? $"aba {abaTexto} · " : "") + string.Join(" · ", partes),
+            Resumo = resumo,
             Contagens = resumir ? contagens : new List<string>(),
             Mudancas = lista,
             Efeitos = efeitos,
@@ -265,7 +549,49 @@ public static class EditorDePlanilha
             Impressao = impressao
         };
 
-        return new GravacaoDePlanilha(plano, wb, csv, $"{string.Join(", ", partes)} gravado(s)");
+        string resultadoMensagem = soAparencia
+            ? "formatação gravada"
+            : $"{string.Join(", ", partes)} gravado(s)";
+
+        return new GravacaoDePlanilha(plano, wb, csv, resultadoMensagem);
+    }
+
+    private static (int C1, int C2) ParseColunas(string colsStr, int opIndex)
+    {
+        var partes = colsStr.Trim().Split(':');
+        if (partes.Length == 1)
+        {
+            int col = Grade.Coluna(partes[0].Trim());
+            if (col < 1) throw new ErroDeDocumento($"operação {opIndex}: coluna inválida '{colsStr}'.");
+            return (col, col);
+        }
+        if (partes.Length == 2)
+        {
+            int c1 = Grade.Coluna(partes[0].Trim());
+            int c2 = Grade.Coluna(partes[1].Trim());
+            if (c1 < 1 || c2 < 1) throw new ErroDeDocumento($"operação {opIndex}: colunas inválidas '{colsStr}'.");
+            return (Math.Min(c1, c2), Math.Max(c1, c2));
+        }
+        throw new ErroDeDocumento($"operação {opIndex}: 'columns' deve ser 'A' ou 'A:F'.");
+    }
+
+    private static string DescreverPainel(int r, int c)
+    {
+        if (r <= 0 && c <= 0) return "nada congelado";
+        string rTxt = r switch
+        {
+            <= 0 => "",
+            1 => "linha 1",
+            _ => $"linhas 1 a {r}"
+        };
+        string cTxt = c switch
+        {
+            <= 0 => "",
+            1 => "coluna A",
+            _ => $"colunas A a {Grade.Letra(c)}"
+        };
+        if (r > 0 && c > 0) return $"{rTxt} e {cTxt}";
+        return r > 0 ? rTxt : cTxt;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

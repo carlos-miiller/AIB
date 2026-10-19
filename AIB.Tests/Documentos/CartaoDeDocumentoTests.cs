@@ -77,6 +77,60 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void SoFormatacao_ELaranja_EDesenhaAAmostraComADescricao()
+        {
+            // Mockup "Formatação de planilhas do AIB" (19/10/2026): "fundo amarelo claro" não diz
+            // se é o amarelo que a pessoa quer; a célula desenhada diz. E formatar não perde valor
+            // nenhum — o usuário escolheu laranja, não o vermelho da edição.
+            ConfirmCardView.RiscoDe(Ferramentas.Documento, @"FORMATAR C:\docs\Custos.xlsx", false)
+                .Should().Be((ConfirmCardView.Risco.Cuidado, "Muda a formatação"));
+
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var plano = new PlanoDeGravacao
+                {
+                    Arquivo = @"C:\temp\Custos.xlsx",
+                    SoAparencia = true,
+                    Titulo = "Formatar 1 faixa nesta planilha?",
+                    Mudancas = new List<Mudanca>
+                    {
+                        new(TipoDeMudanca.Valor, "A1:F1 · 6 células", "normal", "negrito · fundo amarelo claro",
+                            AmostraAntes: new Aparencia("Fornecedor"),
+                            AmostraDepois: new Aparencia("Fornecedor", Negrito: true, Fundo: "#FFF2CC",
+                                                         Alinhamento: "center", Bordas: Bordas.Baixo))
+                    }
+                };
+
+                var card = new ConfirmCardView();
+                card.Preencher(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Documento,
+                    Command = @"FORMATAR C:\temp\Custos.xlsx",
+                    ScriptBody = plano.EmTexto(),
+                    Plano = plano,
+                    SemSempre = true
+                });
+                card.ParaFlutuante();
+
+                card.Pintado.Should().Be(ConfirmCardView.Risco.Cuidado);
+                var tabela = (Grid)card.FindName("PlanoTabela");
+                var colunas = tabela.Children.OfType<StackPanel>().ToList();
+                colunas.Should().HaveCount(2, "antes e depois viram amostra + descrição");
+
+                var depois = colunas[1];
+                ((TextBlock)depois.Children[1]).Text.Should().Be("negrito · fundo amarelo claro");
+                var celula = (TextBlock)((Border)((Border)depois.Children[0]).Child).Child;
+                celula.Text.Should().Be("Fornecedor");
+                celula.FontWeight.Should().Be(FontWeights.Bold);
+                celula.TextAlignment.Should().Be(TextAlignment.Center);
+                var fundo = (System.Windows.Media.SolidColorBrush)((Border)((Border)depois.Children[0]).Child).Background;
+                fundo.Color.Should().Be(System.Windows.Media.Color.FromRgb(0xFF, 0xF2, 0xCC));
+            });
+        }
+
+        [Fact]
         public void ACriacao_ELaranja_EMostraAPrevia()
         {
             WpfHost.EmSta(() =>

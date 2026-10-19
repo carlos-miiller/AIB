@@ -308,6 +308,10 @@ primeiras linhas). Mockup "Edição de documentos do AIB", 19/10/2026.
 Linha "+ N … · mostrar" (lilás, mão, sublinhado no hover) revela as `Extra` do grupo e troca por
 "mostrar menos" no fim (`AlternarGrupo`/`Expandido`). Rolagem com altura máxima em tudo: tabela
 240, efeitos e avisos 96, alvo 160.
+Formatação (mockup "Formatação de planilhas do AIB"): `Mudanca.AmostraAntes/AmostraDepois`
+desenham a célula como o Excel a mostra (`Amostra`: fundo e grade pelos tokens `Celula*`, iguais
+nos dois temas porque retratam o arquivo; cores, negrito, alinhamento, bordas e escala vindos do
+arquivo), com a descrição em palavras embaixo. Comando `FORMATAR` → laranja "Muda a formatação".
 
 Regras que o código garante: o foco nasce em "Recusar" (Enter sem ler não executa nada); a
 resposta é negativa por omissão (`Descartar` devolve recusa); decidir trava os botões.
