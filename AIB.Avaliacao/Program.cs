@@ -165,6 +165,16 @@ var casos = new List<Caso>
         r => r.ChamouCom("doc", "Custos TI 2026.xlsx") && !r.Chamou("shell") && !r.Chamou("write")
             ? Passou() : Falhou("devia chamar doc (edit, ou info/read antes) — não write nem shell")),
 
+    // Formatação (19/10/2026): o erro é ir ao shell (COM do Excel, como a Ellen fez no
+    // inventário do CMDB para pôr moeda numa coluna) em vez do 'edit' com style.
+    new("planilha-formatar", $@"na planilha {home}\Documents\Custos TI 2026.xlsx, aba Outubro, deixe o cabeçalho A1:F1 em negrito com fundo cinza claro",
+        r => r.ChamouCom("doc", "Custos TI 2026.xlsx") && !r.Chamou("shell") && !r.Chamou("write")
+            ? Passou() : Falhou("devia chamar doc (edit com style, ou info antes) — não shell")),
+
+    new("planilha-moeda", $@"formate a coluna C da planilha {home}\Documents\Custos TI 2026.xlsx como moeda",
+        r => r.ChamouCom("doc", "Custos TI 2026.xlsx") && !r.Chamou("shell") && !r.Chamou("write")
+            ? Passou() : Falhou("devia chamar doc (edit com number_format, ou info antes) — não shell")),
+
     new("word", $@"resuma o documento {home}\Documents\Proposta Google Workspace.docx",
         r => r.ChamouCom("doc", "Proposta Google Workspace.docx") && !r.Chamou("read")
             ? Passou() : Falhou("devia chamar doc com o caminho do .docx")),
