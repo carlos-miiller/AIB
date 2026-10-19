@@ -695,7 +695,9 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
      de 20 mil fórmulas ou 10 mil células editadas, a edição é **pesada**: aviso "EDIÇÃO PESADA E
      LENTA" e consequência "Edição massiva…" no cartão (decisão do usuário: calcular sempre e dizer
      quando é lento). Sem tempo medido no texto: o plano é refeito e comparado na gravação.
-     No Word, trecho antes e depois, ¶ e seção. Até 12 mudanças; o resto é resumido.
+     No Word, trecho antes e depois, ¶ e seção. O plano leva até 100 mudanças por bloco
+     (`PlanoDeGravacao.NoCartao`): 12 à vista (3 num grupo de faixa), o resto `Extra` atrás do link
+     "+ N … · mostrar"; acima de 100, "não cabem no cartão" e a lista inteira fica no histórico.
   4. O cartão (`ConfirmCardView.Plano.cs`) desenha o plano; `ScriptBody` guarda a versão em texto
      para o histórico. Vermelho ("Edita o arquivo original") ao mexer no que existe; laranja
      ("Cria um arquivo") no arquivo novo e na edição de Word ("Sugere alterações"). Sem "sempre

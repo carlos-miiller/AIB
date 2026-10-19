@@ -62,8 +62,13 @@ public static class EditorDeDocx
         var lista = todas.Take(PlanoDeGravacao.Visiveis).ToList();
         if (n > lista.Count)
         {
+            int grupo = 1;
             int resto = n - lista.Count;
-            lista.Add(new Mudanca(TipoDeMudanca.Mais, resto == 1 ? "+ 1 alteração" : $"+ {resto} alterações", null, null));
+            lista.Add(new Mudanca(TipoDeMudanca.Mais, resto == 1 ? "+ 1 alteração" : $"+ {resto} alterações", null, null, Grupo: grupo, Extra: false));
+            foreach (var m in todas.Skip(PlanoDeGravacao.Visiveis).Take(PlanoDeGravacao.NoCartao - PlanoDeGravacao.Visiveis))
+                lista.Add(m with { Grupo = grupo, Extra = true });
+            if (n > PlanoDeGravacao.NoCartao)
+                lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {n - PlanoDeGravacao.NoCartao} não cabem no cartão; a lista inteira fica no histórico de ações", null, null, Grupo: 0, Extra: true));
         }
 
         string resumo = n == 1 ? "1 trecho" : $"{n} trechos";

@@ -604,4 +604,29 @@ public sealed class WordPdfTests : IDisposable
 
         acao.Should().Throw<ErroDeDocumento>().WithMessage("*blocks*");
     }
+
+    [Fact]
+    public void OEditorDeDocx_Com20Trocas_Gera12Normais_E8Extras()
+    {
+        var ps = Enumerable.Range(1, 20).Select(i => P($"Item-{i:00}")).ToArray();
+        string caminho = Docx("vinte.docx", ps);
+
+        var ops = Enumerable.Range(1, 20)
+            .Select(i => $"{{\"replace\":\"Item-{i:00}\",\"with\":\"Novo-{i:00}\"}}");
+        string json = "[" + string.Join(",", ops) + "]";
+
+        var g = EditorDeDocx.Planejar(caminho, Json(json), "Ana");
+        var p = g.Plano;
+
+        p.Mudancas.Where(m => !m.Extra && m.Tipo == TipoDeMudanca.Valor).Should().HaveCount(12);
+        p.Mudancas.Where(m => m.Extra && m.Tipo == TipoDeMudanca.Valor).Should().HaveCount(8);
+        var mais = p.Mudancas.Single(m => m.Tipo == TipoDeMudanca.Mais && m.Grupo > 0);
+        mais.Onde.Should().Be("+ 8 alterações");
+        mais.Extra.Should().BeFalse();
+
+        // Determinismo do EmTexto
+        string t1 = p.EmTexto();
+        string t2 = EditorDeDocx.Planejar(caminho, Json(json), "Ana").Plano.EmTexto();
+        t1.Should().Be(t2);
+    }
 }

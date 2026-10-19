@@ -128,13 +128,19 @@
                         Background="{StaticResource SurfaceCodeBrush}"
                         CornerRadius="{StaticResource RadiusCard}"
                         Padding="0,4" Margin="0,8,0,0">
-                    <ScrollViewer MaxHeight="210" VerticalScrollBarVisibility="Auto"
+                    <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                         <Grid x:Name="PlanoTabela" Margin="10,0"/>
                     </ScrollViewer>
                 </Border>
-                <StackPanel x:Name="PlanoEfeitos" Margin="0,8,0,0" Visibility="Collapsed"/>
-                <StackPanel x:Name="PlanoAvisos" Visibility="Collapsed"/>
+                <ScrollViewer x:Name="PlanoEfeitosScroll" MaxHeight="96" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" Visibility="Collapsed" Margin="0,8,0,0">
+                    <StackPanel x:Name="PlanoEfeitos"/>
+                </ScrollViewer>
+                <ScrollViewer x:Name="PlanoAvisosScroll" MaxHeight="96" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" Visibility="Collapsed">
+                    <StackPanel x:Name="PlanoAvisos"/>
+                </ScrollViewer>
                 <TextBlock x:Name="PlanoCopiaText" Visibility="Collapsed"
                            FontSize="11.5" Foreground="{StaticResource SuccessBrush}"
                            TextWrapping="Wrap" Margin="0,9,0,0"/>

@@ -30,7 +30,9 @@ public enum TipoDeMudanca
 /// <param name="Antes">Null quando não havia nada (célula vazia, linha nova).</param>
 /// <param name="Depois">Null quando sai. Fórmula vem com o resultado: "=C15*12 → 7.680,00".</param>
 /// <param name="Erro">O depois é um erro de fórmula (#N/D, #REF!): o cartão pinta de vermelho.</param>
-public sealed record Mudanca(TipoDeMudanca Tipo, string Onde, string? Antes, string? Depois, bool Erro = false);
+/// <param name="Grupo">Grupo de expansão no cartão (1, 2, 3...). 0 quando não agrupado.</param>
+/// <param name="Extra">Linha escondida inicialmente no cartão, revelada ao expandir o Grupo.</param>
+public sealed record Mudanca(TipoDeMudanca Tipo, string Onde, string? Antes, string? Depois, bool Erro = false, int Grupo = 0, bool Extra = false);
 
 /// <summary>
 /// O que uma gravação de documento VAI fazer, calculado antes de o cartão aparecer.
@@ -45,6 +47,9 @@ public sealed class PlanoDeGravacao
 {
     /// <summary>Quantas mudanças o cartão mostra antes de resumir.</summary>
     public const int Visiveis = 12;
+
+    /// <summary>Limite de mudanças mostradas no cartão por bloco, contando extras.</summary>
+    public const int NoCartao = 100;
 
     /// <summary>Caminho absoluto do arquivo.</summary>
     public string Arquivo { get; init; } = "";

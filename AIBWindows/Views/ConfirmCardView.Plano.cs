@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using AIB.Services.Documentos;
 using AIB.Ui;
 
@@ -15,9 +17,51 @@ namespace AIB.Views;
 /// </summary>
 public partial class ConfirmCardView
 {
+    private readonly HashSet<int> _gruposExpandidos = new();
+    private readonly Dictionary<int, List<UIElement>> _extrasPorGrupo = new();
+    private readonly Dictionary<int, UIElement> _linkMostrarPorGrupo = new();
+    private readonly Dictionary<int, UIElement> _linkMenosPorGrupo = new();
+
+    public bool Expandido(int grupo) => _gruposExpandidos.Contains(grupo);
+
+    public void AlternarGrupo(int grupo)
+    {
+        if (_gruposExpandidos.Contains(grupo))
+        {
+            _gruposExpandidos.Remove(grupo);
+            if (_linkMostrarPorGrupo.TryGetValue(grupo, out var linkMostrar))
+                linkMostrar.Visibility = Visibility.Visible;
+            if (_extrasPorGrupo.TryGetValue(grupo, out var extras))
+            {
+                foreach (var el in extras)
+                    el.Visibility = Visibility.Collapsed;
+            }
+            if (_linkMenosPorGrupo.TryGetValue(grupo, out var linkMenos))
+                linkMenos.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            _gruposExpandidos.Add(grupo);
+            if (_linkMostrarPorGrupo.TryGetValue(grupo, out var linkMostrar))
+                linkMostrar.Visibility = Visibility.Collapsed;
+            if (_extrasPorGrupo.TryGetValue(grupo, out var extras))
+            {
+                foreach (var el in extras)
+                    el.Visibility = Visibility.Visible;
+            }
+            if (_linkMenosPorGrupo.TryGetValue(grupo, out var linkMenos))
+                linkMenos.Visibility = Visibility.Visible;
+        }
+    }
+
     /// <summary>Desenha o plano. Chamado pelo <see cref="Preencher"/> quando há um.</summary>
     private void MostrarPlano(PlanoDeGravacao plano)
     {
+        _gruposExpandidos.Clear();
+        _extrasPorGrupo.Clear();
+        _linkMostrarPorGrupo.Clear();
+        _linkMenosPorGrupo.Clear();
+
         PlanoPanel.Visibility = Visibility.Visible;
         PlanoResumoText.Text = plano.Resumo;
         PlanoResumoText.Visibility = plano.Resumo.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -39,6 +83,7 @@ public partial class ConfirmCardView
 
         if (plano.Efeitos.Count > 0)
         {
+            PlanoEfeitosScroll.Visibility = Visibility.Visible;
             PlanoEfeitos.Visibility = Visibility.Visible;
             PlanoEfeitos.Children.Add(Linha("Efeito nas fórmulas que já existem:", "TextSecondaryBrush"));
             foreach (var e in plano.Efeitos) PlanoEfeitos.Children.Add(Linha(e, "AccentBlueBrush", mono: true));
@@ -46,6 +91,7 @@ public partial class ConfirmCardView
 
         if (plano.Avisos.Count > 0)
         {
+            PlanoAvisosScroll.Visibility = Visibility.Visible;
             PlanoAvisos.Visibility = Visibility.Visible;
             foreach (var a in plano.Avisos)
             {
@@ -79,37 +125,109 @@ public partial class ConfirmCardView
         Cabecalho("ANTES", 1);
         Cabecalho("DEPOIS", 2);
 
+        int grupoAtual = 0;
+
+        List<UIElement> ObterExtras(int gId)
+        {
+            if (!_extrasPorGrupo.TryGetValue(gId, out var lista))
+            {
+                lista = new List<UIElement>();
+                _extrasPorGrupo[gId] = lista;
+            }
+            return lista;
+        }
+
+        void FecharGrupoSeAberto()
+        {
+            if (grupoAtual > 0)
+            {
+                int gId = grupoAtual;
+                linha++;
+                Nova();
+                var b = CriarLink("mostrar menos", gId, centro: true);
+                b.Visibility = Visibility.Collapsed;
+                Grid.SetRow(b, linha);
+                Grid.SetColumnSpan(b, 3);
+                g.Children.Add(b);
+                _linkMenosPorGrupo[gId] = b;
+                grupoAtual = 0;
+            }
+        }
+
         foreach (var m in plano.Mudancas)
         {
+            if (!m.Extra && !(m.Tipo == TipoDeMudanca.Mais && m.Grupo > 0) && grupoAtual > 0)
+            {
+                FecharGrupoSeAberto();
+            }
+
             linha++;
             Nova();
 
             switch (m.Tipo)
             {
                 case TipoDeMudanca.Grupo:
+                    FecharGrupoSeAberto();
                     Inteira(m.Onde, "TextStrongBrush", FontWeights.SemiBold, null);
                     break;
 
+                case TipoDeMudanca.Mais when m.Grupo > 0:
+                    FecharGrupoSeAberto();
+                    grupoAtual = m.Grupo;
+                    var linkMostrar = CriarLink($"{m.Onde} · mostrar", m.Grupo, centro: true);
+                    Grid.SetRow(linkMostrar, linha);
+                    Grid.SetColumnSpan(linkMostrar, 3);
+                    g.Children.Add(linkMostrar);
+                    _linkMostrarPorGrupo[m.Grupo] = linkMostrar;
+                    break;
+
                 case TipoDeMudanca.Mais:
-                    Inteira(m.Onde, "TextMutedBrush", FontWeights.Normal, null, centro: true);
+                    var bMais = Inteira(m.Onde, "TextMutedBrush", FontWeights.Normal, null, centro: true);
+                    if (m.Extra)
+                    {
+                        bMais.Visibility = Visibility.Collapsed;
+                        ObterExtras(m.Grupo > 0 ? m.Grupo : grupoAtual).Add(bMais);
+                    }
                     break;
 
                 case TipoDeMudanca.Sai:
-                    Inteira("− " + m.Onde + "   " + m.Antes, "DangerTextBrush", FontWeights.Normal, "DangerFill12Brush", mono: true);
+                    var bSai = Inteira("− " + m.Onde + "   " + m.Antes, "DangerTextBrush", FontWeights.Normal, "DangerFill12Brush", mono: true);
+                    if (m.Extra)
+                    {
+                        bSai.Visibility = Visibility.Collapsed;
+                        ObterExtras(m.Grupo > 0 ? m.Grupo : grupoAtual).Add(bSai);
+                    }
                     break;
 
                 case TipoDeMudanca.Entra:
-                    Inteira("+ " + m.Onde + "   " + m.Depois, "SuccessBrush", FontWeights.Normal, "SuccessFill10Brush", mono: true);
+                    var bEntra = Inteira("+ " + m.Onde + "   " + m.Depois, "SuccessBrush", FontWeights.Normal, "SuccessFill10Brush", mono: true);
+                    if (m.Extra)
+                    {
+                        bEntra.Visibility = Visibility.Collapsed;
+                        ObterExtras(m.Grupo > 0 ? m.Grupo : grupoAtual).Add(bEntra);
+                    }
                     break;
 
                 default:
-                    Celula(m.Onde, 0, "TextSecondaryBrush");
-                    Celula(m.Antes ?? "vazia", 1, m.Antes == null ? "TextMutedBrush" : "DangerTextBrush", italico: m.Antes == null);
-                    Celula(m.Depois ?? "vazia", 2, m.Depois == null ? "TextMutedBrush" : m.Erro ? "DangerTextBrush" : "SuccessBrush",
+                    var t0 = Celula(m.Onde, 0, "TextSecondaryBrush");
+                    var t1 = Celula(m.Antes ?? "vazia", 1, m.Antes == null ? "TextMutedBrush" : "DangerTextBrush", italico: m.Antes == null);
+                    var t2 = Celula(m.Depois ?? "vazia", 2, m.Depois == null ? "TextMutedBrush" : m.Erro ? "DangerTextBrush" : "SuccessBrush",
                            italico: m.Depois == null);
+                    if (m.Extra)
+                    {
+                        t0.Visibility = Visibility.Collapsed;
+                        t1.Visibility = Visibility.Collapsed;
+                        t2.Visibility = Visibility.Collapsed;
+                        var extras = ObterExtras(m.Grupo > 0 ? m.Grupo : grupoAtual);
+                        extras.Add(t0);
+                        extras.Add(t1);
+                        extras.Add(t2);
+                    }
                     break;
             }
         }
+
+        FecharGrupoSeAberto();
 
         void Cabecalho(string texto, int col)
         {
@@ -123,7 +241,7 @@ public partial class ConfirmCardView
             g.Children.Add(t);
         }
 
-        void Celula(string texto, int col, string cor, bool italico = false)
+        TextBlock Celula(string texto, int col, string cor, bool italico = false)
         {
             var t = Texto(texto, cor, mono: true);
             t.Margin = new Thickness(0, 4, 12, 4);
@@ -131,9 +249,10 @@ public partial class ConfirmCardView
             Grid.SetRow(t, linha);
             Grid.SetColumn(t, col);
             g.Children.Add(t);
+            return t;
         }
 
-        void Inteira(string texto, string cor, FontWeight peso, string? fundo, bool centro = false, bool mono = false)
+        Border Inteira(string texto, string cor, FontWeight peso, string? fundo, bool centro = false, bool mono = false)
         {
             var t = Texto(texto, cor, mono);
             t.FontWeight = peso;
@@ -148,6 +267,27 @@ public partial class ConfirmCardView
             Grid.SetRow(b, linha);
             Grid.SetColumnSpan(b, 3);
             g.Children.Add(b);
+            return b;
+        }
+
+        Border CriarLink(string texto, int gId, bool centro = true)
+        {
+            var t = Texto(texto, "AccentLilacBrush", mono: false);
+            t.FontWeight = FontWeights.Normal;
+            t.TextAlignment = centro ? TextAlignment.Center : TextAlignment.Left;
+            t.Cursor = System.Windows.Input.Cursors.Hand;
+            var b = new Border
+            {
+                Child = t,
+                Padding = new Thickness(4, 4, 4, 4),
+                Margin = new Thickness(-4, 0, -4, 0),
+                Background = System.Windows.Media.Brushes.Transparent,
+                Cursor = System.Windows.Input.Cursors.Hand
+            };
+            b.MouseEnter += (s, e) => t.TextDecorations = TextDecorations.Underline;
+            b.MouseLeave += (s, e) => t.TextDecorations = null;
+            b.MouseLeftButtonUp += (s, e) => AlternarGrupo(gId);
+            return b;
         }
     }
 

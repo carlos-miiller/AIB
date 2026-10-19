@@ -305,6 +305,9 @@ itálico; erro de fórmula em vermelho; linha que sai com fundo vermelho, que en
 grupo e "+ N" na largura toda), o "efeito nas fórmulas que já existem" em azul, os avisos em
 laranja e a linha verde da cópia `.antes-AIB`. Arquivo novo mostra a prévia em grade (abas e
 primeiras linhas). Mockup "Edição de documentos do AIB", 19/10/2026.
+Linha "+ N … · mostrar" (lilás, mão, sublinhado no hover) revela as `Extra` do grupo e troca por
+"mostrar menos" no fim (`AlternarGrupo`/`Expandido`). Rolagem com altura máxima em tudo: tabela
+240, efeitos e avisos 96, alvo 160.
 
 Regras que o código garante: o foco nasce em "Recusar" (Enter sem ler não executa nada); a
 resposta é negativa por omissão (`Descartar` devolve recusa); decidir trava os botões.

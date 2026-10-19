@@ -247,5 +247,54 @@ namespace AIB.Tests
 
             acao.Should().Throw<ErroDeDocumento>().WithMessage("operação 1 desconhecida*cell, range*");
         }
+
+        [Fact]
+        public void OPlanejador_Com150CelulasSoltas_Gera12Normais_88Extras_EMaisFinalDeNaoCabem()
+        {
+            string c = Ramais();
+            var ops = Enumerable.Range(1, 150)
+                .Select(i => $"{{\"cell\":\"F{i}\",\"value\":{i}}}");
+            string json = "[" + string.Join(",", ops) + "]";
+
+            var p = EditorDePlanilha.Planejar(c, Json(json), "Ramais").Plano;
+
+            p.Mudancas.Where(m => !m.Extra && m.Tipo == TipoDeMudanca.Valor).Should().HaveCount(12);
+            p.Mudancas.Where(m => m.Extra && m.Tipo == TipoDeMudanca.Valor).Should().HaveCount(88);
+            var maisClicavel = p.Mudancas.Single(m => m.Tipo == TipoDeMudanca.Mais && m.Grupo > 0);
+            maisClicavel.Onde.Should().Be("+ 138 células");
+            maisClicavel.Extra.Should().BeFalse();
+            var maisFinal = p.Mudancas.Single(m => m.Tipo == TipoDeMudanca.Mais && m.Grupo == 0);
+            maisFinal.Onde.Should().Be("+ 50 não cabem no cartão; a lista inteira fica no histórico de ações");
+            maisFinal.Extra.Should().BeTrue();
+        }
+
+        [Fact]
+        public void OGrupoDeFaixa_Com40Celulas_Gera3Normais_E37Extras()
+        {
+            string c = Ramais();
+            var p = EditorDePlanilha.Planejar(c, Json("""[{"range":"E2:E41","value":"=B{row}*2"}]"""), "Ramais").Plano;
+
+            p.Mudancas.Where(m => !m.Extra && m.Tipo == TipoDeMudanca.Valor).Should().HaveCount(3);
+            p.Mudancas.Where(m => m.Extra && m.Tipo == TipoDeMudanca.Valor).Should().HaveCount(37);
+            var maisClicavel = p.Mudancas.Single(m => m.Tipo == TipoDeMudanca.Mais && m.Grupo > 0);
+            maisClicavel.Onde.Should().Be("+ 37 células");
+            maisClicavel.Extra.Should().BeFalse();
+        }
+
+        [Fact]
+        public void OPlanoComExtras_EmTexto_EDeterministico()
+        {
+            string c = Ramais();
+            var ops = Enumerable.Range(1, 150)
+                .Select(i => $"{{\"cell\":\"F{i}\",\"value\":{i}}}");
+            string json = "[" + string.Join(",", ops) + "]";
+
+            string t1 = EditorDePlanilha.Planejar(c, Json(json), "Ramais").Plano.EmTexto();
+            string t2 = EditorDePlanilha.Planejar(c, Json(json), "Ramais").Plano.EmTexto();
+
+            t1.Should().Be(t2);
+            t1.Should().Contain("+ 138 células");
+            t1.Should().Contain("+ 50 não cabem no cartão; a lista inteira fica no histórico de ações");
+        }
     }
 }

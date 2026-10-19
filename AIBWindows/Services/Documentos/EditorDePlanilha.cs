@@ -140,6 +140,7 @@ public static class EditorDePlanilha
         var contagens = new List<string>();
         int total = mudancas.Count + grupos.Sum(g => g.Celulas.Count);
         bool resumir = total + entram.Count + saem.Count + outras.Count > PlanoDeGravacao.Visiveis;
+        int proximoGrupo = 1;
 
         foreach (var (aba, l, c, ant) in mudancas.Take(PlanoDeGravacao.Visiveis))
         {
@@ -147,7 +148,17 @@ public static class EditorDePlanilha
             lista.Add(new Mudanca(TipoDeMudanca.Valor, Endereco(wb, aba, l, c), ant, Mostrar(cel), Erro(cel)));
         }
         if (mudancas.Count > PlanoDeGravacao.Visiveis)
-            lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {mudancas.Count - PlanoDeGravacao.Visiveis} células", null, null));
+        {
+            int grupo = proximoGrupo++;
+            lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {mudancas.Count - PlanoDeGravacao.Visiveis} células", null, null, Grupo: grupo, Extra: false));
+            foreach (var (aba, l, c, ant) in mudancas.Skip(PlanoDeGravacao.Visiveis).Take(PlanoDeGravacao.NoCartao - PlanoDeGravacao.Visiveis))
+            {
+                var cel = wb.Worksheet(aba).Cell(l, c);
+                lista.Add(new Mudanca(TipoDeMudanca.Valor, Endereco(wb, aba, l, c), ant, Mostrar(cel), Erro(cel), Grupo: grupo, Extra: true));
+            }
+            if (mudancas.Count > PlanoDeGravacao.NoCartao)
+                lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {mudancas.Count - PlanoDeGravacao.NoCartao} não cabem no cartão; a lista inteira fica no histórico de ações", null, null, Grupo: 0, Extra: true));
+        }
 
         foreach (var g in grupos)
         {
@@ -168,14 +179,42 @@ public static class EditorDePlanilha
             }
 
             if (g.Celulas.Count > mostrar)
+            {
+                int grupo = proximoGrupo++;
                 lista.Add(new Mudanca(TipoDeMudanca.Mais,
-                    $"+ {g.Celulas.Count - mostrar} células{(erros > 0 ? $" · {erros} dão erro" : "")}", null, null));
+                    $"+ {g.Celulas.Count - mostrar} células{(erros > 0 ? $" · {erros} dão erro" : "")}", null, null, Grupo: grupo, Extra: false));
+                foreach (var (l, c, ant) in g.Celulas.Skip(mostrar).Take(PlanoDeGravacao.NoCartao - mostrar))
+                {
+                    var cel = ws.Cell(l, c);
+                    lista.Add(new Mudanca(TipoDeMudanca.Valor, Endereco(wb, g.Aba, l, c), ant, Mostrar(cel), Erro(cel), Grupo: grupo, Extra: true));
+                }
+                if (g.Celulas.Count > PlanoDeGravacao.NoCartao)
+                    lista.Add(new Mudanca(TipoDeMudanca.Mais,
+                        $"+ {g.Celulas.Count - PlanoDeGravacao.NoCartao} não cabem no cartão; a lista inteira fica no histórico de ações", null, null, Grupo: 0, Extra: true));
+            }
         }
 
         lista.AddRange(saem.Take(PlanoDeGravacao.Visiveis));
-        if (saem.Count > PlanoDeGravacao.Visiveis) lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {saem.Count - PlanoDeGravacao.Visiveis} linhas apagadas", null, null));
+        if (saem.Count > PlanoDeGravacao.Visiveis)
+        {
+            int grupo = proximoGrupo++;
+            lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {saem.Count - PlanoDeGravacao.Visiveis} linhas apagadas", null, null, Grupo: grupo, Extra: false));
+            foreach (var s in saem.Skip(PlanoDeGravacao.Visiveis).Take(PlanoDeGravacao.NoCartao - PlanoDeGravacao.Visiveis))
+                lista.Add(s with { Grupo = grupo, Extra = true });
+            if (saem.Count > PlanoDeGravacao.NoCartao)
+                lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {saem.Count - PlanoDeGravacao.NoCartao} não cabem no cartão; a lista inteira fica no histórico de ações", null, null, Grupo: 0, Extra: true));
+        }
+
         lista.AddRange(entram.Take(PlanoDeGravacao.Visiveis));
-        if (entram.Count > PlanoDeGravacao.Visiveis) lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {entram.Count - PlanoDeGravacao.Visiveis} linhas inseridas", null, null));
+        if (entram.Count > PlanoDeGravacao.Visiveis)
+        {
+            int grupo = proximoGrupo++;
+            lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {entram.Count - PlanoDeGravacao.Visiveis} linhas inseridas", null, null, Grupo: grupo, Extra: false));
+            foreach (var e in entram.Skip(PlanoDeGravacao.Visiveis).Take(PlanoDeGravacao.NoCartao - PlanoDeGravacao.Visiveis))
+                lista.Add(e with { Grupo = grupo, Extra = true });
+            if (entram.Count > PlanoDeGravacao.NoCartao)
+                lista.Add(new Mudanca(TipoDeMudanca.Mais, $"+ {entram.Count - PlanoDeGravacao.NoCartao} não cabem no cartão; a lista inteira fica no histórico de ações", null, null, Grupo: 0, Extra: true));
+        }
         lista.AddRange(outras);
 
         var avisos = new List<string>();

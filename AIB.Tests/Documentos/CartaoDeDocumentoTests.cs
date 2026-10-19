@@ -102,5 +102,60 @@ namespace AIB.Tests
                 ((FrameworkElement)card.FindName("PlanoTabelaBorder")).Visibility.Should().Be(Visibility.Visible);
             });
         }
+
+        [Fact]
+        public void AlternarGrupo_MostraExtrasEMenos_EAlternarDeNovoVoltaAoInicio()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var mudancas = new List<Mudanca>
+                {
+                    new(TipoDeMudanca.Valor, "A1", "1", "10"),
+                    new(TipoDeMudanca.Mais, "+ 2 células", null, null, Grupo: 1, Extra: false),
+                    new(TipoDeMudanca.Valor, "A2", "2", "20", Grupo: 1, Extra: true),
+                    new(TipoDeMudanca.Valor, "A3", "3", "30", Grupo: 1, Extra: true)
+                };
+                var plano = new PlanoDeGravacao
+                {
+                    Arquivo = @"C:\teste.xlsx",
+                    Mudancas = mudancas
+                };
+
+                var card = new ConfirmCardView();
+                card.Preencher(Contexto(plano));
+                card.ParaFlutuante();
+
+                var tabela = (Grid)card.FindName("PlanoTabela");
+
+                // Estado inicial: recolhido
+                card.Expandido(1).Should().BeFalse();
+
+                var linkMais = tabela.Children.OfType<Border>().Single(b => b.Child is TextBlock tb && tb.Text.Contains("+ 2 células · mostrar"));
+                linkMais.Visibility.Should().Be(Visibility.Visible);
+
+                var linkMenos = tabela.Children.OfType<Border>().Single(b => b.Child is TextBlock tb && tb.Text == "mostrar menos");
+                linkMenos.Visibility.Should().Be(Visibility.Collapsed);
+
+                var celulasExtras = tabela.Children.OfType<TextBlock>().Where(t => t.Text is "A2" or "A3" or "20" or "30").ToList();
+                celulasExtras.Should().HaveCount(4);
+                celulasExtras.Should().OnlyContain(t => t.Visibility == Visibility.Collapsed);
+
+                // Alternar: expande
+                card.AlternarGrupo(1);
+                card.Expandido(1).Should().BeTrue();
+                linkMais.Visibility.Should().Be(Visibility.Collapsed);
+                linkMenos.Visibility.Should().Be(Visibility.Visible);
+                celulasExtras.Should().OnlyContain(t => t.Visibility == Visibility.Visible);
+
+                // Alternar de novo: volta ao estado inicial
+                card.AlternarGrupo(1);
+                card.Expandido(1).Should().BeFalse();
+                linkMais.Visibility.Should().Be(Visibility.Visible);
+                linkMenos.Visibility.Should().Be(Visibility.Collapsed);
+                celulasExtras.Should().OnlyContain(t => t.Visibility == Visibility.Collapsed);
+            });
+        }
     }
 }
