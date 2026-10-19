@@ -68,6 +68,8 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Lembrar => "Guardar isto na memória?",
             Ferramentas.Lembrete when alvo.StartsWith("CANCELAR ", StringComparison.Ordinal) => "Cancelar este lembrete?",
             Ferramentas.Lembrete => "Agendar este lembrete?",
+            Ferramentas.Documento when alvo.StartsWith("LER ", StringComparison.Ordinal) => "Ler este arquivo?",
+            Ferramentas.Documento => "Gravar neste documento?",
             _ => "Autorizar esta ação?"
         };
 
@@ -116,7 +118,15 @@ public partial class ConfirmCardView : UserControl
         // A prévia que o WriteFileTool e o EditFileTool montavam e nenhuma view lia: o usuário
         // autorizava uma gravação vendo só o caminho. Autorizar sem ver o que muda é autorizar
         // no escuro.
-        if (!string.IsNullOrWhiteSpace(contexto.ScriptBody))
+        if (contexto.Plano is { } plano)
+        {
+            // Documento: o plano diz a pergunta e a consequência, e desenha a tabela no lugar da
+            // prévia em texto (que fica no ScriptBody para o histórico).
+            if (plano.Titulo.Length > 0) TituloText.Text = plano.Titulo;
+            if (plano.Consequencia.Length > 0) ConsequenciaText.Text = plano.Consequencia;
+            MostrarPlano(plano);
+        }
+        else if (!string.IsNullOrWhiteSpace(contexto.ScriptBody))
         {
             PreviaText.Text = contexto.ScriptBody;
             PreviaBorder.Visibility = Visibility.Visible;
@@ -299,6 +309,12 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Navegador => (Risco.Cuidado, "Age no site, com seu login"),
             Ferramentas.Lembrar => (Risco.Leitura, "Guarda na memória"),
             Ferramentas.Lembrete => (Risco.Cuidado, "Agenda uma fala"),
+            Ferramentas.Documento when comeca("CRIAR ") => (Risco.Cuidado, "Cria um arquivo"),
+            Ferramentas.Documento when comeca("LER ") => (Risco.Leitura, "Só leitura"),
+            // Word: a edição entra como controle de alterações — nada se perde, tudo se rejeita lá.
+            Ferramentas.Documento when alvo.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)
+                => (Risco.Cuidado, "Sugere alterações"),
+            Ferramentas.Documento => (Risco.Destrutivo, "Edita o arquivo original"),
             _ => (Risco.Destrutivo, "Ação destrutiva")
         };
     }

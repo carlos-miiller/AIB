@@ -9,6 +9,12 @@
         public string ScriptBody { get; set; } = "";
 
         /// <summary>
+        /// O antes e depois de uma gravação de documento (ferramenta doc). Com ele, o cartão desenha a
+        /// tabela de mudanças no lugar da prévia em texto, que continua em ScriptBody para o histórico.
+        /// </summary>
+        public AIB.Services.Documentos.PlanoDeGravacao? Plano { get; set; }
+
+        /// <summary>
         /// Há texto original de e-mail no contexto da conversa. O card avisa que o pedido pode
         /// ter vindo de instruções escritas no e-mail, e não do usuário.
         /// </summary>

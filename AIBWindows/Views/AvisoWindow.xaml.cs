@@ -110,6 +110,31 @@ public partial class AvisoWindow : Window
         }
     }
 
+    /// <summary>
+    /// Uma ESCOLHA: o aviso com botões que esperam o usuário, e a resposta volta para quem
+    /// perguntou — o índice do botão clicado, ou -1 se a janela fechou sem escolha (X).
+    /// <para>
+    /// Pedido do usuário (19/10/2026), para o arquivo travado pelo Excel ("Já fechei, tentar de
+    /// novo", "Salvar como cópia", "Desistir"), e pensada para outros usos. Passa pela fila
+    /// como pergunta (na frente dos avisos) e recebe o foco: há um turno parado esperando.
+    /// </para>
+    /// </summary>
+    public static System.Threading.Tasks.Task<int> EscolherAsync(Receita receita)
+    {
+        var resposta = new System.Threading.Tasks.TaskCompletionSource<int>(
+            System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var botoes = (receita.Botoes ?? Array.Empty<Botao>())
+            .Select((b, i) => b with { Ao = () => { b.Ao?.Invoke(); resposta.TrySetResult(i); }, Fecha = true })
+            .ToList();
+
+        var janela = Montar(receita with { Botoes = botoes, FechaSozinho = null });
+        janela.ShowActivated = true;
+        janela.Closed += (_, _) => resposta.TrySetResult(-1);
+        Flutuantes.Mostrar(janela, VezDaJanela.Pergunta);
+        return resposta.Task;
+    }
+
     private static void CopiarSemFalhar(string texto)
     {
         try { System.Windows.Clipboard.SetText(texto); }

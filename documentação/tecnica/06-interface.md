@@ -298,6 +298,14 @@ e `browser`, e some quando há e-mail no contexto. Em botão do navegador que de
 (`SempreSegurando`) ela diz "Sempre permitir este botão neste site (segure 5 s)" e só marca com o
 clique segurado por 5 s (contagem no rótulo; soltar antes zera; Espaço não marca).
 
+**Plano de documento** (`doc`, `ConfirmCardView.Plano.cs`): com `CommandConfirmationContext.Plano`, o
+título e a consequência vêm do plano, e no lugar da prévia em texto o cartão desenha o resumo
+(aba e contagem), pílulas de contagem na edição em massa, a tabela ONDE/ANTES/DEPOIS (vazia em
+itálico; erro de fórmula em vermelho; linha que sai com fundo vermelho, que entra com fundo verde;
+grupo e "+ N" na largura toda), o "efeito nas fórmulas que já existem" em azul, os avisos em
+laranja e a linha verde da cópia `.antes-AIB`. Arquivo novo mostra a prévia em grade (abas e
+primeiras linhas). Mockup "Edição de documentos do AIB", 19/10/2026.
+
 Regras que o código garante: o foco nasce em "Recusar" (Enter sem ler não executa nada); a
 resposta é negativa por omissão (`Descartar` devolve recusa); decidir trava os botões.
 
@@ -660,6 +668,11 @@ da fila se ainda esperava a vez; um aviso novo da mesma conversa substitui o ant
   "Shadow", "+N" da fila, X, e contagem que fecha sozinha (para com o mouse em cima e com a janela
   escondida pela fila). Posição: `PertoDoOrbe.PosicionarOuNaBandeja` — perto do orbe ou, sem ele,
   no canto de baixo à direita.
+- **Escolha** (`AvisoWindow.EscolherAsync(Receita)`): o aviso com botões que esperam — devolve o
+  índice do botão (ou -1 se fechou pelo X), entra na fila como pergunta e recebe o foco. Nasceu
+  para o arquivo travado da ferramenta `doc` (`Avisos.DeTrava`: "Já fechei, tentar de novo",
+  "Salvar como cópia", "Desistir"), pensada para outros usos. Depois de gravar, `Avisos.DeGravado`
+  (verde, fecha em 45 s): Abrir, Abrir a pasta e Desfazer.
 - Botões dos avisos: `App.AcoesDosAvisos` — "Abrir com <NOME>" (`AbrirEmailDoOrbe`), "Ver na
   caixa" (`ChatWindow.MostrarCaixa`, com o item aberto), "Abrir o e-mail" do lembrete
   (`ChatWindow.AbrirConversaDoEmail`, retoma a conversa), "Abrir no Shadow" (`AbrirBarra` do

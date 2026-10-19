@@ -116,6 +116,30 @@
                 </ScrollViewer>
             </Border>
 
+            <!-- PLANO DE GRAVAÇÃO de documento (ferramenta doc): resumo, contagens, a tabela de
+                 antes e depois, o efeito nas fórmulas, os avisos e a cópia. Montado em código
+                 (ConfirmCardView.Plano.cs); no lugar da prévia em texto. -->
+            <StackPanel x:Name="PlanoPanel" Visibility="Collapsed">
+                <TextBlock x:Name="PlanoResumoText" FontFamily="{StaticResource MonoFontFamily}"
+                           FontSize="11" Foreground="{StaticResource TextMutedBrush}"
+                           TextWrapping="Wrap" Margin="0,6,0,0"/>
+                <WrapPanel x:Name="PlanoContagens" Margin="0,6,0,0"/>
+                <Border x:Name="PlanoTabelaBorder" Visibility="Collapsed"
+                        Background="{StaticResource SurfaceCodeBrush}"
+                        CornerRadius="{StaticResource RadiusCard}"
+                        Padding="0,4" Margin="0,8,0,0">
+                    <ScrollViewer MaxHeight="210" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <Grid x:Name="PlanoTabela" Margin="10,0"/>
+                    </ScrollViewer>
+                </Border>
+                <StackPanel x:Name="PlanoEfeitos" Margin="0,8,0,0" Visibility="Collapsed"/>
+                <StackPanel x:Name="PlanoAvisos" Visibility="Collapsed"/>
+                <TextBlock x:Name="PlanoCopiaText" Visibility="Collapsed"
+                           FontSize="11.5" Foreground="{StaticResource SuccessBrush}"
+                           TextWrapping="Wrap" Margin="0,9,0,0"/>
+            </StackPanel>
+
             <!-- Motivo do bloqueio, quando veio da lista de negação. -->
             <TextBlock x:Name="MotivoText" Visibility="Collapsed"
                        FontSize="11.5" Foreground="{StaticResource WarnBrush}"

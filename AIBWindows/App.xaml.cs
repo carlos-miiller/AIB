@@ -666,6 +666,7 @@ public partial class App : System.Windows.Application
             // está na tela. Lido na hora: o orbe é recriado quando a chave é religada.
             PertoDoOrbe.Ancora = () => _orbe?.RetanguloDoOrbe();
             Views.Flutuantes.Dono = () => _orbe is { IsVisible: true } o ? o : null;
+            LigarDocumentos();
 
             Services.Terminal.AskpassServidor.Padrao = new Services.Terminal.AskpassServidor(
                 // O pedido chega por um pipe, fora do fluxo do turno: de quem é o comando se deduz

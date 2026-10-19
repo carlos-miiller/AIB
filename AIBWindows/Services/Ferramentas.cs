@@ -30,6 +30,7 @@ public static class Ferramentas
     public const string Navegador = "browser";
     public const string Lembrar = "remember";
     public const string Lembrete = "remind";
+    public const string Documento = "doc";
 
     /// <summary>
     /// O que aparece na trilha de ações enquanto a ferramenta roda.
@@ -57,6 +58,7 @@ public static class Ferramentas
         Navegador => "Navegando",
         Lembrar => "Guardando na memória",
         Lembrete => "Agendando lembrete",
+        Documento => "Trabalhando no documento",
         _ => nome ?? ""
     };
 }

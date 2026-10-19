@@ -165,6 +165,54 @@ public static class Avisos
             VezDaJanela.Pronta);
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Documentos (ferramenta doc) — mockup "Edição de documentos do AIB"
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>Por quanto tempo o "Gravado" fica: o bastante para alcançar o "Desfazer".</summary>
+    public static readonly TimeSpan PrazoDoGravado = TimeSpan.FromSeconds(45);
+
+    /// <summary>
+    /// Depois de gravar planilha ou Word: abrir, abrir a pasta e — havendo cópia do original —
+    /// desfazer (pedido do usuário, 19/10/2026).
+    /// </summary>
+    public static (AvisoWindow.Receita Receita, VezDaJanela Vez) DeGravado(
+        string arquivo, bool criado, bool temCopia, Action abrir, Action abrirPasta, Action desfazer)
+    {
+        string nome = System.IO.Path.GetFileName(arquivo);
+        return (new AvisoWindow.Receita(
+            AvisoWindow.Tom.Verde, "Gravado", AvisoWindow.IconeOk,
+            Titulo: criado ? $"{nome} criado" : $"{nome} atualizado",
+            Sub: temCopia ? "O original ficou guardado nas cópias do AIB (as 5 últimas versões, por 3 meses)." : "",
+            Botoes: Botoes(
+                new AvisoWindow.Botao("Abrir", abrir, Principal: true),
+                new AvisoWindow.Botao("Abrir a pasta", abrirPasta),
+                temCopia ? new AvisoWindow.Botao("Desfazer", desfazer) : null),
+            FechaSozinho: PrazoDoGravado),
+            VezDaJanela.Pronta);
+    }
+
+    /// <summary>Os botões da escolha do arquivo travado, na ordem do índice que volta.</summary>
+    public static readonly string[] EscolhasDaTrava = { "Já fechei, tentar de novo", "Salvar como cópia", "Desistir" };
+
+    /// <summary>
+    /// O arquivo está aberto no Excel ou no Word, que o travam. A janela de escolha pergunta o
+    /// que fazer — o turno está parado esperando.
+    /// </summary>
+    public static AvisoWindow.Receita DeTrava(string arquivo, bool shadow = false)
+    {
+        string nome = System.IO.Path.GetFileName(arquivo);
+        bool word = arquivo.EndsWith(".docx", StringComparison.OrdinalIgnoreCase);
+        string programa = word ? "Word" : "Excel";
+        return new AvisoWindow.Receita(
+            AvisoWindow.Tom.Cuidado, "O arquivo está em uso", AvisoWindow.IconeAlerta,
+            Titulo: $"Feche {(word ? "o documento" : "a planilha")} no {programa} para gravar",
+            Sub: $"\"{nome}\" está aberto em outro programa, que trava o arquivo. Nada foi gravado ainda.",
+            Detalhe: arquivo,
+            Shadow: shadow,
+            Botoes: EscolhasDaTrava.Select((t, i) => new AvisoWindow.Botao(t, () => { }, Principal: i == 0)).ToList());
+    }
+
     private static IReadOnlyList<AvisoWindow.Botao> Botoes(params AvisoWindow.Botao?[] botoes) =>
         botoes.Where(b => b != null).Select(b => b!).ToList();
 }

@@ -40,6 +40,9 @@ public static class ToolIcons
     // Globo: círculo, meridiano e dois paralelos.
     private const string Navegador = "M11,3.6 A7.4,7.4 0 1 1 11,18.4 A7.4,7.4 0 1 1 11,3.6 Z M11,3.6 C7.8,7 7.8,15 11,18.4 M11,3.6 C14.2,7 14.2,15 11,18.4 M3.8,9 H18.2 M3.8,13 H18.2";
 
+    // Folha com a grade de uma planilha: documento e planilha na mesma ferramenta.
+    private const string Documento = "M5,3.5 H13.5 L17,7 V18.5 H5 Z M13.5,3.5 V7 H17 M7.5,10.5 H14.5 M7.5,13.5 H14.5 M7.5,16 H14.5 M10.5,10.5 V16";
+
     private static readonly Dictionary<string, Geometry> Cache = new(StringComparer.Ordinal);
 
     /// <summary>Desenho para a natureza do artefato.</summary>
@@ -85,6 +88,7 @@ public static class ToolIcons
         Ferramentas.Navegador => Navegador,
         Ferramentas.Shell => Terminal,
         Ferramentas.Habilidade => Terminal,
+        Ferramentas.Documento => Documento,
         _ => null
     };
 

@@ -23,6 +23,12 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Arquivos de ensaio da ferramenta doc que não se geram em código: o .xls antigo (BIFF),
+       que nenhuma biblioteca daqui grava, foi gerado pelo Excel. -->
+  <ItemGroup>
+    <None Include="Documentos\**\*.xls" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\AIBWindows\AIB.csproj" />
   </ItemGroup>

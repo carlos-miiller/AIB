@@ -40,6 +40,7 @@ Renomear uma ferramenta é mudar só a constante.
 | `mail` (`Email`) | `ConsultarEmailsTool` | 1 | não | Consulta o diário da triagem de e-mail (disco, não o servidor). |
 | `mail_read` (`LerEmail`) | `LerEmailTool` | 1 | não | Relê no servidor o e-mail da conversa aberta (somente leitura). |
 | `remember` (`Lembrar`) | `LembrarTool` | 1 | não — mas **com texto de terceiros no contexto vai ao cartão** (`SoComFalaDoUsuario`: `GUARDAR NA MEMÓRIA: "fato"`, sem "sempre"; sem interface, recusa) | Guarda no `facts.md` um fato que o usuário contou sobre si (`- sobre o usuário: …`). Sem segredo, uma frase (200), teto de 60. Na tela vira o aviso "<persona> lembrará disso…", fora da cadeia de ações. |
+| `doc` (`Documento`) | `DocTool` | 1 (gravar: piso tipado no Nível 2) | **por ação** — `info`/`read`/`find`/`query` não perguntam (fora de `~/.AIB`); `create`/`edit` **sempre** perguntam, sem "sempre", com o plano no cartão | Planilhas (.xlsx .xlsm .xls .csv), Word (.docx) e PDF: visão geral, trecho com endereço (célula, ¶, página), busca, contas em C# e gravação com cópia do original (§7). |
 | `remind` (`Lembrete`) | `LembreteTool` | 1 | não — mas **com texto de terceiros no contexto, criar e cancelar vão ao cartão** (`PedeFalaDoUsuario`; listar não) | Lembrete único: `create` (`at` "HH:mm" — já passou, é amanhã — ou "yyyy-MM-dd HH:mm"; ou `in_minutes`; `text` é a fala da persona na hora), `list`, `cancel` por `id`. Grava em `~/.AIB/lembretes.json` (`Lembretes`, teto 50, até um ano). Quem entrega é a agenda do `App`, sem chamar o modelo. |
 
 Detalhes de registro:
@@ -52,7 +53,7 @@ Detalhes de registro:
 - **`mail_read` é registrada sempre, mas só é oferecida** (`GetActiveTools`) quando a conversa está
   ligada a um e-mail (`ChaveDaConversaDeEmail` não vazia).
 - `GetActiveTools(userLevel)` corta do schema as ferramentas acima do nível do usuário.
-- **A `Description` é paga em TODA requisição.** As nove de antes somavam 1.951 caracteres (eram 2.056); o `browser` acrescenta cerca de 290 e o `remember` e o `remind` cerca de 200 cada (teto próprio no teste). A
+- **A `Description` é paga em TODA requisição.** As nove de antes somavam 1.951 caracteres (eram 2.056); o `browser` acrescenta cerca de 290 e o `remember` e o `remind` cerca de 200 cada, e o `doc` cerca de 450 (teto próprio no teste). A
   regra de redação: cada uma diz uma capacidade que o modelo não adivinharia (o `write` cria
   pasta), uma fronteira com a ferramenta vizinha (o `shell` não é para arquivo; o `edit` não cria
   arquivo) e o teto que muda a decisão antes de chamar (100 no `glob`, 60 no `grep`, 30 s no
@@ -487,6 +488,9 @@ entra quando a própria raiz da busca pedia cartão — uma busca a partir da pa
 - Pasta → lista subpastas e arquivos com tamanho (teto `LimitesDoProvedor.Atual.ItensDaPasta`). Antes
   respondia "não encontrado" para pasta, e o modelo ia listar pelo shell. Cortou no teto, o aviso
   diz o teto **e** o próximo passo (`glob` com um padrão): "(+N não listado(s))" sozinho é um beco.
+- Planilha, Word e PDF (pelo conteúdo, `Formatos.De`) não são lidos: a resposta manda usar `doc`
+  com `action='info'`. Lidos como texto, eram uma página de lixo binário paga em prefill — e o
+  bloco de anexos do prompt manda usar `read` com o caminho, então é aqui que o anexo vira `doc`.
 
 ### `write` — `WriteFileTool`
 
@@ -655,6 +659,78 @@ palavra de 12+ caracteres com maiúscula, minúscula e 2+ números, ou 16 minús
 teste no Bitrix a vista trouxe duas credenciais coladas num chat.
 
 ---
+
+### `doc` — `DocTool` e `Services/Documentos/`
+
+Pedido do usuário (19/10/2026) no lugar da habilidade `ler-planilha`, que desalinhava colunas com
+célula vazia (o XML não grava a vazia), devolvia texto com espaço como `System.Xml.XmlElement`,
+lia só a primeira aba, mostrava data como número de série e levava 51 s em 20 mil linhas.
+
+- **Bibliotecas:** ClosedXML (xlsx/xlsm, ler e gravar, calcula fórmulas), DocumentFormat.OpenXml
+  (docx), PdfPig (PDF, só leitura), ExcelDataReader (.xls antigo, só leitura); CSV é nosso
+  (`LeitorDeCsv`: BOM/UTF-8/Windows-1252, separador detectado, RFC 4180). Sem Excel instalado.
+- **Formato pelo conteúdo** (`Formatos.De`: ZIP, OLE2, `%PDF`), com a extensão de desempate.
+- **Modelo comum:** planilha vira `Pasta` de `Grade`s (célula no lugar dela, `Texto` como o Excel
+  mostra, `Valor` bruto, `Formula`); Word e PDF viram `Documento` de `Bloco`s numerados (¶ no Word,
+  página no PDF). `Apresentacao` escreve `info`, `read` e `find` para o modelo, sempre com
+  endereço (`Ramais!B12`, `¶12`, `p.3`); `read` pagina e diz como continuar. Datas saem dd/MM/yyyy
+  e números em pt-BR pelo formatador próprio (o do ClosedXML escreve a data de formato embutido no
+  padrão americano). Fórmula: o valor em cache; sem cache (arquivo gravado pelo próprio ClosedXML),
+  calcula.
+- **`query`** (`ConsultaDePlanilha`): filtrar, agrupar, somar, contar, média, mínimo, máximo e
+  ordenar, em C#. Coluna por cabeçalho ou letra. Célula não numérica numa soma é ignorada **e
+  contada** na resposta. Existe porque somar 300 linhas lidas como texto é onde o modelo erra.
+- **Gravar** (`create`, `edit`) — .xlsx/.xlsm/.csv (`EditorDePlanilha`) e .docx (`EditorDeDocx`):
+  1. `Validar` recusa antes do cartão: formato que não se grava (.xls, PDF), pasta de dados do
+     AIB, e qualquer plano que não se monta (célula inválida, trecho do Word ambíguo ou ausente).
+     Arquivo travado pelo Excel/Word (abrir para escrita dá `ERROR_SHARING_VIOLATION`) só é
+     recusado aqui quando não há interface (`DocTool.AoTravar` nulo, nos ensaios).
+  2. **Planilha com gráfico, tabela dinâmica, macro, segmentação ou linha do tempo não se edita**
+     (`RecusarOQueSePerderia`): o ClosedXML abre, mas regrava sem essas partes. A recusa sugere
+     criar um arquivo novo.
+  3. O plano (`PlanoDeGravacao`) é calculado sem tocar o disco: célula, antes e depois (fórmula
+     com o resultado); faixa com a mesma fórmula vira grupo com 3 exemplos e a contagem de erros;
+     linhas que saem e entram inteiras; "efeito nas fórmulas que já existem" (recalcula e compara,
+     sempre, menos com inserção/remoção de linhas); aviso de fórmula que vai virar `#REF!`. Acima
+     de 20 mil fórmulas ou 10 mil células editadas, a edição é **pesada**: aviso "EDIÇÃO PESADA E
+     LENTA" e consequência "Edição massiva…" no cartão (decisão do usuário: calcular sempre e dizer
+     quando é lento). Sem tempo medido no texto: o plano é refeito e comparado na gravação.
+     No Word, trecho antes e depois, ¶ e seção. Até 12 mudanças; o resto é resumido.
+  4. O cartão (`ConfirmCardView.Plano.cs`) desenha o plano; `ScriptBody` guarda a versão em texto
+     para o histórico. Vermelho ("Edita o arquivo original") ao mexer no que existe; laranja
+     ("Cria um arquivo") no arquivo novo e na edição de Word ("Sugere alterações"). Sem "sempre
+     permitir" (`SemSempre`).
+  5. Na execução, o plano é refeito e comparado com o autorizado — texto e SHA-256 do arquivo
+     (`Impressao`). Mudou entre a pergunta e o "Permitir", nada é gravado. Sem cartão, recusa.
+  6. **Travado** (aberto no Excel/Word): `DocTool.AoTravar` — ligado pelo App à janela de escolha
+     (`AvisoWindow.EscolherAsync`, receita `Avisos.DeTrava`) — pergunta "Já fechei, tentar de
+     novo" (confere de novo e repete), "Salvar como cópia" (grava em `nome (AIB).ext`, sem tocar
+     o original) ou "Desistir". Pedido do usuário, 19/10/2026; a janela é genérica, para outros
+     usos.
+  7. Antes de gravar por cima, `CopiasDeDocumento` guarda o original em
+     `~/.AIB/doc-backups/<nome> (<8 hex do caminho>)/aaaa-MM-dd HHmmss.ext`, com `origem.txt`:
+     as **5 últimas** por arquivo, e o App apaga as com mais de **3 meses** no arranque
+     (`Limpar`). O plano mostra só a pasta (`Descricao`, determinística). A gravação vai para um
+     temporário na pasta do arquivo e depois por cima do original.
+  8. Gravado, o evento `DocTool.Gravou` leva o App a mostrar o aviso verde "Gravado"
+     (`Avisos.DeGravado`): **Abrir**, **Abrir a pasta** e, havendo cópia, **Desfazer**
+     (`CopiasDeDocumento.Restaurar`): recusa se o arquivo mudou depois da gravação (SHA-256), e
+     guarda o estado atual antes, para o próprio desfazer poder ser desfeito.
+- **Word: toda edição é controle de alterações** (decisão do usuário, 19/10/2026): o texto
+  antigo vira `w:del`, o novo `w:ins`, parágrafo inserido/apagado leva a marca de parágrafo, linha
+  de tabela apagada leva `trPr/w:del` — autor = personagem ativo (`DocTool(autor:)`), data no XML
+  (fora do texto do plano). O texto só muda quando o usuário aceita no Word. Revisões de outros
+  autores ficam intactas; o `read` mostra a versão "com tudo aceito" e o `replace` não casa texto
+  já apagado em revisão. `create` não tem revisões.
+- Os ¶ da edição do Word são os da numeração do `read` (parágrafo vazio não conta), resolvidos
+  antes de aplicar qualquer operação; as remoções vão por último. A troca atravessa runs e
+  mantém a formatação do primeiro; várias trocas no mesmo parágrafo viram uma linha só no plano.
+- Ler um arquivo aberto no Excel funciona (stream com `FileShare.ReadWrite`); gravar, não (item 6).
+- Apagar linhas: antes, `AnularReferencias` troca por `#REF!` a referência que aponta só para as
+  linhas apagadas — o ClosedXML a deslocaria para a linha de baixo, em silêncio.
+- O plano é guardado para o pré-voo e o cartão (`PlanoGuardado`, chave: pedido + data e tamanho
+  do arquivo); a gravação o refaz do zero.
+- O resultado leva a marca de conteúdo de terceiros (`AgentLoop.TrazemConteudo`).
 
 ## 8. Pastas sem confirmação (`PastasSemConfirmacao`)
 

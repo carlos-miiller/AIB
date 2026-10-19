@@ -147,6 +147,7 @@ public static class ArtifactExtractor
             Ferramentas.Email => ConsultaDeEmail(argumentosJson),
             Ferramentas.LerEmail => "e-mail desta conversa",
             Ferramentas.Lembrar => Tools.LembrarTool.FatoDe(argumentosJson),
+            Ferramentas.Documento => (StringDe(argumentosJson, "action") + " " + CaminhoDe(argumentosJson)).Trim(),
             Ferramentas.Lembrete => (StringDe(argumentosJson, "action") + " " + StringDe(argumentosJson, "subject")).Trim(),
             Ferramentas.Navegador => string.Join(" ", new[]
             {
@@ -353,6 +354,20 @@ public static class ArtifactExtractor
 
                 return new Artifact(ArtifactKind.FileRead, ferramenta, caminho, falhou,
                     falhou ? PrimeiraLinha(resultado) : null);
+            }
+
+            case Ferramentas.Documento:
+            {
+                // Planilha e Word gravados contam como arquivo gravado: a memória precisa saber
+                // que o arquivo mudou. Ler, procurar e consultar são leitura.
+                string caminho = CaminhoDe(argumentosJson);
+                if (caminho.Length == 0) return null;
+                string acao = StringDe(argumentosJson, "action");
+                bool grava = acao is "create" or "edit";
+                if (recusado) return new Artifact(ArtifactKind.Denied, ferramenta, caminho, true, grava ? "gravação recusada" : "leitura recusada");
+
+                return new Artifact(grava ? ArtifactKind.FileWritten : ArtifactKind.FileRead, ferramenta, caminho, falhou,
+                    falhou ? PrimeiraLinha(resultado) : acao);
             }
 
             case Ferramentas.Shell:

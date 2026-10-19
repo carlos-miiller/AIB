@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AIB: assistente de IA para Windows (C# / .NET 8 / WPF). Vive na bandeja, abre a conversa por
 `Ctrl+Shift+Space`, pelo ícone ou pelo orbe, e conversa com um agente que chama ferramentas
-(arquivos, PowerShell, skills, e-mail IMAP só leitura, navegador) atrás de um portão de
+(arquivos, planilhas/Word/PDF, PowerShell, skills, e-mail IMAP só leitura, navegador) atrás de um portão de
 confirmação humana.
 
 **Idioma:** código, comentários, commits, textos de tela e documentação são em português (PT-BR).
@@ -67,6 +67,12 @@ commit**. `Regras de Identidade/` (SEGURANCA, CODIGO_LIMPO, VISUAL) são regras,
 - **Navegador** (`Services/Navegador/`, ferramenta `browser`): Playwright com Edge, perfil
   persistente em `~/.AIB/navegador/perfil`. A página é lida por `Snapshot.js` (recurso embutido) e
   vira uma leitura pesquisável (`LeituraDaPagina`), mantida só em RAM. `.playwright/` precisa estar ao lado do `AIB.exe`.
+- **Documentos** (`Services/Documentos/`, ferramenta `doc`): planilha vira `Pasta`/`Grade`, Word e PDF
+  viram `Documento`/`Bloco`. Gravar passa por um `PlanoDeGravacao` que o cartão desenha e a execução
+  confere (SHA-256); o original vai para `~/.AIB/doc-backups` (5 versões, 3 meses). Word se edita
+  como controle de alterações. O ClosedXML regrava xlsx SEM gráfico,
+  tabela dinâmica e macro (por isso a recusa) e, ao apagar linha, desloca referências em vez de
+  `#REF!` (por isso `AnularReferencias`).
 - **Shell e senhas** (`Services/Terminal/`): o PowerShell roda sem console e com a entrada
   fechada; ssh/scp/git pedem senha pelo askpass, que é o próprio `AIB.exe` (detectado no topo de
   `OnStartup`) falando por pipe nomeado com a instância que rodou o comando.

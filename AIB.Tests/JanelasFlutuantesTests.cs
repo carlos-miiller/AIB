@@ -312,5 +312,28 @@ namespace AIB.Tests
                 pergunta.Close();
             });
         }
+
+        [Fact]
+        public void OGravado_TemDesfazer_SoQuandoHaCopia()
+        {
+            // Pedido do usuário (19/10/2026): depois de gravar, abrir, abrir a pasta e desfazer.
+            var (comCopia, vez) = Avisos.DeGravado(@"C:\docs\Custos.xlsx", criado: false, temCopia: true, () => { }, () => { }, () => { });
+            var (novo, _) = Avisos.DeGravado(@"C:\docs\Novo.xlsx", criado: true, temCopia: false, () => { }, () => { }, () => { });
+
+            comCopia.Titulo.Should().Be("Custos.xlsx atualizado");
+            comCopia.Botoes!.Select(b => b.Texto).Should().Equal("Abrir", "Abrir a pasta", "Desfazer");
+            novo.Botoes!.Select(b => b.Texto).Should().Equal("Abrir", "Abrir a pasta");
+            vez.Should().Be(VezDaJanela.Pronta);
+        }
+
+        [Fact]
+        public void ATrava_PerguntaAsTresEscolhas_EmLaranja()
+        {
+            var r = Avisos.DeTrava(@"C:\docs\Proposta.docx");
+
+            r.Tom.Should().Be(AvisoWindow.Tom.Cuidado);
+            r.Titulo.Should().Be("Feche o documento no Word para gravar");
+            r.Botoes!.Select(b => b.Texto).Should().Equal("Já fechei, tentar de novo", "Salvar como cópia", "Desistir");
+        }
     }
 }

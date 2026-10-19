@@ -176,8 +176,8 @@ namespace AIB.Tests
             // Desligada, ela responde exatamente isso.
             //
             // remember guarda o que o usuário conta sobre si (LembrarTool); remind agenda
-            // lembretes únicos (LembreteTool).
-            names.Should().Equal("browser", "edit", "fs", "glob", "grep", "mail", "read", "remember", "remind", "shell", "write");
+            // lembretes únicos (LembreteTool). doc lê e grava planilhas, Word e PDF (DocTool).
+            names.Should().Equal("browser", "doc", "edit", "fs", "glob", "grep", "mail", "read", "remember", "remind", "shell", "write");
         }
 
         [Fact]
@@ -241,7 +241,7 @@ namespace AIB.Tests
 
             var (natives, dynamics) = registry.GetCategorizedTools();
 
-            natives.Should().HaveCount(12, "mail_read é registrada sempre, e só oferecida na conversa de um e-mail");
+            natives.Should().HaveCount(13, "mail_read é registrada sempre, e só oferecida na conversa de um e-mail");
             dynamics.Should().BeEmpty("no lazy loading as skills não entram no registry");
         }
 

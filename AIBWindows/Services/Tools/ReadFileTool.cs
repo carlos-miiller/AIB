@@ -144,6 +144,13 @@ public class ReadFileTool : ITool
         if (!File.Exists(path))
             return PreVooDeCaminho.Conferir($"\"{path}\"") ?? $"ERRO: '{path}' não existe.";
 
+        // Planilha, Word e PDF são binários: lidos como texto, viravam uma página de lixo paga em
+        // prefill. O anexo do usuário manda usar 'read' com o caminho — é aqui que ele vira 'doc'.
+        var formato = Documentos.Formatos.De(path);
+        if (formato is not (Documentos.Formato.Desconhecido or Documentos.Formato.Csv))
+            return $"ERRO: '{Path.GetFileName(path)}' é {(Documentos.Formatos.Planilha(formato) ? "planilha" : formato == Documentos.Formato.Pdf ? "PDF" : "documento do Word")}, "
+                   + $"que '{Name}' não lê. Use a ferramenta '{Ferramentas.Documento}' com action='info' e o mesmo caminho.";
+
         Console.WriteLine($"[TOOL: {Name}] Lendo: {path} (linha {offset}, até {limit})");
 
         try
