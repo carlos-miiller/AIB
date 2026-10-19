@@ -246,5 +246,41 @@ namespace AIB.Tests
                 ((TextBlock)flutuante.FindName("PillTexto")).Text.Should().Be("Executa na sua máquina");
             });
         }
+
+        [Fact]
+        public void AFlutuante_FicaAcimaDoOrbe_EDesligarOOrbeNaoAFecha()
+        {
+            // Visto no uso (19/10/2026): o Shadow pediu confirmação, a barra fechou com a perda
+            // de foco e, reaberta, ficou POR CIMA da confirmação — as duas são Topmost e vence a
+            // última ativada. Com o orbe de dono, a confirmação fica sempre acima dele.
+            WpfHost.EmSta(() =>
+            {
+                Window Fora() => new()
+                {
+                    Left = -20000, Top = -20000, Width = 50, Height = 50,
+                    ShowActivated = false, ShowInTaskbar = false, WindowStyle = WindowStyle.None
+                };
+
+                var orbe = Fora();
+                var confirmacao = Fora();
+                orbe.Show();
+
+                Flutuantes.Exibir(confirmacao, orbe);
+                confirmacao.Owner.Should().BeSameAs(orbe);
+
+                // Desligar o orbe fechava junto a pergunta na tela — e fechar é recusar.
+                Flutuantes.Soltar(orbe);
+                orbe.Close();
+                confirmacao.IsVisible.Should().BeTrue();
+
+                // Sem orbe na tela, não há dono.
+                var aviso = Fora();
+                Flutuantes.Exibir(aviso, null);
+                aviso.Owner.Should().BeNull();
+
+                confirmacao.Close();
+                aviso.Close();
+            });
+        }
     }
 }

@@ -90,6 +90,7 @@ public partial class App : System.Windows.Application
         if (!ligado)
         {
             SoltarOrbe();
+            if (_orbe != null) Views.Flutuantes.Soltar(_orbe);
             _orbe?.Close();
             _orbe = null;
             if (_itemDoOrbe != null) _itemDoOrbe.IsChecked = false;
@@ -650,6 +651,7 @@ public partial class App : System.Windows.Application
             // As janelas de pergunta (confirmação, senha) aparecem logo acima do orbe quando ele
             // está na tela. Lido na hora: o orbe é recriado quando a chave é religada.
             PertoDoOrbe.Ancora = () => _orbe?.RetanguloDoOrbe();
+            Views.Flutuantes.Dono = () => _orbe is { IsVisible: true } o ? o : null;
 
             Services.Terminal.AskpassServidor.Padrao = new Services.Terminal.AskpassServidor(
                 // O pedido chega por um pipe, fora do fluxo do turno: de quem é o comando se deduz

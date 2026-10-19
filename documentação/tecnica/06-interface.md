@@ -645,6 +645,10 @@ Tudo o que aparece fora da janela principal usa a mesma casca (moldura `NeonBrus
 flutuantes do AIB", 16/10/2026 — e entra pela **fila** (`Flutuantes.Mostrar` →
 `FilaDeJanelas<Window>`): uma janela por vez; a pergunta (confirmação, senha) tira um aviso da tela e
 ele volta depois; entre avisos, a ordem é rajada, resposta sua, lembrete, resposta pronta, triagem.
+Com o orbe na tela, a flutuante nasce com ele de **dono** (`Flutuantes.Dono`/`Exibir`): as duas são
+Topmost, e reabrir a barra do Shadow punha o orbe por cima da confirmação que ele mesmo pediu. Ao
+desligar o orbe, `Flutuantes.Soltar` desfaz a posse antes do `Close`, que senão fecharia (e recusaria)
+a pergunta na tela.
 
 - **`AvisoWindow`**: o aviso. Não rouba o foco (`ShowActivated=False`, fora da barra de tarefas).
   Montado por `AvisoWindow.Montar(Receita)`; o que cada aviso diz mora em `Avisos` (`DeDigesto`,

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using AIB.Services;
 
@@ -13,9 +14,15 @@ namespace AIB.Views;
 /// </summary>
 public static class Flutuantes
 {
+    /// <summary>
+    /// A janela do orbe, quando está na tela — as flutuantes nascem DONAS dela. Ligado pelo App;
+    /// null nos ensaios.
+    /// </summary>
+    public static Func<Window?>? Dono { get; set; }
+
     /// <summary>A fila do app. Trocável no ensaio, que não quer janelas de verdade na tela.</summary>
     public static FilaDeJanelas<Window> Fila { get; set; } =
-        new(janela => janela.Show(), janela => janela.Hide());
+        new(janela => Exibir(janela, Dono?.Invoke()), janela => janela.Hide());
 
     /// <summary>
     /// Põe a janela na fila. Ela sai da fila sozinha ao fechar — inclusive fechada sem nunca ter
@@ -28,5 +35,32 @@ public static class Flutuantes
         var fila = Fila;
         janela.Closed += (_, _) => fila.Saiu(janela);
         fila.Entrar(janela, vez);
+    }
+
+    /// <summary>
+    /// Mostra a janela pertencendo ao orbe.
+    /// <para>
+    /// As duas são Topmost, e entre duas Topmost fica em cima a última ativada. Visto no uso
+    /// (19/10/2026): o Shadow pede confirmação, a janela dela toma o foco e a barra fecha;
+    /// reaberta a barra, o orbe passava POR CIMA da confirmação, que ficava escondida atrás
+    /// dele esperando resposta. Janela com dono fica sempre acima do dono, sem precisar roubar
+    /// o foco de volta — o que fecharia a barra de novo.
+    /// </para>
+    /// </summary>
+    public static void Exibir(Window janela, Window? dono)
+    {
+        if (dono != null && !ReferenceEquals(dono, janela) && dono.IsVisible && janela.Owner == null)
+            janela.Owner = dono;
+        janela.Show();
+    }
+
+    /// <summary>
+    /// Solta as flutuantes do orbe antes de ele fechar. O WPF fecha as janelas de um dono que
+    /// fecha, e desligar o orbe recusaria em silêncio a confirmação que estava na tela.
+    /// </summary>
+    public static void Soltar(Window dono)
+    {
+        foreach (var janela in dono.OwnedWindows.Cast<Window>().ToList())
+            janela.Owner = null;
     }
 }
