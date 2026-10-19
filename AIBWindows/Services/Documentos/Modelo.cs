@@ -114,6 +114,12 @@ public sealed class Grade
     public string Nome { get; }
     public bool Oculta { get; }
 
+    /// <summary>Linhas do Excel ocultas (por autofiltro ou à mão).</summary>
+    public HashSet<int> Ocultas { get; } = new();
+
+    /// <summary>Descrição curta do autofiltro ativo ("A1:F200 · Status = Aberto") ou null se não houver.</summary>
+    public string? Filtro { get; set; }
+
     /// <summary>Linha da primeira célula usada (1 se a aba começa no alto).</summary>
     public int PrimeiraLinha { get; set; } = 1;
 

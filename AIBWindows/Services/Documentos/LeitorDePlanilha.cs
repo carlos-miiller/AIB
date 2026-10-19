@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using ClosedXML.Excel;
 
 namespace AIB.Services.Documentos;
@@ -52,6 +53,9 @@ public static class LeitorDePlanilha
             {
                 var linha = new Celula[c2];
                 var row = ws.Row(r);
+                if (row.IsHidden)
+                    grade.Ocultas.Add(r);
+
                 for (int c = 1; c <= c2; c++)
                 {
                     var cell = row.Cell(c);
@@ -60,10 +64,168 @@ public static class LeitorDePlanilha
                 grade.Acrescentar(linha);
             }
 
+            if (ws.AutoFilter.IsEnabled && ws.AutoFilter.Range != null)
+                grade.Filtro = DescreverFiltro(ws);
+
             abas.Add(grade);
         }
 
         return new Pasta(Formato.Xlsx, abas);
+    }
+
+    private static string? DescreverFiltro(IXLWorksheet ws)
+    {
+        var af = ws.AutoFilter;
+        if (!af.IsEnabled || af.Range is not { } range) return null;
+
+        string faixa = range.RangeAddress.ToString() ?? "";
+        var criterios = new List<string>();
+
+        int r1 = range.RangeAddress.FirstAddress.RowNumber;
+        int c1 = range.RangeAddress.FirstAddress.ColumnNumber;
+        int c2 = range.RangeAddress.LastAddress.ColumnNumber;
+
+        var colunasFiltradas = ObterColunasFiltradas(af, c1, c2);
+        foreach (var (colNum, col) in colunasFiltradas)
+        {
+            if (col.FilterType == XLFilterType.None) continue;
+
+            string nome = ws.Cell(r1, colNum).IsEmpty(XLCellsUsedOptions.Contents)
+                ? Grade.Letra(colNum)
+                : Apresentacao.Achatar(Texto(ws.Cell(r1, colNum)).Trim());
+            if (nome.Length == 0) nome = Grade.Letra(colNum);
+
+            string? crit = DescreverColuna(col, nome);
+            if (!string.IsNullOrEmpty(crit))
+                criterios.Add(crit);
+        }
+
+        if (criterios.Count == 0)
+            return $"{faixa} · sem critério";
+
+        return $"{faixa} · {string.Join("; ", criterios)}";
+    }
+
+    private static List<(int ColNum, IXLFilterColumn Col)> ObterColunasFiltradas(IXLAutoFilter af, int c1, int c2)
+    {
+        var lista = new List<(int, IXLFilterColumn)>();
+        try
+        {
+            var prop = af.GetType().GetProperty("Columns", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (prop?.GetValue(af) is System.Collections.IDictionary dict)
+            {
+                foreach (System.Collections.DictionaryEntry entry in dict)
+                {
+                    if (entry.Key is int colNum && entry.Value is IXLFilterColumn fc)
+                        lista.Add((colNum, fc));
+                }
+                return lista.OrderBy(x => x.Item1).ToList();
+            }
+        }
+        catch { }
+
+        for (int c = c1; c <= c2; c++)
+        {
+            try
+            {
+                var col = af.Column(c);
+                if (col.FilterType != XLFilterType.None)
+                    lista.Add((c, col));
+            }
+            catch { }
+        }
+        return lista;
+    }
+
+    private static string DescreverColuna(IXLFilterColumn col, string nome)
+    {
+        switch (col.FilterType)
+        {
+            case XLFilterType.Regular:
+            {
+                var valores = new List<string>();
+                if (col is System.Collections.IEnumerable en)
+                {
+                    foreach (object item in en)
+                    {
+                        var valProp = item.GetType().GetProperty("Value");
+                        var val = valProp?.GetValue(item)?.ToString();
+                        if (!string.IsNullOrEmpty(val))
+                            valores.Add(val);
+                    }
+                }
+                valores = valores.Distinct().ToList();
+                return valores.Count > 0
+                    ? $"{nome} = {string.Join(", ", valores)}"
+                    : $"{nome} (filtro personalizado)";
+            }
+
+            case XLFilterType.Custom:
+            {
+                var partes = new List<(string Op, string Val, string? Conn)>();
+                if (col is System.Collections.IEnumerable en)
+                {
+                    foreach (object item in en)
+                    {
+                        var opProp = item.GetType().GetProperty("Operator");
+                        var customValProp = item.GetType().GetProperty("CustomValue");
+                        var connProp = item.GetType().GetProperty("Connector");
+
+                        var opObj = opProp?.GetValue(item);
+                        var customValObj = customValProp?.GetValue(item);
+                        var connObj = connProp?.GetValue(item);
+
+                        string opStr = opObj?.ToString() switch
+                        {
+                            "Equal" => "=",
+                            "NotEqual" => "!=",
+                            "GreaterThan" => ">",
+                            "LessThan" => "<",
+                            "EqualOrGreaterThan" => ">=",
+                            "EqualOrLessThan" => "<=",
+                            _ => ""
+                        };
+
+                        string valStr = customValObj?.ToString() ?? "";
+                        string? connStr = connObj?.ToString() switch
+                        {
+                            "And" => "e",
+                            "Or" => "ou",
+                            _ => null
+                        };
+
+                        if (!string.IsNullOrEmpty(opStr))
+                            partes.Add((opStr, valStr, connStr));
+                    }
+                }
+
+                if (partes.Count == 1)
+                    return $"{nome} {partes[0].Op} {partes[0].Val}";
+
+                if (partes.Count == 2)
+                {
+                    string conector = partes[1].Conn ?? "e";
+                    return $"{nome} {partes[0].Op} {partes[0].Val} {conector} {partes[1].Op} {partes[1].Val}";
+                }
+
+                return $"{nome} (filtro personalizado)";
+            }
+
+            case XLFilterType.TopBottom:
+            {
+                string parte = col.TopBottomPart == XLTopBottomPart.Top ? "maiores" : "menores";
+                string tipo = col.TopBottomType == XLTopBottomType.Percent ? "%" : "itens";
+                return $"{nome} ({parte} {col.TopBottomValue} {tipo})";
+            }
+
+            case XLFilterType.Dynamic:
+            {
+                return $"{nome} ({col.DynamicType})";
+            }
+
+            default:
+                return $"{nome} (filtro personalizado)";
+        }
     }
 
     /// <summary>O texto da célula como esta ferramenta mostra — o mesmo na leitura e no cartão.</summary>

@@ -731,6 +731,11 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
 - Ler um arquivo aberto no Excel funciona (stream com `FileShare.ReadWrite`); gravar, não (item 6).
 - Apagar linhas: antes, `AnularReferencias` troca por `#REF!` a referência que aponta só para as
   linhas apagadas — o ClosedXML a deslocaria para a linha de baixo, em silêncio.
+- **Filtro e linhas ocultas** (pergunta do usuário, 19/10/2026): o leitor guarda as linhas
+  ocultas (`Grade.Ocultas`) e o autofiltro (`Grade.Filtro`). O `info` diz "filtro ativo em … ·
+  N linhas ocultas", o `read` e o `find` marcam `(oculta)`, e a `query` soma tudo mas avisa
+  quantas ocultas entraram; com `visible:true` conta só as visíveis, como o `SUBTOTAL`. Sem isso,
+  "quanto dá o total?" numa planilha filtrada respondia a soma de linhas que o usuário não via.
 - **Formatação** (mockup "Formatação de planilhas do AIB", 19/10/2026; `EstiloDePlanilha`,
   `CondicionalDePlanilha`): `style` junto de `cell`/`range`, com ou sem `value` (fonte, cor,
   fundo, borda, alinhamento, quebra, `number_format` com atalhos `moeda`, `porcentagem`,

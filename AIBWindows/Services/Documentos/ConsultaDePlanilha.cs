@@ -26,7 +26,7 @@ public static class ConsultaDePlanilha
         + "\"agg\":[{\"fn\":\"sum\",\"col\":\"Horas\"}],\"sort\":\"-sum(Horas)\",\"limit\":20} — tudo opcional";
 
     private static readonly CultureInfo Br = CultureInfo.GetCultureInfo("pt-BR");
-    private static readonly string[] Chaves = { "where", "group", "agg", "sort", "limit" };
+    private static readonly string[] Chaves = { "where", "group", "agg", "sort", "limit", "visible" };
     private static readonly string[] Funcoes = { "sum", "count", "avg", "min", "max" };
 
     // "1.234,56", "12,5", "1234" (pt-BR) e "1234.56" (invariante). "1.234" é milhar, como no Excel brasileiro.
@@ -81,6 +81,7 @@ public static class ConsultaDePlanilha
         var aggs = new List<Agregacao>();
         string? sort = null;
         int limite = LimitePadrao;
+        bool visible = false;
 
         foreach (var p in pedido.EnumerateObject())
         {
@@ -91,6 +92,7 @@ public static class ConsultaDePlanilha
                 case "agg": aggs.AddRange(Itens(p.Value).Select(i => LerAgg(i, grade, cab, colunas))); break;
                 case "sort": sort = p.Value.ValueKind is JsonValueKind.Null ? null : Texto(p.Value, "sort"); break;
                 case "limit": limite = Limite(p.Value); break;
+                case "visible": visible = Booleano(p.Value, "visible"); break;
                 default:
                     throw new ErroDeDocumento($"a consulta não conhece \"{p.Name}\". Chaves: {string.Join(", ", Chaves)}. Exemplo: {Exemplo}.");
             }
@@ -101,15 +103,35 @@ public static class ConsultaDePlanilha
         var dados = new List<int>();
         for (int r = cab + 1; r <= grade.Linhas; r++)
             if (!grade.LinhaVazia(r)) dados.Add(r);
+
+        int ocultasEmDados = dados.Count(r => grade.Ocultas.Contains(r));
+
+        if (visible)
+            dados = dados.Where(r => !grade.Ocultas.Contains(r)).ToList();
+
         var linhas = dados.Where(r => filtros.All(f => Passa(grade, r, f))).ToList();
 
         string topo = $"Aba \"{grade.Nome}\" · {Plural(dados.Count, "linha", "linhas")} de dados (cabeçalho na linha {cab})";
+        if (visible)
+            topo += $" · só as visíveis ({Plural(ocultasEmDados, "oculta fora", "ocultas fora")})";
         if (filtros.Count > 0)
             topo += $" · filtro: {string.Join(", ", filtros.Select(Descrever))} → {Plural(linhas.Count, "linha", "linhas")}";
 
-        if (grupo != null) return Grupos(grade, topo, linhas, grupo, aggs, sort, limite, colunas, cab, teto);
-        if (aggs.Count > 0) return Totais(grade, topo, linhas, aggs, teto);
-        return Linhas(grade, topo, linhas, colunas, cab, sort, limite, teto);
+        int ocultasNaConta = visible ? 0 : linhas.Count(r => grade.Ocultas.Contains(r));
+        string? aviso = null;
+        if (ocultasNaConta > 0)
+        {
+            string filtroPart = grade.Filtro != null
+                ? $" (filtro: {(grade.Filtro.Contains(" · ") ? grade.Filtro.Split(" · ", 2)[1] : grade.Filtro)})"
+                : " (ocultadas à mão)";
+            aviso = $"Atenção: {Plural(ocultasNaConta, "linha oculta", "linhas ocultas")}{filtroPart} "
+                    + $"{(ocultasNaConta == 1 ? "entrou" : "entraram")} na conta. "
+                    + "Para contar só as visíveis, como o SUBTOTAL do Excel, repita com visible:true.";
+        }
+
+        if (grupo != null) return Grupos(grade, topo, linhas, grupo, aggs, sort, limite, colunas, cab, aviso, teto);
+        if (aggs.Count > 0) return Totais(grade, topo, linhas, aggs, aviso, teto);
+        return Linhas(grade, topo, linhas, colunas, cab, sort, limite, aviso, teto);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -117,7 +139,7 @@ public static class ConsultaDePlanilha
     // ─────────────────────────────────────────────────────────────────────────
 
     private static string Linhas(Grade grade, string topo, List<int> linhas, List<Coluna> colunas, int cab,
-                                 string? sort, int limite, int teto)
+                                 string? sort, int limite, string? aviso, int teto)
     {
         if (sort != null)
         {
@@ -131,18 +153,23 @@ public static class ConsultaDePlanilha
             (r + "\t" + string.Join("\t", colunas.Select(c => Apresentacao.Curto(Apresentacao.Achatar(grade[r, c.Numero].Texto), 300))))
             .TrimEnd('\t')).ToList();
 
-        return Montar(topo, cabecalho, itens, linhas.Count, "linhas", new List<string>(), teto);
+        var depois = new List<string>();
+        if (aviso != null) depois.Add(aviso);
+
+        return Montar(topo, cabecalho, itens, linhas.Count, "linhas", depois, teto);
     }
 
-    private static string Totais(Grade grade, string topo, List<int> linhas, List<Agregacao> aggs, int teto)
+    private static string Totais(Grade grade, string topo, List<int> linhas, List<Agregacao> aggs, string? aviso, int teto)
     {
         var res = aggs.Select(a => Calcular(a, grade, linhas)).ToList();
         var itens = aggs.Select((a, i) => $"{a.Rotulo}\t{res[i].Texto}").ToList();
-        return Montar(topo, null, itens, itens.Count, "agregações", Notas(aggs, res), teto);
+        var notas = Notas(aggs, res);
+        if (aviso != null) notas.Add(aviso);
+        return Montar(topo, null, itens, itens.Count, "agregações", notas, teto);
     }
 
     private static string Grupos(Grade grade, string topo, List<int> linhas, Coluna grupo, List<Agregacao> aggs,
-                                 string? sort, int limite, List<Coluna> colunas, int cab, int teto)
+                                 string? sort, int limite, List<Coluna> colunas, int cab, string? aviso, int teto)
     {
         // Na ordem em que cada valor aparece primeiro: é a ordem que o usuário vê na planilha.
         var ordem = new List<(string Chave, List<int> Linhas)>();
@@ -176,6 +203,7 @@ public static class ConsultaDePlanilha
         var total = aggs.Select(a => Calcular(a, grade, linhas)).ToList();
         var depois = new List<string> { "TOTAL\t" + string.Join("\t", total.Select(x => x.Texto)) };
         depois.AddRange(Notas(aggs, total));
+        if (aviso != null) depois.Add(aviso);
 
         return Montar(topo, cabecalho, itens, grupos.Count, "grupos", depois, teto);
     }
@@ -478,6 +506,14 @@ public static class ConsultaDePlanilha
         };
         return Math.Clamp(n, 1, LimiteMaximo);
     }
+
+    private static bool Booleano(JsonElement e, string chave) => e.ValueKind switch
+    {
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.String when bool.TryParse(e.GetString(), out bool b) => b,
+        _ => throw new ErroDeDocumento($"'{chave}' deve ser true ou false.")
+    };
 
     private static bool Prop(JsonElement e, string nome, out JsonElement valor)
     {

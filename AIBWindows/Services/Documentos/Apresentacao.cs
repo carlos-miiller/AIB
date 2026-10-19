@@ -41,8 +41,24 @@ public static class Apresentacao
                 continue;
             }
 
-            sb.AppendLine($"- \"{aba.Nome}\"{oculta}: A{aba.PrimeiraLinha}:{Grade.Letra(aba.Colunas)}{aba.Linhas} "
-                          + $"({aba.Linhas - aba.PrimeiraLinha + 1} linhas, {aba.Colunas} colunas)");
+            var detalheAba = new StringBuilder();
+            detalheAba.Append($"- \"{aba.Nome}\"{oculta}: A{aba.PrimeiraLinha}:{Grade.Letra(aba.Colunas)}{aba.Linhas} "
+                              + $"({aba.Linhas - aba.PrimeiraLinha + 1} linhas, {aba.Colunas} colunas)");
+
+            if (aba.Filtro != null)
+            {
+                var partes = aba.Filtro.Split(" · ", 2);
+                string faixa = partes[0];
+                string criterio = partes.Length > 1 ? partes[1] : "sem critério";
+                detalheAba.Append($" · filtro ativo em {faixa} ({criterio})");
+            }
+
+            if (aba.Ocultas.Count > 0)
+            {
+                detalheAba.Append($" · {(aba.Ocultas.Count == 1 ? "1 linha oculta" : $"{aba.Ocultas.Count} linhas ocultas")}");
+            }
+
+            sb.AppendLine(detalheAba.ToString());
 
             int? cab = Cabecalho(aba);
             if (cab is int l)
@@ -88,17 +104,21 @@ public static class Apresentacao
         corpo.AppendLine();
 
         int ultima = l1 - 1, mostradas = 0;
+        int ocultasNoTrecho = 0;
         for (int r = l1; r <= l2; r++)
         {
             if (aba.LinhaVazia(r)) { ultima = r; continue; }
 
+            bool oculta = aba.Ocultas.Contains(r);
             var linha = new StringBuilder();
             linha.Append(r);
+            if (oculta) linha.Append(" (oculta)");
             for (int c = c1; c <= c2; c++) linha.Append('\t').Append(Mostrar(aba[r, c]));
             string texto = linha.ToString().TrimEnd('\t');
 
             if (mostradas >= linhasMax || corpo.Length + texto.Length > teto) break;
             corpo.AppendLine(texto);
+            if (oculta) ocultasNoTrecho++;
             mostradas++;
             ultima = r;
         }
@@ -106,6 +126,14 @@ public static class Apresentacao
         sb.AppendLine($"Aba \"{aba.Nome}\" · linhas {l1}–{ultima} de {aba.Linhas} · colunas {Grade.Letra(c1)}–{Grade.Letra(c2)}"
                       + " · ⟨=…⟩ é a fórmula da célula");
         sb.Append(corpo);
+
+        if (ocultasNoTrecho > 0)
+        {
+            string aviso = ocultasNoTrecho == 1
+                ? "1 linha deste trecho está oculta (filtro ou ocultadas à mão)."
+                : $"{ocultasNoTrecho} linhas deste trecho estão ocultas (filtro ou ocultadas à mão).";
+            sb.AppendLine(aviso);
+        }
 
         if (ultima < l2)
             sb.Append($"[parou na linha {ultima}; continue com range='{ultima + 1}:{l2}', ou use 'query' para contar e filtrar]");
@@ -133,7 +161,8 @@ public static class Apresentacao
                     if (achados.Count >= Achados) continue;
 
                     var linha = Enumerable.Range(1, aba.Colunas).Select(x => aba[r, x].Texto).Where(t => t.Length > 0);
-                    achados.Add($"{Ref(aba, r, c)}: {Curto(cel.Texto, 120)}   (linha {r}: {Curto(string.Join(" | ", linha), 200)})");
+                    string oculta = aba.Ocultas.Contains(r) ? " (oculta)" : "";
+                    achados.Add($"{Ref(aba, r, c)}: {Curto(cel.Texto, 120)}   (linha {r}{oculta}: {Curto(string.Join(" | ", linha), 200)})");
                 }
             }
         }
