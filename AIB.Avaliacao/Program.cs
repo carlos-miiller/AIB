@@ -148,9 +148,30 @@ var casos = new List<Caso>
         r => r.ChamouCom("grep", "TODO")
             ? Passou() : Falhou("devia chamar grep com TODO")),
 
+    // DOCUMENTOS (ferramenta doc, 19/10/2026). Antes, a planilha era da skill ler-planilha; o
+    // erro agora é cair no read (lixo binário), no shell ou numa skill.
     new("planilha", $@"o que tem na planilha {home}\Downloads\Listas de Ramais.xlsx?",
-        r => r.ChamouCom("skill", "ler-planilha") && r.ChamouCom("skill", "-Path")
-            ? Passou() : Falhou("devia chamar skill ler-planilha com -Path")),
+        r => r.ChamouCom("doc", "Listas de Ramais.xlsx") && !r.Chamou("read") && !r.Chamou("shell") && !r.Chamou("skill")
+            ? Passou() : Falhou("devia chamar doc com o caminho")),
+
+    // A soma é da 'query'; 'info' antes também vale (a descrição manda começar por ele). O que
+    // não vale é 'read' para somar de cabeça — mas na primeira volta isso não se distingue de ler
+    // o cabeçalho, então só a ferramenta é exigida.
+    new("planilha-soma", $@"qual é o total da coluna Valor na planilha {home}\Documents\Custos TI 2026.xlsx?",
+        r => r.ChamouCom("doc", "Custos TI 2026.xlsx")
+            ? Passou() : Falhou("devia chamar doc (info ou query) com o caminho")),
+
+    new("planilha-editar", $@"na planilha {home}\Documents\Custos TI 2026.xlsx, aba Outubro, troque o valor da célula C14 para 1290",
+        r => r.ChamouCom("doc", "Custos TI 2026.xlsx") && !r.Chamou("shell") && !r.Chamou("write")
+            ? Passou() : Falhou("devia chamar doc (edit, ou info/read antes) — não write nem shell")),
+
+    new("word", $@"resuma o documento {home}\Documents\Proposta Google Workspace.docx",
+        r => r.ChamouCom("doc", "Proposta Google Workspace.docx") && !r.Chamou("read")
+            ? Passou() : Falhou("devia chamar doc com o caminho do .docx")),
+
+    new("pdf", $@"o que diz a cláusula de multa no contrato {home}\Downloads\contrato-vipphone.pdf?",
+        r => r.ChamouCom("doc", "contrato-vipphone.pdf") && !r.Chamou("read")
+            ? Passou() : Falhou("devia chamar doc (find ou read) no PDF")),
 
     // Contagem de hoje pode sair do resumo do vigia — é para isso que ele existe (EstadoDoVigia).
     // Critério revisto em 14/09, depois da ablação: sem o resumo o modelo INVENTOU números;
