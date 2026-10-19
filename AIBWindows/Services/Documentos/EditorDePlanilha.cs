@@ -247,6 +247,9 @@ public static class EditorDePlanilha
                     int rNovo = Math.Max(0, l.Value - 1);
                     int cNovo = Math.Max(0, c.Value - 1);
                     ws.SheetView.Freeze(rNovo, cNovo);
+                    // A aba salva rolada guarda o canto ("L1"); com painel congelado, esse canto
+                    // vira a parte fixa, e o Excel mostrava a coluna L no lugar da A.
+                    ws.SheetView.TopLeftCellAddress = ws.Cell(1, 1).Address;
                     depois = DescreverPainel(rNovo, cNovo);
                 }
 

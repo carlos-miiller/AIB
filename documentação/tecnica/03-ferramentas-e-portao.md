@@ -740,7 +740,8 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   `CondicionalDePlanilha`): `style` junto de `cell`/`range`, com ou sem `value` (fonte, cor,
   fundo, borda, alinhamento, quebra, `number_format` com atalhos `moeda`, `porcentagem`,
   `data`…); `columns` + `width` (número ou `auto`, teto 60 — acima disso, 60 e quebra de texto);
-  `freeze` (`'B2'` ou `'none'`); `conditional` (comparação, texto contém, repetidos/únicos,
+  `freeze` (`'B2'` ou `'none'`; congelar volta o canto da aba para A1, senão a aba salva rolada
+  congelava a coluna em que parou); `conditional` (comparação, texto contém, repetidos/únicos,
   escala de cores, barra de dados, ícones) e `clear_conditional`. Cor em `#RRGGBB` ou nome em
   português; cor desconhecida é erro, sem cartão. Uma linha do plano por faixa, com a amostra
   (`Aparencia`: a primeira célula como o Excel vai mostrá-la) e a descrição em palavras; a regra

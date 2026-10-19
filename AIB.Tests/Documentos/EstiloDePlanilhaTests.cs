@@ -199,6 +199,34 @@ public class EstiloDePlanilhaTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// Caso real (19/10/2026, inventario-sistemas.xlsx): a aba tinha sido salva rolada até a
+    /// coluna L (<c>sheetView topLeftCell="L1"</c>). O <c>freeze: "B2"</c> trocou o painel e
+    /// manteve esse canto; no Excel, o painel congelado passou a ser a coluna L, e o usuário
+    /// perguntou se a Ellen tinha ocultado as colunas A a K.
+    /// </summary>
+    [Fact]
+    public void Freeze_EmAbaSalvaRolada_VoltaOCantoParaA1()
+    {
+        string c = Caminho("FreezeRolada.xlsx");
+        using (var wb = new XLWorkbook())
+        {
+            var ws = wb.AddWorksheet("Inventario");
+            ws.Cell("A1").Value = "Sistema";
+            ws.SheetView.TopLeftCellAddress = ws.Cell("L1").Address;
+            wb.SaveAs(c);
+        }
+
+        EditorDePlanilha.Planejar(c, Ops(@"[{ ""freeze"": ""B2"" }]"), null).Gravar();
+
+        using var reaberto = new XLWorkbook(c);
+        var v = reaberto.Worksheet("Inventario").SheetView;
+        v.SplitColumn.Should().Be(1);
+        // A1 não é gravado (é o padrão do Excel); relido, vem como endereço vazio.
+        v.TopLeftCellAddress.ColumnNumber.Should().BeLessThanOrEqualTo(1);
+        v.TopLeftCellAddress.RowNumber.Should().BeLessThanOrEqualTo(1);
+    }
+
     [Fact]
     public void Conditional_WhenMenorQueZero_FaixaCom3Negativos_DepoisContemHojeAtinge3Celulas_EReabreComRegra()
     {
