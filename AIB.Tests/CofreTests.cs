@@ -187,6 +187,41 @@ namespace AIB.Tests
             recusa.Should().StartWith("ACESSO NEGADO");
         }
 
+        /// <summary>
+        /// Pedido do usuário (20/10/2026): "inclua uma flag em cada chave para 'Permite uso no
+        /// shell'". O webhook do Bitrix fica só com a habilidade, que limita as operações; pelo
+        /// shell ele daria a API inteira.
+        /// </summary>
+        [Fact]
+        public async Task SemPermissaoDeShell_ORecusaAntesDoCartao()
+        {
+            var c = Novo();
+            c.Guardar("bitrix", Webhook, "Webhook REST do Bitrix", new[] { "cpaps.bitrix24.com.br" }, shell: false);
+
+            CofreNoComando.Analisar("irm \"$env:COFRE_BITRIX/tasks.task.list\"", c).Recusa
+                .Should().StartWith("ACESSO NEGADO").And.Contain("Permite uso no shell");
+
+            var prompt = new Prompt();
+            string r = await new ToolRegistry(prompt) { Cofre = c }
+                .ExecuteToolAsync(Ferramentas.Shell, Shell("irm \"$env:COFRE_BITRIX/profile\""), 9);
+
+            r.Should().StartWith("ACESSO NEGADO");
+            prompt.Visto.Should().BeNull();
+        }
+
+        [Fact]
+        public void GuardarSemValor_MantemOGuardado_EAliasNovoSemValorRecusa()
+        {
+            var c = ComBitrix();
+            c.Guardar("bitrix", null, "outra descrição", new[] { "cpaps.bitrix24.com.br" }, shell: false);
+
+            c.Achar("bitrix")!.Descricao.Should().Be("outra descrição");
+            c.Redigir(Webhook).Should().Be("[cofre: bitrix]");
+
+            var act = () => c.Guardar("novo", "", "x", Array.Empty<string>());
+            act.Should().Throw<ArgumentException>();
+        }
+
         [Fact]
         public void Analisar_SemAlias_NaoOlhaEnderecos()
         {

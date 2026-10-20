@@ -246,11 +246,12 @@ Várias opções nascem desligadas por decisão registrada no comentário de cad
 
 ### Cofre de aliases: `Cofre`
 
-`AIBWindows/Services/Cofre.cs`. Webhooks, tokens e senhas que a IA usa **sem ler**: uma lista JSON (nome, valor, descrição, hosts permitidos, criado, último uso, usos) num único arquivo `~/.AIB/credentials/cofre/aliases.bin`, cifrado com DPAPI e gravado por temporário.
+`AIBWindows/Services/Cofre.cs`. Webhooks, tokens e senhas que a IA usa **sem ler**: uma lista JSON (nome, valor, descrição, hosts permitidos, "Permite uso no shell", criado, último uso, usos) num único arquivo `~/.AIB/credentials/cofre/aliases.bin`, cifrado com DPAPI e gravado por temporário.
 
 - O nome (`[a-z0-9-]`, até 40) vira a variável `COFRE_<NOME>` (hífen → sublinhado), que o shell injeta no processo (ver 03, `shell`).
 - `Listar`/`Achar` devolvem `Alias`, **sem o valor**. Só `Variaveis` (chamado pelo shell na execução) e `Redigir` tocam o valor.
-- `Guardar` valida nome, valor e descrição, normaliza os hosts (URL colada vira host) e recusa webhook cujo host não está na lista. Guardar com nome existente substitui e mantém criação e contagem; `TrocarValor` mantém descrição e hosts.
+- `Guardar` valida nome, valor e descrição, normaliza os hosts (URL colada vira host) e recusa webhook cujo host não está na lista. Guardar com nome existente substitui e mantém criação e contagem; com valor vazio, mantém o valor guardado (a tela edita o resto sem pedir o segredo de novo). `TrocarValor` mantém descrição, hosts e a flag.
+- `Shell` ("Permite uso no shell"): desligado, o shell recusa o alias e só uma habilidade o usa. Arquivo de antes da flag vale como ligado.
 - Arquivo que não decifra (outra máquina, outro usuário) é cofre vazio.
 - Fica dentro de `credentials/`: as ferramentas de leitura já o negam (`DadosProtegidos`) e o reset de fábrica o leva junto. Não usa o `CredentialService` pela mesma razão do `MailVault`.
 

@@ -71,6 +71,7 @@ public partial class ChatWindow
         AlertaTitulo.Text = $"Isto parece {achado.Tipo}";
         AlertaNome.Text = NomeLivre(achado.Nome ?? "segredo");
         AlertaHosts.Text = achado.Host ?? "";
+        AlertaShell.IsChecked = true;
         AlertaDescricao.Text = achado.Nome switch
         {
             "bitrix" => "Webhook REST do Bitrix",
@@ -105,7 +106,7 @@ public partial class ChatWindow
         {
             string nome = AlertaNome.Text.Trim().ToLowerInvariant();
             var hosts = AlertaHosts.Text.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            CofreDaMensagem.Guardar(nome, achado.Trecho, AlertaDescricao.Text, hosts);
+            CofreDaMensagem.Guardar(nome, achado.Trecho, AlertaDescricao.Text, hosts, AlertaShell.IsChecked == true);
 
             // Pela posição, se a mensagem não mudou; senão pelo valor, onde estiver.
             string atual = InputBox.Text;

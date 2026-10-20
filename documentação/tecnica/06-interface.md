@@ -201,7 +201,7 @@ usuário (20/10/2026): o webhook do Bitrix colado no chat ia ao provedor e ao hi
 sem perguntar. Outro trecho com cara de segredo (webhook com a chave no endereço: Bitrix, Slack,
 Discord, Teams, `?token=`; ou os formatos de `Segredos.Trechos`) segura o envio e abre o
 **alerta** acima da barra (`AlertaDeSegredo`, laranja): nome e hosts sugeridos (nome já usado
-ganha `-2`), descrição editável, e três botões. **Guardar e enviar com o nome** grava no cofre,
+ganha `-2`), descrição editável, "Permite uso no shell" (ligado), e três botões. **Guardar e enviar com o nome** grava no cofre,
 troca o trecho e envia de novo pelo mesmo caminho (outro trecho abre o alerta outra vez);
 **Editar a mensagem** fecha e seleciona o trecho; **Enviar mesmo assim** libera um envio. Editar o
 trecho para fora da mensagem fecha o alerta. O turno do orbe (janela escondida) e o nascido de um
@@ -663,7 +663,7 @@ A janela abre direto numa página pelo parâmetro do construtor (é o que o modo
 | E-mail | Contas (adicionar com endereço e senha de app, principal, trocar senha, zerar leitura, remover), janela de leitura em dias, tempo limite por caixa, dias de diário da triagem, provedor e modelo da triagem, raciocínio na triagem. |
 | Shadow | Mostrar o orbe, deixar o Shadow tratar os e-mails, e-mails mostrados na fala, puxar assunto sozinha (iniciativa), máximo de mensagens por dia, horário de silêncio. |
 | Ferramentas | Ferramentas inteligentes, confirmar comandos perigosos (floor list), máximo de etapas por turno, pastas sem confirmação, autorizações "sempre permitir" da sessão ("Esquecer todas"). |
-| Cofre | `PaginaDoCofre` (UserControl próprio): os aliases do `Cofre` sem o valor (nome, `$env:COFRE_…`, descrição, hosts, usos), "Trocar valor", "Apagar" (dois cliques) e o formulário (nome, valor em `PasswordBox`, descrição, hosts; colar um webhook sugere o host). Grava na hora, fora do "Salvar" e do estado sujo, e não tem "Restaurar padrões". |
+| Cofre | `PaginaDoCofre` (UserControl próprio): os aliases do `Cofre` sem o valor (nome, `$env:COFRE_…`, descrição, hosts, usos), "Editar" (valor em branco mantém o guardado), "Apagar" (dois cliques) e o formulário (nome, valor em `PasswordBox`, descrição, hosts, "Permite uso no shell"; colar um webhook sugere o host). A linha diz "shell e habilidades" ou "só habilidades". Grava na hora, fora do "Salvar" e do estado sujo, e não tem "Restaurar padrões". |
 | Memória | Quem escreve a memória, gatilho de compactação, turnos e tokens por capítulo, teto de capítulos por ato, fatia de memória, esconder resultados antigos, guardar a fala junto da ferramenta, pasta da conversa. |
 | Avançado | Devolver o raciocínio ao modelo. |
 | Logs | Logs detalhados no console, registro de execução, diário da compactação, "Simular o primeiro envio", pasta dos logs. |

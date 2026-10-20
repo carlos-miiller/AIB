@@ -537,6 +537,9 @@
                                 </Grid>
                                 <TextBox x:Name="AlertaDescricao" Style="{StaticResource ControlTextBox}" Margin="0,6,0,0"
                                          ToolTip="Para que serve (a IA lê isto)"/>
+                                <CheckBox x:Name="AlertaShell" IsChecked="True" Margin="0,6,0,0" FontSize="12"
+                                          Foreground="{StaticResource TextBodyBrush}" Content="Permite uso no shell"
+                                          ToolTip="Desmarcado, só as habilidades que declaram este segredo o usam."/>
                                 <TextBlock x:Name="AlertaErro" Visibility="Collapsed" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
                                            Foreground="{StaticResource DangerTextBrush}"/>
                                 <WrapPanel Margin="0,8,0,0">

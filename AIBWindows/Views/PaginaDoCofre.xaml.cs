@@ -22,8 +22,8 @@ public partial class PaginaDoCofre : UserControl
     /// <summary>O cofre da página. Os ensaios trocam por um temporário antes de <see cref="Atualizar"/>.</summary>
     public Cofre Cofre { get; set; } = new();
 
-    /// <summary>Nome em troca de valor; null quando o formulário cria um alias novo.</summary>
-    private string? _trocando;
+    /// <summary>Nome em edição; null quando o formulário cria um alias novo.</summary>
+    private string? _editando;
 
     /// <summary>Nome que pediu "Apagar" e espera o segundo clique.</summary>
     private string? _apagando;
@@ -53,7 +53,7 @@ public partial class PaginaDoCofre : UserControl
         variavel.SetResourceReference(TextBlock.ForegroundProperty, "AccentLilacBrush");
         variavel.SetResourceReference(TextBlock.FontFamilyProperty, "MonoFontFamily");
 
-        var trocar = Botao("Trocar valor", (_, _) => ComecarTroca(a));
+        var trocar = Botao("Editar", (_, _) => ComecarEdicao(a));
         bool confirmando = _apagando == a.Nome;
         var apagar = Botao(confirmando ? "Confirmar: apagar" : "Apagar", (_, _) => Apagar(a.Nome));
         if (confirmando) apagar.SetResourceReference(StyleProperty, "DangerOutlineButton");
@@ -100,8 +100,9 @@ public partial class PaginaDoCofre : UserControl
     public static string Meta(Alias a)
     {
         string hosts = a.Hosts.Count == 0 ? "qualquer endereço" : "hosts: " + string.Join(", ", a.Hosts);
+        string onde = a.Shell ? "shell e habilidades" : "só habilidades";
         string uso = a.Usos == 0 ? "nunca usado" : $"usado {a.Usos}× · {a.UsadoEm:dd/MM HH:mm}";
-        return $"{hosts} · {uso}";
+        return $"{hosts} · {onde} · {uso}";
     }
 
     private static Button Botao(string texto, RoutedEventHandler clique)
@@ -112,17 +113,19 @@ public partial class PaginaDoCofre : UserControl
         return b;
     }
 
-    private void ComecarTroca(Alias a)
+    private void ComecarEdicao(Alias a)
     {
-        _trocando = a.Nome;
+        _editando = a.Nome;
         _apagando = null;
         NomeBox.Text = a.Nome;
         NomeBox.IsReadOnly = true;
         DescricaoBox.Text = a.Descricao;
         HostsBox.Text = string.Join(", ", a.Hosts);
+        ShellCheck.IsChecked = a.Shell;
         ValorBox.Clear();
-        FormTitulo.Text = $"Trocar o valor de \"{a.Nome}\"";
-        GuardarButton.Content = "Trocar valor";
+        FormTitulo.Text = $"Editar \"{a.Nome}\"";
+        ValorDica.Text = "Em branco, fica o valor que já está guardado.";
+        GuardarButton.Content = "Salvar alterações";
         Erro(null);
         ValorBox.Focus();
     }
@@ -139,7 +142,7 @@ public partial class PaginaDoCofre : UserControl
 
         Cofre.Apagar(nome);
         _apagando = null;
-        if (_trocando == nome) Limpar();
+        if (_editando == nome) Limpar();
         Atualizar();
     }
 
@@ -161,7 +164,9 @@ public partial class PaginaDoCofre : UserControl
         try
         {
             var hosts = HostsBox.Text.Split(new[] { ',', ';', ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            Cofre.Guardar(NomeBox.Text, ValorBox.Password, DescricaoBox.Text, hosts);
+            // Valor em branco só vale na edição: num alias novo, o cofre recusa.
+            Cofre.Guardar(NomeBox.Text, _editando != null && ValorBox.Password.Length == 0 ? null : ValorBox.Password,
+                          DescricaoBox.Text, hosts, ShellCheck.IsChecked == true);
             Limpar();
             Atualizar();
         }
@@ -175,12 +180,14 @@ public partial class PaginaDoCofre : UserControl
 
     private void Limpar()
     {
-        _trocando = null;
+        _editando = null;
         NomeBox.IsReadOnly = false;
         NomeBox.Clear();
         ValorBox.Clear();
         DescricaoBox.Clear();
         HostsBox.Clear();
+        ShellCheck.IsChecked = true;
+        ValorDica.Text = "Some da tela ao guardar e não volta.";
         FormTitulo.Text = "Guardar um segredo";
         GuardarButton.Content = "Guardar no cofre";
         Erro(null);

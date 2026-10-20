@@ -83,6 +83,14 @@ public static class CofreNoComando
                             + "Se falta um, o usuário o guarda em Configurações › Cofre; não peça o valor no chat.");
         }
 
+        // "Permite uso no shell" desligado: o alias é de uma habilidade, que só faz as operações
+        // dela. No shell ele daria a API inteira.
+        var presos = usados.Where(a => !a.Shell).ToList();
+        if (presos.Count > 0)
+            return (usados, $"ACESSO NEGADO: {string.Join(", ", presos.Select(a => $"'{a.Nome}'"))} não é liberado para o "
+                            + "shell (Configurações › Cofre › \"Permite uso no shell\"). Use a habilidade que faz essa "
+                            + "operação; se nenhuma faz, diga ao usuário. Nada foi executado.");
+
         var restritos = usados.Where(a => a.Hosts.Count > 0).ToList();
         if (restritos.Count == 0) return (usados, null);
 

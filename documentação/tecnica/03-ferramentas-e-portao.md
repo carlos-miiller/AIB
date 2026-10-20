@@ -322,7 +322,9 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
   cartão; o comando, o cartão, a auditoria e o `raw.jsonl` guardam o nome. Caso real: o webhook do
   Bitrix ia inteiro no comando, e o `Segredos` não o pegava (é uma URL comum). Qualquer
   `COFRE_<NOME>` no texto conta como uso. No **pré-voo** (`Validar`), antes do cartão: alias que
-  não existe → `ERRO` com a lista dos que existem; endereço por extenso (`esquema://host`) fora dos
+  não existe → `ERRO` com a lista dos que existem; alias com "Permite uso no shell" desligado
+  (`Alias.Shell`) → `ACESSO NEGADO`, porque ele é de uma habilidade e pelo shell daria a API
+  inteira; endereço por extenso (`esquema://host`) fora dos
   hosts do alias → `ACESSO NEGADO`; endereço montado na hora (`"https://$h/"`, concatenação) →
   `ACESSO NEGADO`. Com dois aliases restritos, cada host tem de estar na lista de todos (um comando
   por alias). Alias sem hosts passa, e o cartão diz "qualquer endereço". Com alias, o contexto sai

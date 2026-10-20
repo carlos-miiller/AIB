@@ -94,7 +94,7 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void TrocarValor_TravaONome_EMantemDescricao()
+        public void Editar_TravaONome_TrocaOValor_EMantemDescricao()
         {
             WpfHost.EmSta(() =>
             {
@@ -103,7 +103,7 @@ namespace AIB.Tests
                 cofre.Guardar("github", "ghp_abcdefghij", "token do GitHub", new[] { "api.github.com" });
                 p.Atualizar();
 
-                Botoes(Lista(p)).Single(b => (string)b.Content == "Trocar valor")
+                Botoes(Lista(p)).Single(b => (string)b.Content == "Editar")
                     .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
 
                 Achar<TextBox>(p, "NomeBox").IsReadOnly.Should().BeTrue();
@@ -119,7 +119,33 @@ namespace AIB.Tests
         public void SemHosts_AMetaDizQualquerEndereco()
         {
             var a = new Alias("sankhya", "senha", Array.Empty<string>(), DateTime.Now, null, 0);
-            PaginaDoCofre.Meta(a).Should().Be("qualquer endereço · nunca usado");
+            PaginaDoCofre.Meta(a).Should().Be("qualquer endereço · shell e habilidades · nunca usado");
+            PaginaDoCofre.Meta(a with { Shell = false }).Should().Contain("só habilidades");
+        }
+
+        [Fact]
+        public void Editar_SemValor_MantemOSegredo_EDesligaOShell()
+        {
+            // Pedido do usuário (20/10/2026): "inclua uma flag em cada chave para 'Permite uso no
+            // shell'". Desligar não pode exigir colar o segredo de novo.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var (p, cofre) = Nova();
+                cofre.Guardar("bitrix", "https://cpaps.bitrix24.com.br/rest/1/k3x9q2v7m1p8z4t6/", "Webhook", new[] { "cpaps.bitrix24.com.br" });
+                p.Atualizar();
+
+                Botoes(Lista(p)).Single(b => (string)b.Content == "Editar")
+                    .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                Achar<CheckBox>(p, "ShellCheck").IsChecked.Should().BeTrue();
+
+                Achar<CheckBox>(p, "ShellCheck").IsChecked = false;
+                Clicar(p, "GuardarButton");
+
+                cofre.Achar("bitrix")!.Shell.Should().BeFalse();
+                cofre.Redigir("https://cpaps.bitrix24.com.br/rest/1/k3x9q2v7m1p8z4t6/").Should().Be("[cofre: bitrix]",
+                    "o valor guardado continua o mesmo");
+            });
         }
 
         private static System.Collections.Generic.IEnumerable<T> Todos<T>(DependencyObject raiz) where T : DependencyObject

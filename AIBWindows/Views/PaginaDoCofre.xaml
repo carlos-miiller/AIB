@@ -38,7 +38,8 @@
                             <TextBlock Text="Valor" Style="{StaticResource FieldHelpText}"/>
                             <PasswordBox x:Name="ValorBox" Style="{StaticResource ControlPasswordBox}" Margin="0,4,0,0"
                                          PasswordChanged="Valor_Mudou"/>
-                            <TextBlock Text="Some da tela ao guardar e não volta." Style="{StaticResource FieldHelpText}" Margin="0,4,0,0"/>
+                            <TextBlock x:Name="ValorDica" Text="Some da tela ao guardar e não volta." Style="{StaticResource FieldHelpText}" Margin="0,4,0,0"
+                                       TextWrapping="Wrap"/>
                         </StackPanel>
                     </Grid>
 
@@ -49,6 +50,14 @@
                     <TextBox x:Name="HostsBox" Style="{StaticResource ControlTextBoxMono}" Margin="0,4,0,0"/>
                     <TextBlock Style="{StaticResource FieldHelpText}" Margin="0,4,0,0" TextWrapping="Wrap"
                                Text="O comando que usa este segredo só pode falar com estes endereços. Vazio: qualquer um, e o cartão avisa toda vez."/>
+
+                    <!-- Desligado, só uma habilidade usa o segredo: o webhook do Bitrix fica preso
+                         às operações da habilidade dele, em vez da API inteira pelo shell. -->
+                    <CheckBox x:Name="ShellCheck" IsChecked="True" Margin="0,12,0,0"
+                              Foreground="{StaticResource TextBodyBrush}" FontSize="12.5"
+                              Content="Permite uso no shell"/>
+                    <TextBlock Style="{StaticResource FieldHelpText}" Margin="20,2,0,0" TextWrapping="Wrap"
+                               Text="Desmarcado, só as habilidades que declaram este segredo o usam, e cada uma só faz as operações dela."/>
 
                     <TextBlock x:Name="ErroText" Visibility="Collapsed" Margin="0,10,0,0" TextWrapping="Wrap"
                                FontSize="12" Foreground="{StaticResource DangerTextBrush}"/>

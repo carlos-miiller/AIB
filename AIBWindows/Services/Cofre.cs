@@ -16,8 +16,10 @@ namespace AIB.Services;
 /// <param name="Descricao">Para que serve. É o que o modelo lê para escolher o alias.</param>
 /// <param name="Hosts">Os únicos endereços com que um comando que usa o alias pode falar.
 /// Vazio: qualquer um, e o cartão avisa.</param>
+/// <param name="Shell">"Permite uso no shell". Desligado, só uma habilidade o usa: o webhook do
+/// Bitrix fica preso às operações que a habilidade dele permite, em vez da API inteira.</param>
 public sealed record Alias(string Nome, string Descricao, IReadOnlyList<string> Hosts,
-                           DateTime CriadoEm, DateTime? UsadoEm, int Usos)
+                           DateTime CriadoEm, DateTime? UsadoEm, int Usos, bool Shell = true)
 {
     public string Variavel => Cofre.Variavel(Nome);
 }
@@ -83,13 +85,19 @@ public sealed class Cofre
     /// Guarda (ou substitui) um alias. Lança <see cref="ArgumentException"/> com a frase que a
     /// tela mostra.
     /// </summary>
-    public void Guardar(string nome, string valor, string descricao, IEnumerable<string> hosts)
+    /// <param name="valor">Vazio num alias que já existe: mantém o valor guardado (a tela edita
+    /// descrição, hosts e a flag sem pedir o segredo de novo).</param>
+    /// <param name="shell">"Permite uso no shell".</param>
+    public void Guardar(string nome, string? valor, string descricao, IEnumerable<string> hosts, bool shell = true)
     {
         nome = Normalizar(nome);
         if (!NomeValido.IsMatch(nome))
             throw new ArgumentException("O nome usa só letras minúsculas, números e hífen (até 40), começando por letra ou número.");
         if (string.IsNullOrWhiteSpace(valor))
-            throw new ArgumentException("O valor está vazio.");
+        {
+            valor = Ler().FirstOrDefault(i => i.Nome == nome)?.Valor;
+            if (valor == null) throw new ArgumentException("O valor está vazio.");
+        }
         if (string.IsNullOrWhiteSpace(descricao))
             throw new ArgumentException("Diga para que serve: é o que a IA lê para escolher o alias.");
 
@@ -112,6 +120,7 @@ public sealed class Cofre
                 Valor = valor.Trim(),
                 Descricao = descricao.Trim(),
                 Hosts = lista,
+                Shell = shell,
                 CriadoEm = antigo?.CriadoEm ?? DateTime.Now,
                 UsadoEm = antigo?.UsadoEm,
                 Usos = antigo?.Usos ?? 0
@@ -124,7 +133,7 @@ public sealed class Cofre
     public void TrocarValor(string nome, string valor)
     {
         var a = Achar(nome) ?? throw new ArgumentException($"Não há '{nome}' no cofre.");
-        Guardar(a.Nome, valor, a.Descricao, a.Hosts);
+        Guardar(a.Nome, valor, a.Descricao, a.Hosts, a.Shell);
     }
 
     public void Apagar(string nome)
@@ -244,11 +253,14 @@ public sealed class Cofre
         public string Valor { get; set; } = "";
         public string Descricao { get; set; } = "";
         public List<string> Hosts { get; set; } = new();
+
+        /// <summary>Verdadeiro quando o arquivo é de antes da flag: era o comportamento de então.</summary>
+        public bool Shell { get; set; } = true;
         public DateTime CriadoEm { get; set; }
         public DateTime? UsadoEm { get; set; }
         public int Usos { get; set; }
 
-        public Alias ParaAlias() => new(Nome, Descricao, Hosts, CriadoEm, UsadoEm, Usos);
+        public Alias ParaAlias() => new(Nome, Descricao, Hosts, CriadoEm, UsadoEm, Usos, Shell);
     }
 
     /// <summary>
