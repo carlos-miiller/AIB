@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace AIB.Services;
@@ -124,6 +126,50 @@ public static class Segredos
             quantos = 1;
             return "[saída omitida: não foi possível conferir se há segredos nela]";
         }
+    }
+
+    /// <summary>
+    /// Onde estão os valores que <see cref="Redigir(string?, out int)"/> trocaria: início e
+    /// tamanho de cada um, no texto original. É o que o alerta da caixa de mensagem marca antes
+    /// de o usuário enviar (ver <see cref="SegredoNaMensagem"/>). Mesmas regras, sem trocar nada.
+    /// </summary>
+    public static IReadOnlyList<(int Inicio, int Tamanho)> Trechos(string? texto)
+    {
+        var achados = new List<(int, int)>();
+        if (string.IsNullOrEmpty(texto)) return achados;
+
+        void Grupo(Match m) => achados.Add((m.Groups["valor"].Index, m.Groups["valor"].Length));
+
+        try
+        {
+            foreach (var formato in Conhecidos)
+                foreach (Match m in formato.Matches(texto)) achados.Add((m.Index, m.Length));
+
+            foreach (Match m in Cabecalho.Matches(texto)) Grupo(m);
+            foreach (Match m in NaUrl.Matches(texto)) Grupo(m);
+            foreach (Match m in EntreAspas.Matches(texto)) Grupo(m);
+            foreach (Match m in DoisPontos.Matches(texto))
+                if (TemCaraDeValor(m.Groups["valor"].Value)) Grupo(m);
+
+            foreach (Match m in Colado.Matches(texto))
+            {
+                string valor = m.Groups["valor"].Value;
+                string depois = m.Groups["depois"].Value;
+                if (depois is ")" or "," || valor.IndexOfAny(new[] { '(', '[', '{' }) >= 0 || Membro.IsMatch(valor))
+                    continue;
+                Grupo(m);
+            }
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // Texto patológico: nada a marcar. O alerta é ajuda, e o filtro de saída continua.
+        }
+
+        // Sem sobreposição: o bloco de chave privada contém linhas que outro padrão também pega.
+        var unicos = new List<(int Inicio, int Tamanho)>();
+        foreach (var t in achados.OrderBy(a => a.Item1).ThenByDescending(a => a.Item2))
+            if (unicos.Count == 0 || t.Item1 >= unicos[^1].Inicio + unicos[^1].Tamanho) unicos.Add(t);
+        return unicos;
     }
 
     /// <summary>

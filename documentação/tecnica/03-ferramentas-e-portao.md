@@ -813,6 +813,8 @@ acha que o comando falhou e tenta por outro caminho). Não redige o que é códi
 `token=ct,`, `senha: string;`, `max_tokens=4096`. É **best-effort**: senha solta, sem nome ao lado,
 passa. Expressão que estoura o prazo de 2 s some com a saída inteira, em vez de deixá-la passar.
 `write` e `edit` recusam no pré-voo um texto com a marca, para ela não ser gravada por cima do valor.
+`Segredos.Trechos` aplica as mesmas regras sem trocar nada e devolve onde estão os valores: é o
+que o alerta da caixa de mensagem marca antes de enviar (06, "Segredo na mensagem").
 
 **Cofre** (`Cofre.Redigir`, antes do `Segredos`): cada valor guardado no cofre (de 6 caracteres
 para cima) volta como `[cofre: nome]`, também sem a barra final, codificado para URL e em base64.

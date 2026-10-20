@@ -592,6 +592,20 @@
                  sobre o desktop e leva um halo para se separar do papel de parede. A margem
                  negativa o desenha na folga do Palco, sem criar linha: uma linha a mais
                  empurraria o orbe para cima. -->
+            <!-- Aviso de segredo na mensagem: abaixo da barra, à esquerda, flutuando como o
+                 contador e pela mesma margem negativa (uma linha a mais empurraria o orbe).
+                 Uma linha só; o texto inteiro fica na dica. O primeiro Enter mostra; o segundo
+                 envia. -->
+            <TextBlock x:Name="AvisoDeSegredo"
+                       Grid.Row="1"
+                       HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                       Margin="16,0,0,-22" MaxWidth="420"
+                       TextTrimming="CharacterEllipsis"
+                       FontSize="12"
+                       Foreground="{StaticResource WarnBrush}"
+                       Effect="{StaticResource FloatingTextShadow}"
+                       Visibility="Collapsed"/>
+
             <TextBlock x:Name="Contador"
                        Grid.Row="1"
                        HorizontalAlignment="Right" VerticalAlignment="Bottom"

@@ -152,6 +152,12 @@ public partial class ShadowAssistantWindow : Window
     /// </summary>
     public event Action<string>? MensagemEnviada;
 
+    /// <summary>O cofre que a mensagem consulta. Os ensaios trocam por um temporário.</summary>
+    internal AIB.Services.Cofre CofreDaMensagem { get; set; } = new();
+
+    /// <summary>O texto que já levou o aviso de segredo: o próximo Enter com ele envia.</summary>
+    private string? _segredoAvisado;
+
     /// <summary>Se há um turno em andamento disparado por esta barra.</summary>
     public bool Trabalhando { get; private set; }
 
@@ -457,6 +463,13 @@ public partial class ShadowAssistantWindow : Window
     private void Campo_TextChanged(object sender, TextChangedEventArgs e)
     {
         AtualizarDica();
+
+        // Mexeu na mensagem depois do aviso: o próximo Enter confere de novo.
+        if (_segredoAvisado != null && Campo.Text.Trim() != _segredoAvisado)
+        {
+            _segredoAvisado = null;
+            AvisoDeSegredo.Visibility = Visibility.Collapsed;
+        }
         AjustarAlturaDepois();
     }
 
@@ -605,6 +618,26 @@ public partial class ShadowAssistantWindow : Window
         // virava bolha na pilha e sumia do campo, mas a conversa, ocupada, o ignorava: a
         // mensagem parecia enviada e nunca chegava ao modelo.
         if (EmTurno) return;
+
+        // Segredo na mensagem (pedido do usuário, 20/10/2026). Valor que já está no cofre vira o
+        // nome sem perguntar. Outro com cara de segredo segura o primeiro Enter com um aviso; o
+        // segundo Enter, com o mesmo texto, envia assim mesmo. A barra não tem lugar para o
+        // alerta inteiro da janela de chat: guardar no cofre fica para as Configurações.
+        var (trocado, _, achados) = SegredoNaMensagem.Conferir(texto, CofreDaMensagem);
+        if (achados.Count > 0 && _segredoAvisado != trocado)
+        {
+            Campo.Text = trocado;
+            Campo.CaretIndex = Campo.Text.Length;
+            _segredoAvisado = trocado;
+            AvisoDeSegredo.Text = "Parece um segredo. Enter de novo envia assim · guarde em Configurações › Cofre";
+            AvisoDeSegredo.ToolTip = $"Isto parece {achados[0].Tipo}. Enviado assim, vai ao provedor do modelo e fica no "
+                                     + "histórico. Guardado no cofre (Configurações › Cofre), a IA usa pelo nome sem ver o valor.";
+            AvisoDeSegredo.Visibility = Visibility.Visible;
+            return;
+        }
+        _segredoAvisado = null;
+        AvisoDeSegredo.Visibility = Visibility.Collapsed;
+        texto = trocado;
 
         Campo.Clear();
         AtualizarDica();

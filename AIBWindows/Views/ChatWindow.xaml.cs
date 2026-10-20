@@ -1168,6 +1168,10 @@ public partial class ChatWindow : Window
             return;
         }
 
+        // Segredo colado na mensagem: valor do cofre vira o nome; outro com cara de segredo
+        // abre o alerta e segura o envio. Ver ChatWindow.Segredo.cs.
+        if (ConferirSegredo(ref text)) return;
+
         _isSending = true;
         InputBox.Clear();
         InputBox.IsEnabled = false;

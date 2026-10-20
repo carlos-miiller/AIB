@@ -193,6 +193,21 @@ Teclas no campo: `Enter` envia; `Shift+Enter` e `Ctrl+Enter` quebram linha; `Ctr
 copiados no Explorer cola os caminhos entre aspas; com o popup aberto, setas escolhem e
 `Enter`/`Tab` completam.
 
+### Segredo na mensagem
+
+`ChatWindow.Segredo.cs`, chamado em `SendButton_Click` depois dos comandos de barra. Pedido do
+usuário (20/10/2026): o webhook do Bitrix colado no chat ia ao provedor e ao histórico.
+`SegredoNaMensagem.Conferir` troca pelo nome (`[cofre: bitrix]`) o valor que já está no `Cofre`,
+sem perguntar. Outro trecho com cara de segredo (webhook com a chave no endereço: Bitrix, Slack,
+Discord, Teams, `?token=`; ou os formatos de `Segredos.Trechos`) segura o envio e abre o
+**alerta** acima da barra (`AlertaDeSegredo`, laranja): nome e hosts sugeridos (nome já usado
+ganha `-2`), descrição editável, e três botões. **Guardar e enviar com o nome** grava no cofre,
+troca o trecho e envia de novo pelo mesmo caminho (outro trecho abre o alerta outra vez);
+**Editar a mensagem** fecha e seleciona o trecho; **Enviar mesmo assim** libera um envio. Editar o
+trecho para fora da mensagem fecha o alerta. O turno do orbe (janela escondida) e o nascido de um
+e-mail só ganham a troca silenciosa: um não tem onde mostrar o alerta, e o texto do outro é de
+terceiros. Senha solta, sem formato nem nome por perto, passa.
+
 ### Cartão de confirmação na conversa
 
 `App` conecta `ChatConfirmationPrompt` a `ChatWindow.PerguntarConfirmacaoAsync`. Antes dessa
@@ -391,6 +406,12 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   quadrado vermelho de parar e dispara `ParadaPedida`; `App.LigarOrbe` cancela o turno de quem
   estiver rodando (`ConversaDoOrbe.Parar` ou `ChatWindow.PararTurno`). A barra recebe o que já
   tinha sido dito, ou "Parei.". Enquanto o turno roda o Enter não envia: o texto fica no campo.
+- **Segredo na mensagem:** o valor que já está no `Cofre` vai como `[cofre: nome]`. Outro trecho
+  com cara de segredo (`SegredoNaMensagem`) segura o primeiro Enter e mostra `AvisoDeSegredo`
+  abaixo da barra, à esquerda, em uma linha e com a mesma margem negativa do contador ("Parece
+  um segredo. Enter de novo envia assim · guarde em Configurações › Cofre"; o porquê na dica). O
+  segundo Enter com o mesmo texto envia; mexer no texto desfaz o aviso. A barra não tem lugar
+  para o alerta inteiro da janela de chat.
 - **Enviar** pela barra dispara `MensagemEnviada`, e o turno roda na **conversa do orbe**
   (`Services/ConversaDoOrbe`), separada da janela: um `ConversationService` em sessão fixa
   (`memory/shadow`, fora de `sessions/`: é uma só), reaberto de onde parou no arranque, fora do `chat_history.json` e sem
