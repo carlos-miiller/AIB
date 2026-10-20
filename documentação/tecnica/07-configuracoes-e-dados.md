@@ -252,6 +252,7 @@ Várias opções nascem desligadas por decisão registrada no comentário de cad
 - `Listar`/`Achar` devolvem `Alias`, **sem o valor**. Só `Variaveis` (chamado pelo shell na execução) e `Redigir` tocam o valor.
 - `Guardar` valida nome, valor e descrição, normaliza os hosts (URL colada vira host) e recusa webhook cujo host não está na lista. Guardar com nome existente substitui e mantém criação e contagem; com valor vazio, mantém o valor guardado (a tela edita o resto sem pedir o segredo de novo). `TrocarValor` mantém descrição, hosts e a flag.
 - `Shell` ("Permite uso no shell"): desligado, o shell recusa o alias e só uma habilidade o usa. Arquivo de antes da flag vale como ligado.
+- `Habilidades`: as habilidades que recebem o valor (ver 03, `skill`). `Guardar` com `habilidades` nulo mantém as de antes.
 - Arquivo que não decifra (outra máquina, outro usuário) é cofre vazio.
 - Fica dentro de `credentials/`: as ferramentas de leitura já o negam (`DadosProtegidos`) e o reset de fábrica o leva junto. Não usa o `CredentialService` pela mesma razão do `MailVault`.
 

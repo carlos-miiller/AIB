@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -53,6 +55,45 @@ public class ExecuteSkillTool : ITool
         new(StringComparer.OrdinalIgnoreCase);
 
     public string Name => Ferramentas.Habilidade;
+
+    private readonly Func<Cofre> _cofre;
+
+    /// <param name="cofre">De onde vêm os segredos que a habilidade declara em <c>cofre:</c>. Por
+    /// padrão, o do usuário (que os testes desviam).</param>
+    public ExecuteSkillTool(Func<Cofre>? cofre = null)
+    {
+        _cofre = cofre ?? (() => new Cofre());
+    }
+
+    /// <summary>
+    /// Os segredos que a habilidade declara e, quando não pode rodar, o porquê.
+    /// <para>
+    /// Pedido do usuário (20/10/2026): uma habilidade do Bitrix "para ela não ter acesso
+    /// irrestrito à API". O webhook vai para a habilidade, que só faz as operações dela, e não
+    /// para o shell. Declarar <c>cofre: bitrix</c> não basta: o segredo tem de liberar a
+    /// habilidade pelo nome (Configurações › Cofre), senão uma habilidade nova, escrita até pela
+    /// própria IA, herdaria a chave.
+    /// </para>
+    /// </summary>
+    private (IReadOnlyList<Alias> Usados, string? Recusa) CofreDaHabilidade(LocalSkill skill)
+    {
+        if (skill.Cofre.Count == 0) return (Array.Empty<Alias>(), null);
+
+        var cofre = _cofre();
+        var usados = new List<Alias>();
+        foreach (string nome in skill.Cofre)
+        {
+            var a = cofre.Achar(nome);
+            if (a == null)
+                return (usados, $"ERRO: a habilidade '{skill.Name}' usa o segredo '{nome}', que não está no cofre. "
+                                + "Diga ao usuário para guardá-lo em Configurações › Cofre; não peça o valor no chat.");
+            if (!a.Libera(skill.Name))
+                return (usados, $"ACESSO NEGADO: o segredo '{nome}' não libera a habilidade '{skill.Name}' "
+                                + "(Configurações › Cofre › Habilidades). Nada foi executado. Diga isso ao usuário.");
+            usados.Add(a);
+        }
+        return (usados, null);
+    }
 
     public string Description =>
         "Executa uma habilidade instalada, pelo nome exato da lista do prompt de sistema; "
@@ -138,7 +179,8 @@ public class ExecuteSkillTool : ITool
                 Tool = Name,
                 Command = ComandoDoScript(skill, extra),
                 Level = userLevel,
-                Cwd = skill.Folder
+                Cwd = skill.Folder,
+                Cofre = CofreDaHabilidade(skill).Usados.Select(u => new UsoDoCofre(u.Nome, u.Descricao, u.Hosts)).ToList()
             };
         }
         catch (JsonException)
@@ -197,6 +239,7 @@ public class ExecuteSkillTool : ITool
 
         var skill = SkillService.Find(a.Value.Nome);
         if (skill == null) return NaoEncontrada(a.Value.Nome);
+        if (!SoManual(skill) && CofreDaHabilidade(skill).Recusa is string recusa) return recusa;
 
         // O manual não recebe argumento nenhum: não há caminho a conferir.
         if (SoManual(skill) || a.Value.Extra.Length == 0) return null;
@@ -384,6 +427,18 @@ public class ExecuteSkillTool : ITool
         // página de código do console e o UTF-8 lido do outro lado não bate — foi assim que
         // "Recepção São José" voltou de uma skill de planilha como "Recep��o S�o Jos�".
         inicio.Environment["PYTHONIOENCODING"] = "utf-8";
+
+        // Os segredos entram só neste processo, depois da autorização. Conferido de novo: o
+        // usuário pode ter tirado a habilidade do segredo com o cartão aberto.
+        var (usados, recusa) = CofreDaHabilidade(skill);
+        if (recusa != null) return recusa;
+        if (usados.Count > 0)
+        {
+            var cofre = _cofre();
+            foreach (var (variavel, valor) in cofre.Variaveis(usados.Select(u => u.Nome)))
+                inicio.Environment[variavel] = valor;
+            cofre.RegistrarUso(usados.Select(u => u.Nome));
+        }
 
         Console.WriteLine($"[SKILL] Executando '{skill.Name}': {inicio.FileName} {inicio.Arguments}");
 

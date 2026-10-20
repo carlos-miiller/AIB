@@ -428,8 +428,16 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
 ### `skill` — `ExecuteSkillTool`
 
 - Skills ficam em `~/.AIB/skills/<pasta>/SKILL.md` (`SkillService`): cabeçalho `---` com `name`,
-  `description`, `interpreter` (`powershell`, `python` ou `markdown`), `script_file` e `accepts`
-  (extensões aceitas), seguido do manual. Só nome e descrição entram no prompt de sistema.
+  `description`, `interpreter` (`powershell`, `python` ou `markdown`), `script_file`, `accepts`
+  (extensões aceitas) e `cofre` (segredos que usa), seguido do manual. Só nome e descrição entram
+  no prompt de sistema.
+- **Segredos do cofre** (`CofreDaHabilidade`): cada nome de `cofre:` chega ao script como
+  `$env:COFRE_NOME`, só depois da autorização e só se o segredo **libera a habilidade pelo nome**
+  (`Alias.Habilidades`, Configurações › Cofre). Declarar não basta: uma habilidade escrita depois,
+  até pela própria IA, herdaria a chave. Segredo que não existe → `ERRO`; que não libera →
+  `ACESSO NEGADO`; os dois no pré-voo, antes do cartão, e conferidos de novo na execução. O cartão
+  mostra "Usa o cofre". Caso que motivou: o webhook do Bitrix preso a uma habilidade com operações
+  fixas, em vez da API inteira pelo shell.
 - **`Validar`**: `skill_name` obrigatório; skill inexistente → `ERRO` com a lista das que existem;
   argumentos com caminho → `PreVooDeCaminho.Conferir(args, skill.Accepts)`; JSON ilegível → `ERRO`
   (antes devolvia `null` e virava "ACESSO NEGADO").

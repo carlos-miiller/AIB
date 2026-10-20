@@ -18,10 +18,19 @@ namespace AIB.Services;
 /// Vazio: qualquer um, e o cartão avisa.</param>
 /// <param name="Shell">"Permite uso no shell". Desligado, só uma habilidade o usa: o webhook do
 /// Bitrix fica preso às operações que a habilidade dele permite, em vez da API inteira.</param>
+/// <param name="Habilidades">As habilidades que podem receber o valor. Declarar <c>cofre:</c> no
+/// SKILL.md não basta: uma habilidade escrita depois (até pela própria IA) não herda a chave.</param>
 public sealed record Alias(string Nome, string Descricao, IReadOnlyList<string> Hosts,
-                           DateTime CriadoEm, DateTime? UsadoEm, int Usos, bool Shell = true)
+                           DateTime CriadoEm, DateTime? UsadoEm, int Usos, bool Shell = true,
+                           IReadOnlyList<string>? Habilidades = null)
 {
+    public IReadOnlyList<string> Habilidades { get; init; } = Habilidades ?? Array.Empty<string>();
+
     public string Variavel => Cofre.Variavel(Nome);
+
+    /// <summary>Se a habilidade com este nome pode receber o valor.</summary>
+    public bool Libera(string habilidade) =>
+        Habilidades.Contains(habilidade.Trim(), StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>
@@ -88,7 +97,10 @@ public sealed class Cofre
     /// <param name="valor">Vazio num alias que já existe: mantém o valor guardado (a tela edita
     /// descrição, hosts e a flag sem pedir o segredo de novo).</param>
     /// <param name="shell">"Permite uso no shell".</param>
-    public void Guardar(string nome, string? valor, string descricao, IEnumerable<string> hosts, bool shell = true)
+    /// <param name="habilidades">Quais habilidades recebem o valor. Null mantém as de um alias que
+    /// já existe (nenhuma, num novo).</param>
+    public void Guardar(string nome, string? valor, string descricao, IEnumerable<string> hosts, bool shell = true,
+                        IEnumerable<string>? habilidades = null)
     {
         nome = Normalizar(nome);
         if (!NomeValido.IsMatch(nome))
@@ -121,6 +133,8 @@ public sealed class Cofre
                 Descricao = descricao.Trim(),
                 Hosts = lista,
                 Shell = shell,
+                Habilidades = habilidades?.Select(h => h.Trim().ToLowerInvariant()).Where(h => h.Length > 0).Distinct().ToList()
+                              ?? antigo?.Habilidades ?? new(),
                 CriadoEm = antigo?.CriadoEm ?? DateTime.Now,
                 UsadoEm = antigo?.UsadoEm,
                 Usos = antigo?.Usos ?? 0
@@ -133,7 +147,7 @@ public sealed class Cofre
     public void TrocarValor(string nome, string valor)
     {
         var a = Achar(nome) ?? throw new ArgumentException($"Não há '{nome}' no cofre.");
-        Guardar(a.Nome, valor, a.Descricao, a.Hosts, a.Shell);
+        Guardar(a.Nome, valor, a.Descricao, a.Hosts, a.Shell, a.Habilidades);
     }
 
     public void Apagar(string nome)
@@ -256,11 +270,12 @@ public sealed class Cofre
 
         /// <summary>Verdadeiro quando o arquivo é de antes da flag: era o comportamento de então.</summary>
         public bool Shell { get; set; } = true;
+        public List<string> Habilidades { get; set; } = new();
         public DateTime CriadoEm { get; set; }
         public DateTime? UsadoEm { get; set; }
         public int Usos { get; set; }
 
-        public Alias ParaAlias() => new(Nome, Descricao, Hosts, CriadoEm, UsadoEm, Usos, Shell);
+        public Alias ParaAlias() => new(Nome, Descricao, Hosts, CriadoEm, UsadoEm, Usos, Shell, Habilidades);
     }
 
     /// <summary>

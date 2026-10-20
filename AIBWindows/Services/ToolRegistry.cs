@@ -537,7 +537,7 @@ public class ToolRegistry
     /// </summary>
     private void AtualizarFerramentaDeSkills()
     {
-        var skill = new ExecuteSkillTool();
+        var skill = new ExecuteSkillTool(() => Cofre);
         int quantas = SkillService.GetSkillCount();
 
         if (quantas > 0)

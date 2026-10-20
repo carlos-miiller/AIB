@@ -128,8 +128,9 @@ namespace AIB.Tests
         public void SemHosts_AMetaDizQualquerEndereco()
         {
             var a = new Alias("sankhya", "senha", Array.Empty<string>(), DateTime.Now, null, 0);
-            PaginaDoCofre.Meta(a).Should().Be("qualquer endereço · shell e habilidades · nunca usado");
-            PaginaDoCofre.Meta(a with { Shell = false }).Should().Contain("só habilidades");
+            PaginaDoCofre.Meta(a).Should().Be("qualquer endereço · shell · nenhuma habilidade · nunca usado");
+            PaginaDoCofre.Meta(a with { Shell = false, Habilidades = new[] { "bitrix" } })
+                .Should().Be("qualquer endereço · habilidades: bitrix · nunca usado");
         }
 
         [Fact]

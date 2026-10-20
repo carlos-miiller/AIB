@@ -100,7 +100,8 @@ public partial class PaginaDoCofre : UserControl
     public static string Meta(Alias a)
     {
         string hosts = a.Hosts.Count == 0 ? "qualquer endereço" : "hosts: " + string.Join(", ", a.Hosts);
-        string onde = a.Shell ? "shell e habilidades" : "só habilidades";
+        string habilidades = a.Habilidades.Count == 0 ? "nenhuma habilidade" : "habilidades: " + string.Join(", ", a.Habilidades);
+        string onde = (a.Shell ? "shell · " : "") + habilidades;
         string uso = a.Usos == 0 ? "nunca usado" : $"usado {a.Usos}× · {a.UsadoEm:dd/MM HH:mm}";
         return $"{hosts} · {onde} · {uso}";
     }
@@ -137,6 +138,7 @@ public partial class PaginaDoCofre : UserControl
         DescricaoBox.Text = a.Descricao;
         HostsBox.Text = string.Join(", ", a.Hosts);
         ShellCheck.IsChecked = a.Shell;
+        HabilidadesBox.Text = string.Join(", ", a.Habilidades);
         ValorBox.Clear();
         FormTitulo.Text = $"Editar \"{a.Nome}\"";
         ValorDica.Text = "Em branco, fica o valor que já está guardado.";
@@ -181,7 +183,8 @@ public partial class PaginaDoCofre : UserControl
             var hosts = HostsBox.Text.Split(new[] { ',', ';', ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries);
             // Valor em branco só vale na edição: num alias novo, o cofre recusa.
             Cofre.Guardar(NomeBox.Text, _editando != null && ValorBox.Password.Length == 0 ? null : ValorBox.Password,
-                          DescricaoBox.Text, hosts, ShellCheck.IsChecked == true);
+                          DescricaoBox.Text, hosts, ShellCheck.IsChecked == true,
+                          HabilidadesBox.Text.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries));
             FecharFormulario();
             Atualizar();
         }
@@ -202,6 +205,7 @@ public partial class PaginaDoCofre : UserControl
         DescricaoBox.Clear();
         HostsBox.Clear();
         ShellCheck.IsChecked = true;
+        HabilidadesBox.Clear();
         ValorDica.Text = "Some da tela ao guardar e não volta.";
         FormTitulo.Text = "Guardar um segredo";
         GuardarButton.Content = "Guardar no cofre";
