@@ -631,7 +631,7 @@ Esta janela ainda tem paleta própria em `Window.Resources` (hex literais) e nã
 ## SettingsWindow — configurações
 
 Implementa `tela-configuracoes.html`. A lista de campos e os rótulos são normativos. Menu lateral
-com oito páginas (`PaginaDeConfiguracoes`); trocar de página só troca `Visibility`, e o estado
+com nove páginas (`PaginaDeConfiguracoes`); trocar de página só troca `Visibility`, e o estado
 "sujo" é global: "Salvar" grava tudo o que mudou em qualquer página e só habilita quando algo mudou.
 A janela abre direto numa página pelo parâmetro do construtor (é o que o modo e-mail usa).
 
@@ -642,6 +642,7 @@ A janela abre direto numa página pelo parâmetro do construtor (é o que o modo
 | E-mail | Contas (adicionar com endereço e senha de app, principal, trocar senha, zerar leitura, remover), janela de leitura em dias, tempo limite por caixa, dias de diário da triagem, provedor e modelo da triagem, raciocínio na triagem. |
 | Shadow | Mostrar o orbe, deixar o Shadow tratar os e-mails, e-mails mostrados na fala, puxar assunto sozinha (iniciativa), máximo de mensagens por dia, horário de silêncio. |
 | Ferramentas | Ferramentas inteligentes, confirmar comandos perigosos (floor list), máximo de etapas por turno, pastas sem confirmação, autorizações "sempre permitir" da sessão ("Esquecer todas"). |
+| Cofre | `PaginaDoCofre` (UserControl próprio): os aliases do `Cofre` sem o valor (nome, `$env:COFRE_…`, descrição, hosts, usos), "Trocar valor", "Apagar" (dois cliques) e o formulário (nome, valor em `PasswordBox`, descrição, hosts; colar um webhook sugere o host). Grava na hora, fora do "Salvar" e do estado sujo, e não tem "Restaurar padrões". |
 | Memória | Quem escreve a memória, gatilho de compactação, turnos e tokens por capítulo, teto de capítulos por ato, fatia de memória, esconder resultados antigos, guardar a fala junto da ferramenta, pasta da conversa. |
 | Avançado | Devolver o raciocínio ao modelo. |
 | Logs | Logs detalhados no console, registro de execução, diário da compactação, "Simular o primeiro envio", pasta dos logs. |

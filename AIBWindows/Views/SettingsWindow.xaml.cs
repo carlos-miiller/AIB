@@ -25,6 +25,9 @@ public enum PaginaDeConfiguracoes
     /// </summary>
     Ferramentas,
 
+    /// <summary>Segredos que a IA usa no shell pelo nome, sem ver o valor. Ver <see cref="AIB.Services.Cofre"/>.</summary>
+    Cofre,
+
     /// <summary>O que a conversa lembra: compactação, fatia de contexto e onde isso mora.</summary>
     Memoria,
 
@@ -793,6 +796,7 @@ public partial class SettingsWindow : Window
             PaginaDeConfiguracoes.Email => NavEmail,
             PaginaDeConfiguracoes.Shadow => NavShadow,
             PaginaDeConfiguracoes.Ferramentas => NavFerramentas,
+            PaginaDeConfiguracoes.Cofre => NavCofre,
             PaginaDeConfiguracoes.Memoria => NavMemoria,
             PaginaDeConfiguracoes.Avancado => NavAvancado,
             PaginaDeConfiguracoes.Logs => NavLogs,
@@ -808,6 +812,7 @@ public partial class SettingsWindow : Window
         NavEmail.IsChecked == true ? PaginaDeConfiguracoes.Email :
         NavShadow.IsChecked == true ? PaginaDeConfiguracoes.Shadow :
         NavFerramentas.IsChecked == true ? PaginaDeConfiguracoes.Ferramentas :
+        NavCofre.IsChecked == true ? PaginaDeConfiguracoes.Cofre :
         NavMemoria.IsChecked == true ? PaginaDeConfiguracoes.Memoria :
         NavAvancado.IsChecked == true ? PaginaDeConfiguracoes.Avancado :
         NavLogs.IsChecked == true ? PaginaDeConfiguracoes.Logs :
@@ -828,6 +833,7 @@ public partial class SettingsWindow : Window
         PaginaEmail.Visibility = Visibilidade(NavEmail);
         PaginaShadow.Visibility = Visibilidade(NavShadow);
         PaginaFerramentas.Visibility = Visibilidade(NavFerramentas);
+        PaginaCofre.Visibility = Visibilidade(NavCofre);
         PaginaMemoria.Visibility = Visibilidade(NavMemoria);
         PaginaAvancado.Visibility = Visibilidade(NavAvancado);
         PaginaLogs.Visibility = Visibilidade(NavLogs);
@@ -843,6 +849,9 @@ public partial class SettingsWindow : Window
         }
 
         if (NavMemoria.IsChecked == true) AtualizarPastaDeMemoria();
+
+        // O uso conta enquanto a tela está aberta: "usado 3×" se lê do disco a cada visita.
+        if (NavCofre.IsChecked == true) CofrePagina.Atualizar();
 
         // A página Shadow depende de coisa que muda em OUTRA página: conectar uma caixa
         // acontece em E-mail. Reavaliar ao entrar é o que faz a ajuda parar de dizer "nenhuma
