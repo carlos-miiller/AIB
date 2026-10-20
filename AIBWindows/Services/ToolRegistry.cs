@@ -57,6 +57,12 @@ public class ToolRegistry
     /// </summary>
     public Func<bool>? EmailNoContexto { get; set; }
 
+    /// <summary>
+    /// O cofre de aliases: o shell tira dele os valores, e toda saída de ferramenta passa por
+    /// <see cref="Services.Cofre.Redigir(string?, out int)"/>. Os ensaios trocam por um temporário.
+    /// </summary>
+    public Cofre Cofre { get; init; } = new();
+
     private bool EmConversaDeEmail => !string.IsNullOrWhiteSpace(ChaveDaConversaDeEmail?.Invoke());
 
     /// <summary>
@@ -183,6 +189,11 @@ public class ToolRegistry
             try
             {
                 string resultado = await tool.ExecutarAutorizadoAsync(argumentsJson, userLevel, autorizado);
+
+                // Valor do cofre que voltou na saída (eco, erro que repete a URL, API que devolve a
+                // chave) volta como [cofre: nome]. Troca exata, antes do filtro por formato.
+                resultado = Cofre.Redigir(resultado, out int doCofre);
+                if (doCofre > 0) Console.WriteLine($"[REGISTRY] {toolName}: {doCofre} valor(es) do cofre trocado(s) pelo nome.");
 
                 // Segredo que veio de carona na saída (variável de ambiente, .env, string de
                 // conexão) não vai ao modelo, e por isso também não vai ao raw.jsonl. Ver Segredos.
@@ -471,7 +482,7 @@ public class ToolRegistry
             new EditFileTool(),
             new GlobTool(),
             new GrepTool(),
-            new RunCommandTool(),
+            new RunCommandTool(cofre: () => Cofre),
             new WriteFileTool(),
             new FsTool(),
             new LembrarTool(),

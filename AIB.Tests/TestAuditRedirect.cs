@@ -56,6 +56,12 @@ namespace AIB.Tests
 
             // Os hábitos, que o fechamento de capítulo grava e o prompt de sistema lê.
             Habitos.RaizPadrao = status;
+
+            // O cofre de aliases: todo ToolRegistry da suíte redige a saída com ele, e sem
+            // desviar leria (e o shell injetaria) os segredos reais do usuário.
+            string cofre = Path.Combine(Path.GetTempPath(), "AIB_TestCofre_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(cofre);
+            Cofre.RaizPadrao = cofre;
         }
     }
 }

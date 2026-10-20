@@ -32,6 +32,13 @@
         public string Aviso { get; set; } = "";
 
         /// <summary>
+        /// Os aliases do cofre que o comando usa: o cartão mostra o nome, para que serve e os
+        /// endereços permitidos, nunca o valor.
+        /// </summary>
+        public System.Collections.Generic.IReadOnlyList<AIB.Services.Tools.UsoDoCofre> Cofre { get; set; } =
+            System.Array.Empty<AIB.Services.Tools.UsoDoCofre>();
+
+        /// <summary>
         /// A chave do "sempre permitir" quando ela não é o comando exato. Null: o comando, byte a
         /// byte (o shell). O navegador usa o SITE — "sempre permitir" num clique vale para os
         /// cliques naquele domínio até o app fechar, e não para aquele botão só.

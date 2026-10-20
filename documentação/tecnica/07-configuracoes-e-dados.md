@@ -43,7 +43,8 @@ O AIB não usa pasta temporária.
 ├── iniciativa.dat                   iniciativa: faixas de horário e contagens do dia (DPAPI)
 ├── credentials/
 │   ├── openrouter.bin               chave do OpenRouter (DPAPI)
-│   └── mail/<sha256>.bin            senha de app de cada caixa (DPAPI)
+│   ├── mail/<sha256>.bin            senha de app de cada caixa (DPAPI)
+│   └── cofre/aliases.bin            cofre de aliases: segredos que a IA usa pelo nome no shell (DPAPI)
 ├── character/<Nome>/                personagens: SOUL.MD, info.json, vinculo.dat (o vínculo com ele, DPAPI)
 ├── skills/<skill>/SKILL.md          skills instaladas
 ├── memory/
@@ -242,6 +243,16 @@ Várias opções nascem desligadas por decisão registrada no comentário de cad
 - `MailVault.Remover` é chamado pelo mesmo comando que tira a conta da lista, para não deixar credencial órfã.
 - `UserAppSettings.MailAccounts` guarda endereço, host, porta, SSL e conta principal — **sem senha**, e sem o status de conexão, que é de tempo de execução.
 - O construtor aceita uma raiz alternativa para os testes.
+
+### Cofre de aliases: `Cofre`
+
+`AIBWindows/Services/Cofre.cs`. Webhooks, tokens e senhas que a IA usa **sem ler**: uma lista JSON (nome, valor, descrição, hosts permitidos, criado, último uso, usos) num único arquivo `~/.AIB/credentials/cofre/aliases.bin`, cifrado com DPAPI e gravado por temporário.
+
+- O nome (`[a-z0-9-]`, até 40) vira a variável `COFRE_<NOME>` (hífen → sublinhado), que o shell injeta no processo (ver 03, `shell`).
+- `Listar`/`Achar` devolvem `Alias`, **sem o valor**. Só `Variaveis` (chamado pelo shell na execução) e `Redigir` tocam o valor.
+- `Guardar` valida nome, valor e descrição, normaliza os hosts (URL colada vira host) e recusa webhook cujo host não está na lista. Guardar com nome existente substitui e mantém criação e contagem; `TrocarValor` mantém descrição e hosts.
+- Arquivo que não decifra (outra máquina, outro usuário) é cofre vazio.
+- Fica dentro de `credentials/`: as ferramentas de leitura já o negam (`DadosProtegidos`) e o reset de fábrica o leva junto. Não usa o `CredentialService` pela mesma razão do `MailVault`.
 
 ### Regras invioláveis
 

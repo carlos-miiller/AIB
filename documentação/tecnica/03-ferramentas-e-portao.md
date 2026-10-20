@@ -143,8 +143,8 @@ Passo a passo:
    - recusa → devolve `ToolRegistry.RecusaDoUsuario` (`"Ação Rejeitada pelo Usuário."`).
 7. **Execução**: `tool.ExecutarAutorizadoAsync(args, level, autorizado)`. `autorizado` é o
    contexto do cartão ou da dispensa, ou `null` para ferramenta sem confirmação.
-8. **Segredos fora do resultado**: o texto devolvido passa por `Segredos.Redigir` antes de voltar
-   ao agente (ver §10).
+8. **Segredos fora do resultado**: o texto devolvido passa por `Cofre.Redigir` (valor exato do
+   cofre → `[cofre: nome]`) e depois por `Segredos.Redigir` antes de voltar ao agente (ver §10).
 
 `aoDecidir` recebe, numa palavra, como a chamada passou: `automatica`, `pasta_dispensada`,
 `permitida`, `permitida_sempre`, `sempre_na_sessao`, `recusada`, `barrada_pelo_piso`,
@@ -256,6 +256,7 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
 | "Motivo do bloqueio" | `DenylistHit`/`DenylistReason` (só `shell`). |
 | Aviso de e-mail | `ctx.ConteudoDeEmailNoContexto`. |
 | Aviso de pasta | `ctx.Aviso` — do `EscritaNoComando` (só `shell`). |
+| "Usa o cofre" | `ctx.Cofre` — os aliases do comando: nome, descrição e hosts permitidos, nunca o valor (só `shell`). |
 | "Sempre permitir" | Para `shell` (comando exato) e `browser` (o site, "até fechar o AIB"). Some com texto de terceiros no contexto — no `browser`, só com e-mail — e quando `ctx.SemSempre`. |
 
 O foco nasce em **Recusar**: Enter sem ler não executa nada. Os botões travam depois do clique.
@@ -316,6 +317,18 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
   `-EncodedCommand` elimina o problema de aspas (o escape antigo com `\"` corrompia comandos, porque o
   escape do PowerShell é a crase). O comando ganha o prefixo `$ProgressPreference = 'SilentlyContinue'`
   para a barra de progresso não virar CLIXML inútil no stderr.
+- **Cofre de aliases** (`Services/Cofre.cs`, `Tools/CofreNoComando.cs`): o modelo escreve
+  `$env:COFRE_BITRIX` e o valor entra no `ProcessStartInfo.Environment` só na execução, depois do
+  cartão; o comando, o cartão, a auditoria e o `raw.jsonl` guardam o nome. Caso real: o webhook do
+  Bitrix ia inteiro no comando, e o `Segredos` não o pegava (é uma URL comum). Qualquer
+  `COFRE_<NOME>` no texto conta como uso. No **pré-voo** (`Validar`), antes do cartão: alias que
+  não existe → `ERRO` com a lista dos que existem; endereço por extenso (`esquema://host`) fora dos
+  hosts do alias → `ACESSO NEGADO`; endereço montado na hora (`"https://$h/"`, concatenação) →
+  `ACESSO NEGADO`. Com dois aliases restritos, cada host tem de estar na lista de todos (um comando
+  por alias). Alias sem hosts passa, e o cartão diz "qualquer endereço". Com alias, o contexto sai
+  com `SemSempre` (pergunta toda vez) e `Cofre`; a execução refaz a análise (o cofre pode ter
+  mudado com o cartão aberto) e conta o uso. A leitura de endereços é por texto, como a floor list:
+  por isso o cartão continua obrigatório.
 - **stdin redirecionado e fechado**: um prompt (`Read-Host`, parâmetro obrigatório) lê EOF e falha na
   hora, em vez de esperar o timeout.
 - stdout e stderr lidos **em paralelo** (ler um depois do outro trava quando o buffer enche).
@@ -800,6 +813,10 @@ acha que o comando falhou e tenta por outro caminho). Não redige o que é códi
 `token=ct,`, `senha: string;`, `max_tokens=4096`. É **best-effort**: senha solta, sem nome ao lado,
 passa. Expressão que estoura o prazo de 2 s some com a saída inteira, em vez de deixá-la passar.
 `write` e `edit` recusam no pré-voo um texto com a marca, para ela não ser gravada por cima do valor.
+
+**Cofre** (`Cofre.Redigir`, antes do `Segredos`): cada valor guardado no cofre (de 6 caracteres
+para cima) volta como `[cofre: nome]`, também sem a barra final, codificado para URL e em base64.
+É troca exata, então pega o que não tem formato de segredo, como um webhook.
 
 
 **Repetição no turno** (`AgentLoop.ContarRepeticao`): a chamada que falhou já era bloqueada ao ser

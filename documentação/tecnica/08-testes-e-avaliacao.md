@@ -23,6 +23,7 @@ O AIB tem duas formas de verificação, com papéis diferentes:
 | Sessão e fatos | `new SessionMemory(id, raiz)`, `new FactStore(raiz)` |
 | E-mail | parâmetro `raizDeDados` de `MailVault`, `DiarioDeTriagem`, `ArquivoDeConversas`, `ConversasIgnoradas`, `EstadoDasCaixas`, `MarcoDoVigia`, `VigiasDoEmail`, `RegrasDoVigia.CaminhoPadrao` |
 | Chave do provedor | parâmetro `chaveDe` de `ChatProviderFactory` (não toca o cofre) |
+| Cofre de aliases | `Cofre.RaizPadrao` (desviado no `TestAuditRedirect`: todo `ToolRegistry` redige com ele); `new Cofre(raiz)` e `ToolRegistry { Cofre = … }` |
 | Registro de execução | parâmetro `pastaDeLogs` de `RegistroDeExecucao.Iniciar` |
 
 Os dois primeiros são desviados **antes de qualquer teste rodar**, por `[ModuleInitializer]` em `AIB.Tests/TestAuditRedirect.cs`. Não é fixture porque o xUnit roda classes em paralelo e um desvio por classe deixaria janelas em que outra classe ainda escreve no caminho real. O histórico entra junto porque fechar uma `ChatWindow` de teste arquiva a conversa.

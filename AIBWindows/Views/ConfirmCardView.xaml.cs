@@ -147,11 +147,20 @@ public partial class ConfirmCardView : UserControl
             AvisoPastaText.Visibility = Visibility.Visible;
         }
 
+        if (contexto.Cofre.Count > 0)
+        {
+            CofreText.Text = string.Join("\n", contexto.Cofre.Select(u =>
+                $"{u.Nome} · {u.Descricao}\n    → " + (u.Hosts.Count > 0
+                    ? string.Join(", ", u.Hosts)
+                    : "qualquer endereço (este alias não tem hosts definidos)")));
+            CofreBorder.Visibility = Visibility.Visible;
+        }
+
         // "Sempre permitir" só faz sentido para comando (casado pelo texto exato na sessão) e para
         // o navegador (casado pelo site). Para as demais ferramentas seria uma autorização vaga.
         // Some quando o portão não o respeitaria: texto de terceiros no contexto, ou operação que
         // pergunta toda vez (SemSempre).
-        bool shell = ferramenta == Ferramentas.Shell && !contexto.ConteudoDeEmailNoContexto;
+        bool shell = ferramenta == Ferramentas.Shell && !contexto.ConteudoDeEmailNoContexto && !contexto.SemSempre;
         bool navegador = ferramenta == Ferramentas.Navegador && !contexto.SemSempre
                          && (!contexto.ConteudoDeEmailNoContexto
                              || (contexto.SempreApesarDeTerceiros && !contexto.EmailNoContexto));
