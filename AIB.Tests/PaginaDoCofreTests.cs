@@ -39,6 +39,13 @@ namespace AIB.Tests
                 WpfHost.GarantirRecursos();
                 var (p, cofre) = Nova();
 
+                // O formulário nasce fechado; o botão tracejado o abre no lugar dele, como o
+                // "Adicionar conta" da página E-mail (pedido do usuário, 20/10/2026).
+                Achar<Border>(p, "Formulario").Visibility.Should().Be(Visibility.Collapsed);
+                Clicar(p, "AdicionarButton");
+                Achar<Border>(p, "Formulario").Visibility.Should().Be(Visibility.Visible);
+                Achar<Button>(p, "AdicionarButton").Visibility.Should().Be(Visibility.Collapsed);
+
                 Achar<TextBox>(p, "NomeBox").Text = "bitrix";
                 Achar<PasswordBox>(p, "ValorBox").Password = "https://cpaps.bitrix24.com.br/rest/1/k3x9q2v7m1p8z4t6/";
                 Achar<TextBox>(p, "HostsBox").Text.Should().Be("cpaps.bitrix24.com.br");
@@ -49,6 +56,8 @@ namespace AIB.Tests
 
                 cofre.Achar("bitrix")!.Hosts.Should().Equal("cpaps.bitrix24.com.br");
                 Achar<PasswordBox>(p, "ValorBox").Password.Should().BeEmpty();
+                Achar<Border>(p, "Formulario").Visibility.Should().Be(Visibility.Collapsed, "guardou: o botão volta");
+                Achar<Button>(p, "AdicionarButton").Visibility.Should().Be(Visibility.Visible);
                 Lista(p).Children.Count.Should().Be(1);
                 Textos(Lista(p)).Should().NotContain(t => t.Contains("k3x9"));
             });

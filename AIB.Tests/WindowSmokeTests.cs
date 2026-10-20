@@ -219,6 +219,32 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void PaginaDoCofre_MontaEDesenha_FechadaEComOFormulario()
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+                var janela = new SettingsWindow(ServicoDescartavel());
+                var cofre = new Cofre(Path.Combine(Path.GetTempPath(), "aib-ensaio-cofre-" + Guid.NewGuid().ToString("N")));
+                cofre.Guardar("bitrix", "https://cpaps.bitrix24.com.br/rest/1/exemplo123456/", "Webhook REST do Bitrix da CPAPS",
+                              new[] { "cpaps.bitrix24.com.br" }, shell: false);
+                cofre.Guardar("sankhya-leitura", "senha-exemplo", "Senha do usuário só leitura do Oracle do Sankhya", Array.Empty<string>());
+
+                var pagina = (PaginaDoCofre)janela.FindName("CofrePagina");
+                pagina.Cofre = cofre;
+                janela.IrPara(PaginaDeConfiguracoes.Cofre);
+                pagina.Atualizar();
+                Desenhar(janela, "config-cofre");
+
+                ((System.Windows.Controls.Button)pagina.FindName("AdicionarButton")).RaiseEvent(
+                    new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                Desenhar(janela, "config-cofre-novo");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void TelaDeChat_MontaEDesenha()
         {
             EmSta(() =>

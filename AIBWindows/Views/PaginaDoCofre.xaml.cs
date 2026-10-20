@@ -113,9 +113,24 @@ public partial class PaginaDoCofre : UserControl
         return b;
     }
 
+    private void Adicionar_Click(object sender, RoutedEventArgs e)
+    {
+        FecharFormulario();
+        AbrirFormulario();
+        NomeBox.Focus();
+    }
+
+    /// <summary>O formulário no lugar do botão: um segredo por vez, como as contas de e-mail.</summary>
+    private void AbrirFormulario()
+    {
+        Formulario.Visibility = Visibility.Visible;
+        AdicionarButton.Visibility = Visibility.Collapsed;
+    }
+
     private void ComecarEdicao(Alias a)
     {
         _editando = a.Nome;
+        AbrirFormulario();
         _apagando = null;
         NomeBox.Text = a.Nome;
         NomeBox.IsReadOnly = true;
@@ -142,7 +157,7 @@ public partial class PaginaDoCofre : UserControl
 
         Cofre.Apagar(nome);
         _apagando = null;
-        if (_editando == nome) Limpar();
+        if (_editando == nome) FecharFormulario();
         Atualizar();
     }
 
@@ -167,7 +182,7 @@ public partial class PaginaDoCofre : UserControl
             // Valor em branco só vale na edição: num alias novo, o cofre recusa.
             Cofre.Guardar(NomeBox.Text, _editando != null && ValorBox.Password.Length == 0 ? null : ValorBox.Password,
                           DescricaoBox.Text, hosts, ShellCheck.IsChecked == true);
-            Limpar();
+            FecharFormulario();
             Atualizar();
         }
         catch (ArgumentException ex)
@@ -176,9 +191,9 @@ public partial class PaginaDoCofre : UserControl
         }
     }
 
-    private void Cancelar_Click(object sender, RoutedEventArgs e) => Limpar();
+    private void Cancelar_Click(object sender, RoutedEventArgs e) => FecharFormulario();
 
-    private void Limpar()
+    private void FecharFormulario()
     {
         _editando = null;
         NomeBox.IsReadOnly = false;
@@ -191,6 +206,8 @@ public partial class PaginaDoCofre : UserControl
         FormTitulo.Text = "Guardar um segredo";
         GuardarButton.Content = "Guardar no cofre";
         Erro(null);
+        Formulario.Visibility = Visibility.Collapsed;
+        AdicionarButton.Visibility = Visibility.Visible;
     }
 
     private void Erro(string? texto)
