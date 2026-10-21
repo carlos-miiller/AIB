@@ -107,6 +107,47 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void DivisoriaTabelaECitacao_UsamAsCoresDoTema()
+        {
+            // Visto no uso (21/10/2026): "divisórias e tabelas" com cores mal postas. O tema do
+            // Markdig.Wpf desenha a linha e a grade em preto, para página branca.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var controle = new TextoDaIA
+                {
+                    Texto = "antes\n\n---\n\n| Item | Qtd |\n|---|---|\n| Mouse | 2 |\n\n> nota\n\n[site](https://exemplo.com)"
+                };
+                var janela = new Window { Content = controle, Width = 500, Height = 400, ShowActivated = false };
+                janela.Show();
+                janela.UpdateLayout();
+
+                Color Token(string chave) => ((SolidColorBrush)controle.FindResource(chave)).Color;
+                var blocos = controle.Visor!.Document.Blocks.ToList();
+
+                // A divisória é um Line dentro de um InlineUIContainer, num parágrafo próprio.
+                var linha = (System.Windows.Shapes.Line)blocos.SelectMany(Inlines).OfType<InlineUIContainer>().Single().Child;
+                ((SolidColorBrush)linha.Stroke).Color.Should().Be(Token("BorderControlBrush"));
+
+                var tabela = blocos.OfType<Table>().Single();
+                ((SolidColorBrush)tabela.BorderBrush).Color.Should().Be(Token("BorderOutlineBtnBrush"));
+                var celulas = tabela.RowGroups.SelectMany(g => g.Rows).SelectMany(r => r.Cells).ToList();
+                var grade = Token("BorderOutlineBtnBrush");
+                celulas.Should().HaveCount(4).And.OnlyContain(
+                    c => ((SolidColorBrush)c.BorderBrush).Color == grade);
+
+                var citacao = blocos.OfType<Section>().Single();
+                ((SolidColorBrush)citacao.BorderBrush).Color.Should().Be(Token("AccentBorderStrongBrush"));
+
+                var link = blocos.SelectMany(Inlines).OfType<Hyperlink>().Single();
+                ((SolidColorBrush)link.Foreground).Color.Should().Be(Token("AccentBlueBrush"));
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void AFalaNoOrbe_SaiFormatada_ComoNaJanelaDeChat()
         {
             WpfHost.EmSta(() =>

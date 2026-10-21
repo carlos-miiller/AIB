@@ -219,6 +219,28 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void FalaDaIA_ComTodosOsBlocosDeMarkdown_Desenha()
+        {
+            // Para conferir no PNG: título, divisória, tabela, citação, código e link nas cores
+            // do tema (o Markdig.Wpf vinha com preto de página branca).
+            EmSta(() =>
+            {
+                GarantirRecursos();
+                var fala = new AIB.Ui.TextoDaIA
+                {
+                    Texto = "# Resumo\n\n## Retiradas\n\nTexto com `CPS-DTP-5752` e **negrito**.\n\n---\n\n" +
+                            "| Item | Qtd |\n|---|---|\n| Mouse | 2 |\n| Monitor 19\" | 1 |\n\n> Aprovado pelo setor.\n\n" +
+                            "```\nGet-Item x\n```\n\n[Abrir no Bitrix](https://exemplo.com)"
+                };
+                var janela = new Window { Content = fala, Width = 460, Height = 520, ShowActivated = false };
+                janela.Show();
+                janela.Content = null;
+                DesenharSolto(fala, "fala-markdown", 460, 520);
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void PaginaDoCofre_MontaEDesenha_FechadaEComOFormulario()
         {
             EmSta(() =>

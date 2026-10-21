@@ -81,7 +81,58 @@ public static class VisorDeMarkdown
             viewer.Resources.Add(chave, titulo);
         }
 
+        Blocos(viewer, dono);
+
         return viewer;
+    }
+
+    /// <summary>
+    /// Divisória, tabela, citação e link. O tema do Markdig.Wpf os pinta para página branca:
+    /// linha e grade pretas, citação cinza-claro, link azul do sistema. Visto no uso
+    /// (21/10/2026): "divisórias e tabelas" com cores mal postas sobre o vidro escuro.
+    /// </summary>
+    private static void Blocos(MarkdownViewer viewer, FrameworkElement dono)
+    {
+        object Cor(string chave) => dono.FindResource(chave);
+        var grade = Cor("BorderOutlineBtnBrush");
+
+        var divisoria = new Style(typeof(System.Windows.Shapes.Line));
+        divisoria.Setters.Add(new Setter(System.Windows.Shapes.Shape.StrokeProperty, Cor("BorderControlBrush")));
+        divisoria.Setters.Add(new Setter(System.Windows.Shapes.Shape.StrokeThicknessProperty, 1.0));
+        divisoria.Setters.Add(new Setter(System.Windows.Shapes.Shape.StretchProperty, System.Windows.Media.Stretch.Fill));
+        divisoria.Setters.Add(new Setter(System.Windows.Shapes.Line.X2Property, 1.0));
+        divisoria.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0, 4, 0, 4)));
+        viewer.Resources.Add(Markdig.Wpf.Styles.ThematicBreakStyleKey, divisoria);
+
+        var tabela = new Style(typeof(Table));
+        tabela.Setters.Add(new Setter(Block.BorderBrushProperty, grade));
+        tabela.Setters.Add(new Setter(Block.BorderThicknessProperty, new Thickness(0, 0, 1, 1)));
+        tabela.Setters.Add(new Setter(Table.CellSpacingProperty, 0.0));
+        viewer.Resources.Add(Markdig.Wpf.Styles.TableStyleKey, tabela);
+
+        var celula = new Style(typeof(TableCell));
+        celula.Setters.Add(new Setter(TableCell.BorderBrushProperty, grade));
+        celula.Setters.Add(new Setter(TableCell.BorderThicknessProperty, new Thickness(1, 1, 0, 0)));
+        celula.Setters.Add(new Setter(TableCell.PaddingProperty, new Thickness(6, 2, 6, 2)));
+        viewer.Resources.Add(Markdig.Wpf.Styles.TableCellStyleKey, celula);
+
+        var cabecalho = new Style(typeof(TableRow));
+        cabecalho.Setters.Add(new Setter(TextElement.FontWeightProperty, FontWeights.SemiBold));
+        cabecalho.Setters.Add(new Setter(TextElement.ForegroundProperty, Cor("TextStrongBrush")));
+        cabecalho.Setters.Add(new Setter(TextElement.BackgroundProperty, Cor("SurfaceHoverSoftBrush")));
+        viewer.Resources.Add(Markdig.Wpf.Styles.TableHeaderStyleKey, cabecalho);
+
+        var citacao = new Style(typeof(Section));
+        citacao.Setters.Add(new Setter(Block.BorderBrushProperty, Cor("AccentBorderStrongBrush")));
+        citacao.Setters.Add(new Setter(Block.BorderThicknessProperty, new Thickness(3, 0, 0, 0)));
+        citacao.Setters.Add(new Setter(Block.PaddingProperty, new Thickness(12, 0, 0, 0)));
+        citacao.Setters.Add(new Setter(TextElement.ForegroundProperty, Cor("TextSecondaryBrush")));
+        viewer.Resources.Add(Markdig.Wpf.Styles.QuoteBlockStyleKey, citacao);
+
+        var link = new Style(typeof(Hyperlink));
+        link.Setters.Add(new Setter(TextElement.ForegroundProperty, Cor("AccentBlueBrush")));
+        link.Setters.Add(new Setter(Inline.TextDecorationsProperty, TextDecorations.Underline));
+        viewer.Resources.Add(Markdig.Wpf.Styles.HyperlinkStyleKey, link);
     }
 
     /// <summary>
