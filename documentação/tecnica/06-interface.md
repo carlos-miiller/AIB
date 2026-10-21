@@ -419,6 +419,9 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   guardas de e-mail do registry são SOMADOS (o mais restritivo vale). O orbe mostra o passo
   (`PassoMudou`) e o texto final (`Respondeu` → `ResponderTurno`): com a barra aberta, a
   resposta entra na pilha de falas (`Ui/FalaDoOrbe`); fechada, ela é enfileirada e o orbe pulsa.
+  A fala que fecha no meio do turno (antes de uma ferramenta, ou pela `QuebraDeFala`) sai na
+  hora por `Falou` → `FalarNoTurno`, sem apagar o anel; com a barra fechada, o aviso do fim
+  leva todas as falas do turno.
   A fala da IA é desenhada em Markdown pelo mesmo visualizador da janela de chat
   (`Ui/VisorDeMarkdown`, usado no orbe pelo controle `Ui/TextoDaIA`): interpretador, cores de
   código e de título (o tema do Markdig.Wpf pinta títulos de preto e em até 42px; aqui vão em

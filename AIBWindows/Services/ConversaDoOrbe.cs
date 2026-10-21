@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -56,8 +57,18 @@ public sealed class ConversaDoOrbe
     /// <summary>O passo do turno: rótulo e ferramenta (nula quando é pensar). Vazio no fim.</summary>
     public event Action<string, string?>? PassoMudou;
 
-    /// <summary>O texto final do turno, sem marca de quebra.</summary>
+    /// <summary>
+    /// O texto final do turno, sem marca de quebra. Vazio quando tudo já saiu por
+    /// <see cref="Falou"/>: o evento continua vindo, porque é ele que apaga o anel.
+    /// </summary>
     public event Action<string>? Respondeu;
+
+    /// <summary>
+    /// Uma fala que fechou com o turno ainda rodando: a que vem antes de uma ferramenta, ou a
+    /// separada pela <see cref="QuebraDeFala"/>. Visto no uso (21/10/2026): o "Vou consultar a
+    /// tarefa" chegava junto com o resultado, no fim, porque o turno guardava tudo para o final.
+    /// </summary>
+    public event Action<string>? Falou;
 
     /// <summary>Um turno do usuário terminou: o que ele escreveu nele.</summary>
     public event Action<string>? UsuarioFalou;
@@ -184,30 +195,15 @@ public sealed class ConversaDoOrbe
         Marcar();
         string fala = "";
         string? erro = null;
+        bool disse = false;
 
         try
         {
             PassoMudou?.Invoke("Pensando", null);
 
-            await foreach (var item in Conversa.StreamResponseAsync(Carimbar(texto, Agora()), Console.Write))
-            {
-                switch (item)
-                {
-                    case ChatStreamItem.ToolStarted iniciada:
-                        PassoMudou?.Invoke(Ferramentas.Rotulo(iniciada.Tool), iniciada.Tool);
-                        break;
-                    case ChatStreamItem.ToolFinished terminada:
-                        AIB.Views.ChatWindow.RegistrarAcao(terminada);
-                        PassoMudou?.Invoke("Pensando", null);
-                        break;
-                    case ChatStreamItem.SegmentBreak:
-                        fala += "\n\n";
-                        break;
-                    case ChatStreamItem.Text t:
-                        fala += t.Value;
-                        break;
-                }
-            }
+            fala = await AcompanharAsync(
+                Conversa.StreamResponseAsync(Carimbar(texto, Agora()), Console.Write),
+                () => disse = true);
         }
         catch (OperationCanceledException) when (_parou)
         {
@@ -228,7 +224,54 @@ public sealed class ConversaDoOrbe
         UsuarioFalou?.Invoke(texto);
 
         string final = erro ?? QuebraDeFala.Limpar(fala).Trim();
-        Respondeu?.Invoke(final.Length > 0 ? final : _parou ? "Parei." : "Feito.");
+        Respondeu?.Invoke(final.Length > 0 ? final : _parou ? "Parei." : disse ? "" : "Feito.");
+    }
+
+    /// <summary>
+    /// Lê o turno: o passo vai para o anel e cada fala fechada sai por <see cref="Falou"/> na
+    /// hora, como os balões da janela de chat. Devolve a última fala, ainda não dita.
+    /// </summary>
+    public async Task<string> AcompanharAsync(IAsyncEnumerable<ChatStreamItem> itens, Action? disse = null)
+    {
+        string fala = "";
+
+        void Fechar(IEnumerable<string> partes)
+        {
+            foreach (var parte in partes)
+            {
+                Falou?.Invoke(parte);
+                disse?.Invoke();
+            }
+        }
+
+        await foreach (var item in itens)
+        {
+            switch (item)
+            {
+                case ChatStreamItem.ToolStarted iniciada:
+                    PassoMudou?.Invoke(Ferramentas.Rotulo(iniciada.Tool), iniciada.Tool);
+                    break;
+                case ChatStreamItem.ToolFinished terminada:
+                    AIB.Views.ChatWindow.RegistrarAcao(terminada);
+                    PassoMudou?.Invoke("Pensando", null);
+                    break;
+                case ChatStreamItem.SegmentBreak:
+                    Fechar(QuebraDeFala.Dividir(fala));
+                    fala = "";
+                    break;
+                case ChatStreamItem.Text t:
+                    fala += t.Value;
+                    var (prontas, resto) = QuebraDeFala.Separar(fala);
+                    if (prontas.Count > 0)
+                    {
+                        Fechar(prontas);
+                        fala = resto;
+                    }
+                    break;
+            }
+        }
+
+        return fala;
     }
 
     /// <summary>

@@ -203,11 +203,21 @@ public partial class App : System.Windows.Application
 
         // O turno da conversa do orbe: o passo acende o anel, e a resposta volta para a barra.
         void AndouNoOrbe(string passo, string? ferramenta) => orbe.MostrarEstado(passo, ferramenta);
+        // A fala do meio do turno ("vou consultar a tarefa") entra na pilha na hora. Com a barra
+        // fechada, o aviso do fim leva todas as falas do turno, e não só a última.
+        var ditas = new List<string>();
+        void FalouNoOrbe(string texto)
+        {
+            ditas.Add(texto);
+            orbe.FalarNoTurno(texto);
+        }
         void RespondeuNoOrbe(string texto)
         {
             bool barraFechada = !orbe.EmModoBarra;
             orbe.ResponderTurno(texto);
-            if (barraFechada) avisarResposta?.Invoke(texto);
+            if (!string.IsNullOrWhiteSpace(texto)) ditas.Add(texto);
+            if (barraFechada && ditas.Count > 0) avisarResposta?.Invoke(string.Join("\n\n", ditas));
+            ditas.Clear();
         }
 
         // O contador da barra. O evento pode chegar de fora da thread da interface.
@@ -217,6 +227,7 @@ public partial class App : System.Windows.Application
         {
             doOrbe.PassoMudou += AndouNoOrbe;
             doOrbe.Respondeu += RespondeuNoOrbe;
+            doOrbe.Falou += FalouNoOrbe;
             doOrbe.Conversa.OnTokenCountChanged += ContouNoOrbe;
             orbe.MostrarTokens(doOrbe.Conversa.CurrentTokenReport);
 
@@ -259,6 +270,7 @@ public partial class App : System.Windows.Application
             {
                 doOrbe.PassoMudou -= AndouNoOrbe;
                 doOrbe.Respondeu -= RespondeuNoOrbe;
+                doOrbe.Falou -= FalouNoOrbe;
                 doOrbe.Conversa.OnTokenCountChanged -= ContouNoOrbe;
             }
             orbe.MensagemEnviada -= Enviou;

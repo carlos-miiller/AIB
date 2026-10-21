@@ -1064,6 +1064,18 @@ public partial class ShadowAssistantWindow : Window
     }
 
     /// <summary>
+    /// Uma fala do meio do turno: entra como a resposta, mas o anel segue girando, porque o
+    /// turno continua (a ferramenta anunciada ainda vai rodar).
+    /// </summary>
+    public void FalarNoTurno(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return;
+
+        if (_emModoBarra) AdicionarFala(new FalaDaIA(texto));
+        else EnfileirarFala(texto);
+    }
+
+    /// <summary>
     /// §4.6 — mostra a fala acima da barra. Entrada por fade + deslocamento de 8px, que
     /// mora no gatilho Loaded do próprio template da bolha.
     /// </summary>

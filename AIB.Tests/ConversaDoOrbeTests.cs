@@ -110,6 +110,44 @@ namespace AIB.Tests
             doOrbe.UltimaAtividadeUtc.Should().BeNull();
         }
 
+        private static async System.Collections.Generic.IAsyncEnumerable<ChatStreamItem> Turno(
+            System.Collections.Generic.List<string> log, params ChatStreamItem[] itens)
+        {
+            foreach (var item in itens)
+            {
+                log.Add("item " + item.GetType().Name);
+                yield return item;
+                await Task.Yield();
+            }
+        }
+
+        [Fact]
+        public async Task AFalaAntesDaFerramenta_SaiNaHora_ENaoNoFimDoTurno()
+        {
+            // Visto no uso (21/10/2026), no Shadow: "Vou consultar a tarefa (419073)" chegava
+            // junto com o resultado, no fim, porque o turno guardava todo o texto para o final.
+            var servico = JanelaDeEnsaio.Servico();
+            var doOrbe = new ConversaDoOrbe(JanelaDeEnsaio.Conversa(servico), servico);
+            var log = new System.Collections.Generic.List<string>();
+            doOrbe.Falou += f => log.Add("fala " + f);
+
+            string resto = await doOrbe.AcompanharAsync(Turno(log,
+                new ChatStreamItem.Text("Vou consultar "),
+                new ChatStreamItem.Text("a tarefa."),
+                new ChatStreamItem.SegmentBreak(1),
+                new ChatStreamItem.ToolStarted("c1", Ferramentas.Habilidade, "bitrix"),
+                new ChatStreamItem.Text("Achei ⁂ Ela vence"),
+                new ChatStreamItem.Text(" amanhã.")));
+
+            log.Should().Equal(
+                "item Text", "item Text", "item SegmentBreak",
+                "fala Vou consultar a tarefa.",
+                "item ToolStarted",
+                "item Text", "fala Achei",
+                "item Text");
+            resto.Trim().Should().Be("Ela vence amanhã.", "a última fala sai pelo Respondeu, que apaga o anel");
+        }
+
         [Theory]
         [InlineData("ok", 1)]
         [InlineData("  sim, resolvi ontem à noite  ", 5)]
