@@ -241,6 +241,31 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void CartaoDeHabilidade_Desenha()
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+                const string extra = "-Acao listar -Responsavel eu -Status abertas";
+                string script = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                                             @".AIB\skills\bitrix\bitrix.ps1");
+                var card = new ConfirmCardView();
+                card.Preencher(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Habilidade,
+                    Command = script + " " + extra,
+                    Habilidade = new AIB.Services.Tools.UsoDaHabilidade("bitrix",
+                        "Consulta tarefas no Bitrix24 da CPAPS (só leitura).", script,
+                        AIB.Services.Tools.ExecuteSkillTool.Pares(extra)),
+                    Cofre = new[] { new AIB.Services.Tools.UsoDoCofre("bitrix", "webhook do bitrix",
+                        new[] { "cpaps.bitrix24.com.br" }) }
+                });
+                card.ParaFlutuante(shadow: true);
+                DesenharSolto(card, "cartao-habilidade", 520, 470);
+            });
+        }
+
+        [Fact]
         public void PaginaDoCofre_MontaEDesenha_FechadaEComOFormulario()
         {
             EmSta(() =>

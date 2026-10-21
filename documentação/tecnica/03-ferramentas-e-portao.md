@@ -235,7 +235,13 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
   sobre arquivo, edit, comando da lista de negação); laranja (`WarnFilledButton`) para o que
   executa ou dá para desfazer (shell, Lixeira, navegador, lembrete, criar arquivo); lilás
   (`AccentFilledButton`) para o que só guarda ou lê (memória, nota, manual de habilidade). O antes
-  e depois do edit ganha fundo vermelho/verde por linha. O card DENTRO da conversa não muda. A posição vem de `PertoDoOrbe` (centrada na
+  e depois do edit ganha fundo vermelho/verde por linha. O card DENTRO da conversa não muda.
+  Habilidade (nas duas formas) não se desenha como comando de shell: com
+  `CommandConfirmationContext.Habilidade` (`UsoDaHabilidade`), o título leva o nome ("Rodar a
+  habilidade bitrix?"), a primeira frase da descrição diz o que ela faz, a caixa mostra os
+  argumentos em pares alinhados (`ExecuteSkillTool.Pares`) com o ícone de brilho, e o caminho do
+  script fica numa linha discreta embaixo. A linha de comando inteira continua em `Command`
+  (auditoria e histórico). A posição vem de `PertoDoOrbe` (centrada na
   casca do orbe, `ShadowAssistantWindow.RetanguloDoOrbe`; sem espaço acima, abaixo; sempre dentro
   da área de trabalho), que também posiciona a janela de senha do terminal. Sem orbe, as duas
   ficam como antes: card na conversa, senha no centro da tela.

@@ -243,6 +243,58 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void Habilidade_MostraNomeDescricaoEArgumentos_ENaoALinhaDeShell()
+        {
+            // Pedido do usuário (21/10/2026): o cartão da skill bitrix era o de um comando de
+            // shell — "skill C:\Users\Carlo\.AIB\skills\bitrix\bitrix.ps1 -Acao listar ...".
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                const string extra = "-Acao listar -Responsavel eu -Busca \"inventário anual\"";
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Habilidade,
+                    Command = @"C:\skills\bitrix\bitrix.ps1 " + extra,
+                    Habilidade = new AIB.Services.Tools.UsoDaHabilidade(
+                        "bitrix", "Consulta tarefas no Bitrix24 (só leitura).", @"C:\skills\bitrix\bitrix.ps1",
+                        AIB.Services.Tools.ExecuteSkillTool.Pares(extra))
+                });
+
+                Texto(card, "TituloText").Should().Be("Rodar a habilidade bitrix?");
+                Texto(card, "DescricaoText").Should().Be("Consulta tarefas no Bitrix24 (só leitura).");
+                Texto(card, "FerramentaText").Should().Be("bitrix");
+
+                var alvo = (TextBlock)card.FindName("AlvoText");
+                string mostrado = new System.Windows.Documents.TextRange(alvo.ContentStart, alvo.ContentEnd).Text;
+                mostrado.Should().Contain("Acao         listar").And.Contain("inventário anual")
+                    .And.NotContain("bitrix.ps1", "o caminho vai para a linha de baixo");
+                Texto(card, "ScriptText").Should().EndWith(@"bitrix\bitrix.ps1");
+            });
+        }
+
+        [Theory]
+        [InlineData("-Acao listar -Limite 5", "Acao=listar|Limite=5")]
+        [InlineData("-Acao tarefa -Id -7", "Acao=tarefa|Id=-7")]
+        [InlineData("--verbose arquivo.xlsx", "verbose=arquivo.xlsx")]
+        [InlineData("a.xlsx 'b c.xlsx'", "=a.xlsx|=b c.xlsx")]
+        [InlineData("-Forcar -Acao eu", "Forcar=|Acao=eu")]
+        [InlineData("", "")]
+        public void OsArgumentos_ViramPares(string extra, string esperado)
+        {
+            string.Join("|", AIB.Services.Tools.ExecuteSkillTool.Pares(extra).Select(p => p.Chave + "=" + p.Valor))
+                .Should().Be(esperado);
+        }
+
+        [Fact]
+        public void APrimeiraFrase_DaDescricao_FicaSemOManualDosArgumentos()
+        {
+            AIB.Services.Tools.ExecuteSkillTool.PrimeiraFrase(
+                "Consulta tarefas no Bitrix24 da CPAPS (só leitura). Argumentos: -Acao listar|tarefa.")
+                .Should().Be("Consulta tarefas no Bitrix24 da CPAPS (só leitura).");
+        }
+
+        [Fact]
         public void SemPrevia_OBlocoNaoAparece()
         {
             // Um bloco vazio no card é ruído — e o shell não tem prévia: o comando já é o alvo.

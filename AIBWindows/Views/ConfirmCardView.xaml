@@ -56,6 +56,11 @@
                        Foreground="{StaticResource TextStrongBrush}"
                        TextWrapping="Wrap" Margin="0,12,0,0"/>
 
+            <!-- HABILIDADE: o que ela faz, na frase da descrição dela. Só com skill. -->
+            <TextBlock x:Name="DescricaoText" Visibility="Collapsed" FontSize="13"
+                       Foreground="{StaticResource TextBodyBrush}"
+                       TextWrapping="Wrap" LineHeight="19" Margin="0,6,0,0"/>
+
             <!-- (c) SUBTÍTULO com a consequência real. -->
             <TextBlock x:Name="ConsequenciaText" FontSize="12.5"
                        Foreground="{StaticResource TextSecondaryBrush}"
@@ -97,6 +102,13 @@
                     </ScrollViewer>
                 </Grid>
             </Border>
+
+            <!-- O script da habilidade, embaixo da caixa: autorizar a habilidade é autorizar
+                 aquele arquivo, e o caminho continua à vista, só sem ocupar o lugar principal. -->
+            <TextBlock x:Name="ScriptText" Visibility="Collapsed"
+                       FontFamily="{StaticResource MonoFontFamily}" FontSize="10.5"
+                       Foreground="{StaticResource TextMutedBrush}"
+                       TextWrapping="Wrap" Margin="2,6,0,0"/>
 
             <!-- PRÉVIA do que vai ser gravado: o conteúdo do write, o antes e depois do edit.
                  Mesma caixa do alvo, com altura contida — um arquivo longo rola aqui dentro em

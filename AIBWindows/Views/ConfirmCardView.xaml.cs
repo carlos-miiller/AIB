@@ -115,6 +115,8 @@ public partial class ConfirmCardView : UserControl
         AlvoText.Text = alvo;
         IconeAlvo.Data = ToolIcons.De(ferramenta);
 
+        if (!manual && contexto.Habilidade is { } habilidade) MostrarHabilidade(habilidade);
+
         // A prévia que o WriteFileTool e o EditFileTool montavam e nenhuma view lia: o usuário
         // autorizava uma gravação vendo só o caminho. Autorizar sem ver o que muda é autorizar
         // no escuro.
@@ -195,6 +197,56 @@ public partial class ConfirmCardView : UserControl
 
         // O foco nasce em "Recusar". Enter sem ler o card não pode executar nada.
         Loaded += (_, _) => RecusarButton.Focus();
+    }
+
+    /// <summary>
+    /// A habilidade como habilidade, e não como comando de shell. Pedido do usuário
+    /// (21/10/2026): "tá sendo tratado como se fosse uma execução shell genérica" — o cartão
+    /// mostrava "skill C:\Users\...\bitrix.ps1 -Acao listar ..." e a consequência do shell.
+    /// Agora: o nome no título, o que ela faz, os argumentos em pares e o script embaixo.
+    /// </summary>
+    private void MostrarHabilidade(AIB.Services.Tools.UsoDaHabilidade h)
+    {
+        TituloText.Text = $"Rodar a habilidade {h.Nome}?";
+
+        if (h.Descricao.Length > 0)
+        {
+            DescricaoText.Text = h.Descricao;
+            DescricaoText.Visibility = Visibility.Visible;
+        }
+
+        ConsequenciaText.Text = "O script dela roda na sua máquina, com as suas permissões.";
+        FerramentaText.Text = h.Nome;
+
+        AlvoText.Inlines.Clear();
+        if (h.Pares.Count == 0)
+        {
+            var nada = new System.Windows.Documents.Run("sem argumentos");
+            nada.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "TextMutedBrush");
+            AlvoText.Inlines.Add(nada);
+        }
+
+        // Chaves alinhadas numa coluna: a fonte é mono, então o preenchimento alinha.
+        int largura = h.Pares.Count == 0 ? 0 : h.Pares.Max(p => p.Chave.Length);
+        for (int i = 0; i < h.Pares.Count; i++)
+        {
+            var (chave, valor) = h.Pares[i];
+            if (i > 0) AlvoText.Inlines.Add(new System.Windows.Documents.LineBreak());
+
+            if (chave.Length > 0)
+            {
+                var k = new System.Windows.Documents.Run(chave.PadRight(largura) + "  ");
+                k.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "TextMutedBrush");
+                AlvoText.Inlines.Add(k);
+            }
+            AlvoText.Inlines.Add(new System.Windows.Documents.Run(valor));
+        }
+
+        string casa = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        ScriptText.Text = h.Script.StartsWith(casa, StringComparison.OrdinalIgnoreCase)
+            ? "~" + h.Script[casa.Length..]
+            : h.Script;
+        ScriptText.Visibility = Visibility.Visible;
     }
 
     /// <summary>
@@ -310,7 +362,7 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Editar => (Risco.Destrutivo, "Ação destrutiva"),
             Ferramentas.Shell => (Risco.Cuidado, "Executa na sua máquina"),
             Ferramentas.Habilidade when comeca("LER MANUAL ") => (Risco.Leitura, "Só leitura"),
-            Ferramentas.Habilidade => (Risco.Cuidado, "Executa na sua máquina"),
+            Ferramentas.Habilidade => (Risco.Cuidado, "Roda uma habilidade"),
             Ferramentas.Arquivos when comeca("APAGAR ") => (Risco.Cuidado, "Dá para restaurar"),
             Ferramentas.Arquivos => (Risco.Cuidado, "Mexe em arquivos"),
             Ferramentas.Navegador when comeca("ABRIR SITE NOVO ") => (Risco.Cuidado, "Abre um site"),

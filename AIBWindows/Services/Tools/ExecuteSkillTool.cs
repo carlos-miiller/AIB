@@ -180,6 +180,8 @@ public class ExecuteSkillTool : ITool
                 Command = ComandoDoScript(skill, extra),
                 Level = userLevel,
                 Cwd = skill.Folder,
+                Habilidade = new UsoDaHabilidade(skill.Name, PrimeiraFrase(skill.Description),
+                                                 skill.ScriptPath, Pares(extra)),
                 Cofre = CofreDaHabilidade(skill).Usados.Select(u => new UsoDoCofre(u.Nome, u.Descricao, u.Hosts)).ToList()
             };
         }
@@ -259,6 +261,60 @@ public class ExecuteSkillTool : ITool
     }
 
     /// <summary><c>skill_name</c> e <c>arguments</c>, ou null quando o JSON é ilegível.</summary>
+    /// <summary>
+    /// A frase de abertura da descrição: o que a habilidade faz. O resto costuma ser o manual
+    /// dos argumentos, escrito para o modelo, e não cabe num cartão.
+    /// </summary>
+    public static string PrimeiraFrase(string descricao)
+    {
+        string d = (descricao ?? "").Trim();
+        int fim = d.IndexOf(". ", StringComparison.Ordinal);
+        return fim < 0 ? d : d[..(fim + 1)];
+    }
+
+    /// <summary>
+    /// Os argumentos da linha de comando em pares, para o cartão: <c>-Acao listar -Id 7</c>
+    /// vira (Acao, listar), (Id, 7). Chave sem valor é uma chave; valor sem chave fica com a
+    /// chave vazia. Aspas agrupam. Só leitura para a tela: o que roda é a linha original.
+    /// </summary>
+    public static IReadOnlyList<(string Chave, string Valor)> Pares(string extra)
+    {
+        var termos = new List<string>();
+        var atual = new StringBuilder();
+        char? aspa = null;
+        bool tem = false;
+        foreach (char c in extra ?? "")
+        {
+            if (aspa != null)
+            {
+                if (c == aspa) aspa = null; else atual.Append(c);
+            }
+            else if (c is '"' or '\'') { aspa = c; tem = true; }
+            else if (char.IsWhiteSpace(c))
+            {
+                if (tem || atual.Length > 0) termos.Add(atual.ToString());
+                atual.Clear();
+                tem = false;
+            }
+            else atual.Append(c);
+        }
+        if (tem || atual.Length > 0) termos.Add(atual.ToString());
+
+        // "-7" é número, não chave.
+        static bool Chave(string t) => t.Length > 1 && t[0] == '-' && !char.IsDigit(t.TrimStart('-').FirstOrDefault());
+
+        var pares = new List<(string, string)>();
+        for (int i = 0; i < termos.Count; i++)
+        {
+            if (!Chave(termos[i])) { pares.Add(("", termos[i])); continue; }
+
+            string chave = termos[i].TrimStart('-');
+            if (i + 1 < termos.Count && !Chave(termos[i + 1])) pares.Add((chave, termos[++i]));
+            else pares.Add((chave, ""));
+        }
+        return pares;
+    }
+
     private static (string Nome, string Extra)? Argumentos(string argumentsJson)
     {
         try
@@ -507,3 +563,13 @@ public class ExecuteSkillTool : ITool
         }
     }
 }
+
+/// <summary>
+/// A habilidade que o cartão descreve: o nome, o que ela faz, o script que roda e os argumentos
+/// em pares. Antes o cartão mostrava só a linha de comando, como num comando de shell qualquer.
+/// </summary>
+public sealed record UsoDaHabilidade(
+    string Nome,
+    string Descricao,
+    string Script,
+    IReadOnlyList<(string Chave, string Valor)> Pares);

@@ -43,6 +43,10 @@ public static class ToolIcons
     // Folha com a grade de uma planilha: documento e planilha na mesma ferramenta.
     private const string Documento = "M5,3.5 H13.5 L17,7 V18.5 H5 Z M13.5,3.5 V7 H17 M7.5,10.5 H14.5 M7.5,13.5 H14.5 M7.5,16 H14.5 M10.5,10.5 V16";
 
+    // Brilho de quatro pontas e um menor: habilidade instalada, e não o terminal do shell.
+    // Antes era o mesmo terminal, e o cartão da skill parecia o de um comando qualquer.
+    private const string Habilidade = "M10,3.5 L11.7,9.3 L17.5,11 L11.7,12.7 L10,18.5 L8.3,12.7 L2.5,11 L8.3,9.3 Z M17,3 V7 M15,5 H19";
+
     private static readonly Dictionary<string, Geometry> Cache = new(StringComparer.Ordinal);
 
     /// <summary>Desenho para a natureza do artefato.</summary>
@@ -87,7 +91,7 @@ public static class ToolIcons
         Ferramentas.Email or Ferramentas.LerEmail => Email,
         Ferramentas.Navegador => Navegador,
         Ferramentas.Shell => Terminal,
-        Ferramentas.Habilidade => Terminal,
+        Ferramentas.Habilidade => Habilidade,
         Ferramentas.Documento => Documento,
         _ => null
     };

@@ -46,6 +46,12 @@
         public string? ChaveDeSempre { get; set; }
 
         /// <summary>
+        /// A habilidade a rodar, quando a ferramenta é skill: o cartão mostra o nome, o que ela faz
+        /// e os argumentos em pares, e o caminho do script embaixo. Null nas outras ferramentas.
+        /// </summary>
+        public AIB.Services.Tools.UsoDaHabilidade? Habilidade { get; set; }
+
+        /// <summary>
         /// Esta operação nunca entra no "sempre permitir": pergunta toda vez. No navegador, botão
         /// que apaga, conclui, envia, paga; e abrir site novo (aprovar já libera o site).
         /// </summary>
