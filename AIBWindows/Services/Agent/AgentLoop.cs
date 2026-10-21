@@ -305,8 +305,12 @@ public sealed class AgentLoop
                 // Task.Run: depois de um yield, o laço retoma na thread de quem pediu o próximo
                 // evento — a da interface. Ferramenta síncrona (grep, glob, o plano da doc) rodava
                 // ali: em 19/10/2026 o Shadow congelou ~10 s num grep em C:\Users\Carlo\CPAPS.
+                //
+                // Chamadas que dividem cartão (27 vezes a mesma habilidade, uma por tarefa) recebem
+                // a vaga ANTES de disparar: o grupo precisa saber quantas vão chegar.
+                var vagas = _toolRegistry.Agrupar(calls.Select(tc => (tc.Name, tc.ArgumentsOrEmpty())).ToList());
                 var results = await Task.WhenAll(
-                    calls.Select(tc => Task.Run(() => ExecuteToolPairedAsync(tc, request.UserLevel, provider.Name, pulso, jaFalharam, repeticoes, request.Contexto))))
+                    calls.Select((tc, i) => Task.Run(() => ExecuteToolPairedAsync(tc, request.UserLevel, provider.Name, pulso, jaFalharam, repeticoes, request.Contexto, vagas[i]))))
                     .ConfigureAwait(false);
 
                 // Resultados na ordem original, mesmo que tenham terminado fora de ordem.
@@ -586,8 +590,12 @@ public sealed class AgentLoop
     private async Task<(ToolCallAccumulator Tc, string Result, string? Decisao, long DuracaoMs, long EsperaMs)> ExecuteToolPairedAsync(
         ToolCallAccumulator tc, int userLevel, string provedor, PulsoDoTurno pulso,
         Dictionary<string, string> jaFalharam, Dictionary<string, int> repeticoes,
-        ContextoDoTurno? contexto = null)
+        ContextoDoTurno? contexto = null, VagaNoCartao? vaga = null)
     {
+        // A repetição bloqueada volta antes do registry: a vaga sai aqui, ou o cartão do grupo
+        // esperaria por ela para sempre.
+        using var saida = vaga;
+
         // Antes de tudo: segue pelos await até a ferramenta e o portão (ver ContextoDoTurno).
         ContextoDoTurno.Atual = contexto;
 
@@ -630,7 +638,7 @@ public sealed class AgentLoop
         string result = await _toolRegistry
             .ExecuteToolAsync(tc.Name, tc.ArgumentsOrEmpty(), userLevel,
                               ms => { esperaMs += ms; pulso.EsperaHumana(tc.Name, ms); },
-                              d => decisao = d, provedor)
+                              d => decisao = d, provedor, vaga)
             .ConfigureAwait(false);
 
         if (Memory.ArtifactExtractor.Falhou(result)) { lock (jaFalharam) jaFalharam[assinatura] = Resumir(result); }

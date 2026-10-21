@@ -207,7 +207,9 @@ public partial class ConfirmCardView : UserControl
     /// </summary>
     private void MostrarHabilidade(AIB.Services.Tools.UsoDaHabilidade h)
     {
-        TituloText.Text = $"Rodar a habilidade {h.Nome}?";
+        // Várias chamadas num cartão só (ver UsoDaHabilidade.Juntar): a contagem vai no título e
+        // na consequência, porque o script roda uma vez por chamada.
+        TituloText.Text = h.Vezes > 1 ? $"Rodar a habilidade {h.Nome} {h.Vezes} vezes?" : $"Rodar a habilidade {h.Nome}?";
 
         if (h.Descricao.Length > 0)
         {
@@ -215,7 +217,9 @@ public partial class ConfirmCardView : UserControl
             DescricaoText.Visibility = Visibility.Visible;
         }
 
-        ConsequenciaText.Text = "O script dela roda na sua máquina, com as suas permissões.";
+        ConsequenciaText.Text = h.Vezes > 1
+            ? $"O script dela roda {h.Vezes} vezes, uma por chamada, na sua máquina, com as suas permissões."
+            : "O script dela roda na sua máquina, com as suas permissões.";
         FerramentaText.Text = h.Nome;
 
         // Grade de duas colunas, e não texto corrido: a lista longa de um lote quebra linha
@@ -242,12 +246,21 @@ public partial class ConfirmCardView : UserControl
             return t;
         }
 
-        if (h.Pares.Count == 0)
+        if (h.Chamadas is { } chamadas)
+        {
+            for (int i = 0; i < chamadas.Count; i++)
+            {
+                grade.RowDefinitions.Add(new System.Windows.Controls.RowDefinition());
+                Celula($"{i + 1}.", "TextMutedBrush", 0, i);
+                Celula(chamadas[i].Length > 0 ? chamadas[i] : "sem argumentos", "TextBodyBrush", 1, i);
+            }
+        }
+        else if (h.Pares.Count == 0)
         {
             grade.RowDefinitions.Add(new System.Windows.Controls.RowDefinition());
             Celula("sem argumentos", "TextMutedBrush", 0, 0);
         }
-        for (int i = 0; i < h.Pares.Count; i++)
+        for (int i = 0; h.Chamadas == null && i < h.Pares.Count; i++)
         {
             var (chave, valor) = h.Pares[i];
             grade.RowDefinitions.Add(new System.Windows.Controls.RowDefinition());

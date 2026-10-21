@@ -191,6 +191,47 @@ public class ExecuteSkillTool : ITool
         }
     }
 
+    /// <summary>
+    /// As chamadas à mesma habilidade no mesmo lote dividem um cartão. Visto no uso (21/10/2026):
+    /// a Ellen pediu o bitrix 27 vezes no mesmo turno, uma por tarefa, em vez de uma chamada com
+    /// os 27 IDs, e vieram 27 cartões. Habilidade só de manual não pede cartão: fica de fora.
+    /// </summary>
+    public string? ChaveDoCartao(string argumentsJson)
+    {
+        var skill = SkillService.Find(Argumentos(argumentsJson)?.Nome);
+        return skill == null || SoManual(skill) ? null : skill.Name;
+    }
+
+    /// <summary>
+    /// Um cartão para as N chamadas: o nome com a contagem e os argumentos de todas (ver
+    /// <see cref="UsoDaHabilidade.Juntar"/>). Cada chamada continua autorizada pelo SEU contexto
+    /// na execução; este só vai à tela.
+    /// </summary>
+    public CommandConfirmationContext JuntarNoCartao(IReadOnlyList<CommandConfirmationContext> contextos)
+    {
+        var primeiro = contextos[0];
+        var usos = contextos.Select(c => c.Habilidade
+            ?? throw new InvalidOperationException("Chamada de habilidade sem a descrição para o cartão.")).ToList();
+        string script = usos[0].Script;
+        var linhas = contextos.Select(c => c.Command ?? "")
+            .Select(l => l.StartsWith(script, StringComparison.Ordinal) ? l[script.Length..].Trim() : l)
+            .ToList();
+
+        return new CommandConfirmationContext
+        {
+            Tool = Name,
+            Command = string.Join("\n", contextos.Select(c => c.Command)),
+            Level = primeiro.Level,
+            Cwd = primeiro.Cwd,
+            Habilidade = UsoDaHabilidade.Juntar(usos, linhas),
+            Cofre = contextos.SelectMany(c => c.Cofre).GroupBy(u => u.Nome).Select(g => g.First()).ToList(),
+            Aviso = string.Join("\n", contextos.Select(c => c.Aviso).Where(a => a.Length > 0).Distinct()),
+            ConteudoDeEmailNoContexto = contextos.Any(c => c.ConteudoDeEmailNoContexto),
+            EmailNoContexto = contextos.Any(c => c.EmailNoContexto),
+            SemSempre = contextos.Any(c => c.SemSempre)
+        };
+    }
+
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         functionName: Name,
         functionDescription: Description,
@@ -568,8 +609,47 @@ public class ExecuteSkillTool : ITool
 /// A habilidade que o cartão descreve: o nome, o que ela faz, o script que roda e os argumentos
 /// em pares. Antes o cartão mostrava só a linha de comando, como num comando de shell qualquer.
 /// </summary>
+/// <param name="Vezes">Quantas chamadas o cartão autoriza (ver <see cref="Juntar"/>).</param>
+/// <param name="Chamadas">A linha de cada chamada, quando os pares não se deixam juntar sem
+/// ambiguidade. Null: os <see cref="Pares"/> dizem tudo.</param>
 public sealed record UsoDaHabilidade(
     string Nome,
     string Descricao,
     string Script,
-    IReadOnlyList<(string Chave, string Valor)> Pares);
+    IReadOnlyList<(string Chave, string Valor)> Pares,
+    int Vezes = 1,
+    IReadOnlyList<string>? Chamadas = null)
+{
+    /// <summary>
+    /// As N chamadas num cartão. Quando só UM argumento muda de uma para outra (o caso do lote:
+    /// <c>-Acao tarefa -Id 1</c>, <c>-Acao tarefa -Id 2</c>...), os pares se juntam e o que muda
+    /// vira lista — o cartão fica igual ao de uma chamada com todos os IDs. Mudando mais de um,
+    /// ou com vírgula dentro do valor, juntar perderia qual valor vai com qual: aí o cartão lista
+    /// as chamadas, uma por linha.
+    /// </summary>
+    public static UsoDaHabilidade Juntar(IReadOnlyList<UsoDaHabilidade> usos, IReadOnlyList<string> linhas)
+    {
+        var primeiro = usos[0];
+        var chaves = primeiro.Pares.Select(p => p.Chave).ToList();
+
+        if (usos.All(u => u.Pares.Select(p => p.Chave).SequenceEqual(chaves)))
+        {
+            var mudam = Enumerable.Range(0, chaves.Count)
+                .Where(i => usos.Select(u => u.Pares[i].Valor).Distinct().Count() > 1)
+                .ToList();
+
+            if (mudam.Count == 0
+                || (mudam.Count == 1 && usos.All(u => !u.Pares[mudam[0]].Valor.Contains(','))))
+            {
+                var pares = primeiro.Pares
+                    .Select((p, i) => mudam.Contains(i)
+                        ? (p.Chave, string.Join(",", usos.Select(u => u.Pares[i].Valor)))
+                        : p)
+                    .ToList();
+                return primeiro with { Pares = pares, Vezes = usos.Count };
+            }
+        }
+
+        return primeiro with { Vezes = usos.Count, Chamadas = linhas };
+    }
+}

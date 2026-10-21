@@ -243,7 +243,15 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
   caminho do script fica numa linha discreta embaixo. Valor em lista ("418113,418114,...") sai com
   a contagem e todos os itens (`ConfirmCardView.ValorNoCartao`): numa habilidade em lote, um
   "Permitir" vale para tudo, e o cartão mostra tudo. Chave sem valor (`-Comentarios`) sai "sim". A linha de comando inteira continua em `Command`
-  (auditoria e histórico). A posição vem de `PertoDoOrbe` (centrada na
+  (auditoria e histórico). **Várias chamadas, um cartão:** antes de disparar o lote, o laço pede
+  `ToolRegistry.Agrupar`; chamadas com a mesma `ITool.ChaveDoCartao` (a `skill`: o nome da
+  habilidade, fora as só de manual) recebem uma `VagaNoCartao` e esperam umas pelas outras. Cada
+  uma passa sozinha pelo pré-voo, pelo piso e pelo "sempre"; as que chegam ao cartão viram um só
+  (`ITool.JuntarNoCartao` → `UsoDaHabilidade.Juntar`): "Rodar a habilidade bitrix 27 vezes?", com
+  o argumento que muda virando lista, ou uma linha por chamada quando muda mais de um. A resposta
+  vale para todas; auditoria e execução seguem por chamada, cada uma com o seu contexto. A que não
+  pergunta sai da vaga (`Dispose`, também na repetição bloqueada), senão o grupo esperaria para
+  sempre. Visto no uso: 27 chamadas ao bitrix, uma por tarefa, eram 27 cartões. A posição vem de `PertoDoOrbe` (centrada na
   casca do orbe, `ShadowAssistantWindow.RetanguloDoOrbe`; sem espaço acima, abaixo; sempre dentro
   da área de trabalho), que também posiciona a janela de senha do terminal. Sem orbe, as duas
   ficam como antes: card na conversa, senha no centro da tela.

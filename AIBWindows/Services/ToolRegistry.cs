@@ -116,10 +116,17 @@ public class ToolRegistry
     /// O provedor que vai RECEBER o resultado — o do turno que pediu a chamada. Nulo é "não sei",
     /// e para <see cref="UserAppSettings.EmailSoLocal"/> não saber conta como nuvem.
     /// </param>
+    /// <param name="vaga">
+    /// O lugar desta chamada num cartão dividido com outras do mesmo lote (ver
+    /// <see cref="Agrupar"/>). Null: cartão próprio. A vaga é sempre liberada aqui — perguntando
+    /// ou saindo —, ou as outras chamadas do grupo ficariam esperando para sempre.
+    /// </param>
     public async Task<string> ExecuteToolAsync(
         string toolName, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null,
-        Action<string>? aoDecidir = null, string? provedor = null)
+        Action<string>? aoDecidir = null, string? provedor = null, VagaNoCartao? vaga = null)
     {
+        using var saida = vaga;
+
         if (_tools.TryGetValue(toolName, out var tool))
         {
             if (tool.RequiredLevel > userLevel)
@@ -175,7 +182,7 @@ public class ToolRegistry
                 }
                 else
                 {
-                    var (permitido, motivo, ctxCard) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano, aoDecidir);
+                    var (permitido, motivo, ctxCard) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano, aoDecidir, vaga);
                     if (!permitido) return motivo!;
                     autorizado = ctxCard;
                 }
@@ -184,6 +191,10 @@ public class ToolRegistry
             {
                 aoDecidir?.Invoke("automatica");
             }
+
+            // Não vai ao cartão (dispensa, sem confirmação, "sempre"): o grupo não espera por ela
+            // enquanto o script roda.
+            vaga?.Dispose();
 
             Console.WriteLine($"[REGISTRY] Executando: {toolName}({(argumentsJson.Length > 100 ? argumentsJson[..100] + "..." : argumentsJson)})");
             try
@@ -213,6 +224,37 @@ public class ToolRegistry
         Console.WriteLine($"[REGISTRY] AVISO: Ferramenta desconhecida '{toolName}'.");
         aoDecidir?.Invoke("ferramenta_desconhecida");
         return $"ERRO: Ferramenta '{toolName}' não encontrada no registry. Ferramentas disponíveis: {string.Join(", ", _tools.Keys)}.";
+    }
+
+    /// <summary>
+    /// As vagas no cartão das chamadas de um lote paralelo, na ordem delas: as que a ferramenta
+    /// junta pela mesma <see cref="ITool.ChaveDoCartao"/> dividem um cartão, as outras recebem
+    /// null. Visto no uso (21/10/2026): 27 chamadas ao bitrix no mesmo turno, 27 cartões.
+    /// Quem recebe as vagas TEM de passar cada uma ao <see cref="ExecuteToolAsync"/> (ou
+    /// descartá-la): o cartão só sai quando todas as do grupo chegaram.
+    /// </summary>
+    public IReadOnlyList<VagaNoCartao?> Agrupar(IReadOnlyList<(string Nome, string Argumentos)> chamadas)
+    {
+        var vagas = new VagaNoCartao?[chamadas.Count];
+        if (_confirmationPrompt is not { } prompt) return vagas;
+
+        var chaves = new List<(ITool Tool, string Chave, int Indice)>();
+        for (int i = 0; i < chamadas.Count; i++)
+        {
+            if (!_tools.TryGetValue(chamadas[i].Nome, out var tool)) continue;
+
+            string? chave;
+            try { chave = tool.ChaveDoCartao(chamadas[i].Argumentos); }
+            catch { chave = null; }
+            if (chave != null) chaves.Add((tool, tool.Name + "|" + chave, i));
+        }
+
+        foreach (var grupo in chaves.GroupBy(c => c.Chave).Where(g => g.Count() > 1))
+        {
+            var cartao = new GrupoDoCartao(grupo.First().Tool, grupo.Count(), prompt.PerguntarAsync);
+            foreach (var c in grupo) vagas[c.Indice] = new VagaNoCartao(cartao, c.Indice);
+        }
+        return vagas;
     }
 
     /// <summary>
@@ -290,7 +332,7 @@ public class ToolRegistry
     /// </summary>
     private async Task<(bool Autorizado, string? Motivo, CommandConfirmationContext? Contexto)> AuthorizeAsync(
         ITool tool, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null,
-        Action<string>? aoDecidir = null)
+        Action<string>? aoDecidir = null, VagaNoCartao? vaga = null)
     {
         var ctx = MontarContexto(tool, argumentsJson, userLevel);
         if (ctx == null) return (false, await NegarSemContextoAsync(tool, userLevel, aoDecidir), null);
@@ -336,7 +378,10 @@ public class ToolRegistry
             Console.WriteLine($"[REGISTRY] {tool.Name}: esperando você autorizar...");
 
             var cronometro = System.Diagnostics.Stopwatch.StartNew();
-            var resposta = await _confirmationPrompt.PerguntarAsync(ctx);
+            // Em grupo, a resposta é a do cartão único; a auditoria e o "sempre" seguem por chamada.
+            var resposta = vaga != null
+                ? await vaga.PerguntarAsync(ctx)
+                : await _confirmationPrompt.PerguntarAsync(ctx);
             cronometro.Stop();
 
             // Ninguém respondeu: nega como sem interface, e não como recusa do usuário. O modelo

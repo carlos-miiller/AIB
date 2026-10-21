@@ -152,4 +152,20 @@ public interface ITool
     /// descrever o que vai fazer, o usuário não tem como autorizar com conhecimento de causa.
     /// </summary>
     CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel) => null;
+
+    /// <summary>
+    /// Chamadas desta ferramenta pedidas no MESMO lote paralelo e com a mesma chave dividem um
+    /// cartão (<see cref="VagaNoCartao"/>). Default null: cada chamada, o seu cartão. A
+    /// <c>skill</c> junta pelo nome da habilidade — 27 chamadas ao bitrix, uma por tarefa, eram
+    /// 27 cartões.
+    /// </summary>
+    string? ChaveDoCartao(string argumentsJson) => null;
+
+    /// <summary>
+    /// O cartão único das chamadas que <see cref="ChaveDoCartao"/> juntou, na ordem em que foram
+    /// pedidas. Tem de mostrar TODAS: um "Permitir" vale para cada uma. Quem dá chave sobrescreve;
+    /// o default recusa, e exceção aqui nega o lote inteiro.
+    /// </summary>
+    CommandConfirmationContext JuntarNoCartao(System.Collections.Generic.IReadOnlyList<CommandConfirmationContext> contextos) =>
+        throw new System.NotSupportedException($"'{Name}' não sabe juntar cartões.");
 }

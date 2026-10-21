@@ -298,6 +298,27 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void VariasChamadasNumCartao_OTituloDizQuantasVezes()
+        {
+            // As 27 chamadas da Ellen ao bitrix num cartão só (21/10/2026): "Permitir" roda o
+            // script 27 vezes, e o cartão tem de dizer isso.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var uso = new AIB.Services.Tools.UsoDaHabilidade("bitrix", "Consulta tarefas.", "s.ps1",
+                    AIB.Services.Tools.ExecuteSkillTool.Pares("-Acao tarefa -Id 1,2,3"), Vezes: 3);
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Habilidade, Command = "s.ps1 -Acao tarefa -Id 1", Habilidade = uso
+                });
+
+                ((TextBlock)card.FindName("TituloText")).Text.Should().Be("Rodar a habilidade bitrix 3 vezes?");
+                ((TextBlock)card.FindName("ConsequenciaText")).Text.Should().Contain("3 vezes");
+            });
+        }
+
+        [Fact]
         public void APrimeiraFrase_DaDescricao_FicaSemOManualDosArgumentos()
         {
             AIB.Services.Tools.ExecuteSkillTool.PrimeiraFrase(
