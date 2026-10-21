@@ -297,6 +297,36 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void AsFlutuantes_TemALarguraDaBarraDoShadow()
+        {
+            // Pedido do usuário (21/10/2026): "faça elas terem a mesma largura que a largura do
+            // modo shadow". Eram 460 (confirmação), 520 (senha do terminal) e 440 (aviso), contra
+            // 624 da barra: em cima do orbe, nenhuma alinhava com as bordas dela.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = new ConfirmCardView();
+                card.Preencher(new CommandConfirmationContext { Tool = Ferramentas.Shell, Command = "dir", Level = 1 });
+                card.ParaFlutuante();
+                var (receita, _) = Avisos.DeDigesto(Digesto(Email("Contrato", MailUrgency.Media)), SemAcao)!.Value;
+
+                var janelas = new Window[]
+                {
+                    new ConfirmacaoDoOrbeWindow(card), new SenhaDoTerminalDialog(), AvisoWindow.Montar(receita)
+                };
+                foreach (var janela in janelas)
+                {
+                    var casca = (Border)janela.Content;
+                    casca.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                    casca.DesiredSize.Width.Should().Be(624 + casca.Margin.Left + casca.Margin.Right,
+                        $"{janela.GetType().Name} tem a largura da barra (624)");
+                    janela.Close();
+                }
+            });
+        }
+
+        [Fact]
         public void OAvisoQuePerdeuOSentido_Fecha_NaTelaOuEsperandoAVez()
         {
             // Visto no uso (19/10/2026): "resposta pronta" chamando para abrir a conversa

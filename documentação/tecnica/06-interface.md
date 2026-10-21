@@ -685,7 +685,8 @@ mudança) e "Salvar". Depois de salvar, a janela chama `ChatWindow.ApplyCharacte
 Tudo o que aparece fora da janela principal usa a mesma casca (moldura `NeonBrush`, vidro
 `GlassBrush`, pill do tipo, título, caixa de conteúdo, rodapé com botões) — mockup "Janelas
 flutuantes do AIB", 16/10/2026 — e entra pela **fila** (`Flutuantes.Mostrar` →
-`FilaDeJanelas<Window>`): uma janela por vez; a pergunta (confirmação, senha) tira um aviso da tela e
+`FilaDeJanelas<Window>`), com a **largura da barra do Shadow** (token `ShadowWidth`, 624, o mesmo
+do `Palco` do orbe; eram 460, 520 e 440, e nenhuma alinhava com a barra): uma janela por vez; a pergunta (confirmação, senha) tira um aviso da tela e
 ele volta depois; entre avisos, a ordem é rajada, resposta sua, lembrete, resposta pronta, triagem.
 Com o orbe na tela, a flutuante nasce com ele de **dono** (`Flutuantes.Dono`/`Exibir`): as duas são
 Topmost, e reabrir a barra do Shadow punha o orbe por cima da confirmação que ele mesmo pediu. Ao

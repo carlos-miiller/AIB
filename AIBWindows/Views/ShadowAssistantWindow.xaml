@@ -74,7 +74,7 @@
              o orbe do centro toda vez que aparecesse — a armadilha A8, agora pelo
              eixo do conteúdo em vez do da janela. -->
         <Grid x:Name="Palco"
-              Width="624"
+              Width="{StaticResource ShadowWidth}"
               Margin="56"
               HorizontalAlignment="Center"
               VerticalAlignment="Bottom"
