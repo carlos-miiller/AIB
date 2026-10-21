@@ -246,7 +246,7 @@ public partial class ShadowAssistantWindow : Window
 
         // §5.3 — clique fora volta ao orbe. Deactivated cobre o caso de o usuário ir
         // trabalhar em outra janela sem clicar em lugar nenhum aqui.
-        Deactivated += (_, _) => FecharBarra();
+        Deactivated += (_, _) => ConferirFoco();
 
         PreviewKeyDown += (_, e) =>
         {
@@ -386,6 +386,28 @@ public partial class ShadowAssistantWindow : Window
         // STA compartilhada dos ensaios, mexe com a janela de outra classe.
         if (IsVisible) Activate();
     }
+
+    /// <summary>
+    /// O foco saiu da barra ou de uma janela dela: fecha só se ele saiu do orbe de vez.
+    /// <para>
+    /// Visto no uso (19/10 e de novo 21/10/2026): o Shadow pede confirmação, a janela da
+    /// pergunta toma o foco e a barra fechava, como se o usuário tivesse clicado fora. A
+    /// pergunta é do orbe (nasce com ele de dono, <see cref="Flutuantes.Exibir"/>): ir para ela
+    /// não é sair. A conferência espera o foco pousar, porque no Deactivated a outra janela
+    /// ainda não está ativa.
+    /// </para>
+    /// </summary>
+    public void ConferirFoco()
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            if (PerdeuFoco(IsActive, OwnedWindows.Cast<Window>().Select(w => w.IsActive))) FecharBarra();
+        });
+    }
+
+    /// <summary>Nem a barra nem nenhuma janela dela está ativa.</summary>
+    public static bool PerdeuFoco(bool ativa, IEnumerable<bool> donasAtivas) =>
+        !ativa && !donasAtivas.Any(a => a);
 
     /// <summary>§6 reverso — a barra volta a ser círculo.</summary>
     public void FecharBarra()

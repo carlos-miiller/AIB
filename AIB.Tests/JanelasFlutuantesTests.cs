@@ -16,6 +16,18 @@ namespace AIB.Tests
     /// </summary>
     public class JanelasFlutuantesTests
     {
+        [Theory]
+        [InlineData(false, new[] { true }, false)]
+        [InlineData(true, new bool[0], false)]
+        [InlineData(false, new[] { false }, true)]
+        [InlineData(false, new bool[0], true)]
+        public void ABarra_SoFecha_QuandoOFocoSaiDoOrbeDeVez(bool ativa, bool[] donas, bool fecha)
+        {
+            // Visto no uso (19/10 e de novo 21/10/2026): com o Shadow aberto, a confirmação que
+            // ele pediu tomava o foco e a barra fechava, como se o usuário tivesse clicado fora.
+            ShadowAssistantWindow.PerdeuFoco(ativa, donas).Should().Be(fecha);
+        }
+
         // ─────────────────────────────────────────────────────────────────
         // Confirmar ação — a cor pelo risco
         // ─────────────────────────────────────────────────────────────────

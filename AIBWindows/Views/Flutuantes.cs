@@ -65,7 +65,13 @@ public static class Flutuantes
     public static void Exibir(Window janela, Window? dono)
     {
         if (dono != null && !ReferenceEquals(dono, janela) && dono.IsVisible && janela.Owner == null)
+        {
             janela.Owner = dono;
+
+            // O foco que vai do orbe para a pergunta não fecha a barra; o que sai da pergunta
+            // para outro programa, sim. Ver ShadowAssistantWindow.ConferirFoco.
+            if (dono is ShadowAssistantWindow orbe) janela.Deactivated += (_, _) => orbe.ConferirFoco();
+        }
         janela.Show();
     }
 
