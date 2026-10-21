@@ -323,6 +323,15 @@ namespace AIB.Tests
                         $"{janela.GetType().Name} tem a largura da barra (624)");
                     janela.Close();
                 }
+
+                // E o card OCUPA a largura: alinhado à esquerda, ele ficava do tamanho do texto e
+                // a metade direita da janela, vazia (visto no uso, 21/10/2026).
+                var confirmacao = new ConfirmacaoDoOrbeWindow(card);
+                var moldura = (Border)confirmacao.Content;
+                moldura.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                moldura.Arrange(new Rect(moldura.DesiredSize));
+                card.ActualWidth.Should().BeApproximately(624 - 3 - 32, 0.5, "a casca menos a moldura e o respiro");
+                confirmacao.Close();
             });
         }
 

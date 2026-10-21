@@ -447,6 +447,12 @@ public partial class ConfirmCardView : UserControl
         Casca.Padding = new Thickness(0);
         Casca.Effect = null;
 
+        // Na flutuante quem dá a largura é a janela (a da barra do Shadow). Com o alinhamento à
+        // esquerda e o teto de 560 da bolha, o card ficava do tamanho do texto e a metade direita
+        // da janela, vazia (visto no uso, 21/10/2026).
+        HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+        Casca.MaxWidth = double.PositiveInfinity;
+
         var (risco, rotulo) = RiscoDe(_ferramenta, _alvo, _bloqueado);
         Pintado = risco;
         PillTexto.Text = rotulo;

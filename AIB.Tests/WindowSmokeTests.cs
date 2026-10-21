@@ -261,7 +261,9 @@ namespace AIB.Tests
                         new[] { "cpaps.bitrix24.com.br" }) }
                 });
                 card.ParaFlutuante(shadow: true);
-                DesenharSolto(card, "cartao-habilidade", 520, 470);
+                // Na janela flutuante, com a largura da barra do Shadow: o card ocupa a janela
+                // toda, e não só a metade esquerda (visto no uso, 21/10/2026).
+                Desenhar(new ConfirmacaoDoOrbeWindow(card, shadow: true), "cartao-habilidade", 684, 560);
             });
         }
 
