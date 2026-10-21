@@ -239,8 +239,10 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
   Habilidade (nas duas formas) não se desenha como comando de shell: com
   `CommandConfirmationContext.Habilidade` (`UsoDaHabilidade`), o título leva o nome ("Rodar a
   habilidade bitrix?"), a primeira frase da descrição diz o que ela faz, a caixa mostra os
-  argumentos em pares alinhados (`ExecuteSkillTool.Pares`) com o ícone de brilho, e o caminho do
-  script fica numa linha discreta embaixo. A linha de comando inteira continua em `Command`
+  argumentos numa grade de duas colunas (`ExecuteSkillTool.Pares`) com o ícone de brilho, e o
+  caminho do script fica numa linha discreta embaixo. Valor em lista ("418113,418114,...") sai com
+  a contagem e todos os itens (`ConfirmCardView.ValorNoCartao`): numa habilidade em lote, um
+  "Permitir" vale para tudo, e o cartão mostra tudo. Chave sem valor (`-Comentarios`) sai "sim". A linha de comando inteira continua em `Command`
   (auditoria e histórico). A posição vem de `PertoDoOrbe` (centrada na
   casca do orbe, `ShadowAssistantWindow.RetanguloDoOrbe`; sem espaço acima, abaixo; sempre dentro
   da área de trabalho), que também posiciona a janela de senha do terminal. Sem orbe, as duas

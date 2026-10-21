@@ -218,35 +218,70 @@ public partial class ConfirmCardView : UserControl
         ConsequenciaText.Text = "O script dela roda na sua máquina, com as suas permissões.";
         FerramentaText.Text = h.Nome;
 
-        AlvoText.Inlines.Clear();
-        if (h.Pares.Count == 0)
+        // Grade de duas colunas, e não texto corrido: a lista longa de um lote quebra linha
+        // alinhada ao valor, e não por baixo da coluna das chaves.
+        var grade = new System.Windows.Controls.Grid { Margin = new Thickness(0, 3, 8, 0) };
+        grade.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto });
+        grade.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        System.Windows.Controls.TextBlock Celula(string texto, string cor, int coluna, int linha)
         {
-            var nada = new System.Windows.Documents.Run("sem argumentos");
-            nada.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "TextMutedBrush");
-            AlvoText.Inlines.Add(nada);
+            var t = new System.Windows.Controls.TextBlock
+            {
+                Text = texto,
+                FontFamily = AlvoText.FontFamily,
+                FontSize = AlvoText.FontSize,
+                LineHeight = AlvoText.LineHeight,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, coluna == 0 ? 14 : 0, 0)
+            };
+            t.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, cor);
+            System.Windows.Controls.Grid.SetColumn(t, coluna);
+            System.Windows.Controls.Grid.SetRow(t, linha);
+            grade.Children.Add(t);
+            return t;
         }
 
-        // Chaves alinhadas numa coluna: a fonte é mono, então o preenchimento alinha.
-        int largura = h.Pares.Count == 0 ? 0 : h.Pares.Max(p => p.Chave.Length);
+        if (h.Pares.Count == 0)
+        {
+            grade.RowDefinitions.Add(new System.Windows.Controls.RowDefinition());
+            Celula("sem argumentos", "TextMutedBrush", 0, 0);
+        }
         for (int i = 0; i < h.Pares.Count; i++)
         {
             var (chave, valor) = h.Pares[i];
-            if (i > 0) AlvoText.Inlines.Add(new System.Windows.Documents.LineBreak());
-
-            if (chave.Length > 0)
-            {
-                var k = new System.Windows.Documents.Run(chave.PadRight(largura) + "  ");
-                k.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "TextMutedBrush");
-                AlvoText.Inlines.Add(k);
-            }
-            AlvoText.Inlines.Add(new System.Windows.Documents.Run(valor));
+            grade.RowDefinitions.Add(new System.Windows.Controls.RowDefinition());
+            if (chave.Length > 0) Celula(chave, "TextMutedBrush", 0, i);
+            Celula(ValorNoCartao(chave, valor), "TextBodyBrush", 1, i);
         }
+
+        // O alvo continua com a linha inteira (é o que o histórico e a auditoria registram); na
+        // tela, a grade toma o lugar dele.
+        if (AlvoText.Parent is System.Windows.Controls.ScrollViewer rolo) rolo.Content = grade;
+        Pares = grade;
 
         string casa = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         ScriptText.Text = h.Script.StartsWith(casa, StringComparison.OrdinalIgnoreCase)
             ? "~" + h.Script[casa.Length..]
             : h.Script;
         ScriptText.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>A grade dos argumentos da habilidade. Null nas outras ferramentas.</summary>
+    public System.Windows.Controls.Grid? Pares { get; private set; }
+
+    /// <summary>
+    /// O valor de um argumento como o cartão o mostra. Lista ("418113,418114,...") leva a
+    /// contagem na frente e TODOS os itens: em lote, um "Permitir" vale para tudo, e o pedido do
+    /// usuário (21/10/2026) foi ver no cartão tudo o que vai rodar. Chave sem valor
+    /// (<c>-Comentarios</c>) é uma opção ligada.
+    /// </summary>
+    public static string ValorNoCartao(string chave, string valor)
+    {
+        if (valor.Length == 0) return chave.Length > 0 ? "sim" : "";
+
+        var itens = valor.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return itens.Length > 1 ? $"{itens.Length} itens: {string.Join(", ", itens)}" : valor;
     }
 
     /// <summary>

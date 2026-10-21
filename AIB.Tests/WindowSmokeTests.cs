@@ -246,7 +246,7 @@ namespace AIB.Tests
             EmSta(() =>
             {
                 GarantirRecursos();
-                const string extra = "-Acao listar -Responsavel eu -Status abertas";
+                const string extra = "-Acao tarefa -Id \"418113,418114,418120,418121,418133,418140,418152,418160,418161,418177,418180,418199\" -Comentarios";
                 string script = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                                              @".AIB\skills\bitrix\bitrix.ps1");
                 var card = new ConfirmCardView();

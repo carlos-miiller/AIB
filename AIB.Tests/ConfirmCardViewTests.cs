@@ -265,10 +265,9 @@ namespace AIB.Tests
                 Texto(card, "DescricaoText").Should().Be("Consulta tarefas no Bitrix24 (só leitura).");
                 Texto(card, "FerramentaText").Should().Be("bitrix");
 
-                var alvo = (TextBlock)card.FindName("AlvoText");
-                string mostrado = new System.Windows.Documents.TextRange(alvo.ContentStart, alvo.ContentEnd).Text;
-                mostrado.Should().Contain("Acao         listar").And.Contain("inventário anual")
-                    .And.NotContain("bitrix.ps1", "o caminho vai para a linha de baixo");
+                string mostrado = string.Join("|", card.Pares!.Children.OfType<TextBlock>().Select(t => t.Text));
+                mostrado.Should().Be("Acao|listar|Responsavel|eu|Busca|inventário anual",
+                    "os argumentos em pares, sem o caminho, que vai para a linha de baixo");
                 Texto(card, "ScriptText").Should().EndWith(@"bitrix\bitrix.ps1");
             });
         }
@@ -284,6 +283,18 @@ namespace AIB.Tests
         {
             string.Join("|", AIB.Services.Tools.ExecuteSkillTool.Pares(extra).Select(p => p.Chave + "=" + p.Valor))
                 .Should().Be(esperado);
+        }
+
+        [Theory]
+        [InlineData("Id", "418113,418114, 418120", "3 itens: 418113, 418114, 418120")]
+        [InlineData("Id", "418113", "418113")]
+        [InlineData("Comentarios", "", "sim")]
+        [InlineData("Busca", "inventário anual", "inventário anual")]
+        public void EmLote_OCartaoMostraTodosOsItens_ComAContagem(string chave, string valor, string esperado)
+        {
+            // Pedido do usuário (21/10/2026), ao juntar 50 tarefas do Bitrix numa chamada: "em
+            // skills em lote, devemos exibir tudo sendo executado na caixa de confirmação".
+            ConfirmCardView.ValorNoCartao(chave, valor).Should().Be(esperado);
         }
 
         [Fact]
