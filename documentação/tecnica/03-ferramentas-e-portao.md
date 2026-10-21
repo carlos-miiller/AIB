@@ -242,13 +242,13 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
   argumentos numa grade de duas colunas (`ExecuteSkillTool.Pares`) com o ícone de brilho, e o
   caminho do script fica numa linha discreta embaixo. Valor em lista ("418113,418114,...") sai com
   a contagem e todos os itens (`ConfirmCardView.ValorNoCartao`): numa habilidade em lote, um
-  "Permitir" vale para tudo, e o cartão mostra tudo. Chave sem valor (`-Comentarios`) sai "sim". A linha de comando inteira continua em `Command`
+  "Permitir" vale para tudo, e o cartão mostra tudo. Só é lista o que não tem espaço nos itens: uma descrição com vírgula continua frase. Chave sem valor (`-Comentarios`) sai "sim". A linha de comando inteira continua em `Command`
   (auditoria e histórico). **Várias chamadas, um cartão:** antes de disparar o lote, o laço pede
   `ToolRegistry.Agrupar`; chamadas com a mesma `ITool.ChaveDoCartao` (a `skill`: o nome da
   habilidade, fora as só de manual) recebem uma `VagaNoCartao` e esperam umas pelas outras. Cada
   uma passa sozinha pelo pré-voo, pelo piso e pelo "sempre"; as que chegam ao cartão viram um só
   (`ITool.JuntarNoCartao` → `UsoDaHabilidade.Juntar`): "Rodar a habilidade bitrix 27 vezes?", com
-  o argumento que muda virando lista, ou uma linha por chamada quando muda mais de um. A resposta
+  o argumento que muda virando lista, ou uma linha por chamada quando muda mais de um (ou quando o valor tem espaço ou vírgula, como um título). A resposta
   vale para todas; auditoria e execução seguem por chamada, cada uma com o seu contexto. A que não
   pergunta sai da vaga (`Dispose`, também na repetição bloqueada), senão o grupo esperaria para
   sempre. Visto no uso: 27 chamadas ao bitrix, uma por tarefa, eram 27 cartões. A posição vem de `PertoDoOrbe` (centrada na

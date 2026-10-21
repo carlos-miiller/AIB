@@ -368,6 +368,12 @@ namespace AIB.Tests
 
             junto.Vezes.Should().Be(2);
             junto.Chamadas.Should().Equal("-Acao tarefa -Id 1", "-Acao comentarios -Id 2");
+
+            // Com a edição liberada (21/10/2026): dois títulos novos juntados por vírgula virariam
+            // um texto só, sem dizer onde um acaba.
+            var titulos = new[] { "-Id 1 -Titulo \"Trocar switch\"", "-Id 1 -Titulo \"Trocar cabo, rack\"" };
+            var usosT = titulos.Select(l => new UsoDaHabilidade("bitrix", "", "s.ps1", ExecuteSkillTool.Pares(l))).ToList();
+            UsoDaHabilidade.Juntar(usosT, titulos).Chamadas.Should().Equal(titulos);
         }
 
         [Fact]

@@ -293,8 +293,12 @@ public partial class ConfirmCardView : UserControl
     {
         if (valor.Length == 0) return chave.Length > 0 ? "sim" : "";
 
+        // Lista é de termos soltos (IDs, nomes): item com espaço é texto corrido com vírgula, e
+        // contá-lo como lista desfiguraria uma frase.
         var itens = valor.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return itens.Length > 1 ? $"{itens.Length} itens: {string.Join(", ", itens)}" : valor;
+        return itens.Length > 1 && !itens.Any(i => i.Any(char.IsWhiteSpace))
+            ? $"{itens.Length} itens: {string.Join(", ", itens)}"
+            : valor;
     }
 
     /// <summary>

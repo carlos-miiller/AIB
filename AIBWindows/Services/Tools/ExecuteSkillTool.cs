@@ -624,8 +624,8 @@ public sealed record UsoDaHabilidade(
     /// As N chamadas num cartão. Quando só UM argumento muda de uma para outra (o caso do lote:
     /// <c>-Acao tarefa -Id 1</c>, <c>-Acao tarefa -Id 2</c>...), os pares se juntam e o que muda
     /// vira lista — o cartão fica igual ao de uma chamada com todos os IDs. Mudando mais de um,
-    /// ou com vírgula dentro do valor, juntar perderia qual valor vai com qual: aí o cartão lista
-    /// as chamadas, uma por linha.
+    /// ou com vírgula ou espaço dentro do valor (um título, uma descrição), juntar perderia qual
+    /// valor vai com qual: aí o cartão lista as chamadas, uma por linha.
     /// </summary>
     public static UsoDaHabilidade Juntar(IReadOnlyList<UsoDaHabilidade> usos, IReadOnlyList<string> linhas)
     {
@@ -639,7 +639,8 @@ public sealed record UsoDaHabilidade(
                 .ToList();
 
             if (mudam.Count == 0
-                || (mudam.Count == 1 && usos.All(u => !u.Pares[mudam[0]].Valor.Contains(','))))
+                || (mudam.Count == 1 && usos.All(u => u.Pares[mudam[0]].Valor is var v
+                                                      && !v.Contains(',') && !v.Any(char.IsWhiteSpace))))
             {
                 var pares = primeiro.Pares
                     .Select((p, i) => mudam.Contains(i)

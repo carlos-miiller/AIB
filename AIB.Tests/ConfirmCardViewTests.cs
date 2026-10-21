@@ -290,6 +290,9 @@ namespace AIB.Tests
         [InlineData("Id", "418113", "418113")]
         [InlineData("Comentarios", "", "sim")]
         [InlineData("Busca", "inventário anual", "inventário anual")]
+        // Texto com vírgula não é lista: com a edição liberada (21/10/2026), a descrição nova de
+        // uma tarefa saía como "2 itens: Levantar contratos, conferir os prazos".
+        [InlineData("Descricao", "Levantar contratos, conferir os prazos", "Levantar contratos, conferir os prazos")]
         public void EmLote_OCartaoMostraTodosOsItens_ComAContagem(string chave, string valor, string esperado)
         {
             // Pedido do usuário (21/10/2026), ao juntar 50 tarefas do Bitrix numa chamada: "em
