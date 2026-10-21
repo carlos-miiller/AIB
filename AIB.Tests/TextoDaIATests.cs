@@ -77,6 +77,36 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void Titulo_UsaACorForteDoTema_NaoOPretoDoMarkdig()
+        {
+            // Visto no uso (21/10/2026): "os títulos ainda estão saindo com texto preto". O tema
+            // do Markdig.Wpf fixa #000 e 42px no "#"; sobre o vidro escuro o título sumia.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var controle = new TextoDaIA { Texto = "# Resumo\n\n## Itens\n\n#### Detalhe\n\ntexto" };
+                var janela = new Window { Content = controle, Width = 500, Height = 300, ShowActivated = false };
+                janela.Show();
+                janela.UpdateLayout();
+
+                var forte = (SolidColorBrush)controle.FindResource("TextStrongBrush");
+                double maximo = (double)controle.FindResource("FontSizeHeaderTitle");
+                var titulos = controle.Visor!.Document.Blocks.OfType<Paragraph>()
+                    .Where(p => new TextRange(p.ContentStart, p.ContentEnd).Text != "texto").ToList();
+
+                titulos.Should().HaveCount(3);
+                foreach (var t in titulos)
+                {
+                    ((SolidColorBrush)t.Foreground).Color.Should().Be(forte.Color);
+                    t.FontSize.Should().BeLessThanOrEqualTo(maximo);
+                }
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void AFalaNoOrbe_SaiFormatada_ComoNaJanelaDeChat()
         {
             WpfHost.EmSta(() =>

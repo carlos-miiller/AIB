@@ -57,6 +57,30 @@ public static class VisorDeMarkdown
         viewer.Resources.Add(Markdig.Wpf.Styles.CodeStyleKey, inline);
         viewer.Resources.Add(Markdig.Wpf.Styles.CodeBlockStyleKey, bloco);
 
+        // O tema do Markdig.Wpf fixa os títulos em preto (#000) e em 42/20/18px, para página
+        // branca. Visto no uso: "## Resumo" saía preto sobre o vidro escuro, quase invisível,
+        // e o "#" engolia a bolha. Aqui o título usa a cor forte do tema e a escala da conversa.
+        var forte = dono.FindResource("TextStrongBrush");
+        double corpo = (double)dono.FindResource("FontSizeBubble");
+        var titulos = new (object Chave, double Tamanho)[]
+        {
+            (Markdig.Wpf.Styles.Heading1StyleKey, (double)dono.FindResource("FontSizeHeaderTitle")),
+            (Markdig.Wpf.Styles.Heading2StyleKey, corpo + 3),
+            (Markdig.Wpf.Styles.Heading3StyleKey, corpo + 1.5),
+            (Markdig.Wpf.Styles.Heading4StyleKey, corpo),
+            (Markdig.Wpf.Styles.Heading5StyleKey, corpo),
+            (Markdig.Wpf.Styles.Heading6StyleKey, corpo),
+        };
+        foreach (var (chave, tamanho) in titulos)
+        {
+            var titulo = new Style(typeof(Paragraph));
+            titulo.Setters.Add(new Setter(TextElement.ForegroundProperty, forte));
+            titulo.Setters.Add(new Setter(TextElement.FontSizeProperty, tamanho));
+            titulo.Setters.Add(new Setter(TextElement.FontWeightProperty, FontWeights.SemiBold));
+            titulo.Setters.Add(new Setter(Block.MarginProperty, new Thickness(0, 8, 0, 4)));
+            viewer.Resources.Add(chave, titulo);
+        }
+
         return viewer;
     }
 
