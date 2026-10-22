@@ -54,6 +54,72 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void JeitoDitoDeOutroModo_ReforcaOGuardado_NaoNasceOutro()
+        {
+            // Caso real (22/10/2026): o arquivo da Ellen tinha "demonstra carinho e humor na
+            // conversa" e "demonstra carinho e humor ao narrar", cada um com a própria força. O
+            // resumidor escrevia o jeito de novo em vez do número, e só o texto idêntico casava.
+            var h = new Habitos(_raiz);
+            h.Aprender("Ellen", new[] { Gostou("demonstra carinho e humor na conversa") }, Array.Empty<Habito>(), Neutro, Agora);
+            h.Aprender("Ellen", new[] { Gostou("demonstra carinho e humor ao narrar") }, Array.Empty<Habito>(), Neutro, Agora);
+
+            var unico = h.De("Ellen").Should().ContainSingle().Subject;
+            unico.Texto.Should().Be("demonstra carinho e humor na conversa");
+            unico.Vezes.Should().Be(2);
+        }
+
+        [Fact]
+        public void JeitosDiferentes_ContinuamSeparados()
+        {
+            Habitos.Semelhanca("usa humor e entusiasmo na conversa", "demonstra carinho e humor na conversa")
+                .Should().BeLessThan(Habitos.Parecido);
+            Habitos.Semelhanca("manda mensagens longas", "manda mensagens curtas")
+                .Should().BeLessThan(Habitos.Parecido);
+            Habitos.Semelhanca("pede desculpa ao interromper", "pede para continuar sem reclamar do erro")
+                .Should().BeLessThan(Habitos.Parecido);
+        }
+
+        [Theory]
+        [InlineData("chama o agente pelo nome")]
+        [InlineData("chama a agente pelo nome, \"ellen\"")]
+        [InlineData("elogia a Ellen com entusiasmo")]
+        public void JeitoQueFalaDoAgente_EDoUsuario_NaoEntra(string jeito)
+        {
+            // Caso real (22/10/2026): sete dos doze hábitos da Ellen eram "chama a agente pelo
+            // nome..." — o que o USUÁRIO fazia. Viravam "o usuário gosta quando você chama o
+            // agente pelo nome" no prompt.
+            var h = new Habitos(_raiz);
+            h.Aprender("Ellen", new[] { Gostou(jeito) }, Array.Empty<Habito>(), Neutro, Agora);
+
+            h.De("Ellen").Should().BeEmpty();
+        }
+
+        [Fact]
+        public void ArquivoComRepetidos_SeArrumaAoSerLido()
+        {
+            // Caso real (22/10/2026): o arquivo gravado antes da comparação por semelhança. Ao ler,
+            // os do usuário saem e os parecidos se fundem no mais forte.
+            string pasta = Path.Combine(_raiz, "memory", ConversaDoOrbe.Sessao, "habitos");
+            Directory.CreateDirectory(pasta);
+            Habito H(string t, double f, int v) => new() { Texto = t, Forca = f, Vezes = v, VistoUtc = Agora };
+            var gravados = new List<Habito>
+            {
+                H("chama o agente pelo nome", 2.25, 2),
+                H("chama a agente pelo nome, \"ellen\"", 5, 15),
+                H("demonstra carinho e humor ao narrar", 2.25, 2),
+                H("demonstra carinho e humor na conversa", 4.14, 4),
+                H("usa humor e entusiasmo na conversa", 5, 5),
+                H("pede desculpa ao interromper", 5, 5),
+            };
+            ArquivoCifrado.Gravar(Path.Combine(pasta, "Ellen.dat"), System.Text.Json.JsonSerializer.Serialize(gravados));
+
+            var h = new Habitos(_raiz);
+            h.De("Ellen").Select(x => x.Texto).Should().BeEquivalentTo(
+                "demonstra carinho e humor na conversa", "usa humor e entusiasmo na conversa", "pede desculpa ao interromper");
+            new Habitos(_raiz).De("Ellen").Should().HaveCount(3, "o arrumado foi regravado");
+        }
+
+        [Fact]
         public void ACuriosidade_DaAForcaComQueOJeitoNasce()
         {
             Habitos.Nasce(1).Should().Be(0.5);

@@ -113,6 +113,9 @@ public sealed class Compactor
         Regras do JEITO:
         - "+" é reação boa, "-" é ruim. Depois do sinal, o jeito começando por verbo, sem sujeito.
           Se for um jeito da lista de JEITOS JÁ CONHECIDOS, escreva só o número: - + #2 | "fala"
+          Mesmo jeito dito com outras palavras é o da lista: use o número, não escreva outro.
+        - O jeito é do AGENTE. O que o USUÁRIO faz (chamar o agente pelo nome, elogiar, pedir
+          desculpa) não é jeito: o jeito é o que o agente fez e provocou essa reação.
         - Entre aspas, copiada exatamente, a fala do USUÁRIO que mostra a reação. Sem uma fala
           dele reagindo ao jeito, não entra: escreva "JEITO: nenhum".
         - A tarefa não é jeito: resolver bem um problema ou errar um comando não entra.

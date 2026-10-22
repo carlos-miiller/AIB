@@ -576,6 +576,13 @@ resumidor vê, o código decide:**
   1 (até 5); a contrária tira 2. A força cai pela constância a cada **semana** sem ser vista
   (`Habitos.ForcaEm`, a escala do esquecimento do geral, mas por semana: hábito dura mais que
   humor). Abaixo de 0,25 o jeito sai do arquivo. Guarda até 12, os mais fortes.
+- **Sem repetido:** jeito novo parecido com um guardado (as palavras em comum somam 75% ou mais
+  das do menor, `Habitos.Semelhanca`) reforça o guardado em vez de nascer outro, e o resumidor é
+  instruído a usar o número quando é o mesmo jeito dito de outro modo. Jeito que fala "do agente"
+  ou cita o nome do personagem descreve o usuário e é recusado (`Habitos.DoUsuario`). Arquivo
+  antigo se arruma ao ser lido (`Habitos.De`): sai o do usuário, e os parecidos do mesmo lado se
+  fundem no mais forte. Caso real de 22/10/2026: dos 12 hábitos da Ellen, 7 eram "chama a agente
+  pelo nome…", o que o usuário fazia.
 - **No prompt:** só os vistos 2 vezes ou mais e com força ≥ 1,5, no máximo 5
   (`Habitos.Ativos`), numa linha "Jeitos da convivência" depois da do afeto
   (`Habitos.Linha`): "o usuário gosta quando você …, e não gosta quando você …. Use isso com

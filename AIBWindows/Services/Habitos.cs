@@ -110,10 +110,23 @@ public sealed class Habitos
     public static double Nasce(int curiosidade) =>
         NascePorNivel[Math.Clamp(curiosidade <= 0 ? Atributos.Neutro : curiosidade, 1, NascePorNivel.Length) - 1];
 
-    /// <summary>Todos os guardados do personagem, na ordem do arquivo. Vazio sem nome ou sem arquivo.</summary>
+    /// <summary>
+    /// Todos os guardados do personagem, os mais fortes primeiro. Vazio sem nome ou sem arquivo.
+    /// O arquivo com jeito repetido ou do usuário é arrumado aqui e regravado (<see cref="Consolidar"/>).
+    /// </summary>
     public IReadOnlyList<Habito> De(string? personagem)
     {
-        lock (Gate) return Ler(personagem);
+        lock (Gate)
+        {
+            var mudou = new List<string>();
+            var lista = Consolidar(Ler(personagem), personagem, DateTime.UtcNow, Temperamento.De(null).Esquecimento, mudou);
+            if (mudou.Count > 0)
+            {
+                foreach (var m in mudou) Console.WriteLine($"[HABITOS] {m}");
+                Gravar(personagem, lista);
+            }
+            return lista;
+        }
     }
 
     /// <summary>Os que vão ao prompt: vistos o bastante e fortes o bastante, os mais fortes primeiro.</summary>
@@ -142,7 +155,7 @@ public sealed class Habitos
 
         lock (Gate)
         {
-            var lista = Ler(personagem).ToList();
+            var lista = Consolidar(Ler(personagem), personagem, agoraUtc, esquecimento, mudou);
 
             foreach (var r in reacoes)
             {
@@ -151,11 +164,18 @@ public sealed class Habitos
                     : Aparar(r.Jeito);
                 if (string.IsNullOrEmpty(texto)) continue;
 
-                var h = lista.FirstOrDefault(x => string.Equals(x.Texto, texto, StringComparison.OrdinalIgnoreCase));
+                var h = lista.FirstOrDefault(x => string.Equals(x.Texto, texto, StringComparison.OrdinalIgnoreCase))
+                        ?? MaisParecido(lista, texto);
                 if (h == null)
                 {
                     // Número que não aponta para nada é erro do resumidor, não jeito novo.
                     if (r.Numero != null) continue;
+
+                    if (DoUsuario(texto, personagem))
+                    {
+                        mudou.Add($"recusado (é do usuário): {texto}");
+                        continue;
+                    }
 
                     lista.Add(new Habito { Texto = texto, Evita = !r.Gostou, Forca = nasce, Vezes = 1, VistoUtc = agoraUtc });
                     mudou.Add($"novo: {(r.Gostou ? "+" : "-")} {texto}");
@@ -209,6 +229,91 @@ public sealed class Habitos
         if (evita.Count > 0) texto.Append(" não gosta quando você ").Append(string.Join("; ", evita));
         texto.Append(". Use isso com naturalidade, de vez em quando, sem deixar de ser quem você é.");
         return texto.ToString();
+    }
+
+    /// <summary>Palavras que não dizem qual é o jeito.</summary>
+    private static readonly HashSet<string> Vazias = new(StringComparer.Ordinal)
+    {
+        "o", "a", "os", "as", "um", "uma", "de", "do", "da", "dos", "das", "e", "em", "no", "na",
+        "nos", "nas", "ao", "aos", "pelo", "pela", "com", "por", "para", "que", "quando", "se"
+    };
+
+    private static HashSet<string> Palavras(string texto) =>
+        System.Text.RegularExpressions.Regex.Split(texto.ToLowerInvariant(), @"[^\p{L}\p{N}]+")
+            .Where(p => p.Length > 0 && !Vazias.Contains(p))
+            .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Quanto o jeito menor cabe no maior: as palavras em comum sobre as do menor. "chama o agente
+    /// pelo nome" e "chama a agente pelo nome, "ellen"" dão 1.
+    /// </summary>
+    public static double Semelhanca(string a, string b)
+    {
+        var pa = Palavras(a);
+        var pb = Palavras(b);
+        int menor = Math.Min(pa.Count, pb.Count);
+        if (menor == 0) return 0;
+        int comuns = pa.Count(pb.Contains);
+        return comuns < 2 ? 0 : (double)comuns / menor;
+    }
+
+    /// <summary>A partir daqui dois textos são o mesmo jeito dito de outro modo.</summary>
+    public const double Parecido = 0.75;
+
+    /// <summary>O guardado mais parecido com o texto, se for parecido o bastante.</summary>
+    private static Habito? MaisParecido(IEnumerable<Habito> lista, string texto) =>
+        lista.Select(h => (h, s: Semelhanca(h.Texto, texto)))
+             .Where(x => x.s >= Parecido)
+             .OrderByDescending(x => x.s)
+             .Select(x => x.h)
+             .FirstOrDefault();
+
+    /// <summary>
+    /// O jeito que fala do agente na terceira pessoa ("chama o agente pelo nome", "elogia a
+    /// Ellen") descreve o USUÁRIO: o sujeito de um jeito é sempre o personagem, que não diz
+    /// "o agente" de si mesmo.
+    /// </summary>
+    public static bool DoUsuario(string texto, string? personagem)
+    {
+        var p = Palavras(texto);
+        string nome = (personagem ?? "").Trim().ToLowerInvariant();
+        return p.Contains("agente") || (nome.Length > 0 && p.Contains(nome));
+    }
+
+    /// <summary>
+    /// Arruma o que já está gravado: tira o jeito do usuário e funde os parecidos do mesmo lado,
+    /// ficando o mais forte. Arquivo gravado antes da comparação por semelhança tinha o mesmo
+    /// jeito em até cinco textos.
+    /// </summary>
+    private static List<Habito> Consolidar(
+        IReadOnlyList<Habito> lidos, string? personagem, DateTime agoraUtc, double esquecimento, List<string> mudou)
+    {
+        var ficam = new List<Habito>();
+        foreach (var h in lidos.OrderByDescending(h => ForcaEm(h, agoraUtc, esquecimento)))
+        {
+            if (DoUsuario(h.Texto, personagem))
+            {
+                mudou.Add($"tirado (é do usuário): {h.Texto}");
+                continue;
+            }
+
+            var igual = MaisParecido(ficam.Where(f => f.Evita == h.Evita), h.Texto);
+            if (igual == null)
+            {
+                ficam.Add(h);
+                continue;
+            }
+
+            igual.Vezes = Math.Max(igual.Vezes, h.Vezes);
+            if (h.VistoUtc > igual.VistoUtc)
+            {
+                // A força gravada vale a partir do VistoUtc: mudar a data sem refazê-la a envelheceria.
+                igual.Forca = ForcaEm(igual, h.VistoUtc, esquecimento);
+                igual.VistoUtc = h.VistoUtc;
+            }
+            mudou.Add($"fundido: {h.Texto} → {igual.Texto}");
+        }
+        return ficam;
     }
 
     private static string Aparar(string? jeito)
