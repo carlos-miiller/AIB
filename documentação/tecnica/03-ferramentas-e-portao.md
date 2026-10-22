@@ -224,7 +224,8 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
 - `ChatConfirmationPrompt` implementa `IConfirmationPrompt`. A `ChatWindow` se conecta com
   `Conectar(PerguntarConfirmacaoAsync)` quando nasce (em `App.xaml.cs`); antes disso, ou se
   desconectada, a resposta é recusa.
-- **No modo orbe** (conversa fora da tela, orbe visível — `ChatWindow.DeveUsarJanelaDoOrbe`), o
+- **No modo orbe** (conversa fora da tela e orbe visível, ou pedido da conversa do Shadow em
+  qualquer caso — `ChatWindow.DeveUsarJanelaDoOrbe`), o
   MESMO `ConfirmCardView` vai para uma `ConfirmacaoDoOrbeWindow` logo acima do orbe, em vez de
   abrir a conversa. Fechar a janela ou Esc é recusa. As duas janelas de pergunta (esta e a de
   senha) entram pela **fila das flutuantes** (`Flutuantes.Mostrar`, `FilaDeJanelas`): uma por vez,

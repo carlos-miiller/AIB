@@ -802,10 +802,12 @@ public partial class ChatWindow : Window
     /// <param name="doShadow">
     /// O pedido é da conversa do orbe. Aí a pergunta vai SEMPRE para a janela perto dele,
     /// mesmo com a janela de chat aberta: o card entrava no meio de outra conversa, que não
-    /// tinha pedido nada.
+    /// tinha pedido nada. Vale também sem orbe na tela: ele se esconde enquanto a conversa está
+    /// aberta, e o card do Shadow caía nela; fechada a janela logo depois, o Shadow esperou
+    /// minutos por uma pergunta escondida. Sem orbe, a janela flutuante abre no centro.
     /// </param>
     public static bool DeveUsarJanelaDoOrbe(bool conversaNaTela, bool orbeNaTela, bool doShadow = false) =>
-        orbeNaTela && (!conversaNaTela || doShadow);
+        doShadow || (orbeNaTela && !conversaNaTela);
 
     /// <summary>
     /// Descarta uma confirmação pendente, devolvendo recusa a quem espera.

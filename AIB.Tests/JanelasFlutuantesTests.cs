@@ -208,7 +208,12 @@ namespace AIB.Tests
         [InlineData(false, true, false, true, "conversa fora da tela, orbe na tela: perto do orbe")]
         [InlineData(true, true, false, false, "conversa na tela: o card entra nela")]
         [InlineData(true, true, true, true, "pedido do Shadow: perto do orbe mesmo com a janela aberta")]
-        [InlineData(false, false, true, false, "sem orbe não há onde ancorar")]
+        [InlineData(false, false, false, false, "sem orbe e sem Shadow: a conversa é o lugar de perguntar")]
+        // Caso real (22/10/2026): o orbe se esconde enquanto a janela está aberta. O card do
+        // Shadow entrou na janela, o usuário a fechou no segundo seguinte, e o Shadow esperou
+        // minutos por uma pergunta que ninguém via.
+        [InlineData(true, false, true, true, "pedido do Shadow com a janela aberta e o orbe escondido")]
+        [InlineData(false, false, true, true, "pedido do Shadow sem orbe: flutuante no centro")]
         public void APerguntaDoShadow_VaiSempreParaPertoDoOrbe(bool conversa, bool orbe, bool shadow, bool esperado, string porque)
         {
             // Pedido do usuário (16/10/2026): o que vem do Shadow ganha o selo e fica no Shadow.

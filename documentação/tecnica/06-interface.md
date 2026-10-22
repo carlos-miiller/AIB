@@ -726,8 +726,10 @@ da fila se ainda esperava a vez; um aviso novo da mesma conversa substitui o ant
 
 - **Selo "Shadow"**: o que vem da conversa do orbe leva o selo e o caminho de volta é o orbe
   ("Abrir no Shadow" → `AbrirBarra`). Confirmação: `ContextoDoTurno.Shadow`, lido em
-  `PerguntarConfirmacaoAsync`; a pergunta do Shadow vai SEMPRE para a janela perto do orbe, mesmo
-  com a janela de chat aberta (`DeveUsarJanelaDoOrbe(..., doShadow)`). Senha do terminal: o pedido
+  `PerguntarConfirmacaoAsync`; a pergunta do Shadow vai SEMPRE para a janela flutuante, mesmo
+  com a janela de chat aberta (`DeveUsarJanelaDoOrbe(..., doShadow)`). Com a janela aberta o orbe
+  está escondido, e a flutuante abre no centro da tela: antes o card caía na conversa e, fechada a
+  janela logo depois, o Shadow esperava por uma pergunta que ninguém via. Senha do terminal: o pedido
   chega por pipe, fora do turno, e é "do Shadow" quando só o orbe está ocupado. Lembrete: guardado
   no próprio lembrete. Resposta: `LigarOrbe(..., avisarResposta)` mostra o aviso quando a resposta
   do orbe chega com a barra fechada.
