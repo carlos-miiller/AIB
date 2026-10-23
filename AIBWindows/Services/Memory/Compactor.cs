@@ -92,6 +92,37 @@ public sealed class Compactor
         """;
 
     /// <summary>
+    /// A seção dos hábitos (<see cref="Habitos"/>), acrescentada ao prompt do capítulo só quando
+    /// a conversa tem persona e o aprendizado está ligado: sem ela o prompt fica byte a byte o
+    /// que era. Vai por ÚLTIMO na resposta, para <see cref="LerJeito"/> cortá-la antes de
+    /// <see cref="LerSecoes"/> confundir as linhas dela com lições.
+    /// <para>
+    /// A fala entre aspas é a prova: o código só aceita a reação se a fala estiver nas mensagens
+    /// do USUÁRIO do trecho. Uma reação inventada, ou tirada de um e-mail ou página, não passa.
+    /// </para>
+    /// </summary>
+    public const string SecaoDoJeito =
+        """
+
+        Depois da linha PENDENTE, por último, a seção JEITO: como o usuário reagiu ao JEITO do
+        agente (tom, humor, carinho, tamanho das mensagens, como chama o usuário, costumes na
+        conversa). Uma reação por linha:
+        JEITO:
+        - + faz trocadilhos com esgrima | "kkkk adorei"
+        - - manda mensagens longas demais | "resume, por favor"
+        Regras do JEITO:
+        - "+" é reação boa, "-" é ruim. Depois do sinal, o jeito começando por verbo, sem sujeito.
+          Se for um jeito da lista de JEITOS JÁ CONHECIDOS, escreva só o número: - + #2 | "fala"
+          Mesmo jeito dito com outras palavras é o da lista: use o número, não escreva outro.
+        - O jeito é do AGENTE. O que o USUÁRIO faz (chamar o agente pelo nome, elogiar, pedir
+          desculpa) não é jeito: o jeito é o que o agente fez e provocou essa reação.
+        - Entre aspas, copiada exatamente, a fala do USUÁRIO que mostra a reação. Sem uma fala
+          dele reagindo ao jeito, não entra: escreva "JEITO: nenhum".
+        - A tarefa não é jeito: resolver bem um problema ou errar um comando não entra.
+        - No máximo 2 linhas.
+        """;
+
+    /// <summary>
     /// Prompt do ato no formato por seções. O modelo NÃO resume resumos: recebe objetivos, lições
     /// e pendências dos capítulos e devolve a versão atualizada das três. Estado e pedidos
     /// literais são fundidos por código, sem passar por aqui.
@@ -164,14 +195,25 @@ public sealed class Compactor
         RegistroDaCompactacao? registro = null,
         TokenCounter? contador = null,
         bool comModelo = true,
-        LimitesDoProvedor? limites = null)
+        LimitesDoProvedor? limites = null,
+        IReadOnlyList<Habito>? jeitos = null)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _registro = registro;
         _contador = contador ?? new TokenCounter();
         _comModelo = comModelo;
         _limites = limites ?? LimitesDoProvedor.Atual;
+        _jeitos = jeitos;
     }
+
+    /// <summary>
+    /// Os hábitos já conhecidos do personagem, numerados para o resumidor. Nulo: não se pergunta
+    /// pelo jeito (conversa sem persona, ou aprendizado desligado).
+    /// </summary>
+    private readonly IReadOnlyList<Habito>? _jeitos;
+
+    /// <summary>As reações que o último <see cref="SummarizeAsync"/> leu, já conferidas.</summary>
+    public IReadOnlyList<Reacao> Reacoes { get; private set; } = Array.Empty<Reacao>();
 
     private readonly LimitesDoProvedor _limites;
 
@@ -232,8 +274,9 @@ public sealed class Compactor
             {
                 var mensagens = new List<ChatMessage>
                 {
-                    ChatMessage.CreateSystemMessage(PromptDoCapitulo),
-                    ChatMessage.CreateUserMessage(material + "\n--- REGISTRADO POR CÓDIGO ---\n" + referencia)
+                    ChatMessage.CreateSystemMessage(_jeitos == null ? PromptDoCapitulo : PromptDoCapitulo + SecaoDoJeito),
+                    ChatMessage.CreateUserMessage(material + "\n--- REGISTRADO POR CÓDIGO ---\n" + referencia
+                                                  + JeitosConhecidos(_jeitos))
                 };
 
                 var resultado = await _provider
@@ -241,6 +284,11 @@ public sealed class Compactor
                     .ConfigureAwait(false);
 
                 string texto = ThinkBlockStripper.Strip(resultado.Text);
+                if (_jeitos != null)
+                {
+                    (texto, var reacoes) = LerJeito(texto, turns);
+                    Reacoes = reacoes;
+                }
                 (objetivo, aprendido, assunto) = LerSecoes(texto, material + "\n" + referencia, chapterIndex);
 
                 relogio.Stop();
@@ -378,6 +426,59 @@ public sealed class Compactor
 
         static bool Nenhum(string v) =>
             System.Text.RegularExpressions.Regex.IsMatch(v.Trim(), @"^(nenhum|nenhuma|nada|n/a|-)\.?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+
+    /// <summary>A lista numerada que o resumidor recebe junto do trecho. Vazia sem jeito conhecido.</summary>
+    public static string JeitosConhecidos(IReadOnlyList<Habito>? jeitos)
+    {
+        if (jeitos == null || jeitos.Count == 0) return "";
+
+        var texto = new StringBuilder("\n--- JEITOS JÁ CONHECIDOS ---\n");
+        for (int i = 0; i < jeitos.Count; i++)
+            texto.Append($"#{i + 1} {(jeitos[i].Evita ? "-" : "+")} {jeitos[i].Texto}\n");
+        return texto.ToString();
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex LinhaDoJeito = new(
+        @"^[-•*]\s*([+\-−])\s*(?:#(\d+)|(.+?))\s*\|\s*[""“”'](.+?)[""“”']\s*$");
+
+    /// <summary>
+    /// Corta a seção JEITO da resposta e lê as reações dela. Só fica a reação cuja fala está nas
+    /// mensagens do USUÁRIO do trecho (<see cref="Turn.UserText"/>): é o que impede uma reação
+    /// inventada, ou tirada de conteúdo de terceiros, de virar hábito.
+    /// </summary>
+    /// <returns>A resposta sem a seção, e as reações conferidas (no máximo 2).</returns>
+    public static (string Resto, IReadOnlyList<Reacao> Reacoes) LerJeito(string? texto, IReadOnlyList<Turn> turns)
+    {
+        string t = texto ?? "";
+        var rotulo = System.Text.RegularExpressions.Regex.Match(t, @"(?im)^[\s*_]*JEITOS?[\s*_]*:");
+        if (!rotulo.Success) return (t, Array.Empty<Reacao>());
+
+        string resto = t[..rotulo.Index].TrimEnd();
+        string falasDoUsuario = Normalizar(string.Join("\n", turns.Select(x => x.UserText ?? "")));
+
+        var reacoes = new List<Reacao>();
+        foreach (string bruta in t[(rotulo.Index + rotulo.Length)..].Replace("\r", "").Split('\n'))
+        {
+            var m = LinhaDoJeito.Match(bruta.Trim().Trim('*', '_').Trim());
+            if (!m.Success) continue;
+
+            string fala = m.Groups[4].Value.Trim();
+            string conferida = Normalizar(fala);
+            if (conferida.Length < 2 || !falasDoUsuario.Contains(conferida, StringComparison.Ordinal))
+            {
+                Console.WriteLine("[HABITOS] Reação descartada: a fala citada não está nas mensagens do usuário.");
+                continue;
+            }
+
+            int? numero = int.TryParse(m.Groups[2].Value, out int n) ? n : null;
+            reacoes.Add(new Reacao(m.Groups[1].Value == "+", numero, m.Groups[3].Value.Trim(), fala));
+            if (reacoes.Count == 2) break;
+        }
+        return (resto, reacoes);
+
+        static string Normalizar(string s) =>
+            System.Text.RegularExpressions.Regex.Replace(s.ToLowerInvariant(), @"\s+", " ").Trim().Trim('.', '!', '?', ',', ' ');
     }
     /// <summary>
     /// Fecha um ato a partir de capítulos já resumidos — o nível 2 da hierarquia.

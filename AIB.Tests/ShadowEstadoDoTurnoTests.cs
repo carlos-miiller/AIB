@@ -66,6 +66,179 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void ComConversaPropria_ARespostaDaJanela_NaoEntraNaPilhaDoOrbe()
+        {
+            // Bug: "quando se manda algo na tela principal e fecha ela, a resposta ainda é
+            // carregada para o shadow". A conversa do orbe é apartada; a resposta da janela
+            // caía na pilha dele, no meio de outra conversa.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var conversa = JanelaDeEnsaio.Nova();
+                var orbe = new ShadowAssistantWindow();
+                var servico = JanelaDeEnsaio.Servico();
+                var doOrbe = new ConversaDoOrbe(JanelaDeEnsaio.Conversa(servico), servico);
+
+                App.LigarOrbe(conversa, orbe, doOrbe);
+
+                // A janela de ensaio está escondida: é o caso de quem mandou e fechou.
+                Disparar(conversa, nameof(ChatWindow.TurnoConcluido), "o ramal é 4275");
+
+                orbe.FalasPendentes.Should().Be(0);
+                orbe.Pulsando.Should().BeFalse();
+                orbe.Falas.Should().BeEmpty();
+
+                orbe.Close();
+                conversa.Close();
+            });
+        }
+
+        // O contador é escrito em pedaços (o total vem riscado), e aí o Text do bloco fica vazio.
+        private static string Texto(TextBlock bloco)
+        {
+            string texto = "";
+            foreach (var pedaco in bloco.Inlines)
+                texto += ((System.Windows.Documents.Run)pedaco).Text;
+            return texto;
+        }
+
+        [Fact]
+        public void ABarra_MostraOContadorDeTokens_DaConversaDoOrbe()
+        {
+            // Pedido: "colocar o contador de tokens no shadow, somente ele". A conversa do orbe
+            // compacta sozinha e não tinha, na barra, nada que dissesse quanto ela pesa.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var conversa = JanelaDeEnsaio.Nova();
+                var servico = JanelaDeEnsaio.Servico();
+                var doOrbe = new ConversaDoOrbe(JanelaDeEnsaio.Conversa(servico), servico);
+
+                // Sem conversa própria não há o que contar: o contador nem aparece.
+                var semConversa = new ShadowAssistantWindow();
+                App.LigarOrbe(conversa, semConversa)();
+                ((TextBlock)semConversa.FindName("Contador")).Visibility.Should().Be(Visibility.Collapsed);
+                semConversa.Close();
+
+                var orbe = new ShadowAssistantWindow();
+                var contador = (TextBlock)orbe.FindName("Contador");
+                App.LigarOrbe(conversa, orbe, doOrbe);
+
+                // Sob o círculo ele ficaria solto no desktop: só aparece com a barra aberta.
+                contador.Visibility.Should().Be(Visibility.Collapsed);
+                orbe.AbrirBarra();
+
+                contador.Visibility.Should().Be(Visibility.Visible, "já nasce com a conta atual");
+                Texto(contador).Should().Contain($"{doOrbe.Conversa.CurrentTokenReport.Contexto:N0} tokens | ");
+
+                // Pedido: "na mesma posição que na janela principal, só adiciona uma sombra no
+                // texto para separá-lo". Abaixo da barra, à direita, com o halo do tema.
+                contador.HorizontalAlignment.Should().Be(HorizontalAlignment.Right);
+                contador.Margin.Bottom.Should().BeNegative("é desenhado abaixo da barra, sem linha própria");
+                contador.Effect.Should().BeSameAs(orbe.FindResource("FloatingTextShadow"));
+
+                // O caso do registro real: 15 turnos viraram capítulo e o prompt ficou em 9.936.
+                var medido = new TokenReport(Total: 17_377, Contexto: 9_936, Max: 32_000,
+                    Cru: 8_549, Memoria: 522, Capitulos: 2, CustoUsd: 0.0015m);
+                orbe.MostrarTokens(medido);
+
+                // Visto no uso: o orbe não mostrava a compactação como a janela. O custo cru vem
+                // riscado, com a seta, antes do que vai ao modelo.
+                Texto(contador).Should().Be($"{17_377:N0} > {9_936:N0} tokens | {32_000:N0} | {TokenReport.Dolares(0.0015m)}");
+                ((System.Windows.Documents.Run)contador.Inlines.FirstInline)
+                    .TextDecorations.Should().BeSameAs(TextDecorations.Strikethrough);
+                contador.Foreground.Should().BeSameAs(orbe.FindResource("TextSecondaryBrush"));
+                ((string)contador.ToolTip).Should().Contain("2 capítulo(s)").And.Contain("US$");
+
+                // Acima do teto do nível: laranja, como no rodapé da janela.
+                orbe.MostrarTokens(medido with { Contexto = 40_000 });
+                contador.Foreground.Should().BeSameAs(orbe.FindResource("WarnBrush"));
+
+                orbe.FecharBarra();
+                contador.Visibility.Should().Be(Visibility.Collapsed);
+
+                orbe.Close();
+                conversa.Close();
+            });
+        }
+
+        [Fact]
+        public void ComTurnoRodando_OBotaoDaBarra_ViraParar_ENaoEnvia()
+        {
+            // Visto no uso: no orbe o botão de enviar nunca virava parar. Com a IA em laço, a
+            // única forma de pará-la era encerrar o programa.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var orbe = new ShadowAssistantWindow();
+                var botao = (Button)orbe.FindName("BotaoEnviar");
+                var aviao = botao.Content;
+                int paradas = 0, envios = 0;
+                orbe.ParadaPedida += () => paradas++;
+                orbe.MensagemEnviada += _ => envios++;
+
+                orbe.AbrirBarra();
+                ((TextBox)orbe.FindName("Campo")).Text = "outra coisa";
+
+                orbe.MostrarEstado("Pensando");
+                orbe.MostrarEstado("Navegando", Ferramentas.Navegador);
+
+                botao.Content.Should().BeOfType<Border>("é o quadrado de parar da janela de chat");
+                botao.ToolTip.Should().Be("Parar");
+
+                botao.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+                paradas.Should().Be(1);
+                envios.Should().Be(0, "com turno rodando o botão para, não envia");
+
+                // O passo vazio é o fim do turno: o aviãozinho volta, o mesmo desenho.
+                orbe.MostrarEstado("");
+
+                botao.Content.Should().BeSameAs(aviao);
+                botao.ToolTip.Should().Be("Enviar");
+
+                botao.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                envios.Should().Be(1);
+
+                orbe.Close();
+            });
+        }
+
+        [Fact]
+        public void ComTurnoRodando_OEnter_NaoEnvia_EOTextoFicaNoCampo()
+        {
+            // Com a conversa do orbe ocupada, o Enter criava a bolha do usuário e esvaziava o
+            // campo, mas o texto era descartado: parecia enviado e o modelo nunca o recebia.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var orbe = new ShadowAssistantWindow();
+                var campo = (TextBox)orbe.FindName("Campo");
+                int envios = 0;
+                orbe.MensagemEnviada += _ => envios++;
+
+                orbe.AbrirBarra();
+                orbe.MostrarEstado("Pensando");
+                campo.Text = "e o ramal do Fernando?";
+
+                orbe.Enviar();
+
+                envios.Should().Be(0);
+                orbe.Falas.Should().BeEmpty("nada foi enviado, então não há bolha");
+                campo.Text.Should().Be("e o ramal do Fernando?");
+
+                // Terminado o turno, o mesmo texto segue normalmente.
+                orbe.MostrarEstado("");
+                orbe.Enviar();
+
+                envios.Should().Be(1);
+                campo.Text.Should().BeEmpty();
+
+                orbe.Close();
+            });
+        }
+
+        [Fact]
         public void ComAConversaNA_TELA_OOrbeNaoREPETE_AFala()
         {
             // Este era o defeito: a mesma frase em dois lugares ao mesmo tempo, e a segunda

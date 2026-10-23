@@ -48,6 +48,7 @@ public class RunCommandTool : ITool
             if (string.IsNullOrWhiteSpace(comando)) return null;
 
             var (bateu, razao) = CommandFloorList.Match(comando, userLevel);
+            var (usados, _) = CofreNoComando.Analisar(comando, _cofre());
 
             return new CommandConfirmationContext
             {
@@ -60,7 +61,12 @@ public class RunCommandTool : ITool
 
                 // O shell nunca é dispensado pela lista de pastas, e nunca é limitado por ela.
                 // O que ele pode é contar o que viu. Ver EscritaNoComando.
-                Aviso = EscritaNoComando.Aviso(comando) ?? ""
+                Aviso = EscritaNoComando.Aviso(comando) ?? "",
+
+                // Comando com alias do cofre pergunta toda vez: um "sempre" liberaria a chave para
+                // qualquer pedido que repetisse o texto, inclusive o vindo de um e-mail.
+                Cofre = usados.Select(a => new UsoDoCofre(a.Nome, a.Descricao, a.Hosts)).ToList(),
+                SemSempre = usados.Count > 0
             };
         }
         catch (JsonException)
@@ -77,12 +83,16 @@ public class RunCommandTool : ITool
     public static readonly TimeSpan Prazo = TimeSpan.FromSeconds(30);
 
     private readonly Func<AskpassServidor?> _askpass;
+    private readonly Func<Cofre> _cofre;
 
     /// <param name="askpass">Onde os prompts de senha vão parar. Por padrão, o do app; null
     /// nos ensaios, e aí o comando roda como antes, sem ter onde perguntar.</param>
-    public RunCommandTool(Func<AskpassServidor?>? askpass = null)
+    /// <param name="cofre">De onde vêm os valores de <c>$env:COFRE_*</c>. Por padrão, o do
+    /// usuário (que os testes desviam).</param>
+    public RunCommandTool(Func<AskpassServidor?>? askpass = null, Func<Cofre>? cofre = null)
     {
         _askpass = askpass ?? (() => AskpassServidor.Padrao);
+        _cofre = cofre ?? (() => new Cofre());
     }
 
     /// <summary>
@@ -152,7 +162,9 @@ public class RunCommandTool : ITool
         if (BatchMode.IsMatch(cmd.GetString()!))
             return RecadoDeBatchMode;
 
-        return null;
+        // Alias que não existe, ou endereço fora dos hosts dele: recusa antes do cartão. O caso
+        // que o cofre protege é um texto de terceiros pedindo para mandar a chave a outro lugar.
+        return CofreNoComando.Analisar(cmd.GetString()!, _cofre()).Recusa;
     }
 
     /// <summary>
@@ -471,6 +483,18 @@ public class RunCommandTool : ITool
 
             // ssh, scp e git que pedirem senha perguntam ao usuário numa janela do AIB (ver
             // AskpassServidor). O token vale só enquanto este comando roda.
+            // Os valores do cofre entram só neste processo, depois da autorização. A análise é
+            // refeita aqui: o cofre pode ter mudado com o cartão aberto.
+            var cofre = _cofre();
+            var (usados, recusa) = CofreNoComando.Analisar(command, cofre);
+            if (recusa != null) return recusa;
+            if (usados.Count > 0)
+            {
+                foreach (var (variavel, valor) in cofre.Variaveis(usados.Select(a => a.Nome)))
+                    startInfo.Environment[variavel] = valor;
+                cofre.RegistrarUso(usados.Select(a => a.Nome));
+            }
+
             var askpass = _askpass();
             using var sessao = askpass?.AbrirSessao(command);
             if (askpass is not null && sessao is not null) askpass.Preparar(startInfo, sessao);

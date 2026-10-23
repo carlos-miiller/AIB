@@ -39,8 +39,10 @@ Renomear uma ferramenta é mudar só a constante.
 | `browser` (`Navegador`) | `BrowserTool` | 2 | **por ação** (`PedeConfirmacao`) — ler não pergunta; clicar e digitar perguntam, com "sempre" por site; site novo pergunta uma vez | Navegador (Edge, perfil próprio, logado pelo usuário): abre, lê a vista, procura, lê tabela, clica, digita (§7). |
 | `mail` (`Email`) | `ConsultarEmailsTool` | 1 | não | Consulta o diário da triagem de e-mail (disco, não o servidor). |
 | `mail_read` (`LerEmail`) | `LerEmailTool` | 1 | não | Relê no servidor o e-mail da conversa aberta (somente leitura). |
-| `remember` (`Lembrar`) | `LembrarTool` | 1 | não — mas **recusada com texto de terceiros no contexto** (`SoComFalaDoUsuario`) | Guarda no `facts.md` um fato que o usuário contou sobre si (`- sobre o usuário: …`). Sem segredo, uma frase (200), teto de 60. Na tela vira o aviso "<persona> lembrará disso…", fora da cadeia de ações. |
-| `remind` (`Lembrete`) | `LembreteTool` | 1 | não — mas **recusada com texto de terceiros no contexto** | Lembrete único: `create` (`at` "HH:mm" — já passou, é amanhã — ou "yyyy-MM-dd HH:mm"; ou `in_minutes`; `text` é a fala da persona na hora), `list`, `cancel` por `id`. Grava em `~/.AIB/lembretes.json` (`Lembretes`, teto 50, até um ano). Quem entrega é a agenda do `App`, sem chamar o modelo. |
+| `remember` (`Lembrar`) | `LembrarTool` | 1 | não — mas **com texto de terceiros no contexto vai ao cartão** (`SoComFalaDoUsuario`: `GUARDAR NA MEMÓRIA: "fato"`, sem "sempre"; sem interface, recusa) | Guarda no `facts.md` um fato que o usuário contou sobre si (`- sobre o usuário: …`). Sem segredo, uma frase (200), teto de 60. Na tela vira o aviso "<persona> lembrará disso…", fora da cadeia de ações. |
+| `doc` (`Documento`) | `DocTool` | 1 (gravar: piso tipado no Nível 2) | **por ação** — `info`/`read`/`find`/`query` não perguntam (fora de `~/.AIB`); `create`/`edit` **sempre** perguntam, sem "sempre", com o plano no cartão | Planilhas (.xlsx .xlsm .xls .csv), Word (.docx) e PDF: visão geral, trecho com endereço (célula, ¶, página), busca, contas em C# e gravação com cópia do original (§7). |
+| `remind` (`Lembrete`) | `LembreteTool` | 1 | não — mas **com texto de terceiros no contexto, criar e cancelar vão ao cartão** (`PedeFalaDoUsuario`; listar não) | Lembrete único: `create` (`at` "HH:mm" — já passou, é amanhã — ou "yyyy-MM-dd HH:mm"; ou `in_minutes`; `text` é a fala da persona na hora), `list`, `cancel` por `id`. Grava em `~/.AIB/lembretes.json` (`Lembretes`, teto 50, até um ano). Quem entrega é a agenda do `App`, sem chamar o modelo. |
+| `web_search` (`Pesquisar`) | `PesquisaWebTool` | 1 | não — mas **com texto de terceiros no contexto vai ao cartão** (`SoComFalaDoUsuario`: `PESQUISAR NA INTERNET: "consulta"`, sem "sempre"; sem interface, recusa) | Pesquisa na internet pela busca do **provedor** e devolve resumo + fontes numeradas (§7). Registrada pelo `App` (`Registrar`), depois da fábrica de provedores. |
 
 Detalhes de registro:
 
@@ -51,8 +53,10 @@ Detalhes de registro:
   deixar o modelo chutar sobre a caixa.
 - **`mail_read` é registrada sempre, mas só é oferecida** (`GetActiveTools`) quando a conversa está
   ligada a um e-mail (`ChaveDaConversaDeEmail` não vazia).
-- `GetActiveTools(userLevel)` corta do schema as ferramentas acima do nível do usuário.
-- **A `Description` é paga em TODA requisição.** As nove de antes somavam 1.951 caracteres (eram 2.056); o `browser` acrescenta cerca de 290 e o `remember` e o `remind` cerca de 200 cada (teto próprio no teste). A
+- `GetActiveTools(userLevel)` corta do schema as ferramentas acima do nível do usuário, e as que
+  respondem `ITool.Oferecida = false`: o `web_search` só é oferecido quando o provedor da conversa
+  tem busca (`IChatProvider.TemPesquisa`) — no Ollama não tem, e o schema seria pago à toa.
+- **A `Description` é paga em TODA requisição.** As nove de antes somavam 1.951 caracteres (eram 2.056); o `browser` acrescenta cerca de 290 e o `remember` e o `remind` cerca de 200 cada, e o `doc` cerca de 450, e o `web_search` cerca de 190 (teto próprio no teste). A
   regra de redação: cada uma diz uma capacidade que o modelo não adivinharia (o `write` cria
   pasta), uma fronteira com a ferramenta vizinha (o `shell` não é para arquivo; o `edit` não cria
   arquivo) e o teto que muda a decisão antes de chamar (100 no `glob`, 60 no `grep`, 30 s no
@@ -142,8 +146,8 @@ Passo a passo:
    - recusa → devolve `ToolRegistry.RecusaDoUsuario` (`"Ação Rejeitada pelo Usuário."`).
 7. **Execução**: `tool.ExecutarAutorizadoAsync(args, level, autorizado)`. `autorizado` é o
    contexto do cartão ou da dispensa, ou `null` para ferramenta sem confirmação.
-8. **Segredos fora do resultado**: o texto devolvido passa por `Segredos.Redigir` antes de voltar
-   ao agente (ver §10).
+8. **Segredos fora do resultado**: o texto devolvido passa por `Cofre.Redigir` (valor exato do
+   cofre → `[cofre: nome]`) e depois por `Segredos.Redigir` antes de voltar ao agente (ver §10).
 
 `aoDecidir` recebe, numa palavra, como a chamada passou: `automatica`, `pasta_dispensada`,
 `permitida`, `permitida_sempre`, `sempre_na_sessao`, `recusada`, `barrada_pelo_piso`,
@@ -223,9 +227,35 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
 - `ChatConfirmationPrompt` implementa `IConfirmationPrompt`. A `ChatWindow` se conecta com
   `Conectar(PerguntarConfirmacaoAsync)` quando nasce (em `App.xaml.cs`); antes disso, ou se
   desconectada, a resposta é recusa.
-- **No modo orbe** (conversa fora da tela, orbe visível — `ChatWindow.DeveUsarJanelaDoOrbe`), o
+- **No modo orbe** (conversa fora da tela e orbe visível, ou pedido da conversa do Shadow em
+  qualquer caso — `ChatWindow.DeveUsarJanelaDoOrbe`), o
   MESMO `ConfirmCardView` vai para uma `ConfirmacaoDoOrbeWindow` logo acima do orbe, em vez de
-  abrir a conversa. Fechar a janela ou Esc é recusa. A posição vem de `PertoDoOrbe` (centrada na
+  abrir a conversa. Fechar a janela ou Esc é recusa. As duas janelas de pergunta (esta e a de
+  senha) entram pela **fila das flutuantes** (`Flutuantes.Mostrar`, `FilaDeJanelas`): uma por vez,
+  na ordem em que chegaram; a pergunta tira um aviso da tela e ele volta depois. Antes, várias
+  ferramentas na mesma volta abriam cada uma a sua janela, empilhadas. Na janela, o card perde a
+  casca de bolha (`ConfirmCardView.ParaFlutuante`) e a pill e o "Permitir" seguem o **risco**
+  (`RiscoDe`): vermelho (`DangerFilledButton`) só para o que apaga ou sobrescreve sem volta (write
+  sobre arquivo, edit, comando da lista de negação); laranja (`WarnFilledButton`) para o que
+  executa ou dá para desfazer (shell, Lixeira, navegador, lembrete, criar arquivo); lilás
+  (`AccentFilledButton`) para o que só guarda ou lê (memória, nota, manual de habilidade). O antes
+  e depois do edit ganha fundo vermelho/verde por linha. O card DENTRO da conversa não muda.
+  Habilidade (nas duas formas) não se desenha como comando de shell: com
+  `CommandConfirmationContext.Habilidade` (`UsoDaHabilidade`), o título leva o nome ("Rodar a
+  habilidade bitrix?"), a primeira frase da descrição diz o que ela faz, a caixa mostra os
+  argumentos numa grade de duas colunas (`ExecuteSkillTool.Pares`) com o ícone de brilho, e o
+  caminho do script fica numa linha discreta embaixo. Valor em lista ("418113,418114,...") sai com
+  a contagem e todos os itens (`ConfirmCardView.ValorNoCartao`): numa habilidade em lote, um
+  "Permitir" vale para tudo, e o cartão mostra tudo. Só é lista o que não tem espaço nos itens: uma descrição com vírgula continua frase. Chave sem valor (`-Comentarios`) sai "sim". A linha de comando inteira continua em `Command`
+  (auditoria e histórico). **Várias chamadas, um cartão:** antes de disparar o lote, o laço pede
+  `ToolRegistry.Agrupar`; chamadas com a mesma `ITool.ChaveDoCartao` (a `skill`: o nome da
+  habilidade, fora as só de manual) recebem uma `VagaNoCartao` e esperam umas pelas outras. Cada
+  uma passa sozinha pelo pré-voo, pelo piso e pelo "sempre"; as que chegam ao cartão viram um só
+  (`ITool.JuntarNoCartao` → `UsoDaHabilidade.Juntar`): "Rodar a habilidade bitrix 27 vezes?", com
+  o argumento que muda virando lista, ou uma linha por chamada quando muda mais de um (ou quando o valor tem espaço ou vírgula, como um título). A resposta
+  vale para todas; auditoria e execução seguem por chamada, cada uma com o seu contexto. A que não
+  pergunta sai da vaga (`Dispose`, também na repetição bloqueada), senão o grupo esperaria para
+  sempre. Visto no uso: 27 chamadas ao bitrix, uma por tarefa, eram 27 cartões. A posição vem de `PertoDoOrbe` (centrada na
   casca do orbe, `ShadowAssistantWindow.RetanguloDoOrbe`; sem espaço acima, abaixo; sempre dentro
   da área de trabalho), que também posiciona a janela de senha do terminal. Sem orbe, as duas
   ficam como antes: card na conversa, senha no centro da tela.
@@ -246,6 +276,7 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
 | "Motivo do bloqueio" | `DenylistHit`/`DenylistReason` (só `shell`). |
 | Aviso de e-mail | `ctx.ConteudoDeEmailNoContexto`. |
 | Aviso de pasta | `ctx.Aviso` — do `EscritaNoComando` (só `shell`). |
+| "Usa o cofre" | `ctx.Cofre` — os aliases do comando: nome, descrição e hosts permitidos, nunca o valor (só `shell`). |
 | "Sempre permitir" | Para `shell` (comando exato) e `browser` (o site, "até fechar o AIB"). Some com texto de terceiros no contexto — no `browser`, só com e-mail — e quando `ctx.SemSempre`. |
 
 O foco nasce em **Recusar**: Enter sem ler não executa nada. Os botões travam depois do clique.
@@ -260,9 +291,12 @@ O foco nasce em **Recusar**: Enter sem ler não executa nada. Os botões travam 
   uma autorização dada com outro contexto não cobre o que esse texto pode ter pedido. Exceção:
   `ctx.SempreApesarDeTerceiros` (só o `browser`), que vale com a página no contexto — é a página que
   o usuário liberou — mas **não com e-mail** (`ToolRegistry.EmailNoContexto`).
-- `ctx.SemSempre`: nunca entra nem é consultado. O `browser` marca botão que decide (apagar,
-  concluir, enviar, pagar…, e botão que envia formulário), Enter fora de caixa de busca e abrir
-  site novo.
+- `ctx.SemSempre`: nunca entra nem é consultado. O `browser` marca Enter fora de caixa de busca,
+  abrir site novo, anotar, e botão que decide **sem texto**.
+- `ctx.SempreSegurando` (só o `browser`): botão que decide (apagar, concluir, enviar, aprovar,
+  pagar…, ou que envia formulário) aceita "sempre", mas com chave própria
+  `site:<domínio>|<papel> <texto>` — vale para aquele rótulo naquele site, o "sempre" do site não
+  o cobre — e a caixa só marca segurando o clique por 5 s (`ConfirmCardView.EsperaDoSempre`).
 - `Listar()`/`Quantos` existem para a tela mostrar o que está autorizado.
 
 ---
@@ -303,6 +337,20 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
   `-EncodedCommand` elimina o problema de aspas (o escape antigo com `\"` corrompia comandos, porque o
   escape do PowerShell é a crase). O comando ganha o prefixo `$ProgressPreference = 'SilentlyContinue'`
   para a barra de progresso não virar CLIXML inútil no stderr.
+- **Cofre de aliases** (`Services/Cofre.cs`, `Tools/CofreNoComando.cs`): o modelo escreve
+  `$env:COFRE_BITRIX` e o valor entra no `ProcessStartInfo.Environment` só na execução, depois do
+  cartão; o comando, o cartão, a auditoria e o `raw.jsonl` guardam o nome. Caso real: o webhook do
+  Bitrix ia inteiro no comando, e o `Segredos` não o pegava (é uma URL comum). Qualquer
+  `COFRE_<NOME>` no texto conta como uso. No **pré-voo** (`Validar`), antes do cartão: alias que
+  não existe → `ERRO` com a lista dos que existem; alias com "Permite uso no shell" desligado
+  (`Alias.Shell`) → `ACESSO NEGADO`, porque ele é de uma habilidade e pelo shell daria a API
+  inteira; endereço por extenso (`esquema://host`) fora dos
+  hosts do alias → `ACESSO NEGADO`; endereço montado na hora (`"https://$h/"`, concatenação) →
+  `ACESSO NEGADO`. Com dois aliases restritos, cada host tem de estar na lista de todos (um comando
+  por alias). Alias sem hosts passa, e o cartão diz "qualquer endereço". Com alias, o contexto sai
+  com `SemSempre` (pergunta toda vez) e `Cofre`; a execução refaz a análise (o cofre pode ter
+  mudado com o cartão aberto) e conta o uso. A leitura de endereços é por texto, como a floor list:
+  por isso o cartão continua obrigatório.
 - **stdin redirecionado e fechado**: um prompt (`Read-Host`, parâmetro obrigatório) lê EOF e falha na
   hora, em vez de esperar o timeout.
 - stdout e stderr lidos **em paralelo** (ler um depois do outro trava quando o buffer enche).
@@ -330,7 +378,9 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
   - **"Lembrar até fechar o AIB"**: só senha, só de solicitante confiável, na RAM, pela chave do
     prompt exato (que traz `usuário@host`: a senha de um servidor nunca vai para outro). Se o mesmo
     prompt volta no mesmo comando, a lembrada estava errada: é esquecida e a janela abre.
-  - Uma janela de cada vez (`SemaphoreSlim`).
+  - Uma janela de cada vez (`SemaphoreSlim`), e ela entra na fila das flutuantes (`PerguntarAsync`)
+    — não abre por cima de uma confirmação pendente. Casca das flutuantes: pill e "Enviar" em
+    laranja (`WarnFilledButton`), como toda pergunta que executa algo.
   - Não cobre sessão interativa nem `sudo` remoto: é para `ssh usuario@host "comando"`.
   - **`BatchMode=yes` é recusado no pré-voo** (`Validar`, `RecadoDeBatchMode`): ele impede o ssh
     de perguntar, inclusive pelo askpass. O modelo punha em toda chamada "para não travar", a janela
@@ -398,8 +448,16 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
 ### `skill` — `ExecuteSkillTool`
 
 - Skills ficam em `~/.AIB/skills/<pasta>/SKILL.md` (`SkillService`): cabeçalho `---` com `name`,
-  `description`, `interpreter` (`powershell`, `python` ou `markdown`), `script_file` e `accepts`
-  (extensões aceitas), seguido do manual. Só nome e descrição entram no prompt de sistema.
+  `description`, `interpreter` (`powershell`, `python` ou `markdown`), `script_file`, `accepts`
+  (extensões aceitas) e `cofre` (segredos que usa), seguido do manual. Só nome e descrição entram
+  no prompt de sistema.
+- **Segredos do cofre** (`CofreDaHabilidade`): cada nome de `cofre:` chega ao script como
+  `$env:COFRE_NOME`, só depois da autorização e só se o segredo **libera a habilidade pelo nome**
+  (`Alias.Habilidades`, Configurações › Cofre). Declarar não basta: uma habilidade escrita depois,
+  até pela própria IA, herdaria a chave. Segredo que não existe → `ERRO`; que não libera →
+  `ACESSO NEGADO`; os dois no pré-voo, antes do cartão, e conferidos de novo na execução. O cartão
+  mostra "Usa o cofre". Caso que motivou: o webhook do Bitrix preso a uma habilidade com operações
+  fixas, em vez da API inteira pelo shell.
 - **`Validar`**: `skill_name` obrigatório; skill inexistente → `ERRO` com a lista das que existem;
   argumentos com caminho → `PreVooDeCaminho.Conferir(args, skill.Accepts)`; JSON ilegível → `ERRO`
   (antes devolvia `null` e virava "ACESSO NEGADO").
@@ -473,6 +531,9 @@ entra quando a própria raiz da busca pedia cartão — uma busca a partir da pa
 - Pasta → lista subpastas e arquivos com tamanho (teto `LimitesDoProvedor.Atual.ItensDaPasta`). Antes
   respondia "não encontrado" para pasta, e o modelo ia listar pelo shell. Cortou no teto, o aviso
   diz o teto **e** o próximo passo (`glob` com um padrão): "(+N não listado(s))" sozinho é um beco.
+- Planilha, Word e PDF (pelo conteúdo, `Formatos.De`) não são lidos: a resposta manda usar `doc`
+  com `action='info'`. Lidos como texto, eram uma página de lixo binário paga em prefill — e o
+  bloco de anexos do prompt manda usar `read` com o caminho, então é aqui que o anexo vira `doc`.
 
 ### `write` — `WriteFileTool`
 
@@ -535,7 +596,8 @@ Os dois varrem com `GlobTool.Opcoes` (`EnumerationOptions`), e não com a sobrec
 ### E-mail (`mail`, `mail_read`)
 
 Somente leitura. `mail` lê o diário da triagem em disco; `mail_read` relê a thread da conversa
-aberta no servidor (EXAMINE/`BODY.PEEK`), sem argumentos, e devolve o corpo embrulhado por
+aberta no servidor (EXAMINE/`BODY.PEEK`) — caixa de entrada **e pasta de enviados** (`comEnviados`),
+para a conversa que o usuário começou e ninguém respondeu ter o que ler —, sem argumentos, e devolve o corpo embrulhado por
 `ConteudoDeTerceiros`. Detalhes em `05-email.md`.
 
 ### `browser` — `BrowserTool`, `NavegadorService`, `LeituraDaPagina`
@@ -548,8 +610,8 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
   `~/.AIB/navegador/perfil`, com **janela visível**. O usuário loga pela janela; a IA nunca vê nem
   digita senha. Nasce na primeira chamada (quem não usa não paga) e fecha com o app. Um semáforo
   põe as ações em fila: as ferramentas de um turno rodam em paralelo.
-- **Ações** (`action`): `open`, `view`, `find`, `table`, `click`, `type` (com `enter`), `scroll`
-  (`up`), `back`.
+- **Ações** (`action`): `open`, `view`, `find`, `table`, `click`, `type` (com `enter`), `hover`,
+  `scroll` (`up`), `back`.
 - **A vista** (`LeituraDaPagina.Vista`): só o que está na tela **e por cima** — o `Snapshot.js`
   confere `elementFromPoint`, e o quadro (iframe) coberto por outro painel não conta. Texto
   escondido por CSS fica de fora (é onde mora a injeção escondida) — mas só `display:none`,
@@ -572,6 +634,18 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
   gira a roda; compara a rolagem de tudo antes e depois e, se nada mexeu, diz isso e aponta a saída.
   Antes a roda girava no canto (0,0): num quadro do Bitrix, onde cada coluna rola sozinha, nada se
   mexia, e o modelo rolou 40 vezes.
+- **`hover`** (`PassarMouseAsync`, pedido do usuário em 15/10/2026) põe o mouse sobre o elemento da
+  `ref`, espera 400 ms (menu de hover abre com atraso) e assenta, e lê. O que a página desenha no
+  hover — menu, pré-visualização, dica própria — entra na vista como qualquer elemento. A dica do
+  atributo `title` o Edge desenha **fora** da página, então volta à parte, na primeira linha e
+  dentro do embrulho: `(dica do elemento [s3e5]: "…")`. O mouse fica onde parou, e o menu continua
+  aberto para o `click` seguinte.
+- **A janela que o hover abre vai no topo** (`LeituraDaPagina.Surgiu`): no Bitrix, o mouse em
+  cima de uma tarefa ou pessoa abre um cartão com vários itens, alguns clicáveis. Ele costuma ser
+  acrescentado no fim do documento, e numa página cheia o teto da vista o cortaria. Por isso o que
+  está na tela e não estava na leitura de antes (comparado por papel e texto, contando repetidos —
+  as refs mudam a cada leitura) vem à parte, antes da vista, com as refs novas: "apareceu com o
+  mouse em [s3e5] (clicável pela ref…)". Teto de 3000 caracteres. Nada novo também é dito.
 - **Antes de ler, espera assentar**: rede calma (até 6 s) e animações finitas terminadas (até 2 s).
   No Bitrix a tarefa abre num painel que desliza, e lida no meio a vista vinha vazia.
 - **Campo sem rótulo** ganha o nome do texto curto logo antes dele ("Assignee"), sem atravessar
@@ -584,17 +658,20 @@ Navegador genérico, sem receita por site. Nasceu de um protótipo sem IA
 
 | Ação | Pergunta? |
 |---|---|
-| `view`, `find`, `table`, `scroll`, `back` | não |
+| `view`, `find`, `table`, `scroll`, `back`, `hover` | não |
 | `open` em site liberado | não |
 | `open` em site novo | sim — `ABRIR SITE NOVO <domínio> — <url>`; aprovar **libera o site** (`SitesLiberados`, `~/.AIB/navegador/sites-liberados.txt`, um domínio por linha) |
 | `click` em link que só navega (href http real, sem `#`, `javascript:` ou `onclick`) para site liberado | não — é o mesmo que `open` |
 | `click` | sim — `CLICAR [s3e2] botão "Filtrar" em <domínio>`; "sempre" vale para o site |
 | `type` | sim — `DIGITAR "texto" em [ref] <campo> [e apertar Enter] em <domínio>`; "sempre" vale para o site |
 | `note` | sim, **toda vez** — `ANOTAR na página /x/{n}/ de <domínio>: "texto"` (ou `no site inteiro`) |
+| `unnote` | sim, **toda vez** — `APAGAR ANOTAÇÃO da página /x/{n}/ de <domínio>: "- linha inteira"` (ou `do site inteiro`) |
 
-Pergunta **toda vez** (`SemSempre`): botão cujo nome decide algo (excluir, apagar, concluir,
-enviar, salvar, pagar, comprar, confirmar, aprovar, publicar, cancelar…), botão que envia
-formulário, e Enter em campo que não é busca/filtro. A frase do cartão leva a ref com a versão: se
+Botão cujo nome decide algo (excluir, apagar, concluir, enviar, salvar, pagar, comprar,
+confirmar, aprovar, publicar, cancelar…) ou que envia formulário fica fora do "sempre" do site:
+tem um "sempre" próprio, daquele botão naquele site, marcado segurando a caixa por 5 s
+(`SempreSegurando`). Sem texto no botão, pergunta **toda vez** (`SemSempre`), como o Enter em
+campo que não é busca/filtro. A frase do cartão leva a ref com a versão: se
 a página mudou entre o cartão e o clique, a execução recusa.
 
 **Anotações por site** (`AnotacoesDeSite`): o `facts.md` dos sites. Uma pasta por site em
@@ -605,8 +682,15 @@ conteúdo. Chegam ao modelo **antes e fora** do embrulho da página, rotuladas c
 usuário: no `open` sempre, e depois só quando o site ou a página mudam. Gravar pede cartão **toda
 vez** com o texto exato (`SemSempre`): anotação é instrução para conversas futuras, e uma página
 que induzisse "sempre clique em Excluir" plantaria uma ordem duradoura. Tetos: 500 caracteres por
-anotação, 2000 por arquivo; texto com cara de segredo é recusado. Só acrescenta linhas; editar e
-apagar é à mão.
+anotação, 2000 por arquivo; texto com cara de segredo é recusado.
+
+**Apagar** (`unnote`, pedido do usuário em 15/10/2026: ela pode anotar algo errado): `text` é um
+trecho da anotação, comparado sem caixa e com espaços normalizados, nas do site e nas da página
+(`AnotacoesDeSite.Achar`). Precisa achar **uma** linha: nenhuma, ou várias, é recusado antes do
+cartão, e o erro lista as várias para ela escolher um trecho único. O cartão mostra a linha inteira
+e pergunta **toda vez**, pelo mesmo motivo de gravar: uma página poderia induzi-la a apagar o que o
+usuário ensinou. `Remover` tira só aquela linha; o resto do arquivo, inclusive o editado à mão,
+fica byte a byte. Editar continua sendo à mão.
 
 **A página é de terceiros.** O resultado sai por `ConteudoDeTerceiros.EmbrulharPagina`
 (`[[INICIO_DA_PAGINA]]`…`[[FIM_DA_PAGINA]]`) e ganha a marca de conteúdo do `AgentLoop`. Todo
@@ -618,6 +702,137 @@ palavra de 12+ caracteres com maiúscula, minúscula e 2+ números, ou 16 minús
 teste no Bitrix a vista trouxe duas credenciais coladas num chat.
 
 ---
+
+### `web_search` — `PesquisaWebTool` e `IChatProvider.PesquisarAsync`
+
+Pedido em 23/10/2026; o usuário escolheu a busca **nativa do provedor** em vez de uma busca pelo
+navegador. Antes a persona só achava coisa na web abrindo o Google no `browser`: a página inteira em
+tokens, e captcha de navegador automatizado.
+
+- **Chamada à parte, não busca ligada na conversa.** A ferramenta pede ao provedor da conversa
+  (`ChatProviderFactory.GetProvider` com as configurações lidas na hora) uma chamada só de busca
+  (`PesquisarAsync`, prazo de 120 s). O `openrouter:web_search` ligado na conversa faria o modelo
+  buscar sozinho, mas o texto das páginas entraria no histórico sem passar pelo `ToolRegistry`: sem
+  `MarcaDeConteudo`, sem `Segredos.Redigir` e sem aparecer na tela. Assim, o resultado é o de uma
+  ferramenta qualquer (`TrazemConteudo` inclui `web_search`).
+- **Por provedor** (02, §6.1): OpenRouter com o plugin `web` (sem motor: busca nativa do modelo
+  quando existe, Exa nos outros, US$ 0,007 por busca mais os tokens; `max_results` 5; raciocínio
+  desligado; `data_collection: deny` se ligado); Google pelo `generateContent` nativo com
+  `google_search` (o endpoint compatível ignora a busca no chat). Ollama: `TemPesquisa` falso, a
+  ferramenta não é oferecida.
+- **Resultado** (`PesquisaWebTool.Formatar`): o resumo do modelo (pedido em `Pesquisa.Instrucao`:
+  português, até 12 linhas, só o que as fontes dizem) e `Fontes:` numeradas, título — URL e, no
+  OpenRouter, o trecho da página (até 300). O custo relatado vai ao console (`[web_search]`); ele
+  **não** entra na soma de custo da conversa.
+- **Pré-voo:** consulta vazia, acima de 300 caracteres ou com cara de segredo (`Segredos`) é
+  recusada — a consulta sai do computador para um buscador.
+- **Portão:** não pergunta (só lê, e o provedor já recebe a conversa inteira). Com e-mail ou
+  página no contexto, vai ao cartão com a consulta exata: uma ordem escondida no texto de fora
+  poderia mandar o conteúdo dele dentro de uma consulta.
+
+### `doc` — `DocTool` e `Services/Documentos/`
+
+Pedido do usuário (19/10/2026) no lugar da habilidade `ler-planilha`, que desalinhava colunas com
+célula vazia (o XML não grava a vazia), devolvia texto com espaço como `System.Xml.XmlElement`,
+lia só a primeira aba, mostrava data como número de série e levava 51 s em 20 mil linhas.
+
+- **Bibliotecas:** ClosedXML (xlsx/xlsm, ler e gravar, calcula fórmulas), DocumentFormat.OpenXml
+  (docx), PdfPig (PDF, só leitura), ExcelDataReader (.xls antigo, só leitura); CSV é nosso
+  (`LeitorDeCsv`: BOM/UTF-8/Windows-1252, separador detectado, RFC 4180). Sem Excel instalado.
+- **Formato pelo conteúdo** (`Formatos.De`: ZIP, OLE2, `%PDF`), com a extensão de desempate.
+- **Modelo comum:** planilha vira `Pasta` de `Grade`s (célula no lugar dela, `Texto` como o Excel
+  mostra, `Valor` bruto, `Formula`); Word e PDF viram `Documento` de `Bloco`s numerados (¶ no Word,
+  página no PDF). `Apresentacao` escreve `info`, `read` e `find` para o modelo, sempre com
+  endereço (`Ramais!B12`, `¶12`, `p.3`); `read` pagina e diz como continuar. Datas saem dd/MM/yyyy
+  e números em pt-BR pelo formatador próprio (o do ClosedXML escreve a data de formato embutido no
+  padrão americano). Fórmula: o valor em cache; sem cache (arquivo gravado pelo próprio ClosedXML),
+  calcula.
+- **`query`** (`ConsultaDePlanilha`): filtrar, agrupar, somar, contar, média, mínimo, máximo e
+  ordenar, em C#. Coluna por cabeçalho ou letra. Célula não numérica numa soma é ignorada **e
+  contada** na resposta. Existe porque somar 300 linhas lidas como texto é onde o modelo erra.
+  A aba vem de `sheet`, ao lado de `query` ou dentro dela (a Ellen a punha dentro e recebia "a
+  consulta não conhece sheet", e concluiu que a query só via a primeira aba).
+- **Abas** (relatório de QA da Ellen, 23/10/2026): `add_sheet`, `rename_sheet` e `move_sheet`
+  aceitam o nome no valor da chave (`{add_sheet:"Resumo"}`, `{rename_sheet:"Velho", to}`) ou a
+  chave como marca com o nome em `sheet`/`name` (`{add_sheet:true, sheet:"Resumo"}`, que antes
+  dava "operação desconhecida"). São tratadas antes de resolver a aba da operação, porque ali
+  `sheet` é a aba que vai nascer. `position` (1 = primeira) em `add_sheet` e `move_sheet`. Nome
+  de aba conferido antes (31 caracteres, sem `: \ / ? * [ ]`, sem repetir). Operação
+  desconhecida diz as chaves que chegaram.
+- **`rows`** (`insert_rows`, `create`): lista de linhas, cada linha uma lista. Uma lista de
+  valores soltos vira uma linha; a lista mandada como texto JSON é lida. O resto recusa com o
+  formato esperado e o que chegou ("a linha 2 chegou como um objeto").
+- **Gravar** (`create`, `edit`) — .xlsx/.xlsm/.csv (`EditorDePlanilha`) e .docx (`EditorDeDocx`):
+  1. `Validar` recusa antes do cartão: formato que não se grava (.xls, PDF), pasta de dados do
+     AIB, e qualquer plano que não se monta (célula inválida, trecho do Word ambíguo ou ausente).
+     Arquivo travado pelo Excel/Word (abrir para escrita dá `ERROR_SHARING_VIOLATION`) só é
+     recusado aqui quando não há interface (`DocTool.AoTravar` nulo, nos ensaios).
+  2. **Planilha com gráfico, tabela dinâmica, macro, segmentação ou linha do tempo não se edita**
+     (`RecusarOQueSePerderia`): o ClosedXML abre, mas regrava sem essas partes. A recusa sugere
+     criar um arquivo novo.
+  3. O plano (`PlanoDeGravacao`) é calculado sem tocar o disco: célula, antes e depois (fórmula
+     com o resultado); faixa com a mesma fórmula vira grupo com 3 exemplos e a contagem de erros;
+     linhas que saem e entram inteiras; "efeito nas fórmulas que já existem" (recalcula e compara,
+     sempre, menos com inserção/remoção de linhas); aviso de fórmula que vai virar `#REF!`. Acima
+     de 20 mil fórmulas ou 10 mil células editadas, a edição é **pesada**: aviso "EDIÇÃO PESADA E
+     LENTA" e consequência "Edição massiva…" no cartão (decisão do usuário: calcular sempre e dizer
+     quando é lento). Sem tempo medido no texto: o plano é refeito e comparado na gravação.
+     No Word, trecho antes e depois, ¶ e seção. O plano leva até 100 mudanças por bloco
+     (`PlanoDeGravacao.NoCartao`): 12 à vista (3 num grupo de faixa), o resto `Extra` atrás do link
+     "+ N … · mostrar"; acima de 100, "não cabem no cartão" e a lista inteira fica no histórico.
+  4. O cartão (`ConfirmCardView.Plano.cs`) desenha o plano; `ScriptBody` guarda a versão em texto
+     para o histórico. Vermelho ("Edita o arquivo original") ao mexer no que existe; laranja
+     ("Cria um arquivo") no arquivo novo, na edição de Word ("Sugere alterações") e na edição
+     que só muda a aparência ("Muda a formatação", `PlanoDeGravacao.SoAparencia`, comando
+     `FORMATAR`). Sem "sempre permitir" (`SemSempre`).
+  5. Na execução, o plano é refeito e comparado com o autorizado — texto e SHA-256 do arquivo
+     (`Impressao`). Mudou entre a pergunta e o "Permitir", nada é gravado. Sem cartão, recusa.
+  6. **Travado** (aberto no Excel/Word): `DocTool.AoTravar` — ligado pelo App à janela de escolha
+     (`AvisoWindow.EscolherAsync`, receita `Avisos.DeTrava`) — pergunta "Já fechei, tentar de
+     novo" (confere de novo e repete), "Salvar como cópia" (grava em `nome (AIB).ext`, sem tocar
+     o original) ou "Desistir". Pedido do usuário, 19/10/2026; a janela é genérica, para outros
+     usos.
+  7. Antes de gravar por cima, `CopiasDeDocumento` guarda o original em
+     `~/.AIB/doc-backups/<nome> (<8 hex do caminho>)/aaaa-MM-dd HHmmss.ext`, com `origem.txt`:
+     as **5 últimas** por arquivo, e o App apaga as com mais de **3 meses** no arranque
+     (`Limpar`). O plano mostra só a pasta (`Descricao`, determinística). A gravação vai para um
+     temporário na pasta do arquivo e depois por cima do original.
+  8. Gravado, o evento `DocTool.Gravou` leva o App a mostrar o aviso verde "Gravado"
+     (`Avisos.DeGravado`): **Abrir**, **Abrir a pasta** e, havendo cópia, **Desfazer**
+     (`CopiasDeDocumento.Restaurar`): recusa se o arquivo mudou depois da gravação (SHA-256), e
+     guarda o estado atual antes, para o próprio desfazer poder ser desfeito.
+- **Word: toda edição é controle de alterações** (decisão do usuário, 19/10/2026): o texto
+  antigo vira `w:del`, o novo `w:ins`, parágrafo inserido/apagado leva a marca de parágrafo, linha
+  de tabela apagada leva `trPr/w:del` — autor = personagem ativo (`DocTool(autor:)`), data no XML
+  (fora do texto do plano). O texto só muda quando o usuário aceita no Word. Revisões de outros
+  autores ficam intactas; o `read` mostra a versão "com tudo aceito" e o `replace` não casa texto
+  já apagado em revisão. `create` não tem revisões.
+- Os ¶ da edição do Word são os da numeração do `read` (parágrafo vazio não conta), resolvidos
+  antes de aplicar qualquer operação; as remoções vão por último. A troca atravessa runs e
+  mantém a formatação do primeiro; várias trocas no mesmo parágrafo viram uma linha só no plano.
+- Ler um arquivo aberto no Excel funciona (stream com `FileShare.ReadWrite`); gravar, não (item 6).
+- Apagar linhas: antes, `AnularReferencias` troca por `#REF!` a referência que aponta só para as
+  linhas apagadas — o ClosedXML a deslocaria para a linha de baixo, em silêncio.
+- **Filtro e linhas ocultas** (pergunta do usuário, 19/10/2026): o leitor guarda as linhas
+  ocultas (`Grade.Ocultas`) e o autofiltro (`Grade.Filtro`). O `info` diz "filtro ativo em … ·
+  N linhas ocultas", o `read` e o `find` marcam `(oculta)`, e a `query` soma tudo mas avisa
+  quantas ocultas entraram; com `visible:true` conta só as visíveis, como o `SUBTOTAL`. Sem isso,
+  "quanto dá o total?" numa planilha filtrada respondia a soma de linhas que o usuário não via.
+- **Formatação** (mockup "Formatação de planilhas do AIB", 19/10/2026; `EstiloDePlanilha`,
+  `CondicionalDePlanilha`): `style` junto de `cell`/`range`, com ou sem `value` (fonte, cor,
+  fundo, borda, alinhamento, quebra, `number_format` com atalhos `moeda`, `porcentagem`,
+  `data`…); `columns` + `width` (número ou `auto`, teto 60 — acima disso, 60 e quebra de texto);
+  `freeze` (`'B2'` ou `'none'`; congelar volta o canto da aba para A1, senão a aba salva rolada
+  congelava a coluna em que parou); `conditional` (comparação, texto contém, repetidos/únicos,
+  escala de cores, barra de dados, ícones) e `clear_conditional`. Cor em `#RRGGBB` ou nome em
+  português; cor desconhecida é erro, sem cartão. Uma linha do plano por faixa, com a amostra
+  (`Aparencia`: a primeira célula como o Excel vai mostrá-la) e a descrição em palavras; a regra
+  condicional diz quais células ela atinge hoje. Só aparência → sem recálculo nem efeito nas
+  fórmulas, para o cartão abrir rápido em planilha grande. CSV recusa formatação ("ofereça
+  salvar uma cópia em .xlsx").
+- O plano é guardado para o pré-voo e o cartão (`PlanoGuardado`, chave: pedido + data e tamanho
+  do arquivo); a gravação o refaz do zero.
+- O resultado leva a marca de conteúdo de terceiros (`AgentLoop.TrazemConteudo`).
 
 ## 8. Pastas sem confirmação (`PastasSemConfirmacao`)
 
@@ -667,6 +882,12 @@ acha que o comando falhou e tenta por outro caminho). Não redige o que é códi
 `token=ct,`, `senha: string;`, `max_tokens=4096`. É **best-effort**: senha solta, sem nome ao lado,
 passa. Expressão que estoura o prazo de 2 s some com a saída inteira, em vez de deixá-la passar.
 `write` e `edit` recusam no pré-voo um texto com a marca, para ela não ser gravada por cima do valor.
+`Segredos.Trechos` aplica as mesmas regras sem trocar nada e devolve onde estão os valores: é o
+que o alerta da caixa de mensagem marca antes de enviar (06, "Segredo na mensagem").
+
+**Cofre** (`Cofre.Redigir`, antes do `Segredos`): cada valor guardado no cofre (de 6 caracteres
+para cima) volta como `[cofre: nome]`, também sem a barra final, codificado para URL e em base64.
+É troca exata, então pega o que não tem formato de segredo, como um webhook.
 
 
 **Repetição no turno** (`AgentLoop.ContarRepeticao`): a chamada que falhou já era bloqueada ao ser

@@ -37,6 +37,13 @@ public class LocalSkill
     /// </para>
     /// </summary>
     public List<string> Accepts { get; set; } = new();
+
+    /// <summary>
+    /// Segredos do <see cref="Cofre"/> que a habilidade usa, declarados em <c>cofre:</c>. O
+    /// executor entrega cada um como <c>$env:COFRE_NOME</c>, e só se o segredo libera ESTA
+    /// habilidade (ver <see cref="Tools.ExecuteSkillTool"/>).
+    /// </summary>
+    public List<string> Cofre { get; set; } = new();
 }
 
 /// <summary>
@@ -134,7 +141,12 @@ public static class SkillService
                 ScriptPath = File.Exists(caminhoScript) ? caminhoScript : "",
                 Folder = pasta,
                 Instructions = corpo.Trim(),
-                Accepts = Extensoes(Valor(cabecalho, "accepts"))
+                Accepts = Extensoes(Valor(cabecalho, "accepts")),
+                Cofre = Valor(cabecalho, "cofre")
+                    .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(n => n.Trim().ToLowerInvariant())
+                    .Distinct()
+                    .ToList()
             };
         }
         catch (Exception ex)

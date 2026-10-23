@@ -22,6 +22,8 @@ public interface INavegador
     Task<LeituraDaPagina> LerAsync();
     Task<LeituraDaPagina> ClicarAsync(string refCompleta);
     Task<LeituraDaPagina> DigitarAsync(string refCompleta, string texto, bool enter);
+    /// <summary>Põe o mouse em cima do elemento e lê; a dica é o <c>title</c> dele, que o Edge mostra fora da página.</summary>
+    Task<(LeituraDaPagina Leitura, string Dica)> PassarMouseAsync(string refCompleta);
     /// <summary>Rola a área do elemento (ou a página, a partir do centro) e diz se algo se mexeu.</summary>
     Task<(LeituraDaPagina Leitura, bool Moveu)> RolarAsync(bool paraCima, string? refCompleta);
     Task<LeituraDaPagina> VoltarAsync();
@@ -132,6 +134,34 @@ public sealed class NavegadorService : INavegador, IAsyncDisposable
         if (enter) await campo.PressAsync("Enter", new() { Timeout = 8000 });
         await AssentarAsync(page);
         return await LerInternoAsync(await PaginaAsync());
+    });
+
+    /// <summary>
+    /// O mouse em cima do elemento: abre o menu que só aparece no hover, o cartão de pré-visualização,
+    /// a dica desenhada pela página. Esses entram na leitura como qualquer elemento.
+    /// <para>
+    /// A dica do atributo <c>title</c> NÃO entra: o Edge a desenha fora da página, onde a leitura
+    /// não chega. Por isso ela volta à parte. O mouse fica onde parou: o menu continua aberto para
+    /// o clique seguinte.
+    /// </para>
+    /// </summary>
+    public Task<(LeituraDaPagina Leitura, string Dica)> PassarMouseAsync(string refCompleta) => NaVez(async () =>
+    {
+        var page = await PaginaAsync();
+        var alvo = Localizar(refCompleta);
+        await alvo.HoverAsync(new() { Timeout = 8000 });
+
+        // Menu de hover costuma abrir com atraso (100–300 ms) e animação: espera um pouco antes
+        // de assentar, senão a leitura pega o menu ainda fechado.
+        await Task.Delay(400);
+        await AssentarAsync(page);
+
+        string dica = "";
+        try { dica = (await alvo.GetAttributeAsync("title", new() { Timeout = 2000 }) ?? "").Trim(); }
+        catch (PlaywrightException) { } // o hover pode ter trocado o elemento de lugar
+        catch (TimeoutException) { }
+
+        return (await LerInternoAsync(page), dica);
     });
 
     /// <summary>

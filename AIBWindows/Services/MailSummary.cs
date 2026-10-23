@@ -70,6 +70,10 @@ public enum MailUrgency
 /// (<c>conta|uid:N</c>) e não carrega assunto — ver <c>ArquivoDeConversas.ChaveDaConversa</c>.
 /// </para>
 /// </param>
+/// <param name="Iniciada">
+/// Foi você quem começou a conversa — o selo "Você iniciou". A resposta a ela nunca fica
+/// abaixo de Média (ver <c>MailDigestService.Piso</c>).
+/// </param>
 public sealed record MailSummary(
     string Name,
     string Description,
@@ -82,4 +86,5 @@ public sealed record MailSummary(
     int ContextTokens = 0,
     string ThreadId = "",
     string De = "",
-    uint Uid = 0);
+    uint Uid = 0,
+    bool Iniciada = false);

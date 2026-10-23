@@ -116,6 +116,60 @@ public sealed class AnotacoesDeSite
     public string Caminho(string url, bool doSite) =>
         Path.Combine(PastaDo(LeituraDaPagina.DominioDe(url)), doSite ? ArquivoDoSite : ArquivoDaPagina(PaginaDe(url)));
 
+    /// <summary>
+    /// As anotações deste endereço (do site e da página) que contêm <paramref name="trecho"/>, sem
+    /// caixa e com espaços normalizados. É como o modelo aponta a que quer apagar: ele a recebeu
+    /// como texto, não como número.
+    /// </summary>
+    public IReadOnlyList<(string Caminho, string Linha)> Achar(string url, string trecho)
+    {
+        string alvo = Normalizar(trecho);
+        if (alvo.Length == 0 || LeituraDaPagina.DominioDe(url).Length == 0) return Array.Empty<(string, string)>();
+
+        var achadas = new List<(string, string)>();
+        foreach (string caminho in new[] { Caminho(url, true), Caminho(url, false) })
+            foreach (string linha in LerArquivo(caminho).Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                if (Normalizar(linha).Contains(alvo, StringComparison.Ordinal)) achadas.Add((caminho, linha.Trim()));
+        return achadas;
+    }
+
+    private static string Normalizar(string s) => Regex.Replace((s ?? "").Trim().ToLowerInvariant(), @"\s+", " ");
+
+    /// <summary>Recusa a remoção que não aponta para UMA anotação, antes do cartão. Null quando pode.</summary>
+    public string? ConferirRemocao(string url, string trecho)
+    {
+        if (Normalizar(trecho).Length == 0) return "ERRO: 'unnote' precisa de 'text' com um trecho da anotação a apagar.";
+
+        var achadas = Achar(url, trecho);
+        return achadas.Count switch
+        {
+            0 => "ERRO: nenhuma anotação deste site ou desta página contém esse trecho. Nada foi apagado.",
+            1 => null,
+            _ => $"ERRO: {achadas.Count} anotações contêm esse trecho; use um trecho que só uma tenha:\n"
+                 + string.Join("\n", achadas.Select(a => a.Linha))
+        };
+    }
+
+    /// <summary>
+    /// Apaga UMA linha de anotação — pedido do usuário: ela pode anotar algo errado. O resto do
+    /// arquivo fica byte a byte como estava, inclusive o que o usuário editou à mão.
+    /// </summary>
+    /// <returns>Falso se a linha não estava mais lá.</returns>
+    public bool Remover(string caminho, string linha)
+    {
+        lock (_gate)
+        {
+            if (!File.Exists(caminho)) return false;
+
+            string texto = File.ReadAllText(caminho);
+            var m = Regex.Match(texto, @"(?m)^[ \t]*" + Regex.Escape(linha.Trim()) + @"[ \t]*(\r?\n|$)");
+            if (!m.Success) return false;
+
+            File.WriteAllText(caminho, texto.Remove(m.Index, m.Length), new UTF8Encoding(false));
+            return true;
+        }
+    }
+
     /// <summary>Acrescenta uma linha. Nunca reescreve nem apaga o que o usuário editou.</summary>
     public void Adicionar(string url, bool doSite, string texto)
     {

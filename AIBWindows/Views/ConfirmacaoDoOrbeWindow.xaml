@@ -14,12 +14,14 @@
          Sem a casca, o card (translúcido, feito para ficar sobre o fundo da conversa)
          deixava a área de trabalho vazar por trás do texto. A margem transparente é a
          folga da sombra. -->
-    <Border Margin="30,20,30,45" Background="{StaticResource NeonBrush}"
+    <Border Margin="30,20,30,45" Width="{StaticResource ShadowWidth}" Background="{StaticResource NeonBrush}"
             CornerRadius="{StaticResource RadiusWindowOuter}" Padding="1.5"
             Effect="{StaticResource WindowShadow}">
         <Border Background="{StaticResource GlassBrush}"
                 CornerRadius="{StaticResource RadiusWindowInner}" ClipToBounds="True">
-            <ContentPresenter x:Name="Lugar" Margin="6"/>
+            <!-- O card vem SEM a casca de bolha (ConfirmCardView.ParaFlutuante): o respiro é
+                 daqui, o mesmo das outras janelas flutuantes. -->
+            <ContentPresenter x:Name="Lugar" Margin="16,15,16,14"/>
         </Border>
     </Border>
 </Window>

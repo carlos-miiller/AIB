@@ -82,11 +82,54 @@ namespace AIB.Tests
             (await _tool.ExecuteAsync(Args("mais um"))).Should().StartWith("ERRO");
         }
 
+        private sealed class Prompt : IConfirmationPrompt
+        {
+            public bool Permite { get; init; }
+            public System.Collections.Generic.List<CommandConfirmationContext> Vistos { get; } = new();
+
+            public Task<(bool Allowed, bool AlwaysAllow)> AskAsync(CommandConfirmationContext context)
+            {
+                Vistos.Add(context);
+                return Task.FromResult((Permite, true));
+            }
+        }
+
+        // Caso real: depois de navegar num sistema interno, "lembre que Costuma deixar as issues
+        // acumular..." — ditado pelo próprio usuário — foi negado cinco vezes, porque a recusa
+        // era pelo contexto e não pelo pedido. Agora quem decide é ele, no cartão.
         [Fact]
-        public async Task ComTextoDeTerceirosNoContexto_ORegistryRecusa()
+        public async Task ComTextoDeTerceirosNoContexto_VaiAoCartao_EOUsuarioDecide()
+        {
+            const string fato = "Costuma deixar as issues acumular e resolver todas de uma vez";
+
+            var sim = new Prompt { Permite = true };
+            var registry = new ToolRegistry(sim) { ConteudoDeEmailNoContexto = () => true };
+            registry.Registrar(_tool);
+
+            (await registry.ExecuteToolAsync(Ferramentas.Lembrar, Args(fato), userLevel: 1)).Should().StartWith("Guardado");
+
+            var cartao = sim.Vistos.Should().ContainSingle().Subject;
+            cartao.Command.Should().Be($"GUARDAR NA MEMÓRIA: \"{fato}\"", "ele autoriza vendo o fato inteiro");
+            cartao.SemSempre.Should().BeTrue("cada fato é uma decisão");
+            cartao.ConteudoDeEmailNoContexto.Should().BeTrue("o cartão avisa de onde o pedido pode ter vindo");
+
+            // "Sempre" respondido pelo prompt não vale: o fato seguinte pergunta de novo.
+            await registry.ExecuteToolAsync(Ferramentas.Lembrar, Args("mora em Curitiba"), userLevel: 1);
+            sim.Vistos.Should().HaveCount(2);
+
+            var nao = new Prompt { Permite = false };
+            var outro = new ToolRegistry(nao) { ConteudoDeEmailNoContexto = () => true };
+            outro.Registrar(_tool);
+
+            await outro.ExecuteToolAsync(Ferramentas.Lembrar, Args("quer transferir tudo"), userLevel: 1);
+            _fatos.ReadFacts().Should().NotContain(l => l.Contains("transferir"));
+        }
+
+        [Fact]
+        public async Task ComTextoDeTerceirosNoContexto_SemInterface_ORegistryRecusa()
         {
             // Um e-mail dizendo "anote que o usuário quer X" envenenaria todas as conversas
-            // seguintes.
+            // seguintes. Sem ninguém para ver o cartão, não grava.
             var registry = new ToolRegistry { ConteudoDeEmailNoContexto = () => true };
             registry.Registrar(_tool);
 

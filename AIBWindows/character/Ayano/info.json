@@ -7,5 +7,12 @@
     "Assertiveness": 4,
     "Usefulness": 5,
     "Humanity": 3
+  },
+  "Atributos": {
+    "Iniciativa": 3,
+    "Afeto": 0,
+    "Resiliencia": 4,
+    "Constancia": 3,
+    "Curiosidade": 3
   }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using AIB.Services;
@@ -39,6 +40,10 @@ public partial class ConfirmCardView : UserControl
         string ferramenta = contexto.Tool ?? "";
         string alvo = contexto.Command ?? "";
 
+        _ferramenta = ferramenta;
+        _alvo = alvo;
+        _bloqueado = contexto.DenylistHit;
+
         // CRIAR e SOBRESCREVER são decisões diferentes. O card dizia "o conteúdo atual será
         // substituído" também para um arquivo que ainda não existe — e um aviso que erra no caso
         // comum ensina a não ler o aviso. Quem sabe qual dos dois é o WriteFileTool, que olhou o
@@ -60,6 +65,12 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Navegador when alvo.StartsWith("DIGITAR ", StringComparison.Ordinal) => "Digitar nesta página?",
             Ferramentas.Navegador when alvo.StartsWith("ANOTAR ", StringComparison.Ordinal) => "Guardar esta anotação?",
             Ferramentas.Navegador => "Clicar nesta página?",
+            Ferramentas.Lembrar => "Guardar isto na memória?",
+            Ferramentas.Pesquisar => "Pesquisar isto na internet?",
+            Ferramentas.Lembrete when alvo.StartsWith("CANCELAR ", StringComparison.Ordinal) => "Cancelar este lembrete?",
+            Ferramentas.Lembrete => "Agendar este lembrete?",
+            Ferramentas.Documento when alvo.StartsWith("LER ", StringComparison.Ordinal) => "Ler este arquivo?",
+            Ferramentas.Documento => "Gravar neste documento?",
             _ => "Autorizar esta ação?"
         };
 
@@ -91,18 +102,37 @@ public partial class ConfirmCardView : UserControl
                 + "~/.AIB/navegador/notas, e dá para editar ou apagar à mão.",
             Ferramentas.Navegador =>
                 "A ação acontece no site, com o seu login. O AIB não desfaz o que o site fizer.",
+            Ferramentas.Lembrar =>
+                "Fica valendo em todas as próximas conversas. Dá para rever e apagar em "
+                + "Configurações > Memória.",
+            Ferramentas.Pesquisar =>
+                "A consulta acima sai para o buscador do provedor de IA. A conversa tem texto de "
+                + "fora (e-mail ou página): confira se o pedido foi seu.",
+            Ferramentas.Lembrete when alvo.StartsWith("CANCELAR ", StringComparison.Ordinal) =>
+                "O lembrete sai da lista e não avisa mais.",
+            Ferramentas.Lembrete =>
+                "Na hora marcada, a fala acima chega numa janela de aviso perto do orbe (ou da bandeja).",
             _ => "Esta ação altera o seu sistema e não pode ser desfeita pelo AIB."
         };
 
         FerramentaText.Text = ferramenta;
         AlvoText.Text = alvo;
-        AlvoText.ToolTip = alvo;
         IconeAlvo.Data = ToolIcons.De(ferramenta);
+
+        if (!manual && contexto.Habilidade is { } habilidade) MostrarHabilidade(habilidade);
 
         // A prévia que o WriteFileTool e o EditFileTool montavam e nenhuma view lia: o usuário
         // autorizava uma gravação vendo só o caminho. Autorizar sem ver o que muda é autorizar
         // no escuro.
-        if (!string.IsNullOrWhiteSpace(contexto.ScriptBody))
+        if (contexto.Plano is { } plano)
+        {
+            // Documento: o plano diz a pergunta e a consequência, e desenha a tabela no lugar da
+            // prévia em texto (que fica no ScriptBody para o histórico).
+            if (plano.Titulo.Length > 0) TituloText.Text = plano.Titulo;
+            if (plano.Consequencia.Length > 0) ConsequenciaText.Text = plano.Consequencia;
+            MostrarPlano(plano);
+        }
+        else if (!string.IsNullOrWhiteSpace(contexto.ScriptBody))
         {
             PreviaText.Text = contexto.ScriptBody;
             PreviaBorder.Visibility = Visibility.Visible;
@@ -123,16 +153,46 @@ public partial class ConfirmCardView : UserControl
             AvisoPastaText.Visibility = Visibility.Visible;
         }
 
+        if (contexto.Cofre.Count > 0)
+        {
+            CofreText.Text = string.Join("\n", contexto.Cofre.Select(u =>
+                $"{u.Nome} · {u.Descricao}\n    → " + (u.Hosts.Count > 0
+                    ? string.Join(", ", u.Hosts)
+                    : "qualquer endereço (este alias não tem hosts definidos)")));
+            CofreBorder.Visibility = Visibility.Visible;
+        }
+
         // "Sempre permitir" só faz sentido para comando (casado pelo texto exato na sessão) e para
         // o navegador (casado pelo site). Para as demais ferramentas seria uma autorização vaga.
         // Some quando o portão não o respeitaria: texto de terceiros no contexto, ou operação que
         // pergunta toda vez (SemSempre).
-        bool shell = ferramenta == Ferramentas.Shell && !contexto.ConteudoDeEmailNoContexto;
+        bool shell = ferramenta == Ferramentas.Shell && !contexto.ConteudoDeEmailNoContexto && !contexto.SemSempre;
         bool navegador = ferramenta == Ferramentas.Navegador && !contexto.SemSempre
                          && (!contexto.ConteudoDeEmailNoContexto
                              || (contexto.SempreApesarDeTerceiros && !contexto.EmailNoContexto));
         SempreCheck.Visibility = shell || navegador ? Visibility.Visible : Visibility.Collapsed;
         if (navegador) SempreCheck.Content = "Sempre permitir neste site (até fechar o AIB)";
+
+        if (navegador && contexto.SempreSegurando)
+        {
+            _segurar = true;
+            SempreCheck.Content = RotuloDeSegurar;
+            SempreCheck.PreviewMouseLeftButtonDown += (_, e) =>
+            {
+                if (SempreCheck.IsChecked == true) return; // desmarcar é um clique só
+                e.Handled = true;
+                SempreCheck.CaptureMouse();
+                ApertouSempre();
+            };
+            SempreCheck.PreviewMouseLeftButtonUp += (_, _) => SoltouSempre();
+            SempreCheck.LostMouseCapture += (_, _) => SoltouSempre();
+
+            // Espaço marcaria na hora, sem os 5 s.
+            SempreCheck.PreviewKeyDown += (_, e) =>
+            {
+                if (SempreCheck.IsChecked != true) e.Handled = true;
+            };
+        }
 
         // No navegador, o texto de terceiros é quase sempre a própria página: o aviso só entra se
         // houver e-mail. Repetir em todo clique ensinaria a não ler o aviso.
@@ -141,6 +201,108 @@ public partial class ConfirmCardView : UserControl
 
         // O foco nasce em "Recusar". Enter sem ler o card não pode executar nada.
         Loaded += (_, _) => RecusarButton.Focus();
+    }
+
+    /// <summary>
+    /// A habilidade como habilidade, e não como comando de shell. Pedido do usuário
+    /// (21/10/2026): "tá sendo tratado como se fosse uma execução shell genérica" — o cartão
+    /// mostrava "skill C:\Users\...\bitrix.ps1 -Acao listar ..." e a consequência do shell.
+    /// Agora: o nome no título, o que ela faz, os argumentos em pares e o script embaixo.
+    /// </summary>
+    private void MostrarHabilidade(AIB.Services.Tools.UsoDaHabilidade h)
+    {
+        // Várias chamadas num cartão só (ver UsoDaHabilidade.Juntar): a contagem vai no título e
+        // na consequência, porque o script roda uma vez por chamada.
+        TituloText.Text = h.Vezes > 1 ? $"Rodar a habilidade {h.Nome} {h.Vezes} vezes?" : $"Rodar a habilidade {h.Nome}?";
+
+        if (h.Descricao.Length > 0)
+        {
+            DescricaoText.Text = h.Descricao;
+            DescricaoText.Visibility = Visibility.Visible;
+        }
+
+        ConsequenciaText.Text = h.Vezes > 1
+            ? $"O script dela roda {h.Vezes} vezes, uma por chamada, na sua máquina, com as suas permissões."
+            : "O script dela roda na sua máquina, com as suas permissões.";
+        FerramentaText.Text = h.Nome;
+
+        // Grade de duas colunas, e não texto corrido: a lista longa de um lote quebra linha
+        // alinhada ao valor, e não por baixo da coluna das chaves.
+        var grade = new System.Windows.Controls.Grid { Margin = new Thickness(0, 3, 8, 0) };
+        grade.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto });
+        grade.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        System.Windows.Controls.TextBlock Celula(string texto, string cor, int coluna, int linha)
+        {
+            var t = new System.Windows.Controls.TextBlock
+            {
+                Text = texto,
+                FontFamily = AlvoText.FontFamily,
+                FontSize = AlvoText.FontSize,
+                LineHeight = AlvoText.LineHeight,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, coluna == 0 ? 14 : 0, 0)
+            };
+            t.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, cor);
+            System.Windows.Controls.Grid.SetColumn(t, coluna);
+            System.Windows.Controls.Grid.SetRow(t, linha);
+            grade.Children.Add(t);
+            return t;
+        }
+
+        if (h.Chamadas is { } chamadas)
+        {
+            for (int i = 0; i < chamadas.Count; i++)
+            {
+                grade.RowDefinitions.Add(new System.Windows.Controls.RowDefinition());
+                Celula($"{i + 1}.", "TextMutedBrush", 0, i);
+                Celula(chamadas[i].Length > 0 ? chamadas[i] : "sem argumentos", "TextBodyBrush", 1, i);
+            }
+        }
+        else if (h.Pares.Count == 0)
+        {
+            grade.RowDefinitions.Add(new System.Windows.Controls.RowDefinition());
+            Celula("sem argumentos", "TextMutedBrush", 0, 0);
+        }
+        for (int i = 0; h.Chamadas == null && i < h.Pares.Count; i++)
+        {
+            var (chave, valor) = h.Pares[i];
+            grade.RowDefinitions.Add(new System.Windows.Controls.RowDefinition());
+            if (chave.Length > 0) Celula(chave, "TextMutedBrush", 0, i);
+            Celula(ValorNoCartao(chave, valor), "TextBodyBrush", 1, i);
+        }
+
+        // O alvo continua com a linha inteira (é o que o histórico e a auditoria registram); na
+        // tela, a grade toma o lugar dele.
+        if (AlvoText.Parent is System.Windows.Controls.ScrollViewer rolo) rolo.Content = grade;
+        Pares = grade;
+
+        string casa = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        ScriptText.Text = h.Script.StartsWith(casa, StringComparison.OrdinalIgnoreCase)
+            ? "~" + h.Script[casa.Length..]
+            : h.Script;
+        ScriptText.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>A grade dos argumentos da habilidade. Null nas outras ferramentas.</summary>
+    public System.Windows.Controls.Grid? Pares { get; private set; }
+
+    /// <summary>
+    /// O valor de um argumento como o cartão o mostra. Lista ("418113,418114,...") leva a
+    /// contagem na frente e TODOS os itens: em lote, um "Permitir" vale para tudo, e o pedido do
+    /// usuário (21/10/2026) foi ver no cartão tudo o que vai rodar. Chave sem valor
+    /// (<c>-Comentarios</c>) é uma opção ligada.
+    /// </summary>
+    public static string ValorNoCartao(string chave, string valor)
+    {
+        if (valor.Length == 0) return chave.Length > 0 ? "sim" : "";
+
+        // Lista é de termos soltos (IDs, nomes): item com espaço é texto corrido com vírgula, e
+        // contá-lo como lista desfiguraria uma frase.
+        var itens = valor.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return itens.Length > 1 && !itens.Any(i => i.Any(char.IsWhiteSpace))
+            ? $"{itens.Length} itens: {string.Join(", ", itens)}"
+            : valor;
     }
 
     /// <summary>
@@ -162,8 +324,188 @@ public partial class ConfirmCardView : UserControl
         PermitirButton.IsEnabled = false;
         RecusarButton.IsEnabled = false;
         SempreCheck.IsEnabled = false;
+        _relogio?.Stop();
 
         _resposta.TrySetResult((permitido, permitido && SempreCheck.IsChecked == true));
+    }
+
+    // ── "Sempre" que se marca segurando ───────────────────────────────────
+
+    /// <summary>Quanto tempo o clique tem de ficar na caixa para ela marcar.</summary>
+    public static readonly TimeSpan EsperaDoSempre = TimeSpan.FromSeconds(5);
+
+    private const string RotuloDeSegurar = "Sempre permitir este botão neste site (segure 5 s)";
+
+    private bool _segurar;
+    private DateTime _apertou;
+    private System.Windows.Threading.DispatcherTimer? _relogio;
+
+    /// <summary>O clique desceu na caixa: começa a contagem.</summary>
+    public void ApertouSempre()
+    {
+        if (!_segurar || SempreCheck.IsChecked == true || !SempreCheck.IsEnabled) return;
+
+        _apertou = DateTime.UtcNow;
+        _relogio ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _relogio.Tick -= Batida;
+        _relogio.Tick += Batida;
+        _relogio.Start();
+        SegurandoSempre(TimeSpan.Zero);
+    }
+
+    private void Batida(object? sender, EventArgs e) => SegurandoSempre(DateTime.UtcNow - _apertou);
+
+    /// <summary>
+    /// O clique continua na caixa há <paramref name="decorrido"/>: mostra quanto falta e, aos
+    /// 5 s, marca.
+    /// </summary>
+    public void SegurandoSempre(TimeSpan decorrido)
+    {
+        if (!_segurar || SempreCheck.IsChecked == true) return;
+
+        if (decorrido >= EsperaDoSempre)
+        {
+            _relogio?.Stop();
+            SempreCheck.IsChecked = true;
+            SempreCheck.Content = "Sempre permitir este botão neste site (até fechar o AIB)";
+            if (SempreCheck.IsMouseCaptured) SempreCheck.ReleaseMouseCapture();
+            return;
+        }
+
+        int falta = (int)Math.Ceiling((EsperaDoSempre - decorrido).TotalSeconds);
+        SempreCheck.Content = $"Continue segurando... {falta}";
+    }
+
+    /// <summary>O clique saiu antes da hora: nada marca, e a contagem recomeça do zero.</summary>
+    public void SoltouSempre()
+    {
+        if (!_segurar) return;
+
+        _relogio?.Stop();
+        if (SempreCheck.IsMouseCaptured) SempreCheck.ReleaseMouseCapture();
+        if (SempreCheck.IsChecked != true) SempreCheck.Content = RotuloDeSegurar;
+    }
+
+    // ── A versão flutuante (perto do orbe) ─────────────────────────────────
+
+    private string _ferramenta = "";
+    private string _alvo = "";
+    private bool _bloqueado;
+
+    /// <summary>O que a pill da janela flutuante diz, e em que cor.</summary>
+    public enum Risco { Destrutivo, Cuidado, Leitura }
+
+    /// <summary>
+    /// O risco de uma ação, para a janela flutuante. VERMELHO só para o que apaga ou
+    /// sobrescreve sem volta; LARANJA para o que executa ou dá para desfazer; LILÁS para o que
+    /// só guarda ou lê.
+    /// <para>
+    /// Pedido do usuário (16/10/2026): o card dizia "Ação destrutiva" em vermelho para tudo,
+    /// até um Get-ChildItem — um alarme que toca sempre ensina a não ouvir o alarme. Só nas
+    /// janelas flutuantes: o card dentro da conversa continua como está, por decisão dele.
+    /// </para>
+    /// </summary>
+    public static (Risco Risco, string Rotulo) RiscoDe(string ferramenta, string alvo, bool bloqueado)
+    {
+        bool comeca(string prefixo) => alvo.StartsWith(prefixo, StringComparison.Ordinal);
+
+        if (bloqueado) return (Risco.Destrutivo, "Ação destrutiva");
+
+        return ferramenta switch
+        {
+            Ferramentas.Gravar when comeca("CRIAR ") => (Risco.Cuidado, "Cria um arquivo"),
+            Ferramentas.Gravar => (Risco.Destrutivo, "Ação destrutiva"),
+            Ferramentas.Editar => (Risco.Destrutivo, "Ação destrutiva"),
+            Ferramentas.Shell => (Risco.Cuidado, "Executa na sua máquina"),
+            Ferramentas.Habilidade when comeca("LER MANUAL ") => (Risco.Leitura, "Só leitura"),
+            Ferramentas.Habilidade => (Risco.Cuidado, "Roda uma habilidade"),
+            Ferramentas.Arquivos when comeca("APAGAR ") => (Risco.Cuidado, "Dá para restaurar"),
+            Ferramentas.Arquivos => (Risco.Cuidado, "Mexe em arquivos"),
+            Ferramentas.Navegador when comeca("ABRIR SITE NOVO ") => (Risco.Cuidado, "Abre um site"),
+            Ferramentas.Navegador when comeca("ANOTAR ") => (Risco.Leitura, "Guarda uma nota"),
+            Ferramentas.Navegador => (Risco.Cuidado, "Age no site, com seu login"),
+            Ferramentas.Lembrar => (Risco.Leitura, "Guarda na memória"),
+            Ferramentas.Pesquisar => (Risco.Cuidado, "Manda a consulta para fora"),
+            Ferramentas.Lembrete => (Risco.Cuidado, "Agenda uma fala"),
+            Ferramentas.Documento when comeca("CRIAR ") => (Risco.Cuidado, "Cria um arquivo"),
+            Ferramentas.Documento when comeca("LER ") => (Risco.Leitura, "Só leitura"),
+            // Só aparência: nenhum valor se perde, e o Desfazer devolve o original (19/10/2026).
+            Ferramentas.Documento when comeca("FORMATAR ") => (Risco.Cuidado, "Muda a formatação"),
+            // Word: a edição entra como controle de alterações — nada se perde, tudo se rejeita lá.
+            Ferramentas.Documento when alvo.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)
+                => (Risco.Cuidado, "Sugere alterações"),
+            Ferramentas.Documento => (Risco.Destrutivo, "Edita o arquivo original"),
+            _ => (Risco.Destrutivo, "Ação destrutiva")
+        };
+    }
+
+    /// <summary>O risco pintado — para o ensaio conferir sem comparar pincel.</summary>
+    public Risco Pintado { get; private set; } = Risco.Destrutivo;
+
+    /// <summary>
+    /// Prepara o card para a janela flutuante: sem a casca de bolha (a janela já tem a dela),
+    /// pill e "Permitir" na cor do risco, e o antes e depois do edit com as linhas coloridas.
+    /// </summary>
+    /// <param name="shadow">O pedido veio da conversa do orbe: mostra o selo "Shadow".</param>
+    public void ParaFlutuante(bool shadow = false)
+    {
+        SeloShadow.Visibility = shadow ? Visibility.Visible : Visibility.Collapsed;
+
+        Casca.Background = System.Windows.Media.Brushes.Transparent;
+        Casca.BorderThickness = new Thickness(0);
+        Casca.Padding = new Thickness(0);
+        Casca.Effect = null;
+
+        // Na flutuante quem dá a largura é a janela (a da barra do Shadow). Com o alinhamento à
+        // esquerda e o teto de 560 da bolha, o card ficava do tamanho do texto e a metade direita
+        // da janela, vazia (visto no uso, 21/10/2026).
+        HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+        Casca.MaxWidth = double.PositiveInfinity;
+
+        var (risco, rotulo) = RiscoDe(_ferramenta, _alvo, _bloqueado);
+        Pintado = risco;
+        PillTexto.Text = rotulo;
+
+        var (texto, fundo, borda, botao) = risco switch
+        {
+            Risco.Cuidado => ("WarnBrush", "WarnFill10Brush", "WarnBorderBrush", "WarnFilledButton"),
+            Risco.Leitura => ("AccentLilacBrush", "AccentFill12Brush", "AccentBorderStrongBrush", "AccentFilledButton"),
+            _ => ("DangerTextBrush", "DangerFill14Brush", "DangerEdge32Brush", "DangerFilledButton")
+        };
+
+        Pill.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, fundo);
+        Pill.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, borda);
+        PillTexto.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, texto);
+        PillIcone.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, texto);
+        PermitirButton.SetResourceReference(StyleProperty, botao);
+        FerramentaText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, texto);
+
+        if (_ferramenta == Ferramentas.Editar && PreviaBorder.Visibility == Visibility.Visible)
+            ColorirDiferenca(PreviaText);
+    }
+
+    /// <summary>
+    /// As linhas "-" com fundo vermelho e as "+" com fundo verde. Só o fundo: a fonte e os
+    /// sinais ficam, e a captura em tons de cinza continua legível pelo - e pelo +.
+    /// </summary>
+    private void ColorirDiferenca(System.Windows.Controls.TextBlock alvo)
+    {
+        string texto = alvo.Text ?? "";
+        alvo.Inlines.Clear();
+
+        var linhas = texto.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
+        for (int i = 0; i < linhas.Length; i++)
+        {
+            var run = new System.Windows.Documents.Run(linhas[i]);
+
+            if (linhas[i].StartsWith("-", StringComparison.Ordinal))
+                run.SetResourceReference(System.Windows.Documents.TextElement.BackgroundProperty, "DangerFill12Brush");
+            else if (linhas[i].StartsWith("+", StringComparison.Ordinal))
+                run.SetResourceReference(System.Windows.Documents.TextElement.BackgroundProperty, "SuccessFill10Brush");
+
+            alvo.Inlines.Add(run);
+            if (i < linhas.Length - 1) alvo.Inlines.Add(new System.Windows.Documents.LineBreak());
+        }
     }
 
     private void Permitir_Click(object sender, RoutedEventArgs e) => Encerrar(true);
