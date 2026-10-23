@@ -47,11 +47,15 @@ public static class ProvedoresDeIa
     /// <summary>
     /// Sugestões para a lista da tela, dos mais baratos aos mais caros. A caixa é editável: o
     /// Google lança modelo mais depressa do que esta lista é corrigida.
+    /// <para>
+    /// Sem a família 2.5: o Google só a serve a quem já a usava. Visto em 23/10/2026: escolhido o
+    /// <c>gemini-2.5-pro</c> da lista, a conversa, o orbe e o título falharam com 404.
+    /// </para>
     /// </summary>
     public static IReadOnlyList<string> ModelosDoGoogle { get; } = new[]
     {
-        ModeloPadraoDoGoogle, "gemini-flash-lite-latest", "gemini-2.5-flash-lite", "gemini-2.5-flash",
-        "gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-pro"
+        ModeloPadraoDoGoogle, "gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite",
+        "gemini-3.8-flash", "gemini-3.1-pro-preview", "gemini-4-argon"
     };
 
     /// <summary>

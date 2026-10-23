@@ -39,6 +39,16 @@ namespace AIB.Tests
             ProvedoresDeIa.NormalizarUrlDoOllama(entrada).Should().Be(esperado);
         }
 
+        // Caso real (23/10/2026): o usuário escolheu "gemini-2.5-pro" na lista de sugestões e a
+        // conversa, o orbe e o título falharam com "O Google não encontrou o modelo (404)". A
+        // família 2.5 só é servida a quem já a usava; a lista não pode oferecê-la.
+        [Fact]
+        public void ASugestaoDoGoogle_NaoOfereceAFamilia25()
+        {
+            ProvedoresDeIa.ModelosDoGoogle.Should().NotContain(m => m.StartsWith("gemini-2.5", StringComparison.Ordinal));
+            ProvedoresDeIa.ModelosDoGoogle.Should().Contain(ProvedoresDeIa.ModeloPadraoDoGoogle);
+        }
+
         [Fact]
         public void OEnderecoPadrao_JaEstaNormalizado()
         {
