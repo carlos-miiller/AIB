@@ -392,9 +392,11 @@ raciocínio continuam só nos testes.
 
 - **Chave:** cofre `google` (`ProvedoresDeIa.SistemaDaChave`), guardada pela aba Conexão LLM.
   O formato aceito é frouxo (30+ caracteres sem espaço): o Google emite mais de um.
-- **Modelo:** padrão `gemini-flash-latest`; `ProvedoresDeIa.ModelosDoGoogle` é só a lista de
-  sugestões da tela, e a caixa é editável. Sem a família 2.5: o Google só a serve a quem já a
-  usava, e escolhida dava 404.
+- **Modelo:** padrão `gemini-flash-latest`. A lista da tela vem da chave (`CatalogoDoGoogle`:
+  `GET /v1beta/models`, grátis, só os Gemini que aceitam `generateContent` e não são de imagem,
+  voz ou embedding; `-latest` primeiro). Sem chave ou sem rede, a fixa
+  `ProvedoresDeIa.ModelosDoGoogle`, sem a família 2.5 — o Google só a serve a quem já a usava, e
+  escolhida dava 404. A caixa é editável.
 - **Raciocínio:** `reasoning_effort` (`none`, `low`, `medium`, `high`; "padrão do modelo" não
   manda o campo). Modelo que recusa `none` com 400 (os Pro) recebe o pedido de novo sem o
   campo, e o provider lembra (`_naoDesliga`).

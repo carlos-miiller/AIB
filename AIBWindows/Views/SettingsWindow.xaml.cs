@@ -67,6 +67,10 @@ public partial class SettingsWindow : Window
     /// <summary>O catálogo do OpenRouter, quando já chegou. Dá a janela e o preço do modelo escolhido.</summary>
     private IReadOnlyList<AIB.Services.Ai.ModeloDoOpenRouter> _catalogo = Array.Empty<AIB.Services.Ai.ModeloDoOpenRouter>();
 
+    /// <summary>Os modelos do Google: a lista fixa até a chave trazer a de verdade (<see cref="CarregarModelosDoGoogleAsync"/>).</summary>
+    private IReadOnlyList<string> _modelosDoGoogle = ProvedoresDeIa.ModelosDoGoogle;
+    private bool _googleConsultado;
+
     private static readonly System.Net.Http.HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
 
     private readonly SettingsService _settingsService;
@@ -316,7 +320,7 @@ public partial class SettingsWindow : Window
             else if (google)
             {
                 GoogleUrlTextBox.Text = ProvedoresDeIa.UrlDoGoogle;
-                GoogleModelComboBox.ItemsSource = ProvedoresDeIa.ModelosDoGoogle.ToList();
+                GoogleModelComboBox.ItemsSource = _modelosDoGoogle.ToList();
                 GoogleModelComboBox.Text = perfil.Modelo;
             }
             else
@@ -352,8 +356,8 @@ public partial class SettingsWindow : Window
 
         async System.Threading.Tasks.Task openRouterOuOllama(string p)
         {
-            // O Google não tem catálogo a buscar: a lista dele é fixa, de sugestões.
             if (p == ProvedoresDeIa.OpenRouter) await CarregarCatalogoAsync();
+            else if (p == ProvedoresDeIa.Google) await CarregarModelosDoGoogleAsync();
             else if (p == ProvedoresDeIa.Ollama) await RefreshModelsAsync();
         }
     }
@@ -563,6 +567,37 @@ public partial class SettingsWindow : Window
         {
             OpenRouterLoadingProgress.Visibility = Visibility.Collapsed;
         }
+    }
+
+    /// <summary>
+    /// Os modelos que a chave do Google enxerga, nas duas listas que os usam: conversa e triagem.
+    /// Uma consulta por janela. Sem chave ou sem rede, fica a lista fixa, e a caixa aceita digitar.
+    /// </summary>
+    private async System.Threading.Tasks.Task CarregarModelosDoGoogleAsync()
+    {
+        if (_googleConsultado) return;
+        _googleConsultado = true;
+
+        string chave = AIB.Services.Ai.ChatProviderFactory.ChaveDe(ProvedoresDeIa.Google);
+        var lista = await AIB.Services.Ai.CatalogoDoGoogle.ListarAsync(_http, chave);
+        if (lista.Count == 0) return;
+
+        _modelosDoGoogle = lista;
+
+        bool antes = _carregando;
+        _carregando = true;
+        try
+        {
+            string atual = GoogleModelComboBox.Text;
+            GoogleModelComboBox.ItemsSource = _modelosDoGoogle.ToList();
+            GoogleModelComboBox.Text = atual;
+        }
+        finally
+        {
+            _carregando = antes;
+        }
+
+        EncherModelosDaTriagem();
     }
 
     /// <summary>Os campos da aba Memória que não são porcentagem.</summary>
@@ -2044,7 +2079,7 @@ public partial class SettingsWindow : Window
             TriagemModeloComboBox.ItemsSource = (TriagemProvedorComboBox.SelectedItem as string) switch
             {
                 ProvedoresDeIa.OpenRouter => _catalogo.Select(m => m.Id).ToList(),
-                ProvedoresDeIa.Google => ProvedoresDeIa.ModelosDoGoogle.ToList(),
+                ProvedoresDeIa.Google => _modelosDoGoogle.ToList(),
                 _ => (ModelComboBox.ItemsSource as IEnumerable<string>)?.ToList()
             };
             TriagemModeloComboBox.Text = atual;
@@ -2056,6 +2091,8 @@ public partial class SettingsWindow : Window
 
         if (TriagemProvedorComboBox.SelectedItem as string == ProvedoresDeIa.OpenRouter && _catalogo.Count == 0)
             _ = CarregarCatalogoAsync();
+        if (TriagemProvedorComboBox.SelectedItem as string == ProvedoresDeIa.Google && !_googleConsultado)
+            _ = CarregarModelosDoGoogleAsync();
     }
 
     /// <summary>
