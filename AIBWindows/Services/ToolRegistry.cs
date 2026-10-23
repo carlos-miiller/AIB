@@ -89,6 +89,7 @@ public class ToolRegistry
         => _tools.Values
             .Where(t => t.RequiredLevel <= userLevel)
             .Where(t => t.Name != Ferramentas.LerEmail || EmConversaDeEmail)
+            .Where(t => t.Oferecida)
             .Select(t => t.ChatToolDefinition)
             .ToList();
 

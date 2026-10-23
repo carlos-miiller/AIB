@@ -42,6 +42,7 @@ Renomear uma ferramenta é mudar só a constante.
 | `remember` (`Lembrar`) | `LembrarTool` | 1 | não — mas **com texto de terceiros no contexto vai ao cartão** (`SoComFalaDoUsuario`: `GUARDAR NA MEMÓRIA: "fato"`, sem "sempre"; sem interface, recusa) | Guarda no `facts.md` um fato que o usuário contou sobre si (`- sobre o usuário: …`). Sem segredo, uma frase (200), teto de 60. Na tela vira o aviso "<persona> lembrará disso…", fora da cadeia de ações. |
 | `doc` (`Documento`) | `DocTool` | 1 (gravar: piso tipado no Nível 2) | **por ação** — `info`/`read`/`find`/`query` não perguntam (fora de `~/.AIB`); `create`/`edit` **sempre** perguntam, sem "sempre", com o plano no cartão | Planilhas (.xlsx .xlsm .xls .csv), Word (.docx) e PDF: visão geral, trecho com endereço (célula, ¶, página), busca, contas em C# e gravação com cópia do original (§7). |
 | `remind` (`Lembrete`) | `LembreteTool` | 1 | não — mas **com texto de terceiros no contexto, criar e cancelar vão ao cartão** (`PedeFalaDoUsuario`; listar não) | Lembrete único: `create` (`at` "HH:mm" — já passou, é amanhã — ou "yyyy-MM-dd HH:mm"; ou `in_minutes`; `text` é a fala da persona na hora), `list`, `cancel` por `id`. Grava em `~/.AIB/lembretes.json` (`Lembretes`, teto 50, até um ano). Quem entrega é a agenda do `App`, sem chamar o modelo. |
+| `web_search` (`Pesquisar`) | `PesquisaWebTool` | 1 | não — mas **com texto de terceiros no contexto vai ao cartão** (`SoComFalaDoUsuario`: `PESQUISAR NA INTERNET: "consulta"`, sem "sempre"; sem interface, recusa) | Pesquisa na internet pela busca do **provedor** e devolve resumo + fontes numeradas (§7). Registrada pelo `App` (`Registrar`), depois da fábrica de provedores. |
 
 Detalhes de registro:
 
@@ -52,8 +53,10 @@ Detalhes de registro:
   deixar o modelo chutar sobre a caixa.
 - **`mail_read` é registrada sempre, mas só é oferecida** (`GetActiveTools`) quando a conversa está
   ligada a um e-mail (`ChaveDaConversaDeEmail` não vazia).
-- `GetActiveTools(userLevel)` corta do schema as ferramentas acima do nível do usuário.
-- **A `Description` é paga em TODA requisição.** As nove de antes somavam 1.951 caracteres (eram 2.056); o `browser` acrescenta cerca de 290 e o `remember` e o `remind` cerca de 200 cada, e o `doc` cerca de 450 (teto próprio no teste). A
+- `GetActiveTools(userLevel)` corta do schema as ferramentas acima do nível do usuário, e as que
+  respondem `ITool.Oferecida = false`: o `web_search` só é oferecido quando o provedor da conversa
+  tem busca (`IChatProvider.TemPesquisa`) — no Ollama não tem, e o schema seria pago à toa.
+- **A `Description` é paga em TODA requisição.** As nove de antes somavam 1.951 caracteres (eram 2.056); o `browser` acrescenta cerca de 290 e o `remember` e o `remind` cerca de 200 cada, e o `doc` cerca de 450, e o `web_search` cerca de 190 (teto próprio no teste). A
   regra de redação: cada uma diz uma capacidade que o modelo não adivinharia (o `write` cria
   pasta), uma fronteira com a ferramenta vizinha (o `shell` não é para arquivo; o `edit` não cria
   arquivo) e o teto que muda a decisão antes de chamar (100 no `glob`, 60 no `grep`, 30 s no
@@ -699,6 +702,33 @@ palavra de 12+ caracteres com maiúscula, minúscula e 2+ números, ou 16 minús
 teste no Bitrix a vista trouxe duas credenciais coladas num chat.
 
 ---
+
+### `web_search` — `PesquisaWebTool` e `IChatProvider.PesquisarAsync`
+
+Pedido em 23/10/2026; o usuário escolheu a busca **nativa do provedor** em vez de uma busca pelo
+navegador. Antes a persona só achava coisa na web abrindo o Google no `browser`: a página inteira em
+tokens, e captcha de navegador automatizado.
+
+- **Chamada à parte, não busca ligada na conversa.** A ferramenta pede ao provedor da conversa
+  (`ChatProviderFactory.GetProvider` com as configurações lidas na hora) uma chamada só de busca
+  (`PesquisarAsync`, prazo de 120 s). O `openrouter:web_search` ligado na conversa faria o modelo
+  buscar sozinho, mas o texto das páginas entraria no histórico sem passar pelo `ToolRegistry`: sem
+  `MarcaDeConteudo`, sem `Segredos.Redigir` e sem aparecer na tela. Assim, o resultado é o de uma
+  ferramenta qualquer (`TrazemConteudo` inclui `web_search`).
+- **Por provedor** (02, §6.1): OpenRouter com o plugin `web` (sem motor: busca nativa do modelo
+  quando existe, Exa nos outros, US$ 0,007 por busca mais os tokens; `max_results` 5; raciocínio
+  desligado; `data_collection: deny` se ligado); Google pelo `generateContent` nativo com
+  `google_search` (o endpoint compatível ignora a busca no chat). Ollama: `TemPesquisa` falso, a
+  ferramenta não é oferecida.
+- **Resultado** (`PesquisaWebTool.Formatar`): o resumo do modelo (pedido em `Pesquisa.Instrucao`:
+  português, até 12 linhas, só o que as fontes dizem) e `Fontes:` numeradas, título — URL e, no
+  OpenRouter, o trecho da página (até 300). O custo relatado vai ao console (`[web_search]`); ele
+  **não** entra na soma de custo da conversa.
+- **Pré-voo:** consulta vazia, acima de 300 caracteres ou com cara de segredo (`Segredos`) é
+  recusada — a consulta sai do computador para um buscador.
+- **Portão:** não pergunta (só lê, e o provedor já recebe a conversa inteira). Com e-mail ou
+  página no contexto, vai ao cartão com a consulta exata: uma ordem escondida no texto de fora
+  poderia mandar o conteúdo dele dentro de uma consulta.
 
 ### `doc` — `DocTool` e `Services/Documentos/`
 

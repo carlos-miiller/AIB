@@ -89,7 +89,7 @@ public static class ToolIcons
         Ferramentas.Procurar => Procurar,
         Ferramentas.Buscar => Buscar,
         Ferramentas.Email or Ferramentas.LerEmail => Email,
-        Ferramentas.Navegador => Navegador,
+        Ferramentas.Navegador or Ferramentas.Pesquisar => Navegador,
         Ferramentas.Shell => Terminal,
         Ferramentas.Habilidade => Habilidade,
         Ferramentas.Documento => Documento,

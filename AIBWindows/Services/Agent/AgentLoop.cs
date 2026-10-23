@@ -465,7 +465,7 @@ public sealed class AgentLoop
     {
         Ferramentas.Ler, Ferramentas.Buscar, Ferramentas.Procurar, Ferramentas.Shell,
         Ferramentas.Habilidade, Ferramentas.Email, Ferramentas.LerEmail, Ferramentas.Navegador,
-        Ferramentas.Documento
+        Ferramentas.Documento, Ferramentas.Pesquisar
     };
 
     /// <summary>

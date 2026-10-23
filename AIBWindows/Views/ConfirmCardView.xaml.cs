@@ -66,6 +66,7 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Navegador when alvo.StartsWith("ANOTAR ", StringComparison.Ordinal) => "Guardar esta anotação?",
             Ferramentas.Navegador => "Clicar nesta página?",
             Ferramentas.Lembrar => "Guardar isto na memória?",
+            Ferramentas.Pesquisar => "Pesquisar isto na internet?",
             Ferramentas.Lembrete when alvo.StartsWith("CANCELAR ", StringComparison.Ordinal) => "Cancelar este lembrete?",
             Ferramentas.Lembrete => "Agendar este lembrete?",
             Ferramentas.Documento when alvo.StartsWith("LER ", StringComparison.Ordinal) => "Ler este arquivo?",
@@ -104,6 +105,9 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Lembrar =>
                 "Fica valendo em todas as próximas conversas. Dá para rever e apagar em "
                 + "Configurações > Memória.",
+            Ferramentas.Pesquisar =>
+                "A consulta acima sai para o buscador do provedor de IA. A conversa tem texto de "
+                + "fora (e-mail ou página): confira se o pedido foi seu.",
             Ferramentas.Lembrete when alvo.StartsWith("CANCELAR ", StringComparison.Ordinal) =>
                 "O lembrete sai da lista e não avisa mais.",
             Ferramentas.Lembrete =>
@@ -421,6 +425,7 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Navegador when comeca("ANOTAR ") => (Risco.Leitura, "Guarda uma nota"),
             Ferramentas.Navegador => (Risco.Cuidado, "Age no site, com seu login"),
             Ferramentas.Lembrar => (Risco.Leitura, "Guarda na memória"),
+            Ferramentas.Pesquisar => (Risco.Cuidado, "Manda a consulta para fora"),
             Ferramentas.Lembrete => (Risco.Cuidado, "Agenda uma fala"),
             Ferramentas.Documento when comeca("CRIAR ") => (Risco.Cuidado, "Cria um arquivo"),
             Ferramentas.Documento when comeca("LER ") => (Risco.Leitura, "Só leitura"),

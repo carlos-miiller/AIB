@@ -164,13 +164,18 @@ public sealed class GoogleProvider : IChatProvider
         return mensagens;
     }
 
-    private HttpRequestMessage Requisicao(string corpo)
+    /// <param name="nativo">
+    /// Endereço da API nativa (<c>generateContent</c>), que só a pesquisa usa. Ela pede a chave em
+    /// <c>x-goog-api-key</c>: o Bearer lá é token OAuth, e a chave do AI Studio seria recusada.
+    /// </param>
+    private HttpRequestMessage Requisicao(string corpo, string? nativo = null)
     {
-        var req = new HttpRequestMessage(HttpMethod.Post, _baseUrl + "/chat/completions")
+        var req = new HttpRequestMessage(HttpMethod.Post, nativo ?? _baseUrl + "/chat/completions")
         {
             Content = new StringContent(corpo, Encoding.UTF8, "application/json")
         };
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _chave);
+        if (nativo == null) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _chave);
+        else req.Headers.TryAddWithoutValidation("x-goog-api-key", _chave);
         return req;
     }
 
@@ -178,7 +183,7 @@ public sealed class GoogleProvider : IChatProvider
     /// Envia, repetindo o que é passageiro (408, 429, 5xx, rede) e só antes de a resposta
     /// começar. 400, 401, 403 e 404 não se repetem: são o pedido, a chave ou o modelo.
     /// </summary>
-    private async Task<HttpResponseMessage> EnviarAsync(string corpo, bool stream, CancellationToken ct)
+    private async Task<HttpResponseMessage> EnviarAsync(string corpo, bool stream, CancellationToken ct, string? nativo = null)
     {
         for (int tentativa = 0; ; tentativa++)
         {
@@ -190,7 +195,7 @@ public sealed class GoogleProvider : IChatProvider
 
             try
             {
-                using var req = Requisicao(corpo);
+                using var req = Requisicao(corpo, nativo);
                 resp = await _http.SendAsync(req,
                     stream ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead,
                     prazo.Token).ConfigureAwait(false);
@@ -476,6 +481,102 @@ public sealed class GoogleProvider : IChatProvider
 
     /// <summary>Nada a aquecer: o modelo roda do outro lado.</summary>
     public Task WarmupAsync(CancellationToken ct) => Task.CompletedTask;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Pesquisa na internet
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public bool TemPesquisa => true;
+
+    /// <summary>
+    /// O endereço nativo da pesquisa. O endpoint compatível com a OpenAI não liga a busca do Google
+    /// no chat (a documentação só a mostra na geração de imagem, e campo que ele não conhece é
+    /// ignorado em silêncio); o <c>generateContent</c> liga, com <c>google_search</c>.
+    /// </summary>
+    public string EnderecoDaPesquisa()
+    {
+        string raiz = _baseUrl.EndsWith("/openai", StringComparison.OrdinalIgnoreCase) ? _baseUrl[..^"/openai".Length] : _baseUrl;
+        string modelo = Model.StartsWith("models/", StringComparison.OrdinalIgnoreCase) ? Model["models/".Length..] : Model;
+        return $"{raiz}/models/{Uri.EscapeDataString(modelo)}:generateContent";
+    }
+
+    /// <summary>
+    /// O corpo da pesquisa. Sem teto de saída: nos modelos que raciocinam o pensamento conta nele,
+    /// e um teto curto devolveria resposta vazia. O pedido de sistema já pede curto.
+    /// <para>
+    /// Custo (nos Gemini 3 em diante): por busca que o modelo faz, 5.000 por mês grátis, depois
+    /// US$ 14 a cada mil. Nos 2.5 e anteriores, por pedido.
+    /// </para>
+    /// </summary>
+    public static string MontarCorpoDaPesquisa(string consulta) => new JsonObject
+    {
+        ["systemInstruction"] = new JsonObject
+        {
+            ["parts"] = new JsonArray { new JsonObject { ["text"] = Pesquisa.Instrucao } }
+        },
+        ["contents"] = new JsonArray
+        {
+            new JsonObject
+            {
+                ["role"] = "user",
+                ["parts"] = new JsonArray { new JsonObject { ["text"] = consulta } }
+            }
+        },
+        ["tools"] = new JsonArray { new JsonObject { ["google_search"] = new JsonObject() } }
+    }.ToJsonString();
+
+    public async Task<ResultadoDaPesquisa> PesquisarAsync(string consulta, CancellationToken ct)
+    {
+        using var resp = await EnviarAsync(MontarCorpoDaPesquisa(consulta), stream: false, ct, EnderecoDaPesquisa())
+            .ConfigureAwait(false);
+        string json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        return LerPesquisa(json);
+    }
+
+    /// <summary>
+    /// A resposta do <c>generateContent</c>: o texto das partes (sem as de pensamento) e as
+    /// fontes de <c>groundingMetadata.groundingChunks[].web</c>. O Google não manda trecho da
+    /// página, e o endereço é um redirecionamento dele que leva à página. Público para ensaio.
+    /// </summary>
+    public static ResultadoDaPesquisa LerPesquisa(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var texto = new StringBuilder();
+        var fontes = new List<FonteDaPesquisa>();
+
+        if (doc.RootElement.TryGetProperty("candidates", out var cands) && cands.ValueKind == JsonValueKind.Array
+            && cands.GetArrayLength() > 0 && cands[0] is { ValueKind: JsonValueKind.Object } cand)
+        {
+            if (cand.TryGetProperty("content", out var conteudo) && conteudo.ValueKind == JsonValueKind.Object
+                && conteudo.TryGetProperty("parts", out var partes) && partes.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var parte in partes.EnumerateArray())
+                {
+                    if (parte.ValueKind != JsonValueKind.Object) continue;
+                    if (parte.TryGetProperty("thought", out var pensou) && pensou.ValueKind == JsonValueKind.True) continue;
+                    if (parte.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String) texto.Append(t.GetString());
+                }
+            }
+
+            if (cand.TryGetProperty("groundingMetadata", out var meta) && meta.ValueKind == JsonValueKind.Object
+                && meta.TryGetProperty("groundingChunks", out var pedacos) && pedacos.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var p in pedacos.EnumerateArray())
+                {
+                    if (p.ValueKind != JsonValueKind.Object
+                        || !p.TryGetProperty("web", out var web) || web.ValueKind != JsonValueKind.Object) continue;
+
+                    string url = web.TryGetProperty("uri", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() ?? "" : "";
+                    if (url.Length == 0 || fontes.Exists(f => f.Url == url)) continue;
+
+                    string titulo = web.TryGetProperty("title", out var ti) && ti.ValueKind == JsonValueKind.String ? ti.GetString() ?? "" : "";
+                    fontes.Add(new FonteDaPesquisa(titulo, url, ""));
+                }
+            }
+        }
+
+        return new ResultadoDaPesquisa(texto.ToString(), fontes);
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
 

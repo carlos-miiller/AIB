@@ -120,6 +120,13 @@ public interface ITool
     /// </summary>
     bool SoComFalaDoUsuario => false;
 
+    /// <summary>
+    /// Se o schema vai ao modelo agora. Default verdadeiro. O <c>web_search</c> responde pelo
+    /// provedor: no Ollama, que não tem busca, ele custaria tokens em toda requisição para só
+    /// responder erro.
+    /// </summary>
+    bool Oferecida => true;
+
     /// <summary>A mesma pergunta, para ESTA chamada: ler o que já existe não precisa de cartão.</summary>
     bool PedeFalaDoUsuario(string argumentsJson) => SoComFalaDoUsuario;
 

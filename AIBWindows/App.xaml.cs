@@ -690,6 +690,10 @@ public partial class App : System.Windows.Application
             _tokenCounter = new TokenCounter();
             _healer = new RegexToolCallHealer();
             _providerFactory = new ChatProviderFactory(_httpClient, _healer);
+
+            // Depois da fábrica: a pesquisa é feita pelo provedor da conversa, lido na hora.
+            _toolRegistry.Registrar(new Services.Tools.PesquisaWebTool(
+                () => _providerFactory.GetProvider(_settingsService.LoadSettings())));
             _agentLoop = new AgentLoop(_toolRegistry, _providerFactory, _settingsService, _tokenCounter);
             _conversation = new ConversationService(_settingsService, _toolRegistry, _agentLoop,
                                                     _tokenCounter, _providerFactory);

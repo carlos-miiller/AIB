@@ -777,6 +777,82 @@ public sealed class OpenRouterProvider : IChatProvider
     public Task WarmupAsync(CancellationToken ct) => Task.CompletedTask;
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Pesquisa na internet
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public bool TemPesquisa => true;
+
+    /// <summary>
+    /// O corpo da pesquisa: o plugin <c>web</c>, sem motor escolhido. Assim o OpenRouter usa a
+    /// busca nativa do modelo quando ela existe (OpenAI, Anthropic, Gemini, Grok, Perplexity) e a
+    /// do Exa nos outros — US$ 0,007 por busca, mais os tokens. Público para ensaio.
+    /// </summary>
+    public string MontarCorpoDaPesquisa(string consulta)
+    {
+        var corpo = new JsonObject
+        {
+            ["model"] = Model,
+            ["stream"] = false,
+            ["messages"] = new JsonArray
+            {
+                new JsonObject { ["role"] = "system", ["content"] = Pesquisa.Instrucao },
+                new JsonObject { ["role"] = "user", ["content"] = consulta }
+            },
+            ["plugins"] = new JsonArray
+            {
+                new JsonObject { ["id"] = "web", ["max_results"] = Pesquisa.Resultados }
+            },
+            ["usage"] = new JsonObject { ["include"] = true },
+
+            // Resumir o que as páginas dizem não ganha nada com raciocínio, e aqui ele é pago.
+            ["reasoning"] = new JsonObject { ["enabled"] = false }
+        };
+
+        if (_semColetaDeDados) corpo["provider"] = new JsonObject { ["data_collection"] = "deny" };
+        return corpo.ToJsonString();
+    }
+
+    public async Task<ResultadoDaPesquisa> PesquisarAsync(string consulta, CancellationToken ct)
+    {
+        using var resp = await EnviarAsync(MontarCorpoDaPesquisa(consulta), stream: false, ct).ConfigureAwait(false);
+        string json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        return LerPesquisa(json);
+    }
+
+    /// <summary>
+    /// A resposta da pesquisa: o texto e as fontes de <c>message.annotations</c>
+    /// (<c>url_citation</c>, com o trecho em <c>content</c> quando o OpenRouter o tem). Público
+    /// para ensaio. Erro no corpo de um 200 vira exceção, como no stream.
+    /// </summary>
+    public static ResultadoDaPesquisa LerPesquisa(string json)
+    {
+        var trecho = LerTrecho(json);
+        if (trecho.Erro != null) throw new InvalidOperationException("OpenRouter: " + trecho.Erro);
+
+        var fontes = new List<FonteDaPesquisa>();
+        using var doc = JsonDocument.Parse(json);
+
+        if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array
+            && choices.GetArrayLength() > 0
+            && choices[0].TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.Object
+            && msg.TryGetProperty("annotations", out var notas) && notas.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var nota in notas.EnumerateArray())
+            {
+                if (nota.ValueKind != JsonValueKind.Object
+                    || !nota.TryGetProperty("url_citation", out var c) || c.ValueKind != JsonValueKind.Object) continue;
+
+                string url = Texto(c, "url") ?? "";
+                if (url.Length == 0 || fontes.Exists(f => f.Url == url)) continue;
+
+                fontes.Add(new FonteDaPesquisa(Texto(c, "title") ?? "", url, Texto(c, "content") ?? ""));
+            }
+        }
+
+        return new ResultadoDaPesquisa(trecho.Texto ?? "", fontes, trecho.Uso?.CustoUsd);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// O erro como o usuário consegue agir sobre ele. 401 e 402 são os dois que acontecem de
