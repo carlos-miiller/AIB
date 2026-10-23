@@ -750,6 +750,18 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
 - **`query`** (`ConsultaDePlanilha`): filtrar, agrupar, somar, contar, média, mínimo, máximo e
   ordenar, em C#. Coluna por cabeçalho ou letra. Célula não numérica numa soma é ignorada **e
   contada** na resposta. Existe porque somar 300 linhas lidas como texto é onde o modelo erra.
+  A aba vem de `sheet`, ao lado de `query` ou dentro dela (a Ellen a punha dentro e recebia "a
+  consulta não conhece sheet", e concluiu que a query só via a primeira aba).
+- **Abas** (relatório de QA da Ellen, 23/10/2026): `add_sheet`, `rename_sheet` e `move_sheet`
+  aceitam o nome no valor da chave (`{add_sheet:"Resumo"}`, `{rename_sheet:"Velho", to}`) ou a
+  chave como marca com o nome em `sheet`/`name` (`{add_sheet:true, sheet:"Resumo"}`, que antes
+  dava "operação desconhecida"). São tratadas antes de resolver a aba da operação, porque ali
+  `sheet` é a aba que vai nascer. `position` (1 = primeira) em `add_sheet` e `move_sheet`. Nome
+  de aba conferido antes (31 caracteres, sem `: \ / ? * [ ]`, sem repetir). Operação
+  desconhecida diz as chaves que chegaram.
+- **`rows`** (`insert_rows`, `create`): lista de linhas, cada linha uma lista. Uma lista de
+  valores soltos vira uma linha; a lista mandada como texto JSON é lida. O resto recusa com o
+  formato esperado e o que chegou ("a linha 2 chegou como um objeto").
 - **Gravar** (`create`, `edit`) — .xlsx/.xlsm/.csv (`EditorDePlanilha`) e .docx (`EditorDeDocx`):
   1. `Validar` recusa antes do cartão: formato que não se grava (.xls, PDF), pasta de dados do
      AIB, e qualquer plano que não se monta (célula inválida, trecho do Word ambíguo ou ausente).

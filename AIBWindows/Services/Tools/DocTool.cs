@@ -70,11 +70,11 @@ public class DocTool : ITool
             "properties": {
                 "action": { "type": "string", "enum": ["info", "read", "find", "query", "create", "edit"] },
                 "path": { "type": "string", "description": "Caminho absoluto." },
-                "sheet": { "type": "string", "description": "Aba (planilha). Sem ela, a primeira." },
+                "sheet": { "type": "string", "description": "Aba (planilha) de read, find, query e edit. Sem ela, a primeira." },
                 "range": { "type": "string", "description": "read: 'A1:F200' ou '10:60' (linhas); Word: '¶' '12-40'; PDF: páginas '2-4'." },
                 "text": { "type": "string", "description": "find: o texto." },
                 "query": { "type": "object", "description": "{where:[{col,op:'= != > < >= <= contains',value}], group:col, agg:[{fn:'sum|count|avg|min|max',col}], sort:'-col', limit, visible:true (só linhas visíveis, como o SUBTOTAL)}. col = cabeçalho ou letra." },
-                "ops": { "type": "array", "items": { "type": "object" }, "description": "edit. Planilha: {cell:'B2',value} ('=' inicia fórmula) | {range:'D2:D50',value:'=B{row}*2'} | {insert_rows:N,rows:[[..]]} (antes da linha N) | {delete_rows:'18:19'} | {add_sheet} | {rename_sheet,to} | cell/range + style:{bold,italic,underline,color,fill,size,font,border:'all|outline|top|bottom|double|none',align,valign,wrap,number_format:'moeda|porcentagem|data|#,##0.00'} (value opcional) | {columns:'A:F',width:N|'auto'} | {freeze:'B2'|'none'} | {range,conditional:{when:'> < = between contains duplicates',value,style}|{scale:'verde-vermelho'}|{bar:cor}|{icons:'setas|semaforo'}} | {clear_conditional:range}; cor: #RRGGBB ou nome ('amarelo claro'); todas aceitam sheet. Word: {replace:'texto exato',with} | {insert_after:¶,text,style:'Heading1|Heading2|List|Normal'} | {delete:¶} | {table:1,row,col,value}." },
+                "ops": { "type": "array", "items": { "type": "object" }, "description": "edit. Planilha: {cell:'B2',value} ('=' inicia fórmula) | {range:'D2:D50',value:'=B{row}*2'} | {insert_rows:N,rows:[[..]]} (antes da linha N) | {delete_rows:'18:19'} | {add_sheet:'Nome',position?} | {rename_sheet:'Velho',to} | {move_sheet:'Nome',position:1} (1 = primeira) | cell/range + style:{bold,italic,underline,color,fill,size,font,border:'all|outline|top|bottom|double|none',align,valign,wrap,number_format:'moeda|porcentagem|data|#,##0.00'} (value opcional) | {columns:'A:F',width:N|'auto'} | {freeze:'B2'|'none'} | {range,conditional:{when:'> < = between contains duplicates',value,style}|{scale:'verde-vermelho'}|{bar:cor}|{icons:'setas|semaforo'}} | {clear_conditional:range}; cor: #RRGGBB ou nome ('amarelo claro'); todas aceitam sheet. Word: {replace:'texto exato',with} | {insert_after:¶,text,style:'Heading1|Heading2|List|Normal'} | {delete:¶} | {table:1,row,col,value}." },
                 "content": { "type": "object", "description": "create. Planilha: {sheets:[{name,rows:[[..]]}]}. Word: {blocks:[{style,text} | {list:[..]} | {table:[[..]]}]}." }
             },
             "required": ["action", "path"]
@@ -106,8 +106,13 @@ public class DocTool : ITool
             string acao = Texto(a, "action")?.Trim().ToLowerInvariant() ?? "";
             string caminho = PathArgumentRepair.Normalize(Texto(a, "path"), out bool reparado);
 
-            return new Argumentos(acao, caminho, Texto(a, "sheet"), Texto(a, "range"), Texto(a, "text"),
-                Objeto(a, "query", JsonValueKind.Object), Objeto(a, "ops", JsonValueKind.Array),
+            // A aba também vale dentro de 'query': é onde a Ellen a pôs, achando que a consulta
+            // só via a primeira aba (23/10/2026).
+            var consulta = Objeto(a, "query", JsonValueKind.Object);
+            string? aba = Texto(a, "sheet") ?? (consulta is { } q ? Texto(q, "sheet") : null);
+
+            return new Argumentos(acao, caminho, aba, Texto(a, "range"), Texto(a, "text"),
+                consulta, Objeto(a, "ops", JsonValueKind.Array),
                 Objeto(a, "content", JsonValueKind.Object), reparado);
         }
         catch (JsonException)

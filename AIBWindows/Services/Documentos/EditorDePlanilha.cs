@@ -82,6 +82,15 @@ public static class EditorDePlanilha
                 throw new ErroDeDocumento("CSV não guarda formatação; ofereça salvar uma cópia em .xlsx.");
             }
 
+            // As operações de ABA vêm antes de resolver a aba da operação: em
+            // {add_sheet:true, sheet:"Resumo"} o "sheet" é a aba que vai nascer, e resolvê-la
+            // antes recusava a operação por "não há aba".
+            if (OperacaoDeAba(wb, op, abaPadrao, i) is { } deAba)
+            {
+                outras.Add(deAba);
+                continue;
+            }
+
             var ws = Aba(wb, Texto(op, "sheet") ?? abaPadrao, i);
             if (!abasTocadas.Contains(ws.Name)) abasTocadas.Add(ws.Name);
 
@@ -305,22 +314,10 @@ public static class EditorDePlanilha
                 ws.Rows(de, ate).Delete();
                 estrutural = true;
             }
-            else if (Texto(op, "add_sheet") is { } nova)
-            {
-                if (wb.Worksheets.Contains(nova)) throw new ErroDeDocumento($"operação {i}: já existe a aba \"{nova}\".");
-                wb.AddWorksheet(nova);
-                outras.Add(new Mudanca(TipoDeMudanca.Valor, "aba nova", null, nova));
-            }
-            else if (Texto(op, "rename_sheet") is { } velho)
-            {
-                var alvo = Aba(wb, velho, i);
-                string novo = Texto(op, "to") ?? throw new ErroDeDocumento($"operação {i}: 'rename_sheet' precisa de 'to'.");
-                outras.Add(new Mudanca(TipoDeMudanca.Valor, "nome da aba", alvo.Name, novo));
-                alvo.Name = novo;
-            }
             else
             {
-                throw new ErroDeDocumento($"operação {i} desconhecida. Use cell, range, insert_rows, delete_rows, add_sheet, rename_sheet, columns, freeze ou clear_conditional.");
+                throw new ErroDeDocumento($"operação {i} desconhecida (chaves: {string.Join(", ", op.EnumerateObject().Select(p => p.Name))}). "
+                    + "Use cell, range, insert_rows, delete_rows, add_sheet, rename_sheet, move_sheet, columns, freeze ou clear_conditional.");
             }
         }
 
@@ -622,7 +619,9 @@ public static class EditorDePlanilha
             var ws = wb.AddWorksheet(nome);
             nomes.Add(nome);
 
-            var linhas = Linhas(a, "rows", i);
+            List<List<object?>> linhas;
+            try { linhas = Linhas(a, "rows", 0); }
+            catch (ErroDeDocumento ex) { throw new ErroDeDocumento($"aba \"{nome}\": {ex.Message}"); }
             for (int r = 0; r < linhas.Count; r++)
                 for (int c = 0; c < linhas[r].Count; c++)
                     Escrever(ws.Cell(r + 1, c + 1), linhas[r][c]);
@@ -897,19 +896,144 @@ public static class EditorDePlanilha
         _ => v.GetRawText()
     };
 
+    /// <summary>
+    /// As linhas de 'rows': lista de linhas, cada linha uma lista de valores (<c>[["a",1],["b",2]]</c>).
+    /// <para>
+    /// Aceita também os dois desvios que não deixam dúvida: uma lista de valores soltos é UMA
+    /// linha (<c>["a",1]</c>), e a lista inteira mandada como texto JSON é lida como lista. O
+    /// resto recusa dizendo o formato e o que chegou: antes, "cada linha é uma lista de valores"
+    /// não dizia qual linha nem o que veio, e a Ellen achou a falha abrupta (23/10/2026).
+    /// </para>
+    /// </summary>
     private static List<List<object?>> Linhas(JsonElement pai, string nome, int i)
     {
-        if (!pai.TryGetProperty(nome, out var linhas) || linhas.ValueKind != JsonValueKind.Array)
+        string exemplo = $"'{nome}' é uma lista de linhas, cada linha uma lista de valores: [[\"Nome\", \"Valor\"], [\"A\", 10]]";
+
+        if (!pai.TryGetProperty(nome, out var linhas) || linhas.ValueKind == JsonValueKind.Null)
             return new List<List<object?>>();
 
+        if (linhas.ValueKind == JsonValueKind.String)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(linhas.GetString() ?? "");
+                if (doc.RootElement.ValueKind != JsonValueKind.Array) throw new JsonException();
+                linhas = doc.RootElement.Clone();
+            }
+            catch (JsonException)
+            {
+                throw new ErroDeDocumento($"{Onde(i)}{exemplo}. Chegou um texto.");
+            }
+        }
+
+        if (linhas.ValueKind != JsonValueKind.Array)
+            throw new ErroDeDocumento($"{Onde(i)}{exemplo}. Chegou {Tipo(linhas)}.");
+
+        // Lista de valores soltos: uma linha só.
+        if (linhas.GetArrayLength() > 0 && linhas.EnumerateArray().All(l => l.ValueKind is not (JsonValueKind.Array or JsonValueKind.Object)))
+            return new List<List<object?>> { linhas.EnumerateArray().Select(DoJson).ToList() };
+
         var lista = new List<List<object?>>();
+        int n = 0;
         foreach (var l in linhas.EnumerateArray())
         {
-            if (l.ValueKind != JsonValueKind.Array) throw new ErroDeDocumento($"operação {i}: cada linha de '{nome}' é uma lista de valores.");
+            n++;
+            if (l.ValueKind != JsonValueKind.Array)
+                throw new ErroDeDocumento($"{Onde(i)}{exemplo}. A linha {n} chegou como {Tipo(l)}.");
             lista.Add(l.EnumerateArray().Select(DoJson).ToList());
             if (lista.Count * Math.Max(1, lista[^1].Count) > TetoDeCelulas) throw new ErroDeDocumento($"passa de {TetoDeCelulas} células.");
         }
         return lista;
+
+        static string Onde(int i) => i > 0 ? $"operação {i}: " : "";
+
+        static string Tipo(JsonElement e) => e.ValueKind switch
+        {
+            JsonValueKind.Object => "um objeto {...}",
+            JsonValueKind.String => "um texto",
+            JsonValueKind.Number => "um número",
+            JsonValueKind.True or JsonValueKind.False => "true/false",
+            _ => e.ValueKind.ToString()
+        };
+    }
+
+    /// <summary>
+    /// Criar, renomear e mover aba. Nulo quando a operação não é de aba.
+    /// <para>
+    /// Aceita o nome no valor da chave (<c>{add_sheet:"Resumo"}</c>) e também a chave como
+    /// marca, com o nome em <c>sheet</c>/<c>name</c> (<c>{add_sheet:true, sheet:"Resumo"}</c>).
+    /// Visto em 23/10/2026: a Ellen tentou a segunda forma, recebeu "operação desconhecida", e o
+    /// <c>rename_sheet</c> ela não conseguiu usar de jeito nenhum. Mover não existia: a aba nova
+    /// ia para o fim e, para pô-la na frente, só o PowerShell.
+    /// </para>
+    /// </summary>
+    private static Mudanca? OperacaoDeAba(XLWorkbook wb, JsonElement op, string? abaPadrao, int i)
+    {
+        if (op.TryGetProperty("add_sheet", out var add))
+        {
+            string nova = NomeDaOperacao(add, op) ?? throw new ErroDeDocumento(
+                $"operação {i}: 'add_sheet' precisa do nome: {{add_sheet:\"Resumo\"}} (opcional: position, 1 = primeira).");
+            ConferirNome(wb, nova, i);
+            var ws = wb.AddWorksheet(nova);
+            int? posicao = Posicao(op, wb, i, exigir: false);
+            if (posicao is int p) ws.Position = p;
+            return new Mudanca(TipoDeMudanca.Valor, "aba nova", null, posicao is int q ? $"{nova} (posição {q})" : nova);
+        }
+
+        if (op.TryGetProperty("rename_sheet", out var ren))
+        {
+            // {rename_sheet:"Velho", to} ou {rename_sheet:true, sheet:"Velho", to}; sem nome, a aba padrão.
+            string? velho = ren.ValueKind == JsonValueKind.String ? ren.GetString() : Texto(op, "sheet") ?? abaPadrao;
+            var alvo = Aba(wb, velho, i);
+            string novo = (Texto(op, "to") ?? Texto(op, "name"))?.Trim() ?? throw new ErroDeDocumento(
+                $"operação {i}: 'rename_sheet' precisa de 'to': {{rename_sheet:\"{alvo.Name}\", to:\"Novo nome\"}}.");
+            if (!string.Equals(novo, alvo.Name, StringComparison.OrdinalIgnoreCase)) ConferirNome(wb, novo, i);
+            string antes = alvo.Name;
+            alvo.Name = novo;
+            return new Mudanca(TipoDeMudanca.Valor, "nome da aba", antes, novo);
+        }
+
+        if (op.TryGetProperty("move_sheet", out var mov))
+        {
+            string? nome = mov.ValueKind == JsonValueKind.String ? mov.GetString() : Texto(op, "sheet") ?? abaPadrao;
+            var alvo = Aba(wb, nome, i);
+            int antes = alvo.Position;
+            int depois = Posicao(op, wb, i, exigir: true)!.Value;
+            alvo.Position = depois;
+            return new Mudanca(TipoDeMudanca.Valor, $"posição da aba \"{alvo.Name}\"", antes.ToString(CultureInfo.InvariantCulture),
+                depois.ToString(CultureInfo.InvariantCulture));
+        }
+
+        return null;
+    }
+
+    /// <summary>O nome da aba: no valor da chave, ou em 'sheet'/'name' quando a chave é só a marca.</summary>
+    private static string? NomeDaOperacao(JsonElement valor, JsonElement op)
+    {
+        string? nome = valor.ValueKind == JsonValueKind.String ? valor.GetString() : Texto(op, "sheet") ?? Texto(op, "name");
+        return string.IsNullOrWhiteSpace(nome) ? null : nome.Trim();
+    }
+
+    /// <summary>A posição (1 = primeira), entre 1 e o número de abas.</summary>
+    private static int? Posicao(JsonElement op, XLWorkbook wb, int i, bool exigir)
+    {
+        if (!op.TryGetProperty("position", out var p))
+            return exigir ? throw new ErroDeDocumento($"operação {i}: 'move_sheet' precisa de 'position' (1 = primeira aba).") : null;
+
+        int total = wb.Worksheets.Count;
+        if (p.ValueKind != JsonValueKind.Number || !p.TryGetInt32(out int n) || n < 1 || n > total)
+            throw new ErroDeDocumento($"operação {i}: 'position' é um número de 1 a {total} (1 = primeira aba).");
+        return n;
+    }
+
+    /// <summary>As regras do Excel para nome de aba, ditas antes de o ClosedXML lançar sem explicar.</summary>
+    private static void ConferirNome(XLWorkbook wb, string nome, int i)
+    {
+        if (nome.Length > 31) throw new ErroDeDocumento($"operação {i}: o nome \"{nome}\" tem {nome.Length} caracteres; o Excel aceita até 31.");
+        if (nome.IndexOfAny(new[] { ':', '\\', '/', '?', '*', '[', ']' }) >= 0 || nome.StartsWith('\'') || nome.EndsWith('\''))
+            throw new ErroDeDocumento($"operação {i}: nome de aba não pode ter : \\ / ? * [ ] nem começar ou terminar com apóstrofo.");
+        if (wb.Worksheets.Any(w => string.Equals(w.Name, nome, StringComparison.OrdinalIgnoreCase)))
+            throw new ErroDeDocumento($"operação {i}: já existe a aba \"{nome}\".");
     }
 
     private static (int, int) LinhasDe(JsonElement op, int i)

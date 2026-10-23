@@ -93,6 +93,11 @@ public static class ConsultaDePlanilha
                 case "sort": sort = p.Value.ValueKind is JsonValueKind.Null ? null : Texto(p.Value, "sort"); break;
                 case "limit": limite = Limite(p.Value); break;
                 case "visible": visible = Booleano(p.Value, "visible"); break;
+
+                // A aba é do pedido ('sheet' ao lado de 'query'); quem a pôs aqui dentro já teve
+                // a aba resolvida pelo DocTool. Recusar fazia a Ellen achar que query só via a
+                // primeira aba (23/10/2026).
+                case "sheet": break;
                 default:
                     throw new ErroDeDocumento($"a consulta não conhece \"{p.Name}\". Chaves: {string.Join(", ", Chaves)}. Exemplo: {Exemplo}.");
             }
