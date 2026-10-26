@@ -56,6 +56,9 @@ Ao escrever uma classe nova que grava em disco, dê a ela a mesma porta — e us
   dotnet test AIB.Tests --filter Categoria=Integracao -l "console;verbosity=detailed"
   ```
 
+- **Modelos de documento.** Com `AIB_MODELOS=<caminho de AIBWindows\modelos>`, `GeradorDeModelos` refaz os
+  modelos que vêm com o AIB pela própria ferramenta doc (os `.txt` de descrição são à mão). Sem a
+  variável, não faz nada. `ModelosDoDocTests.ModelosDoAib_AbremEEnsinam` confere os arquivos do repositório.
 - **Imagens das telas.** Com `AIB_UI_PNG=1`, `WindowSmokeTests` salva um PNG de cada tela montada, em `AIB_UI_PNG_DIR` (padrão: a pasta temporária). Sem a variável, as telas são medidas e arranjadas, mas nada é gravado.
 
 ### Como rodar

@@ -37,13 +37,22 @@ public static class EditorDePlanilha
     // Editar
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static Gravacao Planejar(string caminho, JsonElement ops, string? abaPadrao)
+    /// <param name="modelo">
+    /// Criar a partir de um modelo (<c>create</c> com <c>from</c>): o modelo é aberto no lugar do
+    /// arquivo, as ops se aplicam sobre ele, e o resultado vai para <paramref name="caminho"/>. O
+    /// modelo não muda.
+    /// </param>
+    public static Gravacao Planejar(string caminho, JsonElement ops, string? abaPadrao, string? modelo = null)
     {
-        var formato = Formatos.De(caminho);
-        RecusarOQueSePerderia(caminho, formato);
+        string origem = modelo ?? caminho;
+        var formato = Formatos.De(origem);
+        RecusarOQueSePerderia(origem, formato);
+        if (modelo != null && formato != Formato.Xlsx)
+            throw new ErroDeDocumento("o modelo de planilha precisa ser .xlsx ou .xlsm.");
 
-        string? impressao = Gravacao.Impressao(caminho);
-        var (wb, csv) = Abrir(caminho, formato);
+        bool existe = File.Exists(caminho);
+        string? impressao = modelo == null || existe ? Gravacao.Impressao(caminho) : null;
+        var (wb, csv) = Abrir(origem, formato);
 
         var antes = formato == Formato.Csv ? new Dictionary<string, string>() : ValoresDasFormulas(wb);
         var refsAntes = FormulasComRef(wb);
@@ -569,11 +578,26 @@ public static class EditorDePlanilha
             resumo = (abaTexto.Length > 0 ? $"aba {abaTexto} · " : "") + string.Join(" · ", partes);
         }
 
+        string resultadoMensagem = soAparencia
+            ? "formatação gravada"
+            : $"{string.Join(", ", partes)} gravado(s)";
+
+        // Criar a partir de um modelo: o cartão fala de arquivo novo, não de edição.
+        if (modelo != null)
+        {
+            string nome = Path.GetFileName(modelo);
+            titulo = existe ? "Substituir esta planilha por uma cópia do modelo?" : "Criar esta planilha a partir do modelo?";
+            consequencia = (existe ? "O arquivo existe: TODO o conteúdo atual é trocado por uma cópia de " : "Arquivo novo, cópia de ")
+                + $"'{nome}'" + (lista.Count > 0 ? ", com as mudanças abaixo." : ".") + " O modelo não muda.";
+            resumo = $"modelo {nome}" + (resumo.Length > 0 ? " · " + resumo : "");
+            resultadoMensagem = $"planilha criada a partir do modelo '{nome}'" + (lista.Count > 0 ? $" ({resultadoMensagem})" : "");
+        }
+
         var plano = new PlanoDeGravacao
         {
             Arquivo = Path.GetFullPath(caminho),
-            Criar = false,
-            SoAparencia = soAparencia,
+            Criar = modelo != null && !existe,
+            SoAparencia = soAparencia && modelo == null,
             Titulo = titulo,
             Consequencia = consequencia.Trim(),
             Resumo = resumo,
@@ -581,13 +605,9 @@ public static class EditorDePlanilha
             Mudancas = lista,
             Efeitos = efeitos,
             Avisos = avisos,
-            Copia = CopiasDeDocumento.Descricao(caminho),
+            Copia = existe ? CopiasDeDocumento.Descricao(caminho) : null,
             Impressao = impressao
         };
-
-        string resultadoMensagem = soAparencia
-            ? "formatação gravada"
-            : $"{string.Join(", ", partes)} gravado(s)";
 
         return new GravacaoDePlanilha(plano, wb, csv, resultadoMensagem);
     }

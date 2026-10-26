@@ -95,6 +95,7 @@ namespace AIB.Tests
         [InlineData("skills/planilha/SKILL.md", Acesso.Livre)]
         [InlineData("character/Ellen/SOUL.MD", Acesso.Livre)]
         [InlineData("navegador/notas/site.md", Acesso.Livre)]
+        [InlineData("modelos/rubrica.xlsx", Acesso.Livre)]
         public void CadaParteDaPastaDeDados_TemOSeuAcesso(string relativo, Acesso esperado)
         {
             DadosProtegidos.Leitura(relativo.Length == 0 ? _dados : Em(relativo), _dados).Should().Be(esperado);

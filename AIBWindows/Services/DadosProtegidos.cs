@@ -30,7 +30,7 @@ public enum Acesso
 /// (<c>profile.dat</c>) e o perfil do navegador, que guarda os logins. Não há pedido legítimo
 /// do usuário que passe por ler isso.</description></item>
 /// <item><description><b>Livre</b>: o que o modelo precisa para trabalhar — skills,
-/// personagens e as anotações dos sites.</description></item>
+/// personagens, as anotações dos sites e os modelos de documento.</description></item>
 /// <item><description><b>Pergunta</b>: todo o resto (memória, logs, e-mail).</description></item>
 /// </list>
 /// <para>
@@ -40,7 +40,7 @@ public enum Acesso
 public static class DadosProtegidos
 {
     private static readonly string[] Negados = { "credentials", "profile.dat", @"navegador\perfil" };
-    private static readonly string[] Livres = { "skills", ".default_skills", "character", @"navegador\notas" };
+    private static readonly string[] Livres = { "skills", ".default_skills", "character", @"navegador\notas", "modelos" };
 
     /// <param name="raiz">A pasta de dados. Vazio é a do usuário — os ensaios passam uma temporária.</param>
     /// <param name="seguirAtalho">

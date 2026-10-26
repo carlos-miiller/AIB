@@ -32,6 +32,7 @@ public class DocTool : ITool
     private readonly string? _dados;
     private readonly Func<string> _autor;
     private readonly CopiasDeDocumento _copias;
+    private readonly ModelosDoDoc _modelos;
 
     public static event Action<DocumentoGravado>? Gravou;
     public sealed record DocumentoGravado(string Arquivo, string? Copia, string? Impressao, bool Criado);
@@ -43,21 +44,23 @@ public class DocTool : ITool
     /// Quem assina as revisões no Word — o nome do personagem ativo. Lido na chamada: o
     /// personagem pode ter sido trocado desde que o app abriu.
     /// </param>
-    public DocTool(string? raizDeDados = null, Func<string>? autor = null)
+    /// <param name="modelosDoPrograma">Os modelos que vêm com o AIB. Nula: a pasta <c>modelos</c> ao lado do executável.</param>
+    public DocTool(string? raizDeDados = null, Func<string>? autor = null, string? modelosDoPrograma = null)
     {
         _dados = raizDeDados;
         _autor = autor ?? (() => "AIB");
         _copias = new CopiasDeDocumento(raizDeDados);
+        _modelos = new ModelosDoDoc(modelosDoPrograma, raizDeDados == null ? null : Path.Combine(raizDeDados, "modelos"));
     }
 
     public string Name => Ferramentas.Documento;
 
     public string Description =>
-        "Planilhas (.xlsx .xlsm .xls .csv), Word (.docx) e PDF, no lugar de 'read' e do shell. Comece "
-        + "por 'info' (abas, tamanho, cabeçalhos). 'read' traz um trecho; 'find' acha texto; 'query' faz "
-        + "as contas (somar, contar, média, agrupar, filtrar) em vez de calcular de cabeça. 'create' e "
-        + "'edit' gravam e formatam (.xlsx, .csv, .docx), com cartão. Sintaxe e valores aceitos (cores, "
-        + "formatos, condicional, abas): action='help', nunca o código-fonte.";
+        "Planilhas (.xlsx .xlsm .xls .csv), Word (.docx) e PDF, no lugar de 'read' e do shell. 'info' "
+        + "primeiro; 'read' traz um trecho; 'find' acha texto; 'query' faz as contas (somar, contar, média, "
+        + "agrupar) em vez de calcular de cabeça. 'create' e 'edit' gravam e formatam, com cartão. Planilha "
+        + "nova: parta de um modelo ('models'; 'layout' mostra como um arquivo é formatado). Sintaxe e "
+        + "valores aceitos: action='help', nunca o código-fonte.";
 
     public int RequiredLevel => 1;
 
@@ -68,9 +71,10 @@ public class DocTool : ITool
         {
             "type": "object",
             "properties": {
-                "action": { "type": "string", "enum": ["info", "read", "find", "query", "layout", "create", "edit", "help"] },
-                "topic": { "type": "string", "description": "help: ler, consulta, celulas, estilo, condicional, abas, layout, criar, word ou tudo. Sem topic, o índice." },
+                "action": { "type": "string", "enum": ["info", "read", "find", "query", "layout", "models", "create", "edit", "help"] },
+                "topic": { "type": "string", "description": "help: ler, consulta, celulas, estilo, condicional, abas, layout, modelos, criar, word ou tudo. Sem topic, o índice." },
                 "path": { "type": "string", "description": "Caminho absoluto." },
+                "from": { "type": "string", "description": "create: caminho de um modelo (action='models') para copiar; planilha aceita 'ops' junto." },
                 "sheet": { "type": "string", "description": "Aba (planilha) de read, find, query e edit. Sem ela, a primeira." },
                 "range": { "type": "string", "description": "read: 'A1:F200' ou '10:60' (linhas); layout: '1:40'; Word: '¶' '12-40'; PDF: páginas '2-4'." },
                 "text": { "type": "string", "description": "find: o texto." },
@@ -89,13 +93,16 @@ public class DocTool : ITool
 
     internal sealed record Argumentos(
         string Acao, string Caminho, string? Aba, string? Intervalo, string? Texto,
-        JsonElement? Consulta, JsonElement? Ops, JsonElement? Conteudo, bool CaminhoReparado, string? Assunto = null)
+        JsonElement? Consulta, JsonElement? Ops, JsonElement? Conteudo, bool CaminhoReparado, string? Assunto = null,
+        string? Modelo = null)
     {
         public bool Grava => Acao is "create" or "edit";
-        public bool Ajuda => Acao == "help";
+
+        /// <summary>O manual e a lista de modelos não abrem arquivo: dispensam 'path' e não perguntam.</summary>
+        public bool SemArquivo => Acao is "help" or "models";
     }
 
-    private static readonly string[] Acoes = { "info", "read", "find", "query", "layout", "create", "edit", "help" };
+    private static readonly string[] Acoes = { "info", "read", "find", "query", "layout", "models", "create", "edit", "help" };
 
     /// <summary>A leitura ÚNICA dos argumentos, usada pelo pré-voo, pelo cartão e pela execução.</summary>
     internal static Argumentos? Ler(string argumentsJson)
@@ -115,7 +122,8 @@ public class DocTool : ITool
 
             return new Argumentos(acao, caminho, aba, Texto(a, "range"), Texto(a, "text"),
                 consulta, Objeto(a, "ops", JsonValueKind.Array),
-                Objeto(a, "content", JsonValueKind.Object), reparado, Texto(a, "topic"));
+                Objeto(a, "content", JsonValueKind.Object), reparado, Texto(a, "topic"),
+                Texto(a, "from") is { Length: > 0 } de ? PathArgumentRepair.Normalize(de, out _) : null);
         }
         catch (JsonException)
         {
@@ -145,7 +153,7 @@ public class DocTool : ITool
         var a = Ler(argumentsJson);
         if (a == null) return "ERRO: argumentos ilegíveis. Envie um objeto JSON com 'action' e 'path'.";
         if (!Acoes.Contains(a.Acao)) return $"ERRO: 'action' deve ser uma de: {string.Join(", ", Acoes)}.";
-        if (a.Ajuda) return null;
+        if (a.SemArquivo) return null;
         if (string.IsNullOrWhiteSpace(a.Caminho)) return "ERRO: 'path' é obrigatório (caminho absoluto).";
 
         string caminho;
@@ -171,8 +179,14 @@ public class DocTool : ITool
                 return $"ERRO: '{caminho}' não existe. Para um arquivo novo, use action='create'.";
             if (a.Acao == "edit" && (a.Ops is not { } ops || ops.GetArrayLength() == 0))
                 return "ERRO: 'edit' precisa de 'ops' com ao menos uma operação.";
-            if (a.Acao == "create" && a.Conteudo == null)
-                return "ERRO: 'create' precisa de 'content'.";
+            if (a.Acao == "create" && a.Modelo != null)
+            {
+                if (ConferirModelo(a, caminho, formato) is { } recusa) return recusa;
+            }
+            else if (a.Acao == "create" && a.Conteudo == null)
+            {
+                return "ERRO: 'create' precisa de 'content' (ou de 'from', o caminho de um modelo: action='models' lista os modelos).";
+            }
 
             // A imagem é um segundo arquivo lido pelo pedido: da pasta de dados do AIB ela levaria
             // memória, log ou cofre para dentro de um documento que o usuário repassa.
@@ -211,7 +225,7 @@ public class DocTool : ITool
     {
         var a = Ler(argumentsJson);
         if (a == null) return true;
-        if (a.Ajuda) return false;
+        if (a.SemArquivo) return false;
         if (a.Grava) return true;
         return AcessoDe(Resolver(a.Caminho)) == Acesso.Pergunta;
     }
@@ -264,7 +278,8 @@ public class DocTool : ITool
         if (a == null) return "ERRO: argumentos ilegíveis.";
 
         // O manual não abre arquivo nenhum: 'path' é dispensável aqui.
-        if (a.Ajuda) return ManualDoDoc.Texto(a.Assunto);
+        if (a.Acao == "help") return ManualDoDoc.Texto(a.Assunto);
+        if (a.Acao == "models") return _modelos.Texto();
 
         string caminho = Resolver(a.Caminho);
 
@@ -415,12 +430,16 @@ public class DocTool : ITool
 
         return (a.Acao, formato) switch
         {
+            ("create", Formato.Docx) when a.Modelo != null => ModelosDoDoc.Copiar(caminho, Path.GetFullPath(a.Modelo)),
+            ("create", _) when a.Modelo != null => EditorDePlanilha.Planejar(caminho, a.Ops ?? SemOps, a.Aba, Path.GetFullPath(a.Modelo)),
             ("create", Formato.Docx) => EditorDeDocx.PlanejarCriacao(caminho, a.Conteudo!.Value),
             ("edit", Formato.Docx) => EditorDeDocx.Planejar(caminho, a.Ops!.Value, Autor()),
             ("create", _) => EditorDePlanilha.PlanejarCriacao(caminho, a.Conteudo!.Value),
             _ => EditorDePlanilha.Planejar(caminho, a.Ops!.Value, a.Aba)
         };
     }
+
+    private static readonly JsonElement SemOps = JsonDocument.Parse("[]").RootElement.Clone();
 
     private string Autor()
     {
@@ -437,6 +456,32 @@ public class DocTool : ITool
     {
         try { return Path.GetFullPath(caminho); }
         catch { return caminho; }
+    }
+
+    /// <summary>
+    /// 'from' de um create: um .xlsx/.xlsm/.docx que existe, legível sem cartão (fora da pasta de
+    /// dados do AIB, ou na pasta de modelos dela), da mesma família do arquivo novo.
+    /// </summary>
+    private string? ConferirModelo(Argumentos a, string caminho, Formato destino)
+    {
+        string modelo;
+        try { modelo = Path.GetFullPath(a.Modelo!); }
+        catch (Exception ex) { return $"ERRO: 'from' inválido '{a.Modelo}': {ex.Message}"; }
+
+        if (a.Conteudo != null) return "ERRO: use 'from' (copiar um modelo) OU 'content' (criar do zero), não os dois.";
+        if (!File.Exists(modelo)) return $"ERRO: o modelo '{modelo}' não existe. action='models' lista os modelos.";
+        if (string.Equals(modelo, caminho, StringComparison.OrdinalIgnoreCase)) return "ERRO: 'from' e 'path' são o mesmo arquivo.";
+        if (DadosProtegidos.Leitura(modelo, _dados) != Acesso.Livre)
+            return $"ACESSO NEGADO: o modelo '{modelo}' fica na pasta de dados do AIB, fora de 'modelos'. Nada foi gravado.";
+
+        var formato = Formatos.De(modelo);
+        if (formato is not (Formato.Xlsx or Formato.Docx))
+            return $"ERRO: o modelo precisa ser .xlsx, .xlsm ou .docx; '{Path.GetFileName(modelo)}' não é.";
+        if (formato != destino || !string.Equals(Path.GetExtension(modelo), Path.GetExtension(caminho), StringComparison.OrdinalIgnoreCase))
+            return $"ERRO: o arquivo novo precisa ter a extensão do modelo ({Path.GetExtension(modelo)}).";
+        if (formato == Formato.Docx && a.Ops is { } ops && ops.GetArrayLength() > 0)
+            return "ERRO: Word a partir de modelo é cópia sem 'ops'. Crie primeiro e depois edite com action='edit'.";
+        return null;
     }
 
     private bool DentroDosDados(string caminho)

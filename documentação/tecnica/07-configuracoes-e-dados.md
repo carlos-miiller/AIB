@@ -47,6 +47,7 @@ O AIB não usa pasta temporária.
 │   └── cofre/aliases.bin            cofre de aliases: segredos que a IA usa pelo nome no shell (DPAPI)
 ├── character/<Nome>/                personagens: SOUL.MD, info.json, vinculo.dat (o vínculo com ele, DPAPI)
 ├── skills/<skill>/SKILL.md          skills instaladas
+├── modelos/                         modelos de documento do usuário (.xlsx, .xlsm, .docx; um .txt de mesmo nome descreve) — a doc os lista (action='models'); leitura livre
 ├── memory/
 │   ├── facts.md                     fatos duráveis (do usuário; cifrado por linha, editado na aba Memória)
 │   ├── facts.index.jsonl            registro do que já foi promovido (da máquina; cifrado por linha)

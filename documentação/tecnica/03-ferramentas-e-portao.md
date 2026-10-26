@@ -760,8 +760,18 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   200 linhas e 40 colunas (`range` em linhas escolhe outro trecho); acima do teto de saída, para
   e diz como continuar. Garantia testada: a receita aplicada num arquivo vazio dá a mesma
   receita. Existe para a Ellen aprender com um modelo bem acabado — o `read` só mostrava valores.
+- **Modelos** (`ModelosDoDoc`, pedido do usuário em 26/10/2026): `action='models'` (sem `path`,
+  sem cartão) lista os .xlsx/.xlsm/.docx de `~/.AIB/modelos` (do usuário, primeiro) e de
+  `modelos/` ao lado do executável (os do AIB: painel de indicadores, rubrica de avaliação, ata de
+  reunião, feitos pela própria doc — `GeradorDeModelos`), com a descrição do `.txt` de mesmo nome.
+  `~/.AIB/modelos` é leitura livre em `DadosProtegidos`; gravar lá continua negado.
+  `create` com `from` parte de um modelo: planilha abre o modelo no lugar do arquivo
+  (`EditorDePlanilha.Planejar(…, modelo)`) e aceita `ops` no mesmo pedido — um cartão só, "Criar
+  esta planilha a partir do modelo?"; Word é cópia exata (`ModelosDoDoc.Copiar`), sem ops. O
+  modelo precisa ser legível sem cartão, existir e ter a extensão do arquivo novo; `from` com
+  `content` é recusado. A `Description` manda partir de um modelo e usar o `layout`.
 - **`help`** (`ManualDoDoc`): o manual sob pedido, por `topic` (`ler`, `consulta`, `celulas`,
-  `estilo`, `condicional`, `abas`, `layout`, `criar`, `word`, `tudo`; apelidos em inglês e português valem;
+  `estilo`, `condicional`, `abas`, `layout`, `modelos`, `criar`, `word`, `tudo`; apelidos em inglês e português valem;
   sem topic, o índice). Não precisa de `path`, não abre arquivo e não pergunta. Existe porque a
   descrição e o esquema dizem QUAIS chaves há, não o que cabe nelas: em 26/10/2026, para montar um
   painel, a Ellen abriu o código-fonte da formatação umas 15 vezes atrás de nome de cor, atalho de

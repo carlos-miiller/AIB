@@ -197,6 +197,8 @@ public static class ManualDoDoc
                               "lista", "validation", "validacao", "validação", "filtro", "filter", "impressao", "impressão", "print", "imprimir",
                               "link", "hyperlink", "imagem", "image", "logo" },
             "acabamento: altura de linha, mesclar, grade, lista suspensa, filtro, impressão, link e imagem", Layout, DeLayout),
+        new("modelos", new[] { "models", "modelo", "template", "templates", "from", "referencia", "referência", "referencias", "referências" },
+            "models: planilhas e Word prontos, para partir deles ou copiar o visual", Modelos, Array.Empty<Exemplo>()),
         new("criar", new[] { "create", "content", "novo" },
             "create: planilha ou Word novos do zero", Criar, DeCriar),
         new("word", new[] { "docx", "documento", "pdf" },
@@ -453,7 +455,8 @@ public static class ManualDoDoc
           canto de cima à esquerda na célula. width OU height em pixels mantém a proporção; os dois deformam.
           Sem tamanho, o original. A imagem não pode vir da pasta de dados do AIB. {image:'none', cell:'B1'} tira.
 
-        Acabamento que faz uma planilha parecer profissional (em vez de uma grade com cor):
+        Acabamento que faz uma planilha parecer profissional (em vez de uma grade com cor) — e o jeito mais
+        curto de chegar lá é partir de um modelo ou copiar o visual dele (topic='modelos'):
         - Grade escondida, e borda SÓ onde há tabela. Linha vazia entre blocos sem borda e mais baixa (8 a 11).
         - Coluna A estreita (width 2 a 4) como margem; as colunas da tabela com larguras pelo conteúdo,
           não todas iguais.
@@ -466,8 +469,27 @@ public static class ManualDoDoc
         - Impressão ajustada à largura antes de entregar.
         """;
 
+    private static string Modelos() => """
+        action='models' lista os modelos: os que vêm com o AIB e os que o usuário põe em ~/.AIB/modelos, com a
+        descrição e o path de cada um. Não precisa de 'path'.
+
+        Antes de montar uma planilha do zero (painel, relatório, controle, avaliação), veja se um modelo serve:
+        - De BASE: action='create', path=<arquivo novo>, from=<path do modelo>, e no mesmo pedido as 'ops' com o que
+          muda (títulos, período, dados, linhas a mais ou a menos) — um cartão só. O arquivo novo tem a extensão do
+          modelo, e o modelo não muda. Word: 'from' copia o documento inteiro, sem ops; edite depois.
+        - De REFERÊNCIA: action='layout' com o path do modelo mostra como ele é feito (larguras, alturas, mesclas,
+          fonte, cores, bordas, listas, impressão) nas ops do edit. Copie as que servirem para a planilha que você
+          está montando, trocando as faixas e os textos.
+        Modelo do usuário vale mais que o do AIB: é o jeito dele.
+
+        Exemplo:
+        {"action":"create","path":"C:\\Relatorios\\painel-outubro.xlsx","from":"<path do modelo>",
+         "ops":[{"sheet":"Painel","cell":"B2","value":"Período: outubro de 2026"}]}
+        """;
+
     private static string Criar() => """
         action='create' com 'path' (o arquivo novo, ou um existente para SUBSTITUIR inteiro) e 'content'.
+        Para partir de um modelo pronto, 'from' no lugar de 'content' (topic='modelos').
 
         Planilha (.xlsx ou .csv): {sheets:[{name, rows:[[...],[...]]}]}
         - Uma entrada em sheets por aba; rows são as linhas a partir da A1, cada uma uma lista de valores.
