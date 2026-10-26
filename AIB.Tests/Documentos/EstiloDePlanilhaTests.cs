@@ -384,4 +384,44 @@ public class EstiloDePlanilhaTests : IDisposable
         gravacao.Plano.SoAparencia.Should().BeTrue();
         gravacao.Plano.Efeitos.Should().BeEmpty();
     }
+
+    [Fact]
+    public void DuasRegrasNaMesmaFaixa_NoMesmoPedido_FicamAsDuas()
+    {
+        // 26/10/2026: a Ellen mandou "verde se < 0" e "vermelho se > 0" em D15:D18 num edit só; a
+        // segunda apagou a primeira, e ela precisou de outro pedido com clear_conditional.
+        string c = Caminho("DuasRegras.xlsx");
+        using (var wb = new XLWorkbook())
+        {
+            var ws = wb.AddWorksheet("Dados");
+            for (int r = 1; r <= 4; r++) ws.Cell(r, 1).Value = r * 500 - 1000;
+            wb.SaveAs(c);
+        }
+
+        EditorDePlanilha.Planejar(c, Ops("""
+            [{"range":"A1:A4","conditional":{"when":"<","value":0,"style":{"fill":"verde claro"}}},
+             {"range":"A1:A4","conditional":{"when":">","value":0,"style":{"fill":"vermelho claro"}}}]
+            """), null).Gravar();
+
+        using var lido = new XLWorkbook(c);
+        lido.Worksheet("Dados").ConditionalFormats.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void RegraNova_AindaSubstituiARegraQueOArquivoJaTinha()
+    {
+        string c = Caminho("Substitui.xlsx");
+        using (var wb = new XLWorkbook())
+        {
+            var ws = wb.AddWorksheet("Dados");
+            for (int r = 1; r <= 4; r++) ws.Cell(r, 1).Value = r;
+            wb.SaveAs(c);
+        }
+        EditorDePlanilha.Planejar(c, Ops("""[{"range":"A1:A4","conditional":{"bar":"azul"}}]"""), null).Gravar();
+        EditorDePlanilha.Planejar(c, Ops("""[{"range":"A1:A4","conditional":{"scale":"verde-vermelho"}}]"""), null).Gravar();
+
+        using var lido = new XLWorkbook(c);
+        lido.Worksheet("Dados").ConditionalFormats.Should().ContainSingle()
+            .Which.ConditionalFormatType.Should().Be(XLConditionalFormatType.ColorScale);
+    }
 }

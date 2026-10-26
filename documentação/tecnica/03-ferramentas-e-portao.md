@@ -824,7 +824,10 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   `data`…); `columns` + `width` (número ou `auto`, teto 60 — acima disso, 60 e quebra de texto);
   `freeze` (`'B2'` ou `'none'`; congelar volta o canto da aba para A1, senão a aba salva rolada
   congelava a coluna em que parou); `conditional` (comparação, texto contém, repetidos/únicos,
-  escala de cores, barra de dados, ícones) e `clear_conditional`. Cor em `#RRGGBB` ou nome em
+  escala de cores, barra de dados, ícones) e `clear_conditional`. Regra nova na mesma faixa
+  substitui a que o arquivo JÁ tinha, nunca uma criada no mesmo pedido (`Processar(…, criadas)`):
+  "verde se < 0" e "vermelho se > 0" na mesma faixa, num edit só, ficam as duas — antes a segunda
+  apagava a primeira (26/10/2026). Cor em `#RRGGBB` ou nome em
   português; cor desconhecida é erro, sem cartão. Uma linha do plano por faixa, com a amostra
   (`Aparencia`: a primeira célula como o Excel vai mostrá-la) e a descrição em palavras; a regra
   condicional diz quais células ela atinge hoje. Só aparência → sem recálculo nem efeito nas

@@ -32,8 +32,15 @@ public static class CondicionalDePlanilha
     /// <summary>
     /// Processa a operação 'conditional' sobre a faixa informada, registrando a regra no ClosedXML
     /// e devolvendo a mudança correspondente para o plano.
+    /// <para>
+    /// A regra nova substitui a que o ARQUIVO já tinha na mesma faixa, nunca uma criada no mesmo
+    /// pedido (<paramref name="criadas"/>). Visto em 26/10/2026: a Ellen mandou "verde se &lt; 0" e
+    /// "vermelho se &gt; 0" em D15:D18 num edit só, e a segunda apagou a primeira; ela precisou de
+    /// outro pedido, com clear_conditional, para ter as duas.
+    /// </para>
     /// </summary>
-    public static (Mudanca Mudanca, IXLConditionalFormat Regra) Processar(IXLWorksheet ws, IXLRange faixa, JsonElement cond, int opIndex)
+    public static (Mudanca Mudanca, IXLConditionalFormat Regra) Processar(IXLWorksheet ws, IXLRange faixa, JsonElement cond, int opIndex,
+        IReadOnlySet<IXLConditionalFormat>? criadas = null)
     {
         if (cond.ValueKind != JsonValueKind.Object)
             throw new ErroDeDocumento($"operação {opIndex}: 'conditional' precisa ser um objeto.");
@@ -41,7 +48,8 @@ public static class CondicionalDePlanilha
         // Substituição: se já havia regra exatamente nesta faixa, aproveitamos a descrição anterior
         string faixaTexto = faixa.RangeAddress.ToString() ?? "";
         var existente = ws.ConditionalFormats.FirstOrDefault(cf =>
-            cf.Range != null && string.Equals(cf.Range.RangeAddress.ToString(), faixaTexto, StringComparison.OrdinalIgnoreCase));
+            cf.Range != null && criadas?.Contains(cf) != true
+            && string.Equals(cf.Range.RangeAddress.ToString(), faixaTexto, StringComparison.OrdinalIgnoreCase));
         string antes = existente != null ? DescreverRegra(existente) : "sem regra";
         if (existente != null)
             ws.ConditionalFormats.Remove(x => ReferenceEquals(x, existente));

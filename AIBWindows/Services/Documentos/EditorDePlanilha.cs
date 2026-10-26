@@ -165,7 +165,7 @@ public static class EditorDePlanilha
 
                 if (temCond)
                 {
-                    var (mudancaCond, regraCriada) = CondicionalDePlanilha.Processar(ws, r, condProp, i);
+                    var (mudancaCond, regraCriada) = CondicionalDePlanilha.Processar(ws, r, condProp, i, regrasTocadas);
                     formatacoes.Add(mudancaCond);
                     regrasCriadas++;
                     regrasTocadas.Add(regraCriada);
