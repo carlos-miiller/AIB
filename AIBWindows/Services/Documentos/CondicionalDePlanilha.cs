@@ -29,6 +29,9 @@ public static class CondicionalDePlanilha
         ["estrelas"] = (XLIconSetStyle.ThreeSymbols, "● ● ●")
     };
 
+    public static IEnumerable<string> Escalas => EscalasDeCores.Keys;
+    public static IEnumerable<string> Icones => ConjuntosDeIcones.Keys;
+
     /// <summary>
     /// Processa a operação 'conditional' sobre a faixa informada, registrando a regra no ClosedXML
     /// e devolvendo a mudança correspondente para o plano.

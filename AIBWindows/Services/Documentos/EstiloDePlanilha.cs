@@ -76,6 +76,24 @@ public static class EstiloDePlanilha
         "border", "align", "valign", "wrap", "number_format"
     };
 
+    /// <summary>Atalhos de number_format; o que não é atalho vai ao Excel como está.</summary>
+    private static readonly Dictionary<string, string> Atalhos = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["moeda"] = "R$ #,##0.00",
+        ["porcentagem"] = "0.00%",
+        ["data"] = "dd/mm/yyyy",
+        ["inteiro"] = "#,##0",
+        ["decimal"] = "#,##0.00",
+        ["texto"] = "@"
+    };
+
+    /// <summary>Bordas aceitas em 'border', na ordem do manual.</summary>
+    public static readonly string[] TiposDeBorda = { "all", "thin", "outline", "thick", "top", "bottom", "left", "right", "double", "none" };
+
+    public static IReadOnlyDictionary<string, string> Cores => CoresPorNome;
+    public static IReadOnlyCollection<string> Chaves => ChavesValidas;
+    public static IReadOnlyDictionary<string, string> AtalhosDeFormato => Atalhos;
+
     /// <summary>
     /// Converte um nome PT-BR ou string hexadecimal para "#RRGGBB".
     /// </summary>
@@ -163,16 +181,8 @@ public static class EstiloDePlanilha
     /// <summary>
     /// Converte atalhos em português para o formato numérico correspondente do Excel.
     /// </summary>
-    public static string NormalizarFormato(string formato) => formato.Trim().ToLowerInvariant() switch
-    {
-        "moeda" => "R$ #,##0.00",
-        "porcentagem" => "0.00%",
-        "data" => "dd/mm/yyyy",
-        "inteiro" => "#,##0",
-        "decimal" => "#,##0.00",
-        "texto" => "@",
-        _ => formato
-    };
+    public static string NormalizarFormato(string formato) =>
+        Atalhos.TryGetValue(formato.Trim(), out var f) ? f : formato;
 
     /// <summary>
     /// Descreve um formato numérico em palavras legíveis.

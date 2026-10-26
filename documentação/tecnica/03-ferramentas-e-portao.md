@@ -752,6 +752,15 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   contada** na resposta. Existe porque somar 300 linhas lidas como texto é onde o modelo erra.
   A aba vem de `sheet`, ao lado de `query` ou dentro dela (a Ellen a punha dentro e recebia "a
   consulta não conhece sheet", e concluiu que a query só via a primeira aba).
+- **`help`** (`ManualDoDoc`): o manual sob pedido, por `topic` (`ler`, `consulta`, `celulas`,
+  `estilo`, `condicional`, `abas`, `criar`, `word`, `tudo`; apelidos em inglês e português valem;
+  sem topic, o índice). Não precisa de `path`, não abre arquivo e não pergunta. Existe porque a
+  descrição e o esquema dizem QUAIS chaves há, não o que cabe nelas: em 26/10/2026, para montar um
+  painel, a Ellen abriu o código-fonte da formatação umas 15 vezes atrás de nome de cor, atalho de
+  `number_format` e forma do `conditional`. As listas (cores, atalhos, chaves de estilo, escalas,
+  ícones, funções da query) vêm das tabelas do próprio código; os exemplos são dados, e
+  `ManualDoDocTests` roda cada um numa planilha e num Word de verdade. A `Description` aponta para
+  o `help` ("nunca o código-fonte") dentro do orçamento de 460.
 - **Abas** (relatório de QA da Ellen, 23/10/2026): `add_sheet`, `rename_sheet` e `move_sheet`
   aceitam o nome no valor da chave (`{add_sheet:"Resumo"}`, `{rename_sheet:"Velho", to}`) ou a
   chave como marca com o nome em `sheet`/`name` (`{add_sheet:true, sheet:"Resumo"}`, que antes

@@ -27,7 +27,7 @@ public static class ConsultaDePlanilha
 
     private static readonly CultureInfo Br = CultureInfo.GetCultureInfo("pt-BR");
     private static readonly string[] Chaves = { "where", "group", "agg", "sort", "limit", "visible" };
-    private static readonly string[] Funcoes = { "sum", "count", "avg", "min", "max" };
+    public static readonly string[] Funcoes = { "sum", "count", "avg", "min", "max" };
 
     // "1.234,56", "12,5", "1234" (pt-BR) e "1234.56" (invariante). "1.234" é milhar, como no Excel brasileiro.
     private static readonly Regex NumeroBr = new(@"^[-+]?(\d{1,3}(\.\d{3})+|\d+)(,\d+)?$", RegexOptions.CultureInvariant);

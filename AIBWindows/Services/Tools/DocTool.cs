@@ -53,11 +53,11 @@ public class DocTool : ITool
     public string Name => Ferramentas.Documento;
 
     public string Description =>
-        "Planilhas (.xlsx .xlsm .xls .csv), Word (.docx) e PDF. Use no lugar de 'read' e do shell "
-        + "para esses formatos. Comece por 'info' (abas, tamanho, cabeçalhos). 'read' traz um trecho "
-        + "com a célula ou o ¶ de cada linha; 'find' acha texto; 'query' faz as contas (somar, contar, "
-        + "média, agrupar, filtrar): use-a em vez de calcular de cabeça. 'create' e 'edit' gravam "
-        + "(.xlsx, .csv, .docx), com cartão de confirmação; 'edit' também formata células.";
+        "Planilhas (.xlsx .xlsm .xls .csv), Word (.docx) e PDF, no lugar de 'read' e do shell. Comece "
+        + "por 'info' (abas, tamanho, cabeçalhos). 'read' traz um trecho; 'find' acha texto; 'query' faz "
+        + "as contas (somar, contar, média, agrupar, filtrar) em vez de calcular de cabeça. 'create' e "
+        + "'edit' gravam e formatam (.xlsx, .csv, .docx), com cartão. Sintaxe e valores aceitos (cores, "
+        + "formatos, condicional, abas): action='help', nunca o código-fonte.";
 
     public int RequiredLevel => 1;
 
@@ -68,7 +68,8 @@ public class DocTool : ITool
         {
             "type": "object",
             "properties": {
-                "action": { "type": "string", "enum": ["info", "read", "find", "query", "create", "edit"] },
+                "action": { "type": "string", "enum": ["info", "read", "find", "query", "create", "edit", "help"] },
+                "topic": { "type": "string", "description": "help: ler, consulta, celulas, estilo, condicional, abas, criar, word ou tudo. Sem topic, o índice." },
                 "path": { "type": "string", "description": "Caminho absoluto." },
                 "sheet": { "type": "string", "description": "Aba (planilha) de read, find, query e edit. Sem ela, a primeira." },
                 "range": { "type": "string", "description": "read: 'A1:F200' ou '10:60' (linhas); Word: '¶' '12-40'; PDF: páginas '2-4'." },
@@ -77,7 +78,7 @@ public class DocTool : ITool
                 "ops": { "type": "array", "items": { "type": "object" }, "description": "edit. Planilha: {cell:'B2',value} ('=' inicia fórmula) | {range:'D2:D50',value:'=B{row}*2'} | {insert_rows:N,rows:[[..]]} (antes da linha N) | {delete_rows:'18:19'} | {add_sheet:'Nome',position?} | {rename_sheet:'Velho',to} | {move_sheet:'Nome',position:1} (1 = primeira) | cell/range + style:{bold,italic,underline,color,fill,size,font,border:'all|outline|top|bottom|double|none',align,valign,wrap,number_format:'moeda|porcentagem|data|#,##0.00'} (value opcional) | {columns:'A:F',width:N|'auto'} | {freeze:'B2'|'none'} | {range,conditional:{when:'> < = between contains duplicates',value,style}|{scale:'verde-vermelho'}|{bar:cor}|{icons:'setas|semaforo'}} | {clear_conditional:range}; cor: #RRGGBB ou nome ('amarelo claro'); todas aceitam sheet. Word: {replace:'texto exato',with} | {insert_after:¶,text,style:'Heading1|Heading2|List|Normal'} | {delete:¶} | {table:1,row,col,value}." },
                 "content": { "type": "object", "description": "create. Planilha: {sheets:[{name,rows:[[..]]}]}. Word: {blocks:[{style,text} | {list:[..]} | {table:[[..]]}]}." }
             },
-            "required": ["action", "path"]
+            "required": ["action"]
         }
         """)
     );
@@ -88,12 +89,13 @@ public class DocTool : ITool
 
     internal sealed record Argumentos(
         string Acao, string Caminho, string? Aba, string? Intervalo, string? Texto,
-        JsonElement? Consulta, JsonElement? Ops, JsonElement? Conteudo, bool CaminhoReparado)
+        JsonElement? Consulta, JsonElement? Ops, JsonElement? Conteudo, bool CaminhoReparado, string? Assunto = null)
     {
         public bool Grava => Acao is "create" or "edit";
+        public bool Ajuda => Acao == "help";
     }
 
-    private static readonly string[] Acoes = { "info", "read", "find", "query", "create", "edit" };
+    private static readonly string[] Acoes = { "info", "read", "find", "query", "create", "edit", "help" };
 
     /// <summary>A leitura ÚNICA dos argumentos, usada pelo pré-voo, pelo cartão e pela execução.</summary>
     internal static Argumentos? Ler(string argumentsJson)
@@ -113,7 +115,7 @@ public class DocTool : ITool
 
             return new Argumentos(acao, caminho, aba, Texto(a, "range"), Texto(a, "text"),
                 consulta, Objeto(a, "ops", JsonValueKind.Array),
-                Objeto(a, "content", JsonValueKind.Object), reparado);
+                Objeto(a, "content", JsonValueKind.Object), reparado, Texto(a, "topic"));
         }
         catch (JsonException)
         {
@@ -143,6 +145,7 @@ public class DocTool : ITool
         var a = Ler(argumentsJson);
         if (a == null) return "ERRO: argumentos ilegíveis. Envie um objeto JSON com 'action' e 'path'.";
         if (!Acoes.Contains(a.Acao)) return $"ERRO: 'action' deve ser uma de: {string.Join(", ", Acoes)}.";
+        if (a.Ajuda) return null;
         if (string.IsNullOrWhiteSpace(a.Caminho)) return "ERRO: 'path' é obrigatório (caminho absoluto).";
 
         string caminho;
@@ -201,6 +204,7 @@ public class DocTool : ITool
     {
         var a = Ler(argumentsJson);
         if (a == null) return true;
+        if (a.Ajuda) return false;
         if (a.Grava) return true;
         return AcessoDe(Resolver(a.Caminho)) == Acesso.Pergunta;
     }
@@ -251,6 +255,10 @@ public class DocTool : ITool
     {
         var a = Ler(argumentsJson);
         if (a == null) return "ERRO: argumentos ilegíveis.";
+
+        // O manual não abre arquivo nenhum: 'path' é dispensável aqui.
+        if (a.Ajuda) return ManualDoDoc.Texto(a.Assunto);
+
         string caminho = Resolver(a.Caminho);
 
         if (Validar(argumentsJson) is { } recusa) return recusa;
