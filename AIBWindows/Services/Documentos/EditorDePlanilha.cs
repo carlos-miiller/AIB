@@ -870,8 +870,19 @@ public static class EditorDePlanilha
     }
 
     /// <summary>
+    /// Os textos que viram data: ISO (2026-10-19) e o jeito brasileiro (19/10/2026, com ou sem
+    /// hora). Visto em 26/10/2026: a Ellen mandou '05/10/2026 08:30', que só aceitava ISO, e as
+    /// colunas de data do painel dela ficaram texto — sem conta, filtro ou ordenação.
+    /// </summary>
+    private static readonly string[] FormatosDeData =
+    {
+        "yyyy-MM-dd", "yyyy-MM-ddTHH:mm", "yyyy-MM-ddTHH:mm:ss",
+        "dd/MM/yyyy", "d/M/yyyy", "dd/MM/yyyy HH:mm", "d/M/yyyy H:mm", "dd/MM/yyyy HH:mm:ss"
+    };
+
+    /// <summary>
     /// Escreve um valor vindo do JSON: texto com "=" é fórmula; número, booleano e null como
-    /// são; texto que parece data ISO (2026-10-19) vira data.
+    /// são; texto que é uma data inteira (<see cref="FormatosDeData"/>) vira data.
     /// </summary>
     internal static void Escrever(IXLCell c, object? valor)
     {
@@ -883,8 +894,7 @@ public static class EditorDePlanilha
             case string s when s.StartsWith('=') && s.Length > 1:
                 c.FormulaA1 = s[1..];
                 break;
-            case string s when DateTime.TryParseExact(s, new[] { "yyyy-MM-dd", "yyyy-MM-ddTHH:mm", "yyyy-MM-ddTHH:mm:ss" },
-                                                      CultureInfo.InvariantCulture, DateTimeStyles.None, out var data):
+            case string s when DateTime.TryParseExact(s.Trim(), FormatosDeData, CultureInfo.InvariantCulture, DateTimeStyles.None, out var data):
                 c.Value = data;
                 break;
             case string s:

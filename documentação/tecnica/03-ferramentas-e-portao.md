@@ -771,6 +771,10 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
 - **`rows`** (`insert_rows`, `create`): lista de linhas, cada linha uma lista. Uma lista de
   valores soltos vira uma linha; a lista mandada como texto JSON é lida. O resto recusa com o
   formato esperado e o que chegou ("a linha 2 chegou como um objeto").
+- **Datas** (`EditorDePlanilha.Escrever`): texto que é uma data inteira vira data do Excel — ISO
+  (`2026-10-05`, `2026-10-05T08:30`) e brasileiro (`05/10/2026`, `5/10/2026`, `05/10/2026 08:30`).
+  O ClosedXML marca o formato embutido 14 (data) ou 22 (data e hora), que o Excel mostra na região
+  do usuário. Só ISO valia até 26/10/2026, e as datas do painel da Ellen ficaram texto.
 - **Gravar** (`create`, `edit`) — .xlsx/.xlsm/.csv (`EditorDePlanilha`) e .docx (`EditorDeDocx`):
   1. `Validar` recusa antes do cartão: formato que não se grava (.xls, PDF), pasta de dados do
      AIB, e qualquer plano que não se monta (célula inválida, trecho do Word ambíguo ou ausente).

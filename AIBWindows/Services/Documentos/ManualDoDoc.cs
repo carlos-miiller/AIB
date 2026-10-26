@@ -60,7 +60,8 @@ public static class ManualDoDoc
     {
         new("Um valor numa célula (texto, número, true/false):", """[{"cell":"E1","value":"Comissão"}]""", Uso.Ops),
         new("Número é número JSON, sem aspas e com ponto decimal:", """[{"cell":"C7","value":1234.56}]""", Uso.Ops),
-        new("Data: texto 'aaaa-mm-dd' vira data de verdade no Excel:", """[{"cell":"D7","value":"2026-11-15"}]""", Uso.Ops),
+        new("Data: texto 'aaaa-mm-dd' ou 'dd/mm/aaaa' vira data de verdade no Excel:", """[{"cell":"D7","value":"2026-11-15"}]""", Uso.Ops),
+        new("Data com hora, do jeito brasileiro:", """[{"cell":"D8","value":"15/11/2026 08:30"}]""", Uso.Ops),
         new("Fórmula (começa com '='; nomes de função em INGLÊS, separador vírgula):", """[{"cell":"C8","value":"=SUM(C2:C6)"}]""", Uso.Ops),
         new("Fórmula em INGLÊS também para SE, PROCV etc.:", """[{"cell":"E2","value":"=IF(C2>1000,\"alto\",\"baixo\")"}]""", Uso.Ops),
         new("A mesma fórmula numa faixa; {row} vira o número de cada linha:", """[{"range":"E2:E6","value":"=C{row}*0.05"}]""", Uso.Ops),
@@ -320,7 +321,8 @@ public static class ManualDoDoc
           da linha de cada célula ("=B{row}*2" → =B2*2, =B3*2…). 'range' precisa das duas pontas ('D2:D50');
           linhas ou colunas inteiras ('2:5', 'D:D') não servem aqui.
         - value: número JSON (1234.56, sem aspas: "1234,56" entre aspas fica TEXTO); texto; true/false;
-          data como texto 'aaaa-mm-dd' (ou 'aaaa-mm-ddThh:mm'), que vira data do Excel; null apaga o conteúdo
+          data como texto 'dd/mm/aaaa' ou 'aaaa-mm-dd', com ou sem hora ('dd/mm/aaaa hh:mm'), que vira data do
+          Excel (dá para somar, filtrar e ordenar); null apaga o conteúdo
           (a formatação fica).
         - Fórmula: texto começando com '='. Funções com o nome em INGLÊS e argumentos separados por VÍRGULA,
           como no arquivo do Excel: SUM, IF, VLOOKUP, COUNTIF, SUMIF, AVERAGE, ROUND, IFERROR, TEXT…
@@ -453,7 +455,7 @@ public static class ManualDoDoc
 
         Planilha (.xlsx ou .csv): {sheets:[{name, rows:[[...],[...]]}]}
         - Uma entrada em sheets por aba; rows são as linhas a partir da A1, cada uma uma lista de valores.
-        - Valores como no edit (topic='celulas'): número JSON, texto, true/false, data 'aaaa-mm-dd',
+        - Valores como no edit (topic='celulas'): número JSON, texto, true/false, data 'dd/mm/aaaa',
           fórmula começando com '=' (em inglês, com vírgula).
         - A linha 1 de cada aba sai em negrito e as colunas se ajustam ao texto. Para mais formatação
           (cores, moeda, congelar), crie e depois faça um 'edit' no mesmo arquivo.
