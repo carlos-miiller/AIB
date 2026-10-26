@@ -2396,6 +2396,14 @@ public sealed class ConversationService : IMessageStore
                                timeout.Token)
                 .ConfigureAwait(false);
 
+            // Fala pela metade não vai: melhor calar do que mandar "[B][code]Ellen W.[/code][/B"
+            // (26/10/2026, o raciocínio do gemini-pro-latest comeu o teto).
+            if (resultado.Cortada)
+            {
+                Console.WriteLine("[INICIATIVA] Resposta cortada no teto de tokens; descartada.");
+                return null;
+            }
+
             string texto = ThinkBlockStripper.Strip(resultado.Text).Trim().Trim('"', '“', '”').Trim();
             return Iniciativa.EhSilencio(texto) ? null : texto;
         }

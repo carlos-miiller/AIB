@@ -398,8 +398,14 @@ raciocínio continuam só nos testes.
   `ProvedoresDeIa.ModelosDoGoogle`, sem a família 2.5 — o Google só a serve a quem já a usava, e
   escolhida dava 404. A caixa é editável.
 - **Raciocínio:** `reasoning_effort` (`none`, `low`, `medium`, `high`; "padrão do modelo" não
-  manda o campo). Modelo que recusa `none` com 400 (os Pro) recebe o pedido de novo sem o
-  campo, e o provider lembra (`_naoDesliga`).
+  manda o campo). Modelo que recusa `none` com 400 (os Pro) recebe o pedido de novo com `low`,
+  e o provider lembra (`_naoDesliga`). Nesse caso o `max_tokens` ganha `FolgaDoRaciocinio`
+  (2.048): no Google o teto inclui o raciocínio, e em 26/10/2026, com `gemini-pro-latest`, a
+  fala por iniciativa (teto 400) raciocinou no padrão do modelo e parou em "length" com 27
+  caracteres ("[B][code]Ellen W.[/code][/B").
+- **Resposta cortada:** o `CompleteAsync` do Google e do OpenRouter marca
+  `ChatCompletionResult.Cortada` quando o fim é "length"; quem chama decide o que fazer com o
+  texto pela metade.
 - **Assinatura de pensamento:** o `extra_content` de cada chamada de ferramenta é guardado pelo
   id (`_extraPorChamada`) e devolvido na mesma chamada em toda requisição em que ela estiver no
   histórico. Sem ele os modelos que raciocinam recusam a volta seguinte.

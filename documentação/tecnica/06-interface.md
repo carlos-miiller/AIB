@@ -494,7 +494,9 @@ sem fazer nada, você decide mandar uma mensagem", as últimas mensagens dela co
 saiu: o pedido dá só a situação.
 
 `ConversationService.EscreverIniciativaAsync` chama o modelo fora de banda (sem ferramentas,
-temperatura 0,8, até 400 tokens, `TetoDaIniciativa`) com uma mensagem só (`MaterialDaIniciativa`):
+temperatura 0,8, até 400 tokens, `TetoDaIniciativa`) com uma mensagem só (`MaterialDaIniciativa`).
+Resposta cortada no teto (`ChatCompletionResult.Cortada`) é descartada: melhor calar do que mandar
+meia frase. A mensagem leva:
 
 1. a **alma inteira** — decisão do usuário: o sorteio controla quantas vezes ela é chamada e toda
    chamada vira mensagem, então os ~4.000 tokens só são pagos quando ela fala; sem alma, a persona

@@ -185,12 +185,32 @@ namespace AIB.Tests
 
             resposta.Text.Should().Be("resumo");
             rede.Corpos[0].Should().Contain("\"reasoning_effort\":\"none\"");
-            rede.Corpos[1].Should().NotContain("reasoning_effort");
+            rede.Corpos[1].Should().Contain("\"reasoning_effort\":\"low\"", "o mínimo, não o padrão do modelo");
 
-            // E lembra: a chamada seguinte já sai sem o campo, sem pagar o 400 de novo.
+            // E lembra: a chamada seguinte já sai no mínimo, sem pagar o 400 de novo.
             await p.CompleteAsync(mensagens, Array.Empty<ChatTool>(), desligado, CancellationToken.None);
             rede.Corpos.Should().HaveCount(3);
-            rede.Corpos[2].Should().NotContain("reasoning_effort");
+            rede.Corpos[2].Should().Contain("\"reasoning_effort\":\"low\"").And.NotContain("\"none\"");
+        }
+
+        [Fact]
+        public async Task ModeloQueNaoDesliga_GanhaFolgaNoTeto_EARespostaCortadaVemMarcada()
+        {
+            // 26/10/2026, gemini-pro-latest: a fala por iniciativa (teto 400) raciocinou no padrão
+            // do modelo, parou em "length" com 27 caracteres e chegou como "[B][code]Ellen W.[/code][/B".
+            // No Google o max_tokens inclui o raciocínio: sem folga, o raciocínio come a resposta.
+            var rede = new RedeFingida(n => n == 1
+                ? Erro(400, """[{"error":{"code":400,"message":"Thinking can't be disabled for this model.","status":"INVALID_ARGUMENT"}}]""")
+                : Sse("""{"choices":[{"delta":{"content":"[B][code]Ellen W.[/code][/B"},"finish_reason":"length"}]}"""));
+            var p = ComRede(rede, "gemini-pro-latest");
+
+            var resposta = await p.CompleteAsync(new[] { ChatMessage.CreateUserMessage("fale") }, Array.Empty<ChatTool>(),
+                new ChatRequestOptions { Think = false, NumPredict = 400 }, CancellationToken.None);
+
+            JsonDocument.Parse(rede.Corpos[0]).RootElement.GetProperty("max_tokens").GetInt32().Should().Be(400);
+            JsonDocument.Parse(rede.Corpos[1]).RootElement.GetProperty("max_tokens").GetInt32()
+                .Should().Be(400 + GoogleProvider.FolgaDoRaciocinio);
+            resposta.Cortada.Should().BeTrue();
         }
 
         // ── Ferramentas ─────────────────────────────────────────────────────

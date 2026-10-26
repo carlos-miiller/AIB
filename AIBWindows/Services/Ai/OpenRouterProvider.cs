@@ -753,6 +753,7 @@ public sealed class OpenRouterProvider : IChatProvider
         var texto = new StringBuilder();
         int? entrada = null, saida = null;
         decimal? custo = null;
+        bool cortada = false;
 
         await foreach (var chunk in StreamAsync(messages, tools, options, ct).ConfigureAwait(false))
         {
@@ -767,10 +768,14 @@ public sealed class OpenRouterProvider : IChatProvider
                     saida = u.EvalCount ?? saida;
                     custo = u.CustoUsd ?? custo;
                     break;
+
+                case StreamChunk.Done d:
+                    cortada = d.Reason == StreamFinishReason.Length;
+                    break;
             }
         }
 
-        return new ChatCompletionResult(texto.ToString(), entrada, saida, custo);
+        return new ChatCompletionResult(texto.ToString(), entrada, saida, custo, cortada);
     }
 
     /// <summary>Nada a aquecer: o modelo roda do outro lado, e aquecer seria pagar por nada.</summary>

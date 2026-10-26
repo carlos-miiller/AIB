@@ -63,6 +63,9 @@ public sealed class GoogleProvider : IChatProvider
     /// </summary>
     private volatile bool _naoDesliga;
 
+    /// <summary>Tokens a mais no teto quando o raciocínio não desliga e vai no mínimo ("low").</summary>
+    public const int FolgaDoRaciocinio = 2048;
+
     public GoogleProvider(HttpClient http, string baseUrl, string chave, string model,
                           IToolCallHealer healer, bool verboseLogging)
     {
@@ -114,7 +117,7 @@ public sealed class GoogleProvider : IChatProvider
         // O uso vem no fim do stream; sem isto não há contagem de entrada nem de cache.
         if (stream) corpo["stream_options"] = new JsonObject { ["include_usage"] = true };
 
-        if (options.NumPredict is int teto) corpo["max_tokens"] = teto;
+        int? teto = options.NumPredict;
 
         // Sem campo: padrão do modelo. Desligado — pela configuração ou por quem chama com
         // Think=false, como o resumidor e a triagem — pede "none", enquanto o modelo aceitar.
@@ -126,10 +129,21 @@ public sealed class GoogleProvider : IChatProvider
             case PerfilDeProvedor.RaciocinioDesligado when !_naoDesliga:
                 corpo["reasoning_effort"] = "none";
                 break;
+
+            // O modelo não desliga: o mínimo que ele aceita, e folga no teto. No Google o
+            // max_tokens inclui o raciocínio; visto em 26/10/2026 com gemini-pro-latest, a fala
+            // por iniciativa (teto 400) raciocinou no padrão do modelo, parou em "length" com
+            // 27 caracteres e chegou ao usuário como "[B][code]Ellen W.[/code][/B".
+            case PerfilDeProvedor.RaciocinioDesligado:
+                corpo["reasoning_effort"] = "low";
+                if (teto != null) teto += FolgaDoRaciocinio;
+                break;
             case "low" or "medium" or "high":
                 corpo["reasoning_effort"] = raciocinio;
                 break;
         }
+
+        if (teto is int maximo) corpo["max_tokens"] = maximo;
 
         // Para o registro: é o único jeito de ver, depois, que esforço cada requisição pediu.
         _esforcoPedido = (string?)corpo["reasoning_effort"] ?? "padrão do modelo";
@@ -459,6 +473,7 @@ public sealed class GoogleProvider : IChatProvider
     {
         var texto = new StringBuilder();
         int? entrada = null, saida = null;
+        bool cortada = false;
 
         await foreach (var chunk in StreamAsync(messages, tools, options, ct).ConfigureAwait(false))
         {
@@ -472,11 +487,15 @@ public sealed class GoogleProvider : IChatProvider
                     entrada = u.PromptEvalCount ?? entrada;
                     saida = u.EvalCount ?? saida;
                     break;
+
+                case StreamChunk.Done d:
+                    cortada = d.Reason == StreamFinishReason.Length;
+                    break;
             }
         }
 
         // O Google não relata o custo da chamada; fica nulo, como no Ollama.
-        return new ChatCompletionResult(texto.ToString(), entrada, saida, null);
+        return new ChatCompletionResult(texto.ToString(), entrada, saida, null, cortada);
     }
 
     /// <summary>Nada a aquecer: o modelo roda do outro lado.</summary>
