@@ -84,6 +84,7 @@ public static class ManualDoDoc
             """[{"cell":"A8","value":"TOTAL","style":{"bold":true,"border":["top","double"]}}]""", Uso.Ops),
         new("Cor em hex, tamanho e fonte:", """[{"cell":"A1","style":{"color":"#1E293B","size":14,"font":"Arial"}}]""", Uso.Ops),
         new("Texto longo: quebrar linha e alinhar no topo:", """[{"range":"A2:A6","style":{"wrap":true,"valign":"top"}}]""", Uso.Ops),
+        new("Tabela com respiro: meio da altura e recuo 1 no texto:", """[{"range":"A1:D6","style":{"valign":"middle","indent":1}}]""", Uso.Ops),
         new("Tirar negrito e bordas:", """[{"range":"A1:D1","style":{"bold":false,"border":"none"}}]""", Uso.Ops),
     };
 
@@ -118,6 +119,25 @@ public static class ManualDoDoc
         new("Descongelar:", """[{"freeze":"none"}]""", Uso.Ops),
         new("Largura ajustada ao texto:", """[{"columns":"A:D","width":"auto"}]""", Uso.Ops),
         new("Largura fixa (em caracteres; o padrão do Excel é 8,43):", """[{"columns":"B","width":25}]""", Uso.Ops),
+    };
+
+    private static readonly Exemplo[] DeLayout =
+    {
+        new("Título de painel: uma linha nova no topo, alta, mesclada na largura da tabela, letra grande:",
+            """[{"insert_rows":1,"rows":[""]},{"rows":"1","height":40},{"merge":"A1:D1"},{"cell":"A1","value":"VENDAS 2026","style":{"bold":true,"size":20,"valign":"middle","indent":1}}]""", Uso.Ops),
+        new("Linha fina vazia separando blocos (insere antes da 7 e baixa a altura):",
+            """[{"insert_rows":7,"rows":[""]},{"rows":"7","height":8}]""", Uso.Ops),
+        new("Altura volta a se ajustar ao texto:", """[{"rows":"2:6","height":"auto"}]""", Uso.Ops),
+        new("Esconder as linhas de grade (a folha fica branca, só a sua tabela aparece):", """[{"gridlines":false}]""", Uso.Ops),
+        new("Lista suspensa: a célula só aceita estes valores:",
+            """[{"range":"F2:F6","validation":{"list":["pendente","pago","cancelado"]}}]""", Uso.Ops),
+        new("Lista suspensa com os valores de uma faixa da planilha:", """[{"range":"F2:F6","validation":{"list":"=$B$2:$B$6"}}]""", Uso.Ops),
+        new("Tirar a lista suspensa:", """[{"range":"C2:C6","validation":["a","b"]},{"range":"C2:C6","validation":"none"}]""", Uso.Ops),
+        new("Filtro (setas no cabeçalho) na tabela inteira, cabeçalho incluído:", """[{"filter":"A1:D6"}]""", Uso.Ops),
+        new("Impressão: deitada, todas as colunas numa página de largura, repetindo o cabeçalho:",
+            """[{"print":{"orientation":"landscape","fit":"width","repeat_rows":"1","margins":"estreita"}}]""", Uso.Ops),
+        new("Imprimir só uma faixa, centralizada:", """[{"print":{"area":"A1:D6","center":true}}]""", Uso.Ops),
+        new("Desfazer uma mescla:", """[{"merge":"A8:D8"},{"unmerge":"A8:D8"}]""", Uso.Ops),
     };
 
     private static readonly Exemplo[] DeConsulta =
@@ -169,6 +189,9 @@ public static class ManualDoDoc
             "conditional: pintar conforme o valor, escalas, barras e ícones", Condicional, DeCondicional),
         new("abas", new[] { "aba", "sheet", "sheets", "add_sheet", "rename_sheet", "move_sheet", "freeze", "congelar", "columns", "colunas", "largura" },
             "abas (criar, renomear, mover), congelar painel e largura de coluna", Abas, DeAbas),
+        new("layout", new[] { "acabamento", "painel", "altura", "height", "mesclar", "merge", "unmerge", "grade", "gridlines",
+                              "lista", "validation", "validacao", "validação", "filtro", "filter", "impressao", "impressão", "print", "imprimir" },
+            "acabamento: altura de linha, mesclar, grade, lista suspensa, filtro e impressão", Layout, DeLayout),
         new("criar", new[] { "create", "content", "novo" },
             "create: planilha ou Word novos do zero", Criar, DeCriar),
         new("word", new[] { "docx", "documento", "pdf" },
@@ -331,6 +354,7 @@ public static class ManualDoDoc
             - size: tamanho da letra, número (11 é o padrão). font: nome da fonte ("Arial", "Calibri", "Segoe UI").
             - align: left, center ou right. valign: top, middle (ou center) ou bottom.
             - wrap: true quebra o texto em várias linhas dentro da célula.
+            - indent: recuo do texto, de 0 a 15 (1 basta). Com align left, afasta o texto da borda.
             - border: um texto ou uma lista deles, aplicados em ordem: {{{string.Join(", ", EstiloDePlanilha.TiposDeBorda)}}}.
               all (= thin): todas as bordas, inclusive as de dentro da faixa. outline: só o contorno da faixa.
               thick: contorno grosso. top, bottom, left, right: um lado. double: linha dupla embaixo (de total).
@@ -387,7 +411,41 @@ public static class ManualDoDoc
         Largura de coluna: {columns:'A' ou 'A:F', width:N | 'auto'}
         - N em caracteres (o padrão do Excel é 8,43; 15 a 25 cabe um nome, 40+ uma descrição).
         - 'auto' ajusta ao maior texto; acima de 60 trava em 60 e liga a quebra de texto.
-        Altura de linha, mesclar células, filtro, gráfico e validação de dados não existem nesta ferramenta.
+        Altura de linha, mesclar, grade, lista suspensa, filtro e impressão: topic='layout'.
+        Gráfico não existe nesta ferramenta.
+        """;
+
+    private static string Layout() => """
+        Cada item é uma operação do 'ops' de action='edit'; 'sheet' escolhe a aba, como sempre.
+
+        - {rows:'1' ou '2:20', height:N | 'auto'} — altura da linha em pontos: 15 é o padrão; 30 a 50 um título;
+          8 a 11 uma linha vazia fina que separa blocos; 'auto' volta a ajustar ao texto.
+        - {merge:'A1:F1'} — junta a faixa numa célula só (título, rótulo de bloco). O Excel mostra só a
+          PRIMEIRA célula: se outra tiver conteúdo, a mescla é recusada (apague-a antes com value null).
+          Escreva o texto e o estilo na primeira célula (A1). {unmerge:'A1:F1'} desfaz.
+        - {gridlines:false} — esconde as linhas de grade da aba; true mostra de novo.
+        - {range:'F2:F50', validation:{list:['a','b','c']}} — lista suspensa: a célula só aceita esses valores.
+          Valores de uma faixa: {list:'=$H$2:$H$9'}. Lista solta também vale: validation:['a','b'].
+          Item com vírgula ou aspas: ponha os itens numa faixa. validation:'none' tira a lista.
+        - {filter:'A1:O26'} — setas de filtro no cabeçalho: a faixa é a tabela inteira, com o cabeçalho na
+          primeira linha. {filter:'none'} tira. Para contar só o que o filtro mostra, query com visible:true.
+        - {print:{...}} — impressão da aba; mande só as chaves que quer mudar:
+          orientation 'portrait' (em pé) ou 'landscape' (deitada); fit 'width' (todas as colunas numa página
+          de largura), 'page' (tudo numa página) ou 'none'; area 'A1:F40' ou 'none'; margins 'estreita',
+          'normal', 'larga' ou um número em centímetros; repeat_rows '1' (repete o cabeçalho em cada
+          página); center true (centraliza na largura).
+
+        Acabamento que faz uma planilha parecer profissional (em vez de uma grade com cor):
+        - Grade escondida, e borda SÓ onde há tabela. Linha vazia entre blocos sem borda e mais baixa (8 a 11).
+        - Coluna A estreita (width 2 a 4) como margem; as colunas da tabela com larguras pelo conteúdo,
+          não todas iguais.
+        - Título numa linha alta (40 a 50), mesclado na largura da tabela, letra 18 a 22.
+        - valign 'middle' e indent 1 nas células de texto; números à direita ou centralizados.
+        - Poucas cores: uma escura para cabeçalhos (letra branca), uma clara para destaque, o resto branco.
+          Fonte única na planilha toda.
+        - Tabela de dados: cabeçalho congelado (freeze) e filtro; coluna de status com lista suspensa e
+          condicional pintando cada valor.
+        - Impressão ajustada à largura antes de entregar.
         """;
 
     private static string Criar() => """

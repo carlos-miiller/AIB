@@ -73,7 +73,7 @@ public static class EstiloDePlanilha
     private static readonly HashSet<string> ChavesValidas = new(StringComparer.OrdinalIgnoreCase)
     {
         "bold", "italic", "underline", "color", "fill", "size", "font",
-        "border", "align", "valign", "wrap", "number_format"
+        "border", "align", "valign", "wrap", "indent", "number_format"
     };
 
     /// <summary>Atalhos de number_format; o que não é atalho vai ao Excel como está.</summary>
@@ -261,6 +261,15 @@ public static class EstiloDePlanilha
         if (style.TryGetProperty("wrap", out var wrapProp))
             alvo.Style.Alignment.WrapText = wrapProp.GetBoolean();
 
+        // Recuo do texto em relação à borda. É o que dá o respiro nos modelos bem acabados:
+        // texto alinhado à esquerda com indent 1 em toda a tabela.
+        if (style.TryGetProperty("indent", out var indentProp))
+        {
+            if (indentProp.ValueKind != JsonValueKind.Number || !indentProp.TryGetInt32(out int recuo) || recuo is < 0 or > 15)
+                throw new ErroDeDocumento($"operação {opIndex}: 'indent' é um número de 0 a 15 (1 = um recuo).");
+            alvo.Style.Alignment.Indent = recuo;
+        }
+
         if (style.TryGetProperty("number_format", out var nfProp) && nfProp.GetString() is { } nf)
             alvo.Style.NumberFormat.Format = NormalizarFormato(nf);
 
@@ -405,6 +414,7 @@ public static class EstiloDePlanilha
         else if (c.Style.Alignment.Vertical == XLAlignmentVerticalValues.Center) partes.Add("alinhado ao meio");
 
         if (c.Style.Alignment.WrapText) partes.Add("quebra de texto");
+        if (c.Style.Alignment.Indent > 0) partes.Add($"recuo {c.Style.Alignment.Indent}");
 
         DescreverBordas(c, partes);
 

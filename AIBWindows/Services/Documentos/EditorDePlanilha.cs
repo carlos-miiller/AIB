@@ -63,6 +63,7 @@ public static class EditorDePlanilha
         bool painelAlterado = false;
         int regrasCriadas = 0;
         int regrasRemovidas = 0;
+        int ajustes = 0;
         bool estrutural = false;
         int celulas = 0;
 
@@ -77,7 +78,9 @@ public static class EditorDePlanilha
                 op.TryGetProperty("columns", out _) ||
                 op.TryGetProperty("freeze", out _) ||
                 op.TryGetProperty("conditional", out _) ||
-                op.TryGetProperty("clear_conditional", out _)))
+                op.TryGetProperty("clear_conditional", out _) ||
+                op.TryGetProperty("validation", out _) ||
+                LayoutDePlanilha.Chaves.Any(k => op.TryGetProperty(k, out _))))
             {
                 throw new ErroDeDocumento("CSV não guarda formatação; ofereça salvar uma cópia em .xlsx.");
             }
@@ -129,8 +132,9 @@ public static class EditorDePlanilha
                 bool temValor = op.TryGetProperty("value", out _);
                 bool temEstilo = op.TryGetProperty("style", out var styleProp);
                 bool temCond = op.TryGetProperty("conditional", out var condProp);
+                bool temLista = op.TryGetProperty("validation", out var listaProp);
 
-                if (!temValor && !temEstilo && !temCond)
+                if (!temValor && !temEstilo && !temCond && !temLista)
                     throw new ErroDeDocumento($"operação {i}: falta 'value' (null apaga a célula).");
 
                 if (temValor)
@@ -169,6 +173,12 @@ public static class EditorDePlanilha
                     formatacoes.Add(mudancaCond);
                     regrasCriadas++;
                     regrasTocadas.Add(regraCriada);
+                }
+
+                if (temLista)
+                {
+                    formatacoes.Add(LayoutDePlanilha.Validacao(ws, r, listaProp, i));
+                    ajustes++;
                 }
             }
             else if (op.TryGetProperty("columns", out var colsProp))
@@ -314,10 +324,16 @@ public static class EditorDePlanilha
                 ws.Rows(de, ate).Delete();
                 estrutural = true;
             }
+            else if (LayoutDePlanilha.Processar(ws, op, i) is { } ajuste)
+            {
+                formatacoes.Add(ajuste);
+                ajustes++;
+            }
             else
             {
                 throw new ErroDeDocumento($"operação {i} desconhecida (chaves: {string.Join(", ", op.EnumerateObject().Select(p => p.Name))}). "
-                    + "Use cell, range, insert_rows, delete_rows, add_sheet, rename_sheet, move_sheet, columns, freeze ou clear_conditional.");
+                    + "Use cell, range, insert_rows, delete_rows, add_sheet, rename_sheet, move_sheet, columns, freeze, clear_conditional, "
+                    + "rows+height, merge, unmerge, gridlines, filter ou print.");
             }
         }
 
@@ -483,7 +499,11 @@ public static class EditorDePlanilha
 
         if (soAparencia)
         {
-            if (faixasFormatadas > 0 && colunasAjustadas == 0 && !painelAlterado && regrasCriadas == 0 && regrasRemovidas == 0)
+            if (ajustes > 0)
+                titulo = faixasFormatadas + colunasAjustadas + regrasCriadas + regrasRemovidas == 0 && !painelAlterado
+                    ? "Ajustar o layout desta planilha?"
+                    : "Formatar esta planilha?";
+            else if (faixasFormatadas > 0 && colunasAjustadas == 0 && !painelAlterado && regrasCriadas == 0 && regrasRemovidas == 0)
                 titulo = faixasFormatadas == 1 ? "Formatar 1 faixa nesta planilha?" : $"Formatar {faixasFormatadas} faixas nesta planilha?";
             else if (colunasAjustadas > 0 && faixasFormatadas == 0 && !painelAlterado && regrasCriadas == 0 && regrasRemovidas == 0)
                 titulo = colunasAjustadas == 1 ? "Ajustar 1 coluna nesta planilha?" : $"Ajustar {colunasAjustadas} colunas nesta planilha?";
@@ -509,6 +529,8 @@ public static class EditorDePlanilha
                 partesResumo.Add("painel");
             if (regrasCriadas > 0)
                 partesResumo.Add($"{regrasCriadas} regra{(regrasCriadas > 1 ? "s" : "")} condicional{(regrasCriadas > 1 ? "s" : "")}");
+            if (ajustes > 0)
+                partesResumo.Add($"{ajustes} ajuste{(ajustes > 1 ? "s" : "")} de layout");
             if (regrasRemovidas > 0)
                 partesResumo.Add($"{regrasRemovidas} regra{(regrasRemovidas > 1 ? "s" : "")} removida{(regrasRemovidas > 1 ? "s" : "")}");
 

@@ -753,7 +753,7 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   A aba vem de `sheet`, ao lado de `query` ou dentro dela (a Ellen a punha dentro e recebia "a
   consulta não conhece sheet", e concluiu que a query só via a primeira aba).
 - **`help`** (`ManualDoDoc`): o manual sob pedido, por `topic` (`ler`, `consulta`, `celulas`,
-  `estilo`, `condicional`, `abas`, `criar`, `word`, `tudo`; apelidos em inglês e português valem;
+  `estilo`, `condicional`, `abas`, `layout`, `criar`, `word`, `tudo`; apelidos em inglês e português valem;
   sem topic, o índice). Não precisa de `path`, não abre arquivo e não pergunta. Existe porque a
   descrição e o esquema dizem QUAIS chaves há, não o que cabe nelas: em 26/10/2026, para montar um
   painel, a Ellen abriu o código-fonte da formatação umas 15 vezes atrás de nome de cor, atalho de
@@ -829,7 +829,7 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   "quanto dá o total?" numa planilha filtrada respondia a soma de linhas que o usuário não via.
 - **Formatação** (mockup "Formatação de planilhas do AIB", 19/10/2026; `EstiloDePlanilha`,
   `CondicionalDePlanilha`): `style` junto de `cell`/`range`, com ou sem `value` (fonte, cor,
-  fundo, borda, alinhamento, quebra, `number_format` com atalhos `moeda`, `porcentagem`,
+  fundo, borda, alinhamento, quebra, `indent` de 0 a 15, `number_format` com atalhos `moeda`, `porcentagem`,
   `data`…); `columns` + `width` (número ou `auto`, teto 60 — acima disso, 60 e quebra de texto);
   `freeze` (`'B2'` ou `'none'`; congelar volta o canto da aba para A1, senão a aba salva rolada
   congelava a coluna em que parou); `conditional` (comparação, texto contém, repetidos/únicos,
@@ -842,6 +842,17 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   condicional diz quais células ela atinge hoje. Só aparência → sem recálculo nem efeito nas
   fórmulas, para o cartão abrir rápido em planilha grande. CSV recusa formatação ("ofereça
   salvar uma cópia em .xlsx").
+- **Layout** (`LayoutDePlanilha`, 26/10/2026): `{rows, height}` (pontos, ou `auto`, que apaga a
+  altura gravada para o Excel ajustar), `merge`/`unmerge`, `gridlines`, `filter` (faixa ou
+  `none`), `print` (`orientation`, `fit` width/page/none, `area`, `margins` por nome ou em cm,
+  `repeat_rows`, `center`) e, junto de `range`, `validation` (lista suspensa de valores ou de
+  faixa `=$H$2:$H$9`; `none` tira). Mesclar recusa se esconderia conteúdo de outra célula que
+  não a primeira (texto vazio não conta) e se encosta noutra mescla. O cartão titula "Ajustar o
+  layout desta planilha?" quando só há isso. Motivo: o painel que a Ellen montou saiu numa grade
+  de células iguais, e o modelo de rubrica que o usuário deu de exemplo se distingue justamente
+  por linha alta, mescla, grade escondida, lista e impressão. Regravar pelo ClosedXML preserva
+  imagem, lista suspensa, impressão, grade e mescla de arquivos alheios; perde o link que está
+  numa imagem.
 - O plano é guardado para o pré-voo e o cartão (`PlanoGuardado`, chave: pedido + data e tamanho
   do arquivo); a gravação o refaz do zero.
 - O resultado leva a marca de conteúdo de terceiros (`AgentLoop.TrazemConteudo`).

@@ -117,6 +117,14 @@ public class ManualDoDocTests : IDisposable
     }
 
     [Fact]
+    public void Layout_ExplicaCadaChave()
+    {
+        string t = ManualDoDoc.Texto("layout");
+        foreach (var k in LayoutDePlanilha.Chaves) t.Should().Contain(k + ":");
+        t.Should().Contain("validation:").And.Contain("indent");
+    }
+
+    [Fact]
     public void CadaBordaDoManual_EAceita()
     {
         // A lista de bordas do manual é escrita à mão; se o código deixar de aceitar uma, isto quebra.
