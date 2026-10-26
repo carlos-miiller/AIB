@@ -182,7 +182,7 @@ public static class ManualDoDoc
     private static readonly Assunto[] Todos =
     {
         new("ler", new[] { "info", "read", "find", "leitura", "acoes", "ações", "geral" },
-            "info, read e find: abrir, ler trechos e achar texto", Ler, Array.Empty<Exemplo>()),
+            "info, read, find e layout: abrir, ler trechos, achar texto e ver como a aba é formatada", Ler, Array.Empty<Exemplo>()),
         new("consulta", new[] { "query", "contas", "somar" },
             "query: somar, contar, média, agrupar e filtrar sem fazer conta de cabeça", Consulta, DeConsulta),
         new("celulas", new[] { "células", "celula", "célula", "valores", "formulas", "fórmulas", "linhas", "rows", "cell", "range", "edit", "editar" },
@@ -288,10 +288,16 @@ public static class ManualDoDoc
 
         Para contar, somar, achar maior e menor ou agrupar, não leia tudo: use action='query' (topic='consulta').
 
+        action='layout' mostra COMO uma aba é feita — larguras, alturas, mesclas, fonte, cores, bordas, recuo,
+        listas suspensas, links, congelar e impressão — escrito como as ops do edit, prontas para copiar. Serve para
+        aprender com uma planilha bem acabada (um modelo) e repetir o visual dela. Só .xlsx; 'sheet' escolhe a aba e
+        'range' limita as linhas ('1:40'). Condicional e imagem vêm descritas à parte.
+
         Exemplos de chamada:
         - {"action":"info","path":"C:\\Pasta\\vendas.xlsx"}
         - {"action":"read","path":"C:\\Pasta\\vendas.xlsx","sheet":"Vendas","range":"A1:D50"}
         - {"action":"find","path":"C:\\Pasta\\vendas.xlsx","text":"notebook"}
+        - {"action":"layout","path":"C:\\Pasta\\modelo.xlsx","sheet":"Painel"}
         """ + "\n\n" + Gerais;
 
     private static string Consulta() => $$$"""

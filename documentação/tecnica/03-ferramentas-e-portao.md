@@ -752,6 +752,14 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   contada** na resposta. Existe porque somar 300 linhas lidas como texto é onde o modelo erra.
   A aba vem de `sheet`, ao lado de `query` ou dentro dela (a Ellen a punha dentro e recebia "a
   consulta não conhece sheet", e concluiu que a query só via a primeira aba).
+- **`layout`** (`ReceitaDePlanilha`, 26/10/2026): a formatação de uma aba .xlsx escrita como as
+  `ops` do edit — larguras, alturas, fonte dominante (uma op só), estilos agrupados em retângulos
+  de células iguais, valores e fórmulas, mesclas, listas suspensas, links, congelar, filtro e
+  impressão. Condicional e imagem vão numa lista à parte. Cor de tema vem da paleta do próprio
+  arquivo com a tonalidade do Excel (HSL). Célula vazia só entra com borda ou fundo de cor. Até
+  200 linhas e 40 colunas (`range` em linhas escolhe outro trecho); acima do teto de saída, para
+  e diz como continuar. Garantia testada: a receita aplicada num arquivo vazio dá a mesma
+  receita. Existe para a Ellen aprender com um modelo bem acabado — o `read` só mostrava valores.
 - **`help`** (`ManualDoDoc`): o manual sob pedido, por `topic` (`ler`, `consulta`, `celulas`,
   `estilo`, `condicional`, `abas`, `layout`, `criar`, `word`, `tudo`; apelidos em inglês e português valem;
   sem topic, o índice). Não precisa de `path`, não abre arquivo e não pergunta. Existe porque a

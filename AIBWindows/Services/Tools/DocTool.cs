@@ -68,11 +68,11 @@ public class DocTool : ITool
         {
             "type": "object",
             "properties": {
-                "action": { "type": "string", "enum": ["info", "read", "find", "query", "create", "edit", "help"] },
+                "action": { "type": "string", "enum": ["info", "read", "find", "query", "layout", "create", "edit", "help"] },
                 "topic": { "type": "string", "description": "help: ler, consulta, celulas, estilo, condicional, abas, layout, criar, word ou tudo. Sem topic, o índice." },
                 "path": { "type": "string", "description": "Caminho absoluto." },
                 "sheet": { "type": "string", "description": "Aba (planilha) de read, find, query e edit. Sem ela, a primeira." },
-                "range": { "type": "string", "description": "read: 'A1:F200' ou '10:60' (linhas); Word: '¶' '12-40'; PDF: páginas '2-4'." },
+                "range": { "type": "string", "description": "read: 'A1:F200' ou '10:60' (linhas); layout: '1:40'; Word: '¶' '12-40'; PDF: páginas '2-4'." },
                 "text": { "type": "string", "description": "find: o texto." },
                 "query": { "type": "object", "description": "{where:[{col,op:'= != > < >= <= contains',value}], group:col, agg:[{fn:'sum|count|avg|min|max',col}], sort:'-col', limit, visible:true (só linhas visíveis, como o SUBTOTAL)}. col = cabeçalho ou letra." },
                 "ops": { "type": "array", "items": { "type": "object" }, "description": "edit. Planilha: {cell:'B2',value} ('=' inicia fórmula) | {range:'D2:D50',value:'=B{row}*2'} | {insert_rows:N,rows:[[..]]} (antes da linha N) | {delete_rows:'18:19'} | {add_sheet:'Nome',position?} | {rename_sheet:'Velho',to} | {move_sheet:'Nome',position:1} (1 = primeira) | cell/range + style:{bold,italic,underline,color,fill,size,font,border:'all|outline|top|bottom|double|none',align,valign,wrap,number_format:'moeda|porcentagem|data|#,##0.00'} (value opcional) | {columns:'A:F',width:N|'auto'} | {freeze:'B2'|'none'} | {range,conditional:{when:'> < = between contains duplicates',value,style}|{scale:'verde-vermelho'}|{bar:cor}|{icons:'setas|semaforo'}} | {clear_conditional:range} | altura de linha, mesclar, grade, lista suspensa, filtro, impressão, link e imagem: help topic='layout'; cor: #RRGGBB ou nome ('amarelo claro'); todas aceitam sheet. Word: {replace:'texto exato',with} | {insert_after:¶,text,style:'Heading1|Heading2|List|Normal'} | {delete:¶} | {table:1,row,col,value}." },
@@ -95,7 +95,7 @@ public class DocTool : ITool
         public bool Ajuda => Acao == "help";
     }
 
-    private static readonly string[] Acoes = { "info", "read", "find", "query", "create", "edit", "help" };
+    private static readonly string[] Acoes = { "info", "read", "find", "query", "layout", "create", "edit", "help" };
 
     /// <summary>A leitura ÚNICA dos argumentos, usada pelo pré-voo, pelo cartão e pela execução.</summary>
     internal static Argumentos? Ler(string argumentsJson)
@@ -289,6 +289,7 @@ public class DocTool : ITool
                     "read" => Apresentacao.Ler(pasta, a.Aba, a.Intervalo, teto),
                     "find" => Apresentacao.Buscar(pasta, a.Texto!, teto),
                     "query" => ConsultaDePlanilha.Executar(pasta, a.Aba, a.Consulta!.Value, teto),
+                    "layout" => ReceitaDePlanilha.Descrever(caminho, a.Aba, a.Intervalo, teto),
                     _ => "ERRO: ação desconhecida."
                 };
             }
@@ -300,6 +301,7 @@ public class DocTool : ITool
                 "read" => Apresentacao.Ler(doc, a.Intervalo, teto),
                 "find" => Apresentacao.Buscar(doc, a.Texto!, teto),
                 "query" => "ERRO: 'query' é para planilhas. Em Word e PDF, use 'find' e 'read'.",
+                "layout" => "ERRO: 'layout' mostra a formatação de planilhas .xlsx. Em Word e PDF, use 'read'.",
                 _ => "ERRO: ação desconhecida."
             };
         }
