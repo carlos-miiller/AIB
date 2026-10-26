@@ -183,6 +183,14 @@ var casos = new List<Caso>
         r => r.ChamouCom("doc", "contrato-vipphone.pdf") && !r.Chamou("read")
             ? Passou() : Falhou("devia chamar doc (find ou read) no PDF")),
 
+    // PLANILHA NOVA PARTE DE UM MODELO (26/10/2026). O painel que a Ellen montou do zero saiu
+    // uma grade de células iguais; com os modelos, o primeiro passo devia ser 'models' (ou o
+    // 'help' deles, ou já o 'create' com 'from'). Criar com 'content' direto é o jeito antigo.
+    new("planilha-nova", $@"monte uma planilha de painel de indicadores dos chamados de TI em {home}\Documents\painel-chamados.xlsx",
+        r => r.Chamadas.Any(c => c.Nome == "doc" && Regex.IsMatch(c.Args,
+                @"""action""\s*:\s*""(models|layout)""|""from""\s*:|""topic""\s*:\s*""(modelos?|models)"""))
+            ? Passou() : Falhou("devia olhar os modelos ('models', 'layout' ou create com 'from') antes de criar")),
+
     // Contagem de hoje pode sair do resumo do vigia — é para isso que ele existe (EstadoDoVigia).
     // Critério revisto em 14/09, depois da ablação: sem o resumo o modelo INVENTOU números;
     // com ele, respondeu certo e sem a ida de ~45s à ferramenta. A resposta em texto só passa
