@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using ClosedXML.Excel;
@@ -20,7 +21,13 @@ namespace AIB.Services.Documentos;
 public static class LayoutDePlanilha
 {
     /// <summary>As chaves de operação que esta classe atende, para a recusa do CSV e a lista de erro.</summary>
-    public static readonly string[] Chaves = { "height", "merge", "unmerge", "gridlines", "filter", "print" };
+    public static readonly string[] Chaves = { "height", "merge", "unmerge", "gridlines", "filter", "print", "image" };
+
+    /// <summary>As imagens que entram na planilha, pela extensão.</summary>
+    public static readonly string[] ExtensoesDeImagem = { ".png", ".jpg", ".jpeg", ".gif", ".bmp" };
+
+    /// <summary>Tamanho máximo de uma imagem: um logotipo, não uma foto de câmera.</summary>
+    public const long TetoDeImagem = 5 * 1024 * 1024;
 
     /// <summary>Margens de impressão por nome, em polegadas como o Excel guarda (as mesmas do Excel).</summary>
     private static readonly Dictionary<string, (double Lados, double TopoEBase, double Cabecalho)> Margens = new(StringComparer.OrdinalIgnoreCase)
@@ -38,6 +45,7 @@ public static class LayoutDePlanilha
     /// </summary>
     public static Mudanca? Processar(IXLWorksheet ws, JsonElement op, int i)
     {
+        if (op.TryGetProperty("image", out var imagem)) return Imagem(ws, op, imagem, i);
         if (op.TryGetProperty("height", out var altura)) return Altura(ws, op, altura, i);
         if (op.TryGetProperty("merge", out var mesclar)) return Mesclar(ws, Texto(mesclar, "merge", i), i);
         if (op.TryGetProperty("unmerge", out var desfazer)) return Desmesclar(ws, Texto(desfazer, "unmerge", i), i);
@@ -304,6 +312,140 @@ public static class LayoutDePlanilha
 
         return new Mudanca(TipoDeMudanca.Valor, onde, existentes.Count > 0 ? "tinha outra lista" : "aceita qualquer valor", descricao);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Link e imagem
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// <c>{cell, link:'https://…'}</c>, <c>'mailto:…'</c>, <c>'#Aba!A1'</c> (outra aba) ou null (tira).
+    /// Só http, https e mailto saem da planilha: link para arquivo ou programa num documento que
+    /// o usuário vai abrir e repassar é isca, não acabamento.
+    /// </summary>
+    public static Mudanca Link(IXLCell c, JsonElement v, bool temEstilo, int i)
+    {
+        string onde = $"Link em {c.Address}";
+        string? antes = c.HasHyperlink ? Destino(c.GetHyperlink()) : null;
+
+        if (v.ValueKind == JsonValueKind.Null)
+        {
+            if (!c.HasHyperlink) throw new ErroDeDocumento($"operação {i}: {c.Address} não tem link.");
+            c.Worksheet.Hyperlinks.Delete(c.Address);
+            return new Mudanca(TipoDeMudanca.Sai, onde, antes, null);
+        }
+
+        string alvo = v.ValueKind == JsonValueKind.String ? v.GetString()!.Trim() : "";
+        XLHyperlink link;
+        bool externo = alvo.Contains("://") || alvo.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase);
+        if (!externo && alvo.Contains('!'))
+        {
+            string endereco = alvo.TrimStart('#');
+            string aba = endereco[..endereco.LastIndexOf('!')].Trim('\'');
+            if (!c.Worksheet.Workbook.Worksheets.Any(w => string.Equals(w.Name, aba, StringComparison.OrdinalIgnoreCase)))
+                throw new ErroDeDocumento($"operação {i}: o link aponta para a aba \"{aba}\", que não existe.");
+            link = new XLHyperlink(endereco);
+        }
+        else if (Uri.TryCreate(alvo, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "mailto")
+        {
+            link = new XLHyperlink(uri);
+        }
+        else
+        {
+            throw new ErroDeDocumento($"operação {i}: 'link' é um endereço http(s)://, mailto: ou outra aba ('#Resumo!A1'). Link para arquivo ou programa não entra.");
+        }
+
+        // O ClosedXML pinta o link de azul sublinhado. Com estilo no pedido (um botão verde de
+        // letra branca), vale o que foi pedido; sem estilo, fica com cara de link.
+        var cor = c.Style.Font.FontColor;
+        var sublinhado = c.Style.Font.Underline;
+        c.SetHyperlink(link);
+        if (temEstilo)
+        {
+            c.Style.Font.FontColor = cor;
+            c.Style.Font.Underline = sublinhado;
+        }
+        else
+        {
+            c.Style.Font.FontColor = XLColor.FromHtml("#0563C1");
+            c.Style.Font.Underline = XLFontUnderlineValues.Single;
+        }
+        return new Mudanca(TipoDeMudanca.Valor, onde, antes, alvo);
+    }
+
+    private static string Destino(XLHyperlink h) =>
+        h.IsExternal ? h.ExternalAddress.ToString() : "#" + h.InternalAddress;
+
+    /// <summary>
+    /// <c>{image:'C:\…\logo.png', cell:'B1', width?, height?}</c> (em pixels; um só mantém a proporção)
+    /// ou <c>{image:'none', cell:'B1'}</c>, que tira a imagem ancorada na célula. Quem confere se o
+    /// arquivo pode ser lido (fora da pasta de dados do AIB) é o DocTool, antes do cartão.
+    /// </summary>
+    private static Mudanca Imagem(IXLWorksheet ws, JsonElement op, JsonElement imagem, int i)
+    {
+        string? celula = op.TryGetProperty("cell", out var cp) && cp.ValueKind == JsonValueKind.String ? cp.GetString() : null;
+        var (l, col) = celula is null ? (null, null) : Apresentacao.Ponto(celula.Replace("$", ""), celula);
+        if (l is null || col is null)
+            throw new ErroDeDocumento($"operação {i}: 'image' vai com 'cell', o canto de cima à esquerda da imagem: {{image:'C:\\logo.png', cell:'B1'}}.");
+        var canto = ws.Cell(l.Value, col.Value);
+
+        string caminho = imagem.ValueKind == JsonValueKind.String ? imagem.GetString()!.Trim() : "";
+        if (caminho.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            var ali = ws.Pictures.Where(p => p.TopLeftCell.Address.Equals(canto.Address)).ToList();
+            if (ali.Count == 0) throw new ErroDeDocumento($"operação {i}: não há imagem em {canto.Address}.");
+            foreach (var p in ali) p.Delete();
+            return new Mudanca(TipoDeMudanca.Sai, $"Imagem em {canto.Address}", ali.Count == 1 ? ali[0].Name : $"{ali.Count} imagens", null);
+        }
+
+        string arquivo = ConferirImagem(caminho, i);
+        var pic = ws.AddPicture(arquivo).MoveTo(canto);
+
+        bool temLargura = op.TryGetProperty("width", out var wp);
+        bool temAltura = op.TryGetProperty("height", out var hp);
+        int Pixels(JsonElement e, string nome) =>
+            e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out int px) && px is >= 8 and <= 4000 ? px
+                : throw new ErroDeDocumento($"operação {i}: '{nome}' da imagem é em pixels, de 8 a 4000.");
+
+        if (temLargura && temAltura)
+        {
+            pic.WithSize(Pixels(wp, "width"), Pixels(hp, "height"));
+        }
+        else if (temLargura)
+        {
+            int w = Pixels(wp, "width");
+            pic.WithSize(w, Math.Max(1, (int)Math.Round((double)pic.OriginalHeight * w / pic.OriginalWidth)));
+        }
+        else if (temAltura)
+        {
+            int h = Pixels(hp, "height");
+            pic.WithSize(Math.Max(1, (int)Math.Round((double)pic.OriginalWidth * h / pic.OriginalHeight)), h);
+        }
+
+        return new Mudanca(TipoDeMudanca.Valor, $"Imagem em {canto.Address}", null,
+            $"{Path.GetFileName(arquivo)} · {pic.Width}×{pic.Height} px");
+    }
+
+    /// <summary>O caminho da imagem, conferido: absoluto, existe, é imagem e não é grande demais.</summary>
+    public static string ConferirImagem(string caminho, int i)
+    {
+        if (caminho.Length == 0 || !Path.IsPathFullyQualified(caminho))
+            throw new ErroDeDocumento($"operação {i}: 'image' é o caminho absoluto do arquivo (C:\\...\\logo.png) ou 'none'.");
+        if (!ExtensoesDeImagem.Contains(Path.GetExtension(caminho).ToLowerInvariant()))
+            throw new ErroDeDocumento($"operação {i}: a imagem precisa ser {string.Join(", ", ExtensoesDeImagem)}.");
+        var info = new FileInfo(caminho);
+        if (!info.Exists) throw new ErroDeDocumento($"operação {i}: a imagem '{caminho}' não existe.");
+        if (info.Length > TetoDeImagem)
+            throw new ErroDeDocumento($"operação {i}: a imagem tem {info.Length / 1024 / 1024} MB; o teto é {TetoDeImagem / 1024 / 1024} MB.");
+        return info.FullName;
+    }
+
+    /// <summary>Os caminhos de imagem de uma lista de ops, para o DocTool conferir onde ficam.</summary>
+    public static IEnumerable<string> Imagens(JsonElement ops) =>
+        ops.ValueKind != JsonValueKind.Array ? Enumerable.Empty<string>()
+            : ops.EnumerateArray()
+                .Where(o => o.ValueKind == JsonValueKind.Object && o.TryGetProperty("image", out var v) && v.ValueKind == JsonValueKind.String)
+                .Select(o => o.GetProperty("image").GetString()!.Trim())
+                .Where(c => !c.Equals("none", StringComparison.OrdinalIgnoreCase));
 
     // ─────────────────────────────────────────────────────────────────────────
     // Auxiliares

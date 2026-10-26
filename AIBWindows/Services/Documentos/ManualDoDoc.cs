@@ -139,6 +139,9 @@ public static class ManualDoDoc
             """[{"print":{"orientation":"landscape","fit":"width","repeat_rows":"1","margins":"estreita"}}]""", Uso.Ops),
         new("Imprimir só uma faixa, centralizada:", """[{"print":{"area":"A1:D6","center":true}}]""", Uso.Ops),
         new("Desfazer uma mescla:", """[{"merge":"A8:D8"},{"unmerge":"A8:D8"}]""", Uso.Ops),
+        new("Link para um site (fica azul sublinhado):", """[{"cell":"A8","value":"Abrir o portal","link":"https://www.gov.br"}]""", Uso.Ops),
+        new("Link com cara de botão (o estilo pedido vale no lugar do azul):",
+            """[{"range":"A9:D9","value":null},{"merge":"A9:D9"},{"cell":"A9","value":"VER O RESUMO","link":"#Resumo!A1","style":{"bold":true,"color":"branco","fill":"verde escuro","align":"center"}}]""", Uso.Ops),
     };
 
     private static readonly Exemplo[] DeConsulta =
@@ -191,8 +194,9 @@ public static class ManualDoDoc
         new("abas", new[] { "aba", "sheet", "sheets", "add_sheet", "rename_sheet", "move_sheet", "freeze", "congelar", "columns", "colunas", "largura" },
             "abas (criar, renomear, mover), congelar painel e largura de coluna", Abas, DeAbas),
         new("layout", new[] { "acabamento", "painel", "altura", "height", "mesclar", "merge", "unmerge", "grade", "gridlines",
-                              "lista", "validation", "validacao", "validação", "filtro", "filter", "impressao", "impressão", "print", "imprimir" },
-            "acabamento: altura de linha, mesclar, grade, lista suspensa, filtro e impressão", Layout, DeLayout),
+                              "lista", "validation", "validacao", "validação", "filtro", "filter", "impressao", "impressão", "print", "imprimir",
+                              "link", "hyperlink", "imagem", "image", "logo" },
+            "acabamento: altura de linha, mesclar, grade, lista suspensa, filtro, impressão, link e imagem", Layout, DeLayout),
         new("criar", new[] { "create", "content", "novo" },
             "create: planilha ou Word novos do zero", Criar, DeCriar),
         new("word", new[] { "docx", "documento", "pdf" },
@@ -436,6 +440,12 @@ public static class ManualDoDoc
           de largura), 'page' (tudo numa página) ou 'none'; area 'A1:F40' ou 'none'; margins 'estreita',
           'normal', 'larga' ou um número em centímetros; repeat_rows '1' (repete o cabeçalho em cada
           página); center true (centraliza na largura).
+        - {cell:'A30', value:'Abrir o portal', link:'https://...'} — link: http, https, mailto:, ou outra aba
+          ('#Resumo!A1'). Link para arquivo ou programa não entra. link:null tira. Sem style, fica azul
+          sublinhado; com style, vale o estilo (dá para fazer um botão).
+        - {image:'C:\\Pasta\\logo.png', cell:'B1', width:160} — imagem (.png .jpg .gif .bmp, até 5 MB) com o
+          canto de cima à esquerda na célula. width OU height em pixels mantém a proporção; os dois deformam.
+          Sem tamanho, o original. A imagem não pode vir da pasta de dados do AIB. {image:'none', cell:'B1'} tira.
 
         Acabamento que faz uma planilha parecer profissional (em vez de uma grade com cor):
         - Grade escondida, e borda SÓ onde há tabela. Linha vazia entre blocos sem borda e mais baixa (8 a 11).

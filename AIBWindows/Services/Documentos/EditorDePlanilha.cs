@@ -80,6 +80,7 @@ public static class EditorDePlanilha
                 op.TryGetProperty("conditional", out _) ||
                 op.TryGetProperty("clear_conditional", out _) ||
                 op.TryGetProperty("validation", out _) ||
+                op.TryGetProperty("link", out _) ||
                 LayoutDePlanilha.Chaves.Any(k => op.TryGetProperty(k, out _))))
             {
                 throw new ErroDeDocumento("CSV não guarda formatação; ofereça salvar uma cópia em .xlsx.");
@@ -97,13 +98,20 @@ public static class EditorDePlanilha
             var ws = Aba(wb, Texto(op, "sheet") ?? abaPadrao, i);
             if (!abasTocadas.Contains(ws.Name)) abasTocadas.Add(ws.Name);
 
-            if (Texto(op, "cell") is { } celula)
+            // A imagem usa 'cell' como canto; vem antes de a operação ser lida como de célula.
+            if (op.TryGetProperty("image", out _) && LayoutDePlanilha.Processar(ws, op, i) is { } figura)
+            {
+                formatacoes.Add(figura);
+                ajustes++;
+            }
+            else if (Texto(op, "cell") is { } celula)
             {
                 var c = Celula(ws, celula, i);
                 bool temValor = op.TryGetProperty("value", out _);
                 bool temEstilo = op.TryGetProperty("style", out var styleProp);
+                bool temLink = op.TryGetProperty("link", out var linkProp);
 
-                if (!temValor && !temEstilo)
+                if (!temValor && !temEstilo && !temLink)
                     throw new ErroDeDocumento($"operação {i}: falta 'value' (null apaga a célula).");
 
                 if (temValor)
@@ -124,6 +132,12 @@ public static class EditorDePlanilha
                     formatacoes.Add(new Mudanca(TipoDeMudanca.Valor, onde, antesDesc, depoisDesc, AmostraAntes: antesAmostra, AmostraDepois: depoisAmostra));
                     faixasFormatadas++;
                     celulasFormatadasTotal++;
+                }
+
+                if (temLink)
+                {
+                    formatacoes.Add(LayoutDePlanilha.Link(c, linkProp, temEstilo, i));
+                    ajustes++;
                 }
             }
             else if (Texto(op, "range") is { } faixa)
@@ -333,7 +347,7 @@ public static class EditorDePlanilha
             {
                 throw new ErroDeDocumento($"operação {i} desconhecida (chaves: {string.Join(", ", op.EnumerateObject().Select(p => p.Name))}). "
                     + "Use cell, range, insert_rows, delete_rows, add_sheet, rename_sheet, move_sheet, columns, freeze, clear_conditional, "
-                    + "rows+height, merge, unmerge, gridlines, filter ou print.");
+                    + "rows+height, merge, unmerge, gridlines, filter, print ou image.");
             }
         }
 

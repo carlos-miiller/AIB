@@ -856,7 +856,15 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   de células iguais, e o modelo de rubrica que o usuário deu de exemplo se distingue justamente
   por linha alta, mescla, grade escondida, lista e impressão. Regravar pelo ClosedXML preserva
   imagem, lista suspensa, impressão, grade e mescla de arquivos alheios; perde o link que está
-  numa imagem.
+  numa imagem. O esquema da ferramenta só aponta para `help topic='layout'`.
+- **Link e imagem** (`LayoutDePlanilha.Link`/`Imagem`): `{cell, link}` aceita http, https,
+  mailto e outra aba (`#Resumo!A1`, conferida); arquivo, programa, `file:` e `javascript:` são
+  recusados — num documento que o usuário abre e repassa, isso é isca. Sem `style`, o link fica
+  azul sublinhado; com `style`, vale o pedido (o ClosedXML impõe o sublinhado, e ele é desfeito).
+  `{image, cell, width?, height?}`: .png .jpg .gif .bmp até 5 MB, caminho absoluto; um só lado
+  mantém a proporção; `image:'none'` tira a ancorada na célula. A imagem é um segundo arquivo
+  lido pelo pedido, então o `DocTool.Validar` recusa a que está na pasta de dados do AIB
+  (`DadosProtegidos` diferente de Livre).
 - O plano é guardado para o pré-voo e o cartão (`PlanoGuardado`, chave: pedido + data e tamanho
   do arquivo); a gravação o refaz do zero.
 - O resultado leva a marca de conteúdo de terceiros (`AgentLoop.TrazemConteudo`).
