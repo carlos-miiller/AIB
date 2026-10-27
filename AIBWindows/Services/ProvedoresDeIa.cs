@@ -205,8 +205,13 @@ public sealed class PerfilDeProvedor
     /// <summary>
     /// Teto do que a AIB aceita pedir. Acima disso a conta dos orçamentos por nível e o custo de
     /// cada turno deixam de ser razoáveis nesta máquina e na fatura; o modelo pode aguentar mais.
+    /// <para>
+    /// Era 262.144. Subiu com a escala de níveis de 24.000 a 256.000 (27/10/2026): o nível 9
+    /// só vale inteiro com janela de 341.334 (ele para em três quartos dela), e 262.144 o
+    /// cortava em 196.608.
+    /// </para>
     /// </summary>
-    public const int JanelaMaxima = 262144;
+    public const int JanelaMaxima = 344064;
 
     public const string RaciocinioDesligado = "off";
     public const string RaciocinioDoModelo = "model";

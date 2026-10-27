@@ -252,7 +252,7 @@ Contrato do stream (`StreamChunk`), obrigatório para todo provedor:
 - `NormalizarUrlDoOllama`: tira o `/v1` do fim, tira a barra final e troca `localhost` por `127.0.0.1` — no Windows `localhost` resolve primeiro para IPv6, o Ollama escuta só IPv4, e cada conexão esperava até dois minutos.
 - `ModeloPadraoDoOllama` = `qwen2.5:7b` (um nome só para todos os padrões).
 - `ChaveValida`: só formato (`sk-or-` + 20 caracteres ou mais); quem valida é o OpenRouter.
-- `PerfilDeProvedor`: cada provedor guarda o seu (URL, modelo, keep-alive, janela, raciocínio). A chave **não** fica no perfil — vai para o cofre. Janela: padrão 32.768, mínimo 8.192, máximo 262.144. `Sanear` fixa a URL do OpenRouter e aceita no Ollama só keep-alive `1m`, `5m`, `30m` ou `-1`.
+- `PerfilDeProvedor`: cada provedor guarda o seu (URL, modelo, keep-alive, janela, raciocínio). A chave **não** fica no perfil — vai para o cofre. Janela: padrão 32.768, mínimo 8.192, máximo 344.064 (o bastante para o nível 9, 256.000, valer inteiro). `Sanear` fixa a URL do OpenRouter e aceita no Ollama só keep-alive `1m`, `5m`, `30m` ou `-1`.
 - Raciocínio: Ollama tem "Desligado" e "Ligado (padrão do modelo)"; OpenRouter tem desligado, `low`, `medium`, `high` e padrão do modelo.
 
 ### 6.4 `LimitesDoProvedor`

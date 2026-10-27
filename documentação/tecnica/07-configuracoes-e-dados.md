@@ -177,7 +177,7 @@ Os campos `AiProvider`, `ApiUrl`, `ModelName`, `KeepAlive`, `ContextWindow` e `R
 
 `PerfilDeProvedor` não tem chave de API: o perfil vai para o arquivo de configurações, a chave vai para o cofre.
 
-`PerfilDeProvedor.Sanear(provedor)`: janela entre 8.192 e 262.144 (padrão 32.768); raciocínio só entre as opções do provedor (`ProvedoresDeIa.OpcoesDeRaciocinio`), senão `off`; no OpenRouter a URL é fixa e não há keep-alive; no Ollama o keep-alive é `1m`, `5m`, `30m` ou `-1` (padrão `-1`, sempre carregado).
+`PerfilDeProvedor.Sanear(provedor)`: janela entre 8.192 e 344.064 (padrão 32.768; o máximo é o que o nível 9 pede); raciocínio só entre as opções do provedor (`ProvedoresDeIa.OpcoesDeRaciocinio`), senão `off`; no OpenRouter a URL é fixa e não há keep-alive; no Ollama o keep-alive é `1m`, `5m`, `30m` ou `-1` (padrão `-1`, sempre carregado).
 
 ### `Sanear`: números dentro de faixas
 
@@ -283,7 +283,7 @@ O que o nível libera:
 
 `ToolRegistry.GetActiveTools` só oferece ao modelo as ferramentas do nível, e `ToolRegistry.ExecuteToolAsync` recusa com `ACESSO NEGADO` a que estiver acima dele. Detalhes em [03-ferramentas-e-portao.md](03-ferramentas-e-portao.md).
 
-O nível também dimensiona a memória: `LevelService.GetMaxTokensForLevel(nivel, janela)` vai de um quarto da janela (nível 1) a três quartos (nível 9), em oito passos iguais. É **derivado** da janela, e não uma tabela, porque a tabela antiga ficou para trás quando a janela subiu e o nível 9 passou a usar 37% do que o modelo aguentava. O teto de 75% deixa espaço para a geração. Mudar `num_ctx` no meio da sessão faz o Ollama recarregar o modelo e perder o cache — medido: prefill de 343 ms voltou a 204 s.
+O nível também dimensiona a memória: `LevelService.GetMaxTokensForLevel(nivel, janela)` vai de 24.000 (nível 1) a 256.000 (nível 9) em escala geométrica, e nunca passa de três quartos da janela, que deixam espaço para a geração. Com a janela de um modelo local (32.768), todo nível fica em 24.576; para o nível 9 valer inteiro, a janela precisa de 341.334 (detalhes em `04-memoria.md` §2.1). Mudar `num_ctx` no meio da sessão faz o Ollama recarregar o modelo e perder o cache — medido: prefill de 343 ms voltou a 204 s.
 
 O comando `/unlock_level N` no chat ajusta `MessageCount` para o piso do nível `N` (1 a 9).
 

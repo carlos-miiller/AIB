@@ -51,7 +51,9 @@ Arquivos (todos em `AIBWindows/Services/Memory/`, salvo indicação):
 
 ### 2.1 Orçamento do nível (`LevelService.GetMaxTokensForLevel`)
 
-Derivado da janela em vigor (`ChatRequestOptions.JanelaAtual`), nunca digitado: nível 1 recebe 1/4 da janela, nível 9 recebe 3/4, em oito passos iguais. Com a janela padrão de 32.768: nível 1 = 8.192, passo de 2.048, nível 9 = 24.576.
+Escala geométrica fixa, de 24.000 no nível 1 a 256.000 no nível 9, multiplicando por ~1,344 a cada nível: 24.000, 32.264, 43.373, 58.307, 78.384, 105.373, 141.655, 190.430, 256.000. Nunca passa de 3/4 da janela em vigor (`ChatRequestOptions.JanelaAtual`): com a janela padrão de 32.768, todo nível para em 24.576 (o nível 1, 24.000, cabe inteiro); com 132.768, para em 99.576 a partir do nível 6. Para o nível 9 valer inteiro, a janela precisa de 341.334.
+
+Era derivado da janela, de 1/4 a 3/4 em passos iguais; com a janela do Gemini os degraus eram de 8.298 tokens, e o usuário pediu mais distância entre os níveis.
 
 Esse orçamento é **de compactação**, não limite do modelo. A poda de emergência age em outro teto (`TetoDaPoda` = janela − 2.048).
 
@@ -72,7 +74,7 @@ viva      = disponível − memória
 
 Só a **primeira** mensagem de sistema conta como prefixo. A segunda é o próprio bloco de memória; contá-la encolheria a cota a cada capítulo, num aperto que se realimenta (`ConversationService.CurrentQuota`).
 
-Exemplo: nível 1, janela 32.768, prefixo de 3.000 tokens → disponível 5.192; memória 1.298 (fatos 259, atos 389, capítulos 650); conversa viva 3.894.
+Exemplo: nível 1 (24.000), prefixo de 3.000 tokens → disponível 21.000; memória 5.250 (fatos 1.050, atos 1.575, capítulos 2.625); conversa viva 15.750.
 
 ### 2.3 Gatilho e alvo
 

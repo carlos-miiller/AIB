@@ -383,17 +383,17 @@ namespace AIB.Tests
             var provider = new FakeProvider { CompleteReply = "Resumo do trecho." };
             var conversation = BuildConversation(settings, provider, out _);
 
-            // No nível 1 a cota viva fica perto de 7 mil tokens: gatilho em uns 5.900 (85%) e
-            // alvo em uns 3.500 (metade). Quinze turnos de uns 430 tokens passam do gatilho, e
-            // cada capítulo só leva dois: o primeiro já deixa a conversa abaixo dele.
+            // No nível 1 (24.000) a cota viva fica perto de 18 mil tokens: gatilho em uns 15 mil
+            // (85%) e alvo em uns 9 mil (metade). Quinze turnos de uns 1.300 tokens passam do
+            // gatilho, e cada capítulo só leva dois: o primeiro já deixa a conversa abaixo dele.
             for (int i = 0; i < 15; i++)
-                conversation.AppendRecoveredContext($"pedido {i}", Filler(3200));
+                conversation.AppendRecoveredContext($"pedido {i}", Filler(9600));
 
             await conversation.CompactIfNeededAsync(userLevel: 1);
 
             conversation.Chapters.Count.Should().BeGreaterThan(1,
                 "um capítulo só deixa a conversa encostada no gatilho, e o turno seguinte compacta de novo");
-            conversation.CurrentTokenReport.Contexto.Should().BeLessThan(4_600,
+            conversation.CurrentTokenReport.Contexto.Should().BeLessThan(13_800,
                 "a passada desce até perto do alvo, e não só até abaixo do gatilho");
         }
 
@@ -1569,7 +1569,8 @@ namespace AIB.Tests
         {
             // Quem manda é a COTA, não a contagem: com a faixa de capítulos apertada, o ato sai
             // mesmo com o teto lá em cima. É o caso do modelo local, onde a faixa tem algumas
-            // centenas de tokens e um capítulo já a enche.
+            // centenas de tokens e um capítulo já a enche. A janela de 8.192 põe o nível 1 em
+            // 6.144: desde que a escala começa em 24.000, só a janela pequena aperta assim.
             var settings = BuildSettings(sendSystemPrompt: false);
             var provider = ProviderQueResponde("certo");
             provider.CompleteReply = "resumo";
@@ -1577,6 +1578,7 @@ namespace AIB.Tests
             var s = settings.LoadSettings();
             s.CapitulosPorAto = 16;
             s.MemoryFraction = 0.05;
+            s.ContextWindow = 8192;
             settings.SaveSettings(s.Sanear());
 
             var conversation = BuildConversation(settings, provider, out _);
