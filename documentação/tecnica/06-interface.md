@@ -173,7 +173,9 @@ A faixa de sistema (`StatusBar`) tem três usos:
    (`InterromperCompactacao`); `CompactacaoAcabou` fecha. Ela **não** some sozinha: uma espera que
    desaparece com o trabalho rodando volta a parecer travamento.
 3. **Aviso curto** (`MostrarFaixa`): frase que some em 6 s, para o que não é fala da IA e não pode
-   virar bolha (por exemplo, "Não consegui reler este e-mail.").
+   virar bolha (por exemplo, "Não consegui reler este e-mail."). O aviso de que a compactação
+   automática está perto (`CompactacaoSeAproxima`) fica 12 s; se chega durante o envio, espera
+   em `_avisoDeCompactacao` até o fim dele, porque o envio esconde a faixa ao terminar.
 
 `Girar` é o único lugar do giro de 0,9 s; a faixa e o botão "Recarregar" do e-mail usam o mesmo.
 

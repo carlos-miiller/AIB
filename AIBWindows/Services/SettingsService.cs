@@ -376,12 +376,13 @@ public sealed class UserAppSettings
     /// </summary>
     public int TurnosSoltos { get; set; } = PadraoDeTurnosSoltos;
 
-    public const int PadraoDeTokensSoltos = 100_000;
+    public const int PadraoDeTokensSoltos = 135_000;
 
     /// <summary>
     /// Com este tanto de tokens fora de capítulo, a conversa compacta. Vale o menor entre este
     /// e a fração da cota viva (<see cref="CompactionTrigger"/>), que continua sendo o que
-    /// protege o modelo de janela pequena.
+    /// protege o modelo de janela pequena. Era 100 mil; subiu para 135 mil a pedido do usuário
+    /// (27/10/2026), junto com a escala de níveis que chega a 256 mil.
     /// </summary>
     public int TokensSoltos { get; set; } = PadraoDeTokensSoltos;
 

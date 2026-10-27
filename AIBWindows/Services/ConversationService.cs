@@ -1118,6 +1118,59 @@ public sealed class ConversationService : IMessageStore
     public event Action? CompactacaoAcabou;
 
     /// <summary>
+    /// A compactação automática está perto: a frase vai para a faixa de sistema. Ver
+    /// <see cref="AvisoDeCompactacao"/>.
+    /// </summary>
+    public event Action<string>? CompactacaoSeAproxima;
+
+    /// <summary>A partir de quantos turnos antes do gatilho o aviso aparece.</summary>
+    public const int TurnosDeAviso = 3;
+
+    /// <summary>A partir de que fração do gatilho de tokens o aviso aparece.</summary>
+    public const double FracaoDeAviso = 0.85;
+
+    // A conversa e quantos capítulos ela tinha quando o último aviso saiu. Um aviso por
+    // aproximação: depois dele, só volta a avisar quando um capítulo fechar ou a conversa trocar.
+    private (int Conversa, int Capitulos)? _ultimoAviso;
+
+    /// <summary>
+    /// A frase de "vai compactar logo", ou null. Pedido do usuário, 27/10/2026: a compactação
+    /// automática (20 turnos ou 135 mil tokens soltos) chegava sem aviso, e cada uma reescreve o
+    /// começo do prompt — quem quer escolher a hora precisa saber que ela está perto para usar
+    /// o /compact antes.
+    /// <para>
+    /// Avisa quando faltam até <see cref="TurnosDeAviso"/> turnos soltos ou quando a conversa
+    /// passa de <see cref="FracaoDeAviso"/> do gatilho de tokens — UMA vez por aproximação:
+    /// repetir a cada turno viraria ruído que se aprende a ignorar.
+    /// </para>
+    /// </summary>
+    public string? AvisoDeCompactacao(int userLevel)
+    {
+        var quota = CurrentQuota(userLevel);
+        if (quota.IsOff) return null;
+
+        int conversa;
+        lock (_gate) { conversa = _conversaViva; }
+        var agora = (conversa, _memory.Chapters.Count);
+        if (_ultimoAviso == agora) return null;
+
+        var ajustes = _settingsService.LoadSettings();
+        int gatilho = MemoryBudget.CompactionThreshold(quota, ajustes.CompactionTrigger, ajustes.TokensSoltos);
+        int vivo = LiveTokens();
+        int faltam = ajustes.TurnosSoltos - TurnosSoltosAgora();
+
+        string? frase =
+            faltam > 0 && faltam <= TurnosDeAviso
+                ? $"A memória compacta sozinha em {faltam} turno(s). Para escolher a hora, use /compact."
+            : vivo < gatilho && vivo >= gatilho * FracaoDeAviso
+                ? $"A conversa está em {vivo / 1000} mil de {gatilho / 1000} mil tokens soltos: a memória compacta logo. Para escolher a hora, use /compact."
+            : null;
+
+        if (frase != null) _ultimoAviso = agora;
+        return frase;
+    }
+
+    /// <summary>
     /// A desistência do usuário. Trocada a cada passada: um CTS cancelado não se reaproveita.
     /// </summary>
     private CancellationTokenSource? _desistencia;
@@ -2224,7 +2277,10 @@ public sealed class ConversationService : IMessageStore
                 // produziria um capítulo que afirma o que ainda não aconteceu.
                 // Token próprio: o do turno já foi descartado, e o usuário já tem sua resposta.
                 if (!cancelado)
+                {
                     await CompactIfNeededAsync(userLevel, CancellationToken.None).ConfigureAwait(false);
+                    if (AvisoDeCompactacao(userLevel) is string aviso) CompactacaoSeAproxima?.Invoke(aviso);
+                }
             }
 
             _turnGate.Release();

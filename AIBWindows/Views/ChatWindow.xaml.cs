@@ -39,6 +39,12 @@ public partial class ChatWindow : Window
     private bool _voiceListening = false;
     private bool _isSending = false;
 
+    // O aviso de compactação que chegou durante o envio, para depois dele. Ver o construtor.
+    private string? _avisoDeCompactacao;
+
+    /// <summary>Quanto o aviso de compactação fica na faixa.</summary>
+    private const int SegundosDoAviso = 12;
+
     public ChatWindow(ConversationService conversation, SettingsService settingsService)
     {
         InitializeComponent();
@@ -53,6 +59,15 @@ public partial class ChatWindow : Window
 
         _conversation.CompactacaoAcabou += () =>
             Dispatcher.BeginInvoke(new Action(EsconderEspera));
+
+        // O aviso sai no fim do turno, antes de o envio esconder a faixa: ele espera esse ponto
+        // em _avisoDeCompactacao, ou aparecia e sumia no mesmo instante.
+        _conversation.CompactacaoSeAproxima += frase =>
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_isSending) _avisoDeCompactacao = frase;
+                else MostrarFaixa(frase, SegundosDoAviso);
+            }));
         _conversation.OnWarmupStateChanged += HandleWarmupState;
         _conversation.OnTitleChanged += AplicarTitulo;
         _conversation.OnHistoryChanged += AtualizarPainelDeHistorico;
@@ -1421,6 +1436,12 @@ public partial class ChatWindow : Window
             RestaurarIconeDeEnviar();
             InputBox.Focus();
             _isSending = false;
+
+            if (_avisoDeCompactacao is string aviso)
+            {
+                _avisoDeCompactacao = null;
+                MostrarFaixa(aviso, SegundosDoAviso);
+            }
 
             if (errorText == null)
             {
