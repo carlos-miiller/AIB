@@ -307,7 +307,7 @@ Substitui a janela modal: a pergunta aparece na coluna da IA, logo abaixo da aç
 | `shell` | "Executar este comando?" |
 | `skill` | "Executar esta habilidade?" ou "Ler o manual desta habilidade?" |
 
-O cartão mostra a pill "Ação destrutiva", o alvo literal (inteiro e quebrando linha, com rolagem acima de 160 px; antes era uma linha cortada em 330 px com o resto num tooltip sem fim, e uma anotação longa do navegador não se lia), a prévia do conteúdo ou do trecho
+O cartão mostra a pill "Ação destrutiva", o alvo literal (inteiro e quebrando linha, com rolagem acima de 300 px (`ConfirmCardView.AlturaDaCaixa`, que vale também para a prévia) e a roda rolando com o mouse em qualquer ponto da caixa (`RolarPelaCaixa`; nas pontas ela segue para a conversa). Antes eram 160 px e a roda só pegava sobre a coluna do texto. Antes ainda era uma linha cortada em 330 px com o resto num tooltip sem fim, e uma anotação longa do navegador não se lia), a prévia do conteúdo ou do trecho
 trocado (`ScriptBody`) e, quando cabem, três avisos: motivo de bloqueio, "Há texto de um e-mail
 nesta conversa..." e o aviso de caminho fora das pastas sem confirmação. Botões: **Permitir**
 (`DangerFilledButton`) e **Recusar**. A caixa "Sempre permitir este comando" só aparece para `shell`
@@ -324,7 +324,7 @@ laranja e a linha verde da cópia `.antes-AIB`. Arquivo novo mostra a prévia em
 primeiras linhas). Mockup "Edição de documentos do AIB", 19/10/2026.
 Linha "+ N … · mostrar" (lilás, mão, sublinhado no hover) revela as `Extra` do grupo e troca por
 "mostrar menos" no fim (`AlternarGrupo`/`Expandido`). Rolagem com altura máxima em tudo: tabela
-240, efeitos e avisos 96, alvo 160.
+240, efeitos e avisos 96, alvo e prévia 300. Na janela do orbe (`ConfirmacaoDoOrbeWindow`) o cartão inteiro rola quando passa da área útil da tela menos 140 px (`AlturaDoRolo`): antes a janela crescia para fora da tela e levava os botões.
 Formatação (mockup "Formatação de planilhas do AIB"): `Mudanca.AmostraAntes/AmostraDepois`
 desenham a célula como o Excel a mostra (`Amostra`: fundo e grade pelos tokens `Celula*`, iguais
 nos dois temas porque retratam o arquivo; cores, negrito, alinhamento, bordas e escala vindos do

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using AIB.Services;
@@ -345,6 +346,52 @@ namespace AIB.Tests
 
                 Previa(card).Should().Be(Visibility.Collapsed);
             });
+        }
+
+        [Fact]
+        public void TextoLongo_ARodaRolaACaixa_ComOMouseEmQualquerPontoDela()
+        {
+            // Pedido do usuário (27/10/2026): "a mensagem é limitada à altura dessa janela,
+            // adicione um scroll". Uma descrição de 40 linhas no -Descricao do Bitrix: a caixa
+            // parava em 160 px e só rolava com o mouse sobre a coluna do texto — sobre o ícone
+            // ou o nome da ferramenta, a roda não fazia nada.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                string descricao = string.Join("\n", System.Linq.Enumerable.Range(1, 40).Select(i => $"Linha {i} da descrição."));
+                var uso = new AIB.Services.Tools.UsoDaHabilidade("bitrix", "Edita tarefas.", "bitrix.ps1",
+                    AIB.Services.Tools.ExecuteSkillTool.Pares($"-Acao atualizar -Id 1234 -Descricao \"{descricao}\""));
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Habilidade, Command = "bitrix.ps1 -Acao atualizar", Habilidade = uso
+                });
+                card.Measure(new Size(600, double.PositiveInfinity));
+                card.Arrange(new Rect(card.DesiredSize));
+                card.UpdateLayout();
+
+                var rolo = (ScrollViewer)card.FindName("AlvoScroll");
+                rolo.ActualHeight.Should().Be(ConfirmCardView.AlturaDaCaixa);
+                rolo.ScrollableHeight.Should().BeGreaterThan(0);
+
+                var icone = (UIElement)card.FindName("IconeAlvo");
+                icone.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, -120)
+                {
+                    RoutedEvent = UIElement.PreviewMouseWheelEvent
+                });
+                card.UpdateLayout();   // a rolagem só se aplica no layout seguinte
+
+                rolo.VerticalOffset.Should().BeGreaterThan(0, "a roda sobre o ícone rola a caixa");
+            });
+        }
+
+        [Fact]
+        public void NaJanelaDoOrbe_OCartaoNaoPassaDaTela()
+        {
+            // A janela do orbe crescia com o card: numa tela de 1040 px úteis, um cartão alto
+            // levava os botões para fora dela.
+            ConfirmacaoDoOrbeWindow.AlturaDoRolo(1040).Should().Be(900);
+            ConfirmacaoDoOrbeWindow.AlturaDoRolo(300).Should().Be(200, "tela minúscula ainda mostra o cartão");
         }
     }
 }

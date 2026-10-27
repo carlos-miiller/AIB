@@ -29,6 +29,34 @@ public partial class ConfirmCardView : UserControl
     public ConfirmCardView()
     {
         InitializeComponent();
+        RolarPelaCaixa(AlvoBorder, AlvoScroll);
+        RolarPelaCaixa(PreviaBorder, PreviaScroll);
+    }
+
+    /// <summary>
+    /// Até onde a caixa do comando e a da prévia crescem antes de rolar. Era 160 (e 140 na
+    /// prévia): uma descrição de tarefa do Bitrix mostrava quatro linhas por vez.
+    /// </summary>
+    public const double AlturaDaCaixa = 300;
+
+    /// <summary>
+    /// A roda rola a caixa com o mouse em QUALQUER ponto dela. Pedido do usuário (27/10/2026):
+    /// "a mensagem é limitada à altura dessa janela, adicione um scroll". A rolagem existia, mas
+    /// só na coluna do texto: sobre o ícone ou o nome da ferramenta a roda não fazia nada, e a
+    /// barra de 6 px não denunciava que havia mais. Nas pontas a roda segue para a conversa.
+    /// </summary>
+    private static void RolarPelaCaixa(System.Windows.Controls.Border caixa, System.Windows.Controls.ScrollViewer rolo)
+    {
+        caixa.PreviewMouseWheel += (_, e) =>
+        {
+            bool subindo = e.Delta > 0;
+            if (rolo.ScrollableHeight <= 0) return;
+            if (subindo && rolo.VerticalOffset <= 0) return;
+            if (!subindo && rolo.VerticalOffset >= rolo.ScrollableHeight) return;
+
+            rolo.ScrollToVerticalOffset(rolo.VerticalOffset - e.Delta / 3.0);
+            e.Handled = true;
+        };
     }
 
     /// <summary>Completa quando o usuário decide, ou quando o card é descartado.</summary>

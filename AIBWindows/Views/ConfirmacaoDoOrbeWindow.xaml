@@ -21,7 +21,12 @@
                 CornerRadius="{StaticResource RadiusWindowInner}" ClipToBounds="True">
             <!-- O card vem SEM a casca de bolha (ConfirmCardView.ParaFlutuante): o respiro é
                  daqui, o mesmo das outras janelas flutuantes. -->
-            <ContentPresenter x:Name="Lugar" Margin="16,15,16,14"/>
+            <!-- Rola quando o card passa da altura da tela (MaxHeight no código): sem isto a
+                 janela crescia para fora dela e levava junto os botões. -->
+            <ScrollViewer x:Name="Rolo" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ContentPresenter x:Name="Lugar" Margin="16,15,16,14"/>
+            </ScrollViewer>
         </Border>
     </Border>
 </Window>

@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
@@ -30,9 +31,16 @@ public partial class ConfirmacaoDoOrbeWindow : Window
         _card.ParaFlutuante(shadow);
         Lugar.Content = _card;
 
+        // O card não passa da tela: a sobra rola dentro da janela (pedido do usuário,
+        // 27/10/2026). Tira as margens da sombra e da casca, e uma folga para o orbe.
+        Rolo.MaxHeight = AlturaDoRolo(SystemParameters.WorkArea.Height);
+
         PertoDoOrbe.Posicionar(this, SombraEmbaixo);
         Loaded += (_, _) => Activate();
     }
+
+    /// <summary>Altura máxima do card numa tela de <paramref name="tela"/> px úteis.</summary>
+    public static double AlturaDoRolo(double tela) => Math.Max(200, tela - 140);
 
     protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e)
     {
