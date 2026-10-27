@@ -34,6 +34,7 @@ public static class DirectoryService
 
             Directory.CreateDirectory(DataDir);
             Directory.CreateDirectory(SkillsDir);
+            SkillsPadrao.Sincronizar(SkillsPadrao.Origem(), Path.Combine(SkillsDir, SkillsPadrao.Pasta));
             Directory.CreateDirectory(MemoryDir);
             Directory.CreateDirectory(LogsDir);
             Directory.CreateDirectory(ModelosDir);

@@ -451,6 +451,13 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
   `description`, `interpreter` (`powershell`, `python` ou `markdown`), `script_file`, `accepts`
   (extensões aceitas) e `cofre` (segredos que usa), seguido do manual. Só nome e descrição entram
   no prompt de sistema.
+- **Skills do AIB** (`SkillsPadrao`): as do repositório (`AIBWindows/skills/<pasta>`) vão junto com
+  o executável e, a cada arranque (`DirectoryService.EnsureDirectories`), são **espelhadas** em
+  `~/.AIB/skills/default/`: cada uma é copiada de novo e o que não vier do programa sai. Mudança
+  feita lá (até pela IA) some no próximo arranque. Sem a pasta no programa, nada é apagado. Se
+  `default` virou junção, sai o link, não o alvo. Nome repetido com skill do usuário: vale a do AIB
+  (o cofre libera pelo nome; a cópia herdaria o segredo). Nada específico de usuário ou empresa
+  entra nessas.
 - **Segredos do cofre** (`CofreDaHabilidade`): cada nome de `cofre:` chega ao script como
   `$env:COFRE_NOME`, só depois da autorização e só se o segredo **libera a habilidade pelo nome**
   (`Alias.Habilidades`, Configurações › Cofre). Declarar não basta: uma habilidade escrita depois,
