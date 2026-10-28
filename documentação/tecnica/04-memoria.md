@@ -304,6 +304,7 @@ Tipos (`Pendencia.Tipo`):
 Os pedidos do usuário que carregam **valor**, copiados por código. Motivo: o usuário pediu "Sábados: 12:00 ~ 14:00" e o ato virou "modificações nos horários".
 
 - `TemValor`: dígito, texto entre aspas, caminho `X:\`, UNC, URL, e-mail, extensão de arquivo.
+- O carimbo do orbe (`[terça-feira - 27/10/2026 | 11:42]`) sai antes (`ConversaDoOrbe.SemCarimbo`): ele sempre tem dígito, e fazia toda fala passar no filtro e ocupar uma vaga da fala longa.
 - Fala com valor de até `FalaCurta` = 280 caracteres entra inteira (quebras de linha viram ` / `). Fala longa contribui com até `LinhasPorFala` = 3 linhas com valor, cada uma até `TetoDaLinha` = 240.
 - `TetoNoCapitulo` = 8 (os mais recentes); `TetoNoAto` = 16 via `Juntar` (sem repetir, em ordem de turno).
 - Erra para o lado de copiar. "leia os arquivos" e "continue" não entram.

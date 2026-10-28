@@ -59,7 +59,10 @@ public static class Combinados
 
         foreach (var turno in turnos ?? Array.Empty<Turn>())
         {
-            string texto = (turno.UserText ?? "").Trim();
+            // Sem o carimbo do orbe ("[segunda-feira - 26/10/2026 | 12:31]"): ele sempre tem
+            // número, então toda fala passava no TemValor, e numa fala longa a linha do carimbo
+            // ocupava a vaga do pedido.
+            string texto = ConversaDoOrbe.SemCarimbo(turno.UserText ?? "").Trim();
             if (texto.Length == 0 || !TemValor(texto)) continue;
 
             if (texto.Length <= FalaCurta)

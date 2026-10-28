@@ -169,6 +169,29 @@ namespace AIB.Tests
             Combinados.Render(falas).Should().Contain("(turno 2) \"altere o horário para Sábados: 12:00 ~ 14:00\"");
         }
 
+        /// <summary>
+        /// Caso real (shadow, turno 558): a fala longa virou duas linhas no Combinado, uma só com
+        /// "[terça-feira - 27/10/2026 | 11:42]". O carimbo do orbe sempre tem número, então passava
+        /// no filtro de valor, tomava uma das três vagas da fala longa e fazia "continue" carimbado
+        /// entrar no Combinado.
+        /// </summary>
+        [Fact]
+        public void Combinado_IgnoraOCarimboDoOrbe()
+        {
+            string longa = "Ellen modifica essa tarefa que criei 421099\n"
+                         + new string('x', 300) + "\n"
+                         + "prazo 30/10\n"
+                         + "responsável: 2 pessoas";
+            var falas = Combinados.Extrair(new[]
+            {
+                Turno(0, ConversaDoOrbe.Carimbar("continue", new DateTime(2026, 10, 27, 11, 40, 0))),
+                Turno(1, ConversaDoOrbe.Carimbar(longa, new DateTime(2026, 10, 27, 11, 42, 0)))
+            });
+
+            falas.Select(f => f.Texto).Should().Equal(
+                "Ellen modifica essa tarefa que criei 421099", "prazo 30/10", "responsável: 2 pessoas");
+        }
+
         // ─────────────────────────────────────────────────────────────────────
         // O que o modelo escreve
         // ─────────────────────────────────────────────────────────────────────
