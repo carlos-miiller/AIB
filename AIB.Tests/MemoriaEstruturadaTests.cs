@@ -123,6 +123,34 @@ namespace AIB.Tests
             estado.Itens.Should().ContainSingle().Which.Alvo.Should().Be("(comando que apaga arquivos)");
         }
 
+        /// <summary>
+        /// Caso real (shadow, turnos 512 e 549): o agente criou duas planilhas pela ferramenta doc
+        /// (um create e três edits cada) e nenhuma aparecia no Estado do capítulo nem do ato. O
+        /// Montar não tinha caso para "doc", e a memória não sabia que os arquivos existiam.
+        /// </summary>
+        [Fact]
+        public void Estado_PlanilhaCriadaEEditadaPeloDoc_EntraComoArquivoDoAgente()
+        {
+            string xlsx = Pasta + @"\dashboard-tarefas-ti-mock.xlsx";
+            string docx = Pasta + @"\ata.docx";
+            var estado = EstadoDoTrecho.Montar(new[]
+            {
+                Turno(0, "monte uma planilha de tarefas",
+                    Chamada("doc", new { action = "create", path = xlsx, content = new { sheets = Array.Empty<object>() } },
+                        $"SUCESSO: Planilha criada em '{xlsx}'."),
+                    Chamada("doc", new { action = "edit", path = xlsx, ops = new object[] { new { cell = "A1", value = "x" }, new { cell = "B1", value = "y" } } },
+                        $"SUCESSO: 2 alterações em '{xlsx}'."),
+                    Chamada("doc", new { action = "read", path = docx }, "¶1 Ata da reunião"),
+                    Chamada("doc", new { action = "help", topic = "criar" }, "Ajuda"))
+            });
+            string texto = estado.Render("do capítulo 1");
+
+            texto.Should().Contain("dashboard-tarefas-ti-mock.xlsx: criado pelo agente (2 alterações)",
+                "editar o que o agente criou mantém a origem");
+            texto.Should().Contain("ata.docx: já existia", "ler pelo doc prova que o arquivo existia, como o read");
+            estado.Consultas.Should().Be(1, "só a leitura conta; help não tem arquivo");
+        }
+
         // ─────────────────────────────────────────────────────────────────────
         // Combinado
         // ─────────────────────────────────────────────────────────────────────

@@ -424,7 +424,7 @@ public static class ArtifactExtractor
         return extra.Length == 0 ? nome : nome + " " + extra;
     }
 
-    private static string CaminhoDe(string argumentosJson)
+    internal static string CaminhoDe(string argumentosJson)
     {
         string bruto = PathArgumentRepair.Normalize(StringDe(argumentosJson, "path"));
         if (string.IsNullOrWhiteSpace(bruto)) return "";

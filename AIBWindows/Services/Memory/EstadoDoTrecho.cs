@@ -99,72 +99,39 @@ public sealed record EstadoDoTrecho(
                 switch (nome)
                 {
                     case Ferramentas.Ler:
-                    {
-                        string caminho = ArtifactExtractor.ResumirArgumento(nome, args);
-                        if (caminho.Length == 0) break;
-                        consultas++;
-
-                        if (falhou)
-                        {
-                            if (!itens.ContainsKey(caminho))
-                                Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não encontrado ao ler", Primeira(resultado), turno.Index));
-                            break;
-                        }
-
-                        bool pasta = resultado.Contains("é uma PASTA", StringComparison.Ordinal);
-                        Consultar(consultados, caminho);
-
-                        if (!itens.TryGetValue(caminho, out var existente))
-                        {
-                            // A leitura é prova de existência NAQUELE momento. Sem gravação
-                            // conhecida antes, ou já existia, ou um comando o gerou.
-                            if (!pasta)
-                                Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo,
-                                    houveComandoOpaco ? "existia (ou foi gerado por comando)" : "já existia", null, turno.Index));
-                        }
-                        else if (existente.Situacao.StartsWith("apagad", StringComparison.OrdinalIgnoreCase)
-                                 || existente.Situacao.StartsWith("não encontrado", StringComparison.Ordinal))
-                        {
-                            Guardar(existente with { Situacao = "reapareceu (gerado por comando)", Detalhe = null, Turno = turno.Index });
-                        }
+                        Leitura(ArtifactExtractor.ResumirArgumento(nome, args), falhou, resultado, turno.Index);
                         break;
-                    }
 
                     case Ferramentas.Gravar:
                     case Ferramentas.Editar:
                     {
                         string caminho = ArtifactExtractor.ResumirArgumento(nome, args);
                         if (caminho.Length == 0) break;
-                        itens.TryGetValue(caminho, out var antes);
-                        bool gravar = nome == Ferramentas.Gravar;
+                        Gravacao(caminho, nome == Ferramentas.Gravar, recusado, falhou, resultado, turno.Index,
+                            () => ArtifactExtractor.Construir(nome, args, resultado)?.Detail);
+                        break;
+                    }
 
-                        if (recusado)
+                    case Ferramentas.Documento:
+                    {
+                        // Planilha e Word que o agente cria ou edita são arquivo gravado como
+                        // qualquer outro. Sem este caso, o shadow fez duas planilhas inteiras
+                        // (dashboard-tarefas-ti-mock.xlsx, comparativo-edicoes-google-workspace.xlsx,
+                        // um create e três edits cada) e nenhuma apareceu na memória.
+                        string acao = ArtifactExtractor.StringDe(args, "action").Trim().ToLowerInvariant();
+                        string caminho = ArtifactExtractor.CaminhoDe(args);
+                        if (caminho.Length == 0) break;
+
+                        if (acao is "create" or "edit")
                         {
-                            Guardar((antes ?? new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não tocado", null, turno.Index))
-                                with { Detalhe = (gravar ? "gravação" : "edição") + " recusada pelo usuário", Turno = turno.Index });
-                            break;
+                            bool criar = acao == "create";
+                            Gravacao(caminho, criar, recusado, falhou, resultado, turno.Index,
+                                () => criar ? null : Alteracoes(args));
                         }
-
-                        if (falhou)
+                        else if (acao is "info" or "read" or "find" or "query" or "layout")
                         {
-                            Guardar((antes ?? new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não tocado", null, turno.Index))
-                                with { Detalhe = (gravar ? "gravação" : "edição") + " falhou: " + Primeira(resultado), Turno = turno.Index });
-                            break;
+                            Leitura(caminho, falhou, resultado, turno.Index);
                         }
-
-                        var artefato = ArtifactExtractor.Construir(nome, args, resultado);
-                        string situacao = gravar
-                            ? antes == null ? "criado pelo agente"
-                              : antes.Situacao.StartsWith("apagad", StringComparison.OrdinalIgnoreCase) ? "recriado pelo agente"
-                              : "reescrito pelo agente"
-                            : "editado pelo agente";
-
-                        // Editar o que o agente criou continua sendo "criado pelo agente": é a
-                        // ORIGEM que o próximo turno precisa saber.
-                        if (!gravar && antes != null && antes.Situacao.Contains("pelo agente", StringComparison.Ordinal))
-                            situacao = antes.Situacao;
-
-                        Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, situacao, artefato?.Detail, turno.Index));
                         break;
                     }
 
@@ -285,6 +252,68 @@ public sealed record EstadoDoTrecho(
             if (itens.ContainsKey(chave)) ordem.Remove(chave);
             itens[chave] = item;
             ordem.Add(chave);
+        }
+
+        void Leitura(string caminho, bool falhou, string resultado, int turno)
+        {
+            if (caminho.Length == 0) return;
+            consultas++;
+
+            if (falhou)
+            {
+                if (!itens.ContainsKey(caminho))
+                    Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não encontrado ao ler", Primeira(resultado), turno));
+                return;
+            }
+
+            bool pasta = resultado.Contains("é uma PASTA", StringComparison.Ordinal);
+            Consultar(consultados, caminho);
+
+            if (!itens.TryGetValue(caminho, out var existente))
+            {
+                // A leitura é prova de existência NAQUELE momento. Sem gravação
+                // conhecida antes, ou já existia, ou um comando o gerou.
+                if (!pasta)
+                    Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo,
+                        houveComandoOpaco ? "existia (ou foi gerado por comando)" : "já existia", null, turno));
+            }
+            else if (existente.Situacao.StartsWith("apagad", StringComparison.OrdinalIgnoreCase)
+                     || existente.Situacao.StartsWith("não encontrado", StringComparison.Ordinal))
+            {
+                Guardar(existente with { Situacao = "reapareceu (gerado por comando)", Detalhe = null, Turno = turno });
+            }
+        }
+
+        void Gravacao(string caminho, bool gravar, bool recusado, bool falhou, string resultado, int turno, Func<string?> detalhe)
+        {
+            itens.TryGetValue(caminho, out var antes);
+
+            if (recusado)
+            {
+                Guardar((antes ?? new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não tocado", null, turno))
+                    with { Detalhe = (gravar ? "gravação" : "edição") + " recusada pelo usuário", Turno = turno });
+                return;
+            }
+
+            if (falhou)
+            {
+                Guardar((antes ?? new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não tocado", null, turno))
+                    with { Detalhe = (gravar ? "gravação" : "edição") + " falhou: " + Primeira(resultado), Turno = turno });
+                return;
+            }
+
+            string situacao = gravar
+                ? antes == null ? "criado pelo agente"
+                  : antes.Situacao.StartsWith("apagad", StringComparison.OrdinalIgnoreCase) ? "recriado pelo agente"
+                  : "reescrito pelo agente"
+                : "editado pelo agente";
+
+            // Editar o que o agente criou continua sendo "criado pelo agente": é a
+            // ORIGEM que o próximo turno precisa saber.
+            if (!gravar && antes != null && antes.Situacao.Contains("pelo agente", StringComparison.Ordinal))
+                situacao = antes.Situacao;
+
+            Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, situacao, detalhe(), turno));
         }
 
         void ComandoOpaco(string comando, bool falhou, string resultado, int turno)
@@ -415,6 +444,22 @@ public sealed record EstadoDoTrecho(
     {
         consultados.RemoveAll(c => string.Equals(c, caminho, StringComparison.OrdinalIgnoreCase));
         consultados.Add(caminho);
+    }
+
+    /// <summary>"3 alterações" de um <c>doc edit</c>, pelo tamanho de <c>ops</c>.</summary>
+    private static string? Alteracoes(string args)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(args);
+            if (doc.RootElement.TryGetProperty("ops", out var ops) && ops.ValueKind == JsonValueKind.Array)
+            {
+                int n = ops.GetArrayLength();
+                return n == 1 ? "1 alteração" : $"{n} alterações";
+            }
+        }
+        catch (JsonException) { }
+        return null;
     }
 
     private static string? Primeira(string? resultado)

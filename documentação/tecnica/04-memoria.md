@@ -238,6 +238,8 @@ Pareia chamada e resultado por id e dobra cada ação no seu alvo (`ItemDeEstado
 | `write` | "criado pelo agente" / "recriado pelo agente" (se estava apagado) / "reescrito pelo agente" |
 | `edit` | "editado pelo agente"; editar o que o agente criou continua "criado pelo agente" (a origem é o que importa) |
 | `write`/`edit` falhou ou recusado | mantém a situação anterior e anota no detalhe |
+| `doc` `create` / `edit` | igual a `write` / `edit`; o `edit` anota "N alterações" (tamanho de `ops`) |
+| `doc` `info`/`read`/`find`/`query`/`layout` | igual a `read`; `help` e `models` não entram |
 | `shell` que apaga (`ComandoQueApaga.Eh`) | ver §8.3 |
 | `shell` só leitura (`ComandoDeShell.SoLeitura`) | conta como consulta; só entra no Estado se **falhou** ("consulta falhou") |
 | outro `shell`, `skill` | comando **opaco**: "ok — efeitos em disco não rastreados" ou "FALHOU", com contagem de vezes |
