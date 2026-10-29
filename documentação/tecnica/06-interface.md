@@ -431,6 +431,13 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   `TextStrongBrush`, de `FontSizeBubble` a `FontSizeHeaderTitle`; divisória, grade de tabela,
   citação e link também trocam o preto de página branca por tokens) e margem moram num lugar só. O fundo do balão continua sendo o vidro (`GlassBrush`) e
   não o `SurfaceCardBrush` da janela, porque o balão flutua sobre a área de trabalho.
+  **Links de arquivo** (`Ui/LinksDeArquivo`, ligado em `VisorDeMarkdown.Criar`, então vale na janela
+  e no orbe): caminho absoluto citado na fala, ou nome solto de um arquivo recente da conversa
+  (`ContextService.CaminhosRecentes`; nome repetido entre os recentes não vira link), vira link
+  **só se existe no disco** (consulta lembrada por 10 s, porque o streaming remonta o documento a
+  cada pedaço). O clique abre o Explorer com o arquivo selecionado (pasta: aberta) e **nunca abre
+  nem executa o arquivo** — o texto é do modelo. Destinos de mover, copiar e renomear entram nos
+  recentes (`AgentLoop.TrackRecentFile`).
   No arranque (e ao religar o orbe), `LigarOrbe` devolve à pilha as últimas 12 falas do contexto
   vivo (`ConversationService.UltimasFalas` → `RestaurarFalas`), escondidas até a barra abrir; o
   que já virou capítulo não volta como bolha.

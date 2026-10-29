@@ -681,12 +681,27 @@ public sealed class AgentLoop
         // O 'file' aberto nas operações dela: num lote, cada gravação e edição que deu certo conta.
         foreach (var (nome, args, deu) in FileTool.Abrir(tc.Name, tc.ArgumentsOrEmpty(), resultado))
         {
-            if (nome is not (Ferramentas.Ler or Ferramentas.Gravar or Ferramentas.Editar)) continue;
+            if (nome is not (Ferramentas.Ler or Ferramentas.Gravar or Ferramentas.Editar or Ferramentas.Arquivos)) continue;
             if (Memory.ArtifactExtractor.Falhou(deu)) continue;
 
             try
             {
                 string path = Memory.ArtifactExtractor.StringDe(args, "path");
+
+                // Mover, copiar e renomear: o arquivo agora está no destino. É por ele que a fala
+                // seguinte o cita, e é ele que o link da bolha procura (Ui.LinksDeArquivo).
+                if (nome == Ferramentas.Arquivos)
+                {
+                    string acao = Memory.ArtifactExtractor.StringDe(args, "action");
+                    string novo = Memory.ArtifactExtractor.StringDe(args, "new_name");
+                    path = acao switch
+                    {
+                        "copy" or "move" => Memory.ArtifactExtractor.StringDe(args, "destination"),
+                        "rename" when novo.Length > 0 => System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path) ?? "", novo),
+                        _ => ""
+                    };
+                }
+
                 if (path.Length > 0) ContextService.AddRecentFile(path);
             }
             catch { }

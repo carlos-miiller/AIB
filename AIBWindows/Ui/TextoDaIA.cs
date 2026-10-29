@@ -83,6 +83,9 @@ public static class VisorDeMarkdown
 
         Blocos(viewer, dono);
 
+        // Caminho de arquivo citado vira link para o Explorer — nas duas janelas, por ser aqui.
+        LinksDeArquivo.Ligar(viewer);
+
         return viewer;
     }
 
