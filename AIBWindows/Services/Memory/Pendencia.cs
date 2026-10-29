@@ -23,7 +23,8 @@ namespace AIB.Services.Memory;
 /// <param name="Texto">A linha que vai ao prompt.</param>
 /// <param name="Alvo">Falha: o literal (caminho ou comando). É por ele que um sucesso posterior a resolve.</param>
 /// <param name="Kind">Falha: a natureza do artefato que falhou.</param>
-public sealed record Pendencia(string Tipo, string Texto, string? Alvo = null, ArtifactKind? Kind = null)
+/// <param name="Ferramenta">Falha: a ferramenta que falhou. Nula nas gravadas antes de existir.</param>
+public sealed record Pendencia(string Tipo, string Texto, string? Alvo = null, ArtifactKind? Kind = null, string? Ferramenta = null)
 {
     public const string Interrompido = "interrompido";
     public const string Falha = "falha";
@@ -88,7 +89,7 @@ public static class Pendencias
                         ordem.Add(chave);
 
                     falhas[chave] = new Pendencia(
-                        Pendencia.Falha, TextoDaFalha(artefato), artefato.Value, artefato.Kind);
+                        Pendencia.Falha, TextoDaFalha(artefato), artefato.Value, artefato.Kind, artefato.Tool);
                 }
                 else
                 {
@@ -244,13 +245,17 @@ public static class Pendencias
     private static string? ChaveDe(Artifact a) => a.Kind switch
     {
         ArtifactKind.FileWritten => "arquivo|" + a.Value,
+        ArtifactKind.CommandRun when a.Tool == Ferramentas.Habilidade => "skill|" + EstadoDoTrecho.ChaveDeSkill(a.Value),
         ArtifactKind.CommandRun => "comando|" + ComandoDeShell.Assinatura(a.Value),
         _ => null
     };
 
+    // Skill casa com os parâmetros em qualquer ordem (EstadoDoTrecho.ChaveDeSkill). A pendência
+    // gravada antes do campo Ferramenta segue pela assinatura de comando, como era.
     private static string? ChaveDe(Pendencia p) => p.Kind switch
     {
         ArtifactKind.FileWritten => "arquivo|" + p.Alvo,
+        ArtifactKind.CommandRun when p.Ferramenta == Ferramentas.Habilidade => "skill|" + EstadoDoTrecho.ChaveDeSkill(p.Alvo),
         ArtifactKind.CommandRun => "comando|" + ComandoDeShell.Assinatura(p.Alvo),
         _ => null
     };

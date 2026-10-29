@@ -150,6 +150,32 @@ namespace AIB.Tests
         }
 
         /// <summary>
+        /// Caso real (ato 5 do shadow refeito): a mesma "-Acao adicionar -Id 421099" com "-Grupo" na
+        /// frente virou outro item do Estado; a falha do Nordeste, refeita com os parâmetros em outra
+        /// ordem, ficou viva no Pendente; e scripts de várias linhas quebravam a lista do Estado.
+        /// </summary>
+        [Fact]
+        public void Skill_ParametrosEmOutraOrdem_SaoAMesmaChamada_EComandoFicaNumaLinha()
+        {
+            const string nordeste = "-Acao adicionar -Id 421099 -Grupo \"Nordeste\" -Texto \"BA - Salvador\"";
+            var turnos = new[]
+            {
+                Turno(0, "cadastra",
+                    Chamada("skill", new { skill_name = "bitrix", arguments = nordeste }, "ERRO: esta chamada exata já foi feita"),
+                    Chamada("skill", new { skill_name = "bitrix", arguments = "-Grupo \"Nordeste\" -Acao adicionar -Texto \"BA - Salvador\" -Id 421099" }, "Item adicionado."),
+                    Chamada("shell", new { command = "powershell -Command \"\n$a = 1\n$b = 2\"" }, "ok"))
+            };
+
+            var estado = EstadoDoTrecho.Montar(turnos);
+            estado.Itens.Where(i => i.Alvo.StartsWith("skill ")).Should().ContainSingle()
+                .Which.Alvo.Should().Be("skill bitrix -Acao adicionar -Id 421099");
+            estado.Render("do capítulo 1").Split('\n').Should().Contain(l => l.Contains("powershell") && l.Contains("$b = 2"),
+                "o script inteiro numa linha só");
+
+            Pendencias.Extrair(turnos).Should().BeEmpty("a falha foi refeita com sucesso, só em outra ordem");
+        }
+
+        /// <summary>
         /// Caso real (shadow, turnos 512 e 549): o agente criou duas planilhas pela ferramenta doc
         /// (um create e três edits cada) e nenhuma aparecia no Estado do capítulo nem do ato. O
         /// Montar não tinha caso para "doc", e a memória não sabia que os arquivos existiam.

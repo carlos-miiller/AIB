@@ -479,22 +479,68 @@ public sealed record EstadoDoTrecho(
     /// </summary>
     internal static (string Acao, string Resto) SepararChamada(string? argumentos)
     {
-        var tokens = TokenDeArgumento.Matches(argumentos ?? "").Select(m => m.Value).ToList();
-        var acao = new List<string>();
-        int i = 0, pares = 0;
-        while (i < tokens.Count && pares < 2 && tokens[i].StartsWith('-'))
+        var pares = Pares(argumentos);
+
+        // A ação e o alvo pelo NOME quando existem (-Acao, -Id), e não pela posição: no shadow, a
+        // mesma "-Acao adicionar -Id 421099" chamada com "-Grupo" na frente virou outro item.
+        int iAcao = pares.FindIndex(p => Nomeado(p.Nome, "acao", "action"));
+        if (iAcao < 0) iAcao = pares.Count > 0 ? 0 : -1;
+        int iAlvo = pares.FindIndex(p => Nomeado(p.Nome, "id"));
+        if (iAlvo < 0 || iAlvo == iAcao)
         {
-            acao.Add(tokens[i]);
-            if (i + 1 < tokens.Count && !tokens[i + 1].StartsWith('-'))
-            {
-                string valor = tokens[i + 1];
-                acao.Add(valor.StartsWith('"') || valor.StartsWith('\'') ? "…" : valor);
-                i++;
-            }
-            i++;
-            pares++;
+            iAlvo = -1;
+            for (int i = 0; i < pares.Count && iAlvo < 0; i++)
+                if (i != iAcao && pares[i].Nome.Length > 0) iAlvo = i;
         }
-        return (string.Join(" ", acao), string.Join(" ", tokens.Skip(i)));
+
+        string Mostrar((string Nome, string? Valor) p)
+        {
+            if (p.Valor == null) return p.Nome;
+            string valor = p.Valor.StartsWith('"') || p.Valor.StartsWith('\'') ? "…" : p.Valor;
+            return p.Nome.Length == 0 ? valor : p.Nome + " " + valor;
+        }
+
+        var acao = new[] { iAcao, iAlvo }.Where(i => i >= 0).Select(i => Mostrar(pares[i]));
+        var resto = pares.Where((p, i) => i != iAcao && i != iAlvo)
+            .Select(p => p.Nome.Length == 0 ? p.Valor! : p.Valor == null ? p.Nome : p.Nome + " " + p.Valor);
+        return (string.Join(" ", acao), string.Join(" ", resto));
+    }
+
+    /// <summary>
+    /// A chave de uma chamada de skill ("bitrix -Acao adicionar -Id 1 -Texto …") com os pares
+    /// em ordem alfabética: a mesma chamada com os parâmetros em outra ordem é a mesma chamada.
+    /// No shadow, a pendência "adicionar Nordeste falhou" ficou viva porque o sucesso veio com
+    /// "-Grupo" na frente.
+    /// </summary>
+    public static string ChaveDeSkill(string? chamada)
+    {
+        string c = (chamada ?? "").Trim();
+        int espaco = c.IndexOf(' ');
+        string nome = espaco < 0 ? c : c[..espaco];
+        var pares = Pares(espaco < 0 ? "" : c[(espaco + 1)..])
+            .Select(p => p.Nome.Length == 0 ? p.Valor! : p.Valor == null ? p.Nome : p.Nome + " " + p.Valor)
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase);
+        return Regex.Replace((nome + " " + string.Join(" ", pares)).Trim(), @"\s+", " ").ToLowerInvariant();
+    }
+
+    private static bool Nomeado(string nome, params string[] nomes) =>
+        nomes.Any(n => nome.TrimStart('-').Equals(n, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Os argumentos em pares "-Nome valor"; token solto vira par sem nome.</summary>
+    private static List<(string Nome, string? Valor)> Pares(string? argumentos)
+    {
+        var tokens = TokenDeArgumento.Matches(argumentos ?? "").Select(m => m.Value).ToList();
+        var pares = new List<(string, string?)>();
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            if (tokens[i].StartsWith('-') && tokens[i].Length > 1)
+            {
+                bool temValor = i + 1 < tokens.Count && !(tokens[i + 1].StartsWith('-') && tokens[i + 1].Length > 1);
+                pares.Add((tokens[i], temValor ? tokens[++i] : null));
+            }
+            else pares.Add(("", tokens[i]));
+        }
+        return pares;
     }
 
     /// <summary>"3 alterações" de um <c>doc edit</c>, pelo tamanho de <c>ops</c>.</summary>
@@ -598,13 +644,15 @@ public sealed record EstadoDoTrecho(
         {
             string vezes = item.Vezes > 1 ? $" ({item.Vezes}×)" : "";
             string desfecho = item.Situacao is "ok" or "FALHOU" ? "última: " + item.Situacao : item.Situacao;
-            if (item.Detalhe != null) desfecho += " — " + item.Detalhe;
-            return $"{item.Alvo}{vezes}: {desfecho} (turno {item.Turno + 1})";
+            if (item.Detalhe != null) desfecho += " — " + UmaLinha(item.Detalhe);
+            return $"{UmaLinha(item.Alvo)}{vezes}: {desfecho} (turno {item.Turno + 1})";
         }
 
         if (item.Tipo == ItemDeEstado.TipoComando)
         {
-            string cmd = item.Alvo.Length > 160 ? item.Alvo[..160] + "…" : item.Alvo;
+            // Numa linha só: um script de várias linhas quebrava a lista do Estado ao meio.
+            string umaLinha = UmaLinha(item.Alvo);
+            string cmd = umaLinha.Length > 160 ? umaLinha[..160] + "…" : umaLinha;
             string vezes = item.Vezes > 1 ? $" ({item.Vezes}×)" : "";
             string desfecho = item.Situacao == "ok"
                 ? "última: ok — efeitos em disco não rastreados"
@@ -623,6 +671,8 @@ public sealed record EstadoDoTrecho(
         if (!string.IsNullOrEmpty(item.Detalhe)) linha += $" ({item.Detalhe})";
         return linha + $" (turno {item.Turno + 1})";
     }
+
+    private static string UmaLinha(string texto) => Regex.Replace(texto, @"\s*[\r\n]+\s*", " ⏎ ");
 
     private static string NomeCurto(string caminho)
     {

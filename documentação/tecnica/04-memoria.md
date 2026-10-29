@@ -251,7 +251,7 @@ Pareia chamada e resultado por id e dobra cada ação no seu alvo (`ItemDeEstado
 | `shell` que apaga (`ComandoQueApaga.Eh`) | ver §8.3 |
 | `shell` só leitura (`ComandoDeShell.SoLeitura`) | conta como consulta; só entra no Estado se **falhou** ("consulta falhou") |
 | outro `shell` | comando **opaco**: "ok — efeitos em disco não rastreados" ou "FALHOU", com contagem de vezes |
-| `skill` | agrupada por skill + ação + alvo (os dois primeiros pares `-Nome valor`, `SepararChamada`): uma linha com as vezes, a última situação, recusas e falhas contadas e o resto da última chamada (`última: -Texto "…"`). Sem "efeitos em disco": skill fala com API. No shadow, 20 linhas de checklist viraram 2 |
+| `skill` | agrupada por skill + ação + alvo (`SepararChamada`: os pares `-Acao` e `-Id` pelo nome, em qualquer ordem; sem eles, os dois primeiros): uma linha com as vezes, a última situação, recusas e falhas contadas e o resto da última chamada (`última: -Texto "…"`). Sem "efeitos em disco": skill fala com API. No shadow, 20 linhas de checklist viraram 2. Comando e chamada vão numa linha só (quebra vira ` ⏎ `) |
 | `glob`, `grep`, `mail`, `mail_read` | só contam consultas |
 
 O que o Estado **não afirma** é tão importante quanto o que afirma: comando arbitrário não diz o que mudou no disco; apagar só conta com alvo literal e absoluto. Tudo vale "no fim do capítulo": o disco pode ter mudado depois, e conferir na hora de montar mudaria o texto a cada turno e quebraria o cache.
@@ -299,7 +299,7 @@ Tipos (`Pendencia.Tipo`):
 
 `Extrair(turnos)` produz as de código. `Resolver(trechos)` decide as que valem sobre a sequência de atos e capítulos soltos:
 
-- Falha some quando um trecho **posterior** tem sucesso no mesmo alvo. O casamento é pela chave: `arquivo|caminho` ou `comando|Assinatura` — **pela assinatura, não pelo texto**. Pelo texto exato, uma sessão fechou com oito pendências já resolvidas, porque a segunda tentativa tinha um `| Select-Object -Last 10` a mais.
+- Falha some quando um trecho **posterior** tem sucesso no mesmo alvo. O casamento é pela chave: `arquivo|caminho` ou `comando|Assinatura` — **pela assinatura, não pelo texto**. Pelo texto exato, uma sessão fechou com oito pendências já resolvidas, porque a segunda tentativa tinha um `| Select-Object -Last 10` a mais. Skill casa por `skill|ChaveDeSkill` (os pares `-Nome valor` em ordem alfabética, pelo campo `Ferramenta` da pendência): no shadow, a falha do Nordeste refeita com `-Grupo` na frente ficou viva no Pendente.
 - Interrupção e assunto só valem do trecho mais recente.
 - Pendência de assunto que repete uma falha de comando (o resumidor do ato lê o Pendente dos capítulos e às vezes devolve as mesmas falhas) é descartada quando o texto contém a assinatura (de 12 caracteres ou mais).
 - Sem repetição entre trechos.
