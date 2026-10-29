@@ -103,7 +103,9 @@ public static class Pendencias
         {
             var texto = new StringBuilder($"o último turno parou sem terminar ({motivo}).");
 
-            string pedido = Linha(turnos[^1].UserText);
+            // Sem o carimbo do orbe: no shadow, o pedido do turno 566 aparecia como
+            // "[terça-feira - 27/10/2026 | 12:20] Ellen ficou perfeito!…".
+            string pedido = Linha(ConversaDoOrbe.SemCarimbo(turnos[^1].UserText));
             if (pedido.Length > 0) texto.Append($" Pedido: \"{Cortar(pedido, 120)}\".");
 
             var doTurno = ArtifactExtractor.Extract(turnos[^1]);

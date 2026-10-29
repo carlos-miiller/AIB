@@ -210,6 +210,29 @@ namespace AIB.Tests
             aprendido.Should().ContainSingle().Which.Should().StartWith("gerar.ps1 não existia");
         }
 
+        private static Turn TurnoCarimbado(int indice, string fala, string resposta) => new(indice, new ChatMessage[]
+        {
+            ChatMessage.CreateUserMessage(ConversaDoOrbe.Carimbar(fala, new DateTime(2026, 10, 27, 12, 8, 0))),
+            ChatMessage.CreateAssistantMessage(resposta)
+        });
+
+        /// <summary>
+        /// Caso real (shadow, capítulo 105): o objetivo reserva e a pendência do turno interrompido
+        /// começavam por "[terça-feira - 27/10/2026 | 12:08]", o carimbo que o orbe põe na fala.
+        /// </summary>
+        [Fact]
+        public void ObjetivoReservaEPendenciaInterrompida_SemCarimbo()
+        {
+            var turnos = new[]
+            {
+                TurnoCarimbado(0, "Ellen ficou perfeito! pode criar as demais", "[turno encerrado sem resposta: cancelado por você]")
+            };
+
+            Compactor.ObjetivoDaFala(turnos).Should().Be("pedido do turno 1: \"Ellen ficou perfeito! pode criar as demais\"");
+            Pendencias.Extrair(turnos).Should().ContainSingle()
+                .Which.Texto.Should().Contain("Pedido: \"Ellen ficou perfeito!").And.NotContain("27/10/2026");
+        }
+
         [Fact]
         public async Task SoCodigo_NaoChamaOModelo_EOObjetivoEhAFalaLiteral()
         {

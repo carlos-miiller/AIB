@@ -352,7 +352,10 @@ public sealed class Compactor
         var turno = turns.FirstOrDefault(t => (t.UserText ?? "").Trim().Length > 0);
         if (turno == null) return "";
 
-        string fala = System.Text.RegularExpressions.Regex.Replace(turno.UserText.Trim(), @"\s+", " ");
+        // Sem o carimbo do orbe: no shadow, o objetivo reserva do capítulo 105 começava por
+        // "[terça-feira - 27/10/2026 | 12:08]".
+        string fala = System.Text.RegularExpressions.Regex.Replace(ConversaDoOrbe.SemCarimbo(turno.UserText).Trim(), @"\s+", " ");
+        if (fala.Length == 0) return "";
         if (fala.Length > 160) fala = fala[..160] + "…";
         return $"pedido do turno {turno.Index + 1}: \"{fala}\"";
     }

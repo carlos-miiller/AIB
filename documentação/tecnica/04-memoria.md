@@ -148,7 +148,7 @@ Sem os tetos, uma compactação que falha volta na seguinte com mais turnos (5, 
 - **`NumPredict`** é a rede contra modelo que ignora o formato: `MaxSummaryTokens` = 400 no capítulo; `LimitesDoProvedor.TetoDoResumoDoAto` no ato (400 Ollama, 700 OpenRouter).
 - A persona não participa: quem resume é o sistema.
 - Um compactor novo a cada uso (`NovoCompactor`), com provedor, modo e limites **desta** conversa — qualquer um pode ter mudado nas configurações.
-- **Modo só código** (`MemoriaComModelo` desligado): nenhuma chamada ao modelo. O capítulo fecha na hora com Objetivo tirado da fala do usuário (`ObjetivoDaFala`: `pedido do turno N: "…"`, até 160 caracteres) e sem lições. Existe pelo modelo local lento; o que o código monta (Estado, Combinado, pendências detectáveis) fica igual.
+- **Modo só código** (`MemoriaComModelo` desligado): nenhuma chamada ao modelo. O capítulo fecha na hora com Objetivo tirado da fala do usuário (`ObjetivoDaFala`: `pedido do turno N: "…"`, até 160 caracteres, sem o carimbo do orbe) e sem lições. Existe pelo modelo local lento; o que o código monta (Estado, Combinado, pendências detectáveis) fica igual.
 
 ### 6.2 Capítulo (`SummarizeAsync`)
 
@@ -285,7 +285,7 @@ Pontas soltas que um "continue" precisa. Existem para a compactação poder leva
 Tipos (`Pendencia.Tipo`):
 
 - **`falha`** (código): `write`/`edit` ou comando que falhou e **não** teve sucesso depois no mesmo alvo, dentro do trecho. Leitura que falhou não entra (procurar e não achar é rotina); comando só-leitura também não; recusa do usuário também não (é decisão, e listá-la convidaria a tentar de novo). Cada chave entra uma vez na ordem, mesmo que falhe, dê certo e falhe de novo.
-- **`interrompido`** (código): só o **último** turno do trecho, quando termina com a marca de turno morto (`MotivoDaInterrupcao`). Leva o pedido (até 120 caracteres) e a última ação.
+- **`interrompido`** (código): só o **último** turno do trecho, quando termina com a marca de turno morto (`MotivoDaInterrupcao`). Leva o pedido (até 120 caracteres, sem o carimbo do orbe) e a última ação.
 - **`assunto`** (modelo): o que o resumidor apontou na linha `PENDENTE:` como pedido e não feito.
 
 `Extrair(turnos)` produz as de código. `Resolver(trechos)` decide as que valem sobre a sequência de atos e capítulos soltos:
