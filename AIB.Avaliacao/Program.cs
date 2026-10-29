@@ -139,7 +139,7 @@ var casos = new List<Caso>
     // LOTE. Visto em 29/10/2026: para organizar uma pasta, ~30 arquivos movidos em ~30
     // respostas, uma ferramenta por vez. O certo é mandar as três numa resposta só — em 'ops'
     // ou em chamadas paralelas; o errado é uma e esperar.
-    new("lote", $@"mova os arquivos {home}\Desktop.txt, {home}\Desktop.txt e {home}\Desktop\c.txt para a pasta {home}\Desktoprquivo, que já existe",
+    new("lote", $@"mova os arquivos {home}\Desktop\a.txt, {home}\Desktop\b.txt e {home}\Desktop\c.txt para a pasta {home}\Desktop\arquivo, que já existe",
         r => r.Chamadas.Count(c => c.Nome == "fs" && c.Args.Contains("move")) >= 3 ? Passou()
             : r.Chamadas.Any(c => c.Nome == "fs" && c.Args.Contains("move")) ? Falhou("uma operação por resposta, em vez das três juntas")
             : Falhou("devia mover os três arquivos")),
