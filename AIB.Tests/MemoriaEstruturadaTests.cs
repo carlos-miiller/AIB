@@ -210,11 +210,78 @@ namespace AIB.Tests
             aprendido.Should().ContainSingle().Which.Should().StartWith("gerar.ps1 não existia");
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // Resumo e frases memoráveis
+        // ─────────────────────────────────────────────────────────────────────
+
         private static Turn TurnoCarimbado(int indice, string fala, string resposta) => new(indice, new ChatMessage[]
         {
             ChatMessage.CreateUserMessage(ConversaDoOrbe.Carimbar(fala, new DateTime(2026, 10, 27, 12, 8, 0))),
             ChatMessage.CreateAssistantMessage(resposta)
         });
+
+        /// <summary>
+        /// Caso real (shadow, capítulo 105): a memória perdia a conversa — a pergunta do usuário
+        /// sobre a ordem da lista e a resposta da agente não ficavam em lugar nenhum. O resumidor
+        /// passou a escrever RESUMO e FRASES. No teste com o Gemini, ele pôs cada valor na linha de
+        /// baixo do rótulo, e o leitor antigo descartava o objetivo; e frase só fica se estiver no
+        /// trecho, palavra por palavra.
+        /// </summary>
+        [Fact]
+        public async Task ResumoEFrases_EntramNoCapitulo_EFraseInventadaSai()
+        {
+            const string resposta = "RESUMO:\nCarlos se desculpou por negar uma ação e Ellen levou na brincadeira.\n\n"
+                                  + "FRASES:\n- Carlos: \"acho que neguei essa sua ultima ação sem querer\"\n"
+                                  + "- Ellen: \"uma frase que ninguém disse\"\n\n"
+                                  + "OBJETIVO:\nReorganizar a lista de lojas.\n\nAPRENDIDO: nenhum\n\nPENDENTE:\ncriar as demais lojas";
+            var turnos = new[]
+            {
+                TurnoCarimbado(0, "ellen desculpa, acho que neguei essa sua ultima ação sem querer",
+                    "Não esquenta, Carlos! O botão de negar fica bem ali no clique rápido.")
+            };
+
+            var capitulo = await new Compactor(new ProviderQueConta(resposta)).SummarizeAsync(0, turnos, default);
+
+            capitulo.Resumo.Should().Be("Carlos se desculpou por negar uma ação e Ellen levou na brincadeira.");
+            capitulo.Frases.Should().Equal("Carlos: \"acho que neguei essa sua ultima ação sem querer\"");
+            capitulo.Objetivo.Should().Be("Reorganizar a lista de lojas.", "o valor na linha de baixo do rótulo vale");
+            capitulo.Pendencias!.Should().ContainSingle(p => p.Texto == "criar as demais lojas");
+
+            string texto = capitulo.Render();
+            texto.IndexOf("Resumo:").Should().BeLessThan(texto.IndexOf("Frases memoráveis:"));
+            texto.IndexOf("Frases memoráveis:").Should().BeLessThan(texto.IndexOf("Objetivo:"));
+        }
+
+        /// <summary>
+        /// Trecho só de execução: o resumidor escreve "nenhum" e o capítulo fica como era, sem as
+        /// linhas novas gastando tokens.
+        /// </summary>
+        [Fact]
+        public async Task ResumoNenhum_NaoEntraNoCapitulo()
+        {
+            var turnos = new[] { TurnoCarimbado(0, "crie o arquivo", "Criado.") };
+            var capitulo = await new Compactor(new ProviderQueConta("RESUMO: nenhum\nFRASES: nenhuma\nOBJETIVO: criar o arquivo"))
+                .SummarizeAsync(0, turnos, default);
+
+            capitulo.Resumo.Should().BeNull();
+            capitulo.Frases.Should().BeEmpty();
+            capitulo.Render().Should().NotContain("Resumo:").And.NotContain("Frases memoráveis:");
+        }
+
+        /// <summary>
+        /// O resumo passa pela mesma conferência das lições: a frase que cita um valor sem origem
+        /// no trecho sai, e o resto do resumo fica.
+        /// </summary>
+        [Fact]
+        public void Resumo_FraseComValorSemOrigem_Sai()
+        {
+            var turnos = new[] { TurnoCarimbado(0, "separa as lojas por estado", "Separei.") };
+            var (resumo, _, _) = Compactor.LerResumoEFrases(
+                "RESUMO: Carlos pediu para separar as lojas por estado. Ellen criou 27 grupos.\nOBJETIVO: separar",
+                "separa as lojas por estado\nSeparei.", turnos);
+
+            resumo.Should().Be("Carlos pediu para separar as lojas por estado.");
+        }
 
         /// <summary>
         /// Caso real (shadow, capítulo 105): o objetivo reserva e a pendência do turno interrompido
@@ -372,6 +439,9 @@ namespace AIB.Tests
         }
         private sealed class ProviderQueConta : IChatProvider
         {
+            private readonly string _resposta;
+            public ProviderQueConta(string resposta = "OBJETIVO: x") => _resposta = resposta;
+
             public int Chamadas { get; private set; }
             public string Name => "Fake";
             public string Model => "fake";
@@ -386,7 +456,7 @@ namespace AIB.Tests
             public Task<ChatCompletionResult> CompleteAsync(IReadOnlyList<ChatMessage> m, IReadOnlyList<ChatTool> t, ChatRequestOptions o, CancellationToken ct)
             {
                 Chamadas++;
-                return Task.FromResult(new ChatCompletionResult("OBJETIVO: x", null, null));
+                return Task.FromResult(new ChatCompletionResult(_resposta, null, null));
             }
 
             public Task WarmupAsync(CancellationToken ct) => Task.CompletedTask;

@@ -49,12 +49,16 @@ public sealed class Compactor
     private static ChatRequestOptions Options => ChatRequestOptions.DeServico(MaxSummaryTokens);
 
     /// <summary>
-    /// Teto de tokens do resumo do CAPÍTULO. O pedido cabe em ~150 palavras (a frase de objetivo,
-    /// três lições de até 30 palavras e a linha de pendências, ~250 tokens), e 400 dá folga sobre
-    /// isso sem deixar espaço para um resumo desgovernado. O ato tem teto próprio, em
+    /// Teto de tokens do resumo do CAPÍTULO. O pedido cabe em ~800 tokens: o resumo (até 250
+    /// palavras, ~400 tokens), três frases, a frase de objetivo, três lições de até 30 palavras,
+    /// a linha de pendências e o jeito. Medido no shadow: 180 a 460 tokens de saída. 1.200 dá
+    /// folga sem deixar espaço para um resumo desgovernado. O ato tem teto próprio, em
     /// <see cref="LimitesDoProvedor.TetoDoResumoDoAto"/>.
     /// </summary>
-    public const int MaxSummaryTokens = 400;
+    public const int MaxSummaryTokens = 1200;
+
+    /// <summary>Frases memoráveis que um capítulo guarda.</summary>
+    public const int FrasesDoCapitulo = 3;
 
     /// <summary>
     /// Lições que um capítulo guarda. O prompt pede até três; cinco é a folga para o modelo que
@@ -75,13 +79,45 @@ public sealed class Compactor
         aparecem no fim, como referência: não os repita.
 
         Responda EXATAMENTE neste formato, em Português (Brasil):
+        RESUMO: o que foi conversado no trecho, em 1 ou 2 parágrafos, no passado.
+        FRASES:
+        - Nome: "frase copiada exatamente"
         OBJETIVO: uma frase com o que o usuário queria neste trecho.
         APRENDIDO:
         - uma lição por linha: a causa de uma falha e o que resolveu (ou não), ou uma decisão.
         PENDENTE: o que o usuário pediu e NÃO ficou feito, separado por ponto e vírgula.
 
+        Regras do RESUMO:
+        - No máximo 250 palavras. Conte o que foi perguntado, explicado, proposto e decidido, e o
+          clima da conversa, chamando o usuário e o agente pelos nomes que aparecem no trecho.
+        - Não repita caminhos, comandos nem pedidos literais: eles já estão registrados.
+        - Não dê causa de falha: causa vai no APRENDIDO.
+        - Se o trecho foi só execução (o agente fez o que foi pedido, sem conversa), escreva
+          "RESUMO: nenhum".
+
+        Regras de FRASES (frases memoráveis):
+        - Até 3 frases do trecho que marcam o momento: uma piada, uma reação, algo pessoal, uma
+          resposta que ficou. Podem ser do usuário ou do agente, com o nome de quem disse como
+          aparece no trecho.
+        - Copie exatamente como foi escrita, com até 30 palavras; pode cortar o começo ou o fim,
+          nunca o meio.
+        - Memorável é a frase que vale pelo TOM, não pela importância. Fala que pede, avisa,
+          aprova ou explica algo não entra: os pedidos já estão registrados.
+          Exemplos que ENTRAM (piada, desabafo, algo pessoal, resposta espirituosa):
+            - Ana: "meu gato sentou no teclado e mandou o e-mail por mim"
+            - Ana: "hoje eu sobrevivo à base de café e fé"
+            - Max: "então o servidor caiu justo no seu aniversário? que presente"
+          Exemplos que NÃO entram:
+            - "pode mandar o relatório agora" (pedido)
+            - "ficou ótimo, pode seguir" (aprovação)
+            - "apaguei a planilha antiga" (aviso)
+            - "o erro era a versão do Python" (explicação)
+        - Num trecho de trabalho, 0 ou 1 frase é o normal. Se nada marca o momento, escreva
+          "FRASES: nenhuma".
+
         Regras:
         - Sem falha nem decisão: escreva "APRENDIDO: nenhum". Nada pendente: "PENDENTE: nenhuma".
+        - Bate-papo sem tarefa não tem lição nem decisão: "APRENDIDO: nenhum".
         - A causa de uma falha só entra se estiver escrita no trecho (a mensagem de erro, ou o
           que o agente ou o usuário disseram). Sem isso, diga que a causa não foi identificada.
         - No máximo 3 linhas em APRENDIDO, cada uma com até 30 palavras.
@@ -259,8 +295,9 @@ public sealed class Compactor
         var estado = EstadoDoTrecho.Montar(turns);
         var combinado = Combinados.Extrair(turns);
 
-        string? objetivo = null;
+        string? objetivo = null, resumo = null;
         IReadOnlyList<string> aprendido = Array.Empty<string>();
+        IReadOnlyList<string> frases = Array.Empty<string>();
         IReadOnlyList<Pendencia> assunto = Array.Empty<Pendencia>();
         decimal? custo = null;
 
@@ -289,6 +326,7 @@ public sealed class Compactor
                     (texto, var reacoes) = LerJeito(texto, turns);
                     Reacoes = reacoes;
                 }
+                (resumo, frases, texto) = LerResumoEFrases(texto, material + "\n" + referencia, turns, chapterIndex);
                 (objetivo, aprendido, assunto) = LerSecoes(texto, material + "\n" + referencia, chapterIndex);
 
                 relogio.Stop();
@@ -335,7 +373,9 @@ public sealed class Compactor
             Objetivo: objetivo,
             Aprendido: aprendido,
             Combinado: combinado,
-            Estado: estado);
+            Estado: estado,
+            Resumo: resumo,
+            Frases: frases);
 
         // O custo do capítulo é o do bloco que ele vira no prompt, e por isso só pode ser
         // medido depois de montado. Os números NÃO entram no Render: o modelo não ganha nada
@@ -371,7 +411,7 @@ public sealed class Compactor
     public static (string? Objetivo, IReadOnlyList<string> Aprendido, IReadOnlyList<Pendencia> Assunto)
         LerSecoes(string? texto, string fonte, int indice = 0, int maxLicoes = LicoesDoCapitulo)
     {
-        var (semPendente, assunto) = Pendencias.LerDoResumo(texto);
+        var (semPendente, assunto) = Pendencias.LerDoResumo(SubirValor(texto));
 
         string? objetivo = null;
         var aprendido = new List<string>();
@@ -432,6 +472,120 @@ public sealed class Compactor
     }
 
     /// <summary>A lista numerada que o resumidor recebe junto do trecho. Vazia sem jeito conhecido.</summary>
+    private static readonly System.Text.RegularExpressions.Regex RotuloSemValor = new(
+        @"(?im)^([\s*_]*(?:OBJETIVO|PENDENTES?|RESUMO)[\s*_]*:)[ \t*_]*\r?\n\s*(?![-•*]|(?:OBJETIVO|APRENDIDO|PENDENTES?|RESUMO|FRASES|JEITO)\b)(?=\S)",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// "OBJETIVO:" sozinho e o valor na linha de baixo vira "OBJETIVO: valor". Com o RESUMO em
+    /// parágrafo, o Gemini passou a quebrar a linha depois de todo rótulo; o leitor só olhava a
+    /// mesma linha, descartava o objetivo e caía na fala do usuário.
+    /// </summary>
+    internal static string SubirValor(string? texto) => RotuloSemValor.Replace(texto ?? "", "$1 ");
+
+    private static readonly System.Text.RegularExpressions.Regex RotuloDeSecao = new(
+        @"(?im)^[\s*_]*(RESUMO|FRASES|OBJETIVO|APRENDIDO|PENDENTES?|JEITO)[\s*_]*:",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Tira RESUMO e FRASES da resposta do resumidor e devolve o resto para o <see cref="LerSecoes"/>.
+    /// <para>
+    /// O resumo conta o arco da conversa, que as outras seções perdiam: no shadow, a pergunta do
+    /// usuário sobre a ordem da lista e a resposta da agente não ficavam em lugar nenhum, e um
+    /// capítulo de bate-papo virava três "lições" narrativas. Frase do resumo que cita valor sem
+    /// origem no trecho sai, pela mesma <see cref="Conferencia"/> das lições.
+    /// </para>
+    /// <para>
+    /// As frases guardam o tom, palavra por palavra. Só fica a que está LITERALMENTE numa fala do
+    /// usuário ou do agente do trecho (espaços e maiúsculas à parte): citação não se confere por
+    /// valor, se confere inteira, e a reescrita "melhorada" pelo modelo não passa.
+    /// </para>
+    /// </summary>
+    public static (string? Resumo, IReadOnlyList<string> Frases, string Resto)
+        LerResumoEFrases(string? texto, string fonte, IReadOnlyList<Turn> turnos, int indice = 0)
+    {
+        string t = SubirValor(texto);
+        var secoes = RotuloDeSecao.Matches(t).Cast<System.Text.RegularExpressions.Match>().ToList();
+        string? resumoCru = null, frasesCru = null;
+        var resto = new StringBuilder();
+        int fimAnterior = 0;
+
+        for (int i = 0; i < secoes.Count; i++)
+        {
+            var s = secoes[i];
+            int fim = i + 1 < secoes.Count ? secoes[i + 1].Index : t.Length;
+            string nome = s.Groups[1].Value.ToUpperInvariant();
+            string corpo = t[(s.Index + s.Length)..fim];
+
+            if (nome is "RESUMO" or "FRASES")
+            {
+                resto.Append(t[fimAnterior..s.Index]);
+                fimAnterior = fim;
+                if (nome == "RESUMO") resumoCru = corpo; else frasesCru = corpo;
+            }
+        }
+        resto.Append(t[fimAnterior..]);
+
+        return (ConferirResumo(resumoCru, fonte, indice), ConferirFrases(frasesCru, turnos, indice), resto.ToString());
+    }
+
+    private static bool Nada(string v) =>
+        System.Text.RegularExpressions.Regex.IsMatch(v.Trim().Trim('*', '_').Trim(), @"^(nenhum|nenhuma|nada|n/a|-)?\.?$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static string? ConferirResumo(string? cru, string fonte, int indice)
+    {
+        if (cru == null || Nada(cru)) return null;
+
+        int descartadas = 0;
+        var paragrafos = new List<string>();
+        foreach (string paragrafo in System.Text.RegularExpressions.Regex.Split(cru.Trim().Trim('*', '_').Trim(), @"\n\s*\n"))
+        {
+            var frases = System.Text.RegularExpressions.Regex.Split(paragrafo.Trim(), @"(?<=[.!?])\s+")
+                .Where(f => f.Length > 0)
+                .Where(f => { bool ok = Conferencia.Confere(f, fonte); if (!ok) descartadas++; return ok; })
+                .ToList();
+            if (frases.Count > 0) paragrafos.Add(string.Join(" ", frases));
+        }
+
+        if (descartadas > 0)
+            Console.WriteLine($"[MEMORIA] {descartadas} frase(s) do resumo do trecho {indice} descartada(s): citavam valor sem origem no material.");
+
+        return paragrafos.Count == 0 ? null : string.Join("\n\n", paragrafos);
+    }
+
+    private static IReadOnlyList<string> ConferirFrases(string? cru, IReadOnlyList<Turn> turnos, int indice)
+    {
+        if (cru == null || Nada(cru)) return Array.Empty<string>();
+
+        static string Norm(string s) => System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ").Trim().ToLowerInvariant();
+        // Todas as falas, e não só a última do agente: a frase pode estar no texto que veio junto
+        // de uma chamada de ferramenta, no meio do turno.
+        string falas = Norm(string.Join("\n", turnos.SelectMany(t => t.Messages)
+            .Where(m => m is UserChatMessage or AssistantChatMessage)
+            .Select(m => m is UserChatMessage ? ConversaDoOrbe.SemCarimbo(Turn.TextOf(m)) : ThinkBlockStripper.Strip(Turn.TextOf(m)))
+            // Redigidas como no raw.jsonl: frase que copia um e-mail não casa e não vai ao disco.
+            .Select(AIB.Services.Mail.ConteudoDeTerceiros.Redigir)));
+
+        var aceitas = new List<string>();
+        int descartadas = 0;
+        foreach (string bruta in cru.Replace("\r", "").Split('\n'))
+        {
+            string linha = System.Text.RegularExpressions.Regex.Replace(bruta.Trim(), @"^([-•*]|\d+[.)])\s*", "").Trim();
+            if (linha.Length == 0 || Nada(linha)) continue;
+
+            var citada = System.Text.RegularExpressions.Regex.Match(linha, "[\"“](.+)[\"”]");
+            string n = citada.Success ? Norm(citada.Groups[1].Value) : "";
+            if (n.Length < 3 || !falas.Contains(n, StringComparison.Ordinal)) { descartadas++; continue; }
+            if (!aceitas.Contains(linha, StringComparer.OrdinalIgnoreCase)) aceitas.Add(linha);
+        }
+
+        if (descartadas > 0)
+            Console.WriteLine($"[MEMORIA] {descartadas} frase(s) memorável(is) do trecho {indice} descartada(s): não estavam no trecho.");
+
+        return aceitas.Take(FrasesDoCapitulo).ToList();
+    }
+
     public static string JeitosConhecidos(IReadOnlyList<Habito>? jeitos)
     {
         if (jeitos == null || jeitos.Count == 0) return "";

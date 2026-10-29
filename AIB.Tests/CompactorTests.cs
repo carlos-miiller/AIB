@@ -536,11 +536,12 @@ namespace AIB.Tests
         {
             var provider = new DubleProvider();
 
-            await new Compactor(provider).PromoteAsync(
+            await new Compactor(provider, limites: LimitesDoProvedor.Local).PromoteAsync(
                 0, new[] { Capitulo(0, "resumo") }, CancellationToken.None);
 
             provider.UltimasOpcoes!.Think.Should().BeFalse();
-            provider.UltimasOpcoes!.NumPredict.Should().Be(Compactor.MaxSummaryTokens);
+            // O teto do ato é o dele, não o do capítulo: o do capítulo subiu para caber o resumo.
+            provider.UltimasOpcoes!.NumPredict.Should().Be(LimitesDoProvedor.Local.TetoDoResumoDoAto);
         }
 
         [Fact]
