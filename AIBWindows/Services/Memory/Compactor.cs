@@ -342,6 +342,12 @@ public sealed class Compactor
         if (turns == null || turns.Count == 0)
             throw new ArgumentException("Capítulo precisa de pelo menos um turno.", nameof(turns));
 
+        // Tudo o que o capítulo guarda sai destes turnos — artefatos, Estado, Combinado,
+        // pendências, o material do resumidor e a conferência das frases —, então limpá-los aqui
+        // limpa todos. A redação do ToolRegistry só pegava resultados, e um webhook do Bitrix
+        // escrito pela agente num comando foi para o Estado e para uma lição do ato.
+        turns = turns.Select(t => t.SemSegredos()).ToList();
+
         var artefatos = turns.SelectMany(ArtifactExtractor.Extract).ToList();
         string agora = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
 
@@ -388,7 +394,8 @@ public sealed class Compactor
                 if (escolhidas != null)
                     combinado = escolhidas.Where(n => n >= 1 && n <= candidatas.Count).Distinct()
                         .OrderBy(n => n).Select(n => candidatas[n - 1]).TakeLast(Combinados.TetoNoCapitulo).ToList();
-                (objetivo, aprendido, assunto) = LerSecoes(texto, material + "\n" + referencia, chapterIndex);
+                (objetivo, aprendido, assunto) = LerSecoes(Segredos.Redigir(texto), material + "\n" + referencia, chapterIndex);
+                if (resumo != null) resumo = Segredos.Redigir(resumo);
 
                 relogio.Stop();
                 custo = resultado.CustoUsd;
@@ -924,7 +931,8 @@ public sealed class Compactor
         if (_comModelo)
         {
             var relogio = System.Diagnostics.Stopwatch.StartNew();
-            string material = RenderChaptersForSummary(chapters) + RegistroDoArco(combinado, estado, herdadas, actIndex);
+            // Redigido: capítulos gravados antes da limpeza dos turnos ainda podem trazer segredo.
+            string material = Segredos.Redigir(RenderChaptersForSummary(chapters) + RegistroDoArco(combinado, estado, herdadas, actIndex));
 
             try
             {
@@ -939,7 +947,7 @@ public sealed class Compactor
                     .ConfigureAwait(false);
 
                 string texto = ThinkBlockStripper.Strip(resultado.Text);
-                (resumo, frases, dinamica, texto) = LerDoAto(texto, material, chapters, actIndex);
+                (resumo, frases, dinamica, texto) = LerDoAto(Segredos.Redigir(texto), Segredos.Redigir(material), chapters, actIndex);
                 var (obj, apr, assunto) = LerSecoes(texto, material, actIndex, _limites.LinhasDoAto);
 
                 if (obj != null) objetivo = obj;

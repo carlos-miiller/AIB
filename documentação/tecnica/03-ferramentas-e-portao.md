@@ -936,6 +936,7 @@ provedor e ficaram no `raw.jsonl`. Agora o resultado de TODA ferramenta é filtr
 | Nome + valor entre aspas | `"password": "x"`, `senha = 'x'` | o valor |
 | `nome: valor` sem aspas, se o valor mistura letra e número ou tem símbolo | `password: Tr0ub4dor&3` | o valor |
 | Formatos conhecidos | `sk-…`, `ghp_…`, `AKIA…`, `xox?-…`, JWT, bloco `PRIVATE KEY`, `Bearer …`, `://usuario:senha@` | o trecho |
+| Webhook do Bitrix (o endereço é a credencial) | `…/rest/123/<token>/metodo` | o token |
 
 O nome fica e o valor vira `[SEGREDO OMITIDO]`; o resultado ganha um aviso no fim (sem ele o modelo
 acha que o comando falhou e tenta por outro caminho). Não redige o que é código: `password=self.password)`,

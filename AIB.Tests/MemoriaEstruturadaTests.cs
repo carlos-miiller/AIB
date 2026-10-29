@@ -408,6 +408,28 @@ namespace AIB.Tests
             assunto.Should().ContainSingle().Which.Texto.Should().Be("validar o painel");
         }
 
+        /// <summary>
+        /// Caso real (ato 5 do shadow refeito): a agente testou um webhook antigo do Bitrix num
+        /// Invoke-RestMethod; o endereço, que traz o token, foi para o Estado do capítulo e para uma
+        /// lição do ato. A redação só limpava resultados de ferramenta, não o comando que o agente
+        /// escreveu. Token de exemplo, inventado.
+        /// </summary>
+        [Fact]
+        public async Task WebhookNoComando_NaoChegaNaMemoriaNemNoResumidor()
+        {
+            const string token = "abc123def456ghi7";
+            string comando = $"Invoke-RestMethod -Uri 'https://empresa.bitrix24.com/rest/1/{token}/user.current.json'";
+            var turnos = new[] { Turno(0, "testa o webhook", Chamada("shell", new { command = comando }, "ok")) };
+            var provider = new ProviderQueConta($"RESUMO: Ellen testou o webhook.\nAPRENDIDO:\n- o webhook /rest/1/{token}/ está ativo");
+
+            var capitulo = await new Compactor(provider).SummarizeAsync(0, turnos, default);
+
+            Segredos.Redigir(comando).Should().NotContain(token).And.Contain("/rest/1/" + Segredos.Omitido);
+            provider.UltimoUsuario.Should().NotContain(token, "o resumidor não recebe o token");
+            capitulo.Render().Should().NotContain(token).And.Contain("bitrix24.com/rest/1/");
+            capitulo.Artifacts.Should().NotContain(a => a.Value.Contains(token));
+        }
+
         [Fact]
         public async Task SoCodigo_NaoChamaOModelo_EOObjetivoEhAFalaLiteral()
         {

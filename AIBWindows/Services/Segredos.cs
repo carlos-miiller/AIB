@@ -75,6 +75,15 @@ public static class Segredos
     private static readonly Regex NaUrl = new(
         @"(?<antes>://[^/\s:@]+:)(?<valor>[^@\s/]{3,})(?=@)", Opcoes, Prazo);
 
+    /// <summary>
+    /// O token de um webhook do Bitrix (<c>https://empresa.bitrix24.com/rest/123/token/metodo</c>):
+    /// o endereço É a credencial. Caso real: a agente procurou webhooks antigos na máquina e testou
+    /// um com <c>Invoke-RestMethod</c>; o endereço, com o token, foi para o Estado da memória e para
+    /// uma lição do ato.
+    /// </summary>
+    private static readonly Regex WebhookBitrix = new(
+        @"(?<antes>/rest/\d+/)(?<valor>[A-Za-z0-9]{8,})(?=/|\b)", Opcoes, Prazo);
+
     /// <summary><c>objeto.campo</c>: expressão de código, não valor literal.</summary>
     private static readonly Regex Membro = new(@"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$", RegexOptions.Compiled, Prazo);
 
@@ -98,6 +107,7 @@ public static class Segredos
 
             limpo = Cabecalho.Replace(limpo, m => { n++; return m.Groups["antes"].Value + Omitido; });
             limpo = NaUrl.Replace(limpo, m => { n++; return m.Groups["antes"].Value + Omitido; });
+            limpo = WebhookBitrix.Replace(limpo, m => { n++; return m.Groups["antes"].Value + Omitido; });
             limpo = EntreAspas.Replace(limpo, m => Trocar(m, ref n));
             limpo = DoisPontos.Replace(limpo, m => TemCaraDeValor(m.Groups["valor"].Value) ? Trocar(m, ref n) : m.Value);
 
@@ -147,6 +157,7 @@ public static class Segredos
 
             foreach (Match m in Cabecalho.Matches(texto)) Grupo(m);
             foreach (Match m in NaUrl.Matches(texto)) Grupo(m);
+            foreach (Match m in WebhookBitrix.Matches(texto)) Grupo(m);
             foreach (Match m in EntreAspas.Matches(texto)) Grupo(m);
             foreach (Match m in DoisPontos.Matches(texto))
                 if (TemCaraDeValor(m.Groups["valor"].Value)) Grupo(m);
