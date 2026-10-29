@@ -124,6 +124,32 @@ namespace AIB.Tests
         }
 
         /// <summary>
+        /// Caso real (shadow, capítulo 105): vinte chamadas "skill bitrix -Acao adicionar -Id 421099
+        /// -Texto …" viravam vinte linhas do Estado, 60% do capítulo, todas com "efeitos em disco
+        /// não rastreados", que para uma API é falso. A mesma skill, ação e alvo viram uma linha,
+        /// com a contagem, as recusas e a última chamada.
+        /// </summary>
+        [Fact]
+        public void Estado_ChamadasDaMesmaSkill_ViramUmaLinha()
+        {
+            object Add(string texto) => new { skill_name = "bitrix", arguments = $"-Acao adicionar -Id 421099 -Texto \"{texto}\" -Grupo 495217" };
+            var estado = EstadoDoTrecho.Montar(new[]
+            {
+                Turno(0, "cadastra",
+                    Chamada("skill", Add("SP - Campinas - Celular Geral"), "Item adicionado."),
+                    Chamada("skill", Add("SP - Itaim Bibi - Celular Geral"), ToolRegistry.RecusaDoUsuario),
+                    Chamada("skill", Add("SP - Ribeirão Preto - Celular Geral"), "Item adicionado."),
+                    Chamada("skill", new { skill_name = "bitrix", arguments = "-Acao checklist -Id 421099" }, "1. SP - Campinas"))
+            });
+            string texto = estado.Render("do capítulo 1");
+
+            texto.Should().Contain("skill bitrix -Acao adicionar -Id 421099 (3×): última: ok — 1 recusada pelo usuário; última: -Texto \"SP - Ribeirão Preto - Celular Geral\" -Grupo 495217");
+            texto.Should().Contain("skill bitrix -Acao checklist -Id 421099: última: ok");
+            texto.Should().NotContain("efeitos em disco");
+            estado.Itens.Should().HaveCount(2);
+        }
+
+        /// <summary>
         /// Caso real (shadow, turnos 512 e 549): o agente criou duas planilhas pela ferramenta doc
         /// (um create e três edits cada) e nenhuma aparecia no Estado do capítulo nem do ato. O
         /// Montar não tinha caso para "doc", e a memória não sabia que os arquivos existiam.

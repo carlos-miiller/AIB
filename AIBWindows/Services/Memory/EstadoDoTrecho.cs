@@ -89,6 +89,9 @@ public sealed record EstadoDoTrecho(
         // leitura pode ter sido gerado por ele — e não ser "já existia".
         bool houveComandoOpaco = false;
 
+        // Recusas e falhas de cada skill agrupada, para o detalhe do item.
+        var contagem = new Dictionary<string, (int Recusadas, int Falhas)>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var turno in turnos ?? Array.Empty<Turn>())
         {
             foreach (var (nome, args, resultado) in Pares(turno.Messages))
@@ -223,14 +226,10 @@ public sealed record EstadoDoTrecho(
 
                     case Ferramentas.Habilidade:
                     {
-                        string chamada = ArtifactExtractor.ResumirArgumento(nome, args).Trim();
-                        if (chamada.Length == 0) break;
-                        if (recusado)
-                        {
-                            Guardar(new ItemDeEstado("skill " + chamada, ItemDeEstado.TipoComando, "recusado pelo usuário", null, turno.Index));
-                            break;
-                        }
-                        ComandoOpaco("skill " + chamada, falhou, resultado, turno.Index);
+                        string skill = ArtifactExtractor.StringDe(args, "skill_name").Trim();
+                        if (skill.Length == 0) break;
+                        var (acao, resto) = SepararChamada(ArtifactExtractor.StringDe(args, "arguments"));
+                        Habilidade(("skill " + skill + " " + acao).Trim(), resto, recusado, falhou, resultado, turno.Index);
                         break;
                     }
 
@@ -314,6 +313,31 @@ public sealed record EstadoDoTrecho(
                 situacao = antes.Situacao;
 
             Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, situacao, detalhe(), turno));
+        }
+
+        // Chamadas da mesma skill, ação e alvo viram UM item, com a contagem. No shadow, um
+        // capítulo de checklist do Bitrix tinha vinte linhas "skill bitrix -Acao adicionar -Id
+        // 421099 -Texto …", uma por item: 60% do capítulo, e o grupo de cada item se perdia
+        // no meio do comando.
+        void Habilidade(string alvo, string resto, bool recusado, bool falhou, string resultado, int turno)
+        {
+            itens.TryGetValue(ChaveDeComando(alvo), out var antes);
+            contagem.TryGetValue(alvo, out var c);
+            if (recusado) c.Recusadas++;
+            else if (falhou) c.Falhas++;
+            contagem[alvo] = c;
+
+            var detalhe = new List<string>();
+            if (falhou && !recusado && Primeira(resultado) is string erro) detalhe.Add(erro);
+            if (c.Recusadas > 0) detalhe.Add(c.Recusadas == 1 ? "1 recusada pelo usuário" : $"{c.Recusadas} recusadas pelo usuário");
+            if (c.Falhas > 0 && !(falhou && c.Falhas == 1)) detalhe.Add(c.Falhas == 1 ? "1 falhou" : $"{c.Falhas} falharam");
+            if (resto.Length > 0) detalhe.Add("última: " + (resto.Length > 120 ? resto[..120] + "…" : resto));
+
+            Guardar(new ItemDeEstado(alvo, ItemDeEstado.TipoComando,
+                recusado ? "recusado pelo usuário" : falhou ? "FALHOU" : "ok",
+                detalhe.Count == 0 ? null : string.Join("; ", detalhe),
+                turno,
+                (antes?.Vezes ?? 0) + 1));
         }
 
         void ComandoOpaco(string comando, bool falhou, string resultado, int turno)
@@ -446,6 +470,33 @@ public sealed record EstadoDoTrecho(
         consultados.Add(caminho);
     }
 
+    private static readonly Regex TokenDeArgumento = new(@"""[^""]*""|'[^']*'|\S+", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Separa os argumentos de uma skill em ação + alvo (os dois primeiros pares
+    /// <c>-Nome valor</c>, que por convenção dizem o que fazer e onde) e o resto. Valor entre
+    /// aspas na parte da ação vira "…": texto livre não pode separar chamadas da mesma ação.
+    /// </summary>
+    internal static (string Acao, string Resto) SepararChamada(string? argumentos)
+    {
+        var tokens = TokenDeArgumento.Matches(argumentos ?? "").Select(m => m.Value).ToList();
+        var acao = new List<string>();
+        int i = 0, pares = 0;
+        while (i < tokens.Count && pares < 2 && tokens[i].StartsWith('-'))
+        {
+            acao.Add(tokens[i]);
+            if (i + 1 < tokens.Count && !tokens[i + 1].StartsWith('-'))
+            {
+                string valor = tokens[i + 1];
+                acao.Add(valor.StartsWith('"') || valor.StartsWith('\'') ? "…" : valor);
+                i++;
+            }
+            i++;
+            pares++;
+        }
+        return (string.Join(" ", acao), string.Join(" ", tokens.Skip(i)));
+    }
+
     /// <summary>"3 alterações" de um <c>doc edit</c>, pelo tamanho de <c>ops</c>.</summary>
     private static string? Alteracoes(string args)
     {
@@ -541,6 +592,16 @@ public sealed record EstadoDoTrecho(
 
     private static string Linha(ItemDeEstado item, string? comum)
     {
+        // Skill não diz "efeitos em disco não rastreados": ela fala com uma API ou faz o que o
+        // script dela faz, e a frase sobre disco era falsa para o Bitrix.
+        if (item.Tipo == ItemDeEstado.TipoComando && item.Alvo.StartsWith("skill ", StringComparison.Ordinal))
+        {
+            string vezes = item.Vezes > 1 ? $" ({item.Vezes}×)" : "";
+            string desfecho = item.Situacao is "ok" or "FALHOU" ? "última: " + item.Situacao : item.Situacao;
+            if (item.Detalhe != null) desfecho += " — " + item.Detalhe;
+            return $"{item.Alvo}{vezes}: {desfecho} (turno {item.Turno + 1})";
+        }
+
         if (item.Tipo == ItemDeEstado.TipoComando)
         {
             string cmd = item.Alvo.Length > 160 ? item.Alvo[..160] + "…" : item.Alvo;

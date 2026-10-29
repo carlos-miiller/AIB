@@ -249,7 +249,8 @@ Pareia chamada e resultado por id e dobra cada ação no seu alvo (`ItemDeEstado
 | `doc` `info`/`read`/`find`/`query`/`layout` | igual a `read`; `help` e `models` não entram |
 | `shell` que apaga (`ComandoQueApaga.Eh`) | ver §8.3 |
 | `shell` só leitura (`ComandoDeShell.SoLeitura`) | conta como consulta; só entra no Estado se **falhou** ("consulta falhou") |
-| outro `shell`, `skill` | comando **opaco**: "ok — efeitos em disco não rastreados" ou "FALHOU", com contagem de vezes |
+| outro `shell` | comando **opaco**: "ok — efeitos em disco não rastreados" ou "FALHOU", com contagem de vezes |
+| `skill` | agrupada por skill + ação + alvo (os dois primeiros pares `-Nome valor`, `SepararChamada`): uma linha com as vezes, a última situação, recusas e falhas contadas e o resto da última chamada (`última: -Texto "…"`). Sem "efeitos em disco": skill fala com API. No shadow, 20 linhas de checklist viraram 2 |
 | `glob`, `grep`, `mail`, `mail_read` | só contam consultas |
 
 O que o Estado **não afirma** é tão importante quanto o que afirma: comando arbitrário não diz o que mudou no disco; apagar só conta com alvo literal e absoluto. Tudo vale "no fim do capítulo": o disco pode ter mudado depois, e conferir na hora de montar mudaria o texto a cada turno e quebraria o cache.
