@@ -84,6 +84,57 @@ public static class Combinados
         return falas.TakeLast(TetoNoCapitulo).ToList();
     }
 
+    /// <summary>Teto de cada fala candidata na lista numerada.</summary>
+    public const int TetoDaCandidata = 300;
+
+    /// <summary>
+    /// Todas as falas do usuário no trecho, sem o carimbo e numa linha só, para o resumidor
+    /// escolher por número quais entram no Combinado. Pedido do usuário: o Combinado guarda só
+    /// fala que pede ou decide — o que o código não sabe julgar. O modelo escolhe; o texto quem
+    /// copia é o código, e por isso ele nunca é reescrito.
+    /// </summary>
+    public static IReadOnlyList<FalaCombinada> Candidatas(IReadOnlyList<Turn> turnos) =>
+        (turnos ?? Array.Empty<Turn>())
+            .Select(t => new FalaCombinada(t.Index, Compactar(ConversaDoOrbe.SemCarimbo(t.UserText ?? "").Trim())))
+            .Where(f => f.Texto.Length > 0)
+            .Select(f => f.Texto.Length > TetoDaCandidata ? f with { Texto = f.Texto[..TetoDaCandidata] + "…" } : f)
+            .ToList();
+
+    /// <summary>A lista numerada que vai ao resumidor junto do trecho.</summary>
+    public static string RenderNumerado(IReadOnlyList<FalaCombinada> candidatas, string? usuario)
+    {
+        if (candidatas.Count == 0) return "";
+
+        string quem = string.IsNullOrWhiteSpace(usuario) ? "do usuário" : "de " + usuario.Trim();
+        var texto = new StringBuilder($"Falas {quem} (numeradas):\n");
+        for (int i = 0; i < candidatas.Count; i++)
+            texto.Append('[').Append(i + 1).Append("] (turno ").Append(candidatas[i].Turno + 1).Append(") \"")
+                 .Append(candidatas[i].Texto).Append("\"\n");
+        return texto.ToString();
+    }
+
+    private static readonly Regex LinhaDaEscolha = new(
+        @"(?im)^[\s*_]*COMBINADO[\s*_]*:[\s*_]*(.*)$((?:\r?\n[ \t]*[-•*]?[ \t]*\[?\d+\]?[ \t,;e]*)*)", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Os números da linha <c>COMBINADO:</c> e o texto sem ela. Nulo quando a linha não veio: aí
+    /// fica o Combinado de código, e uma falha do modelo nunca apaga um pedido. "nenhum" é a
+    /// lista vazia.
+    /// </summary>
+    public static (IReadOnlyList<int>? Numeros, string Resto) LerEscolha(string? texto)
+    {
+        string t = texto ?? "";
+        var m = LinhaDaEscolha.Match(t);
+        if (!m.Success) return (null, t);
+
+        string resto = (t[..m.Index] + t[(m.Index + m.Length)..]).Trim();
+        var numeros = Regex.Matches(m.Groups[1].Value + " " + m.Groups[2].Value, @"\d+")
+            .Select(n => int.TryParse(n.Value, out int v) ? v : 0)
+            .Where(v => v > 0)
+            .ToList();
+        return (numeros, resto);
+    }
+
     /// <summary>Os de vários trechos, em ordem, sem repetir, com os mais recentes ficando.</summary>
     public static IReadOnlyList<FalaCombinada> Juntar(IEnumerable<IReadOnlyList<FalaCombinada>?> trechos) =>
         trechos.Where(t => t != null)

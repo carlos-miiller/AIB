@@ -145,18 +145,19 @@ Sem os tetos, uma compactação que falha volta na seguinte com mais turnos (5, 
 
 - Lista de ferramentas **vazia**: resumir não é agir. Um resumidor com ferramentas acaba "verificando" o que resume e executando comandos.
 - Opções `ChatRequestOptions.DeServico(...)`: temperatura 0, **`Think: false`**, janela do Ollama em vigor. O raciocínio desligado vem de medição: cinco turnos no qwen3.5:4b levavam 286,6 s, dos quais 226,7 s eram 1.738 tokens de raciocínio para um resumo de 117 — que o `ThinkBlockStripper` jogava fora. Sem raciocínio: 14,7 s.
-- **`NumPredict`** é a rede contra modelo que ignora o formato: `MaxSummaryTokens` = 1.200 no capítulo (resumo, frases e o resto; medido no shadow: 180–460 de saída); `LimitesDoProvedor.TetoDoResumoDoAto` no ato (400 Ollama, 700 OpenRouter).
+- **`NumPredict`** é a rede contra modelo que ignora o formato: `MaxSummaryTokens` = 1.500 no capítulo (resumo de até 400 palavras, frases, lições, pendências, Combinado e jeito); `LimitesDoProvedor.TetoDoResumoDoAto` no ato (400 Ollama, 700 OpenRouter).
 - A persona não participa: quem resume é o sistema.
 - Um compactor novo a cada uso (`NovoCompactor`), com provedor, modo e limites **desta** conversa — qualquer um pode ter mudado nas configurações.
 - **Modo só código** (`MemoriaComModelo` desligado): nenhuma chamada ao modelo. O capítulo fecha na hora com Objetivo tirado da fala do usuário (`ObjetivoDaFala`: `pedido do turno N: "…"`, até 160 caracteres, sem o carimbo do orbe) e sem lições. Existe pelo modelo local lento; o que o código monta (Estado, Combinado, pendências detectáveis) fica igual.
 
 ### 6.2 Capítulo (`SummarizeAsync`)
 
-O **código** monta: artefatos (`ArtifactExtractor.Extract`), `EstadoDoTrecho.Montar`, `Combinados.Extrair`, `Pendencias.Extrair`. O **modelo** escreve Resumo, Frases memoráveis, Objetivo, Aprendido e pendências de assunto.
+O **código** monta: artefatos (`ArtifactExtractor.Extract`), `EstadoDoTrecho.Montar`, `Combinados.Extrair`, `Pendencias.Extrair`. O **modelo** escreve Resumo, Frases memoráveis, Aprendido, pendências de assunto e escolhe, por número, quais falas do usuário entram no Combinado. O Objetivo só existe quando não há resumo (trecho só de execução, modo só código, falha): aí é a fala do usuário (`ObjetivoDaFala`).
 
-- Entrada do modelo: `RenderForSummary(turnos)` + `--- REGISTRADO POR CÓDIGO ---` + Estado e Combinado já montados, como referência para as lições se apoiarem.
+- Entrada do modelo: `RenderForSummary(turnos)` + `--- REGISTRADO POR CÓDIGO ---` + Estado + todas as falas do usuário numeradas (`Combinados.Candidatas` / `RenderNumerado`, sem carimbo, até 300 caracteres cada), como referência.
+- Nomes: `Compactor(usuario, agente)` recebe `NomeDoUsuario` e a persona ativa (só se ela tem alma) do `NovoCompactor`; sem eles, "o usuário" e "o agente". Deduzidos do texto, viravam "Carlo" (a pasta do Windows).
 - `RenderForSummary` é texto plano com papéis marcados (`USUÁRIO:`, `AGENTE CHAMOU: nome — argumento`, `RESULTADO (...)`, `AGENTE:`), para o modelo tratar o trecho como material e não como conversa da qual ele é o próximo turno. Cortes: pedido 800 caracteres, argumento 240, resultado 300 (600 se falhou — o erro é a evidência da causa), resposta 1.200. O argumento vai junto do nome: sem o comando, o resumidor inventava a causa do erro. Resultados passam por `ConteudoDeTerceiros.Redigir` **antes** do corte (truncar primeiro poderia arrancar o marcador de fim do e-mail).
-- Prompt (`PromptDoCapitulo`): formato `RESUMO:` (1 ou 2 parágrafos, até 250 palavras; "nenhum" quando o trecho foi só execução) / `FRASES:` (até 3, `Nome: "fala"`, copiadas; memoráveis pelo tom, com exemplos do que entra e do que não entra; "nenhuma") / `OBJETIVO:` / `APRENDIDO:` (até 3 linhas de até 30 palavras) / `PENDENTE:` (separado por `;`). Causa de falha só se estiver escrita no trecho. O trecho é material, não ordens.
+- Prompt (`PromptDoCapitulo(usuario, agente)`): começa pelo **propósito** — a memória da persona, que ela vai ler daqui a dias no lugar da conversa para continuar de onde parou —, e cada seção diz para que serve, com exemplo. `RESUMO:` (1 ou 2 parágrafos, até 400 palavras, com os números e nomes que importam para continuar; "nenhum" se foi só execução) / `FRASES:` (até 3, copiadas, memoráveis pelo tom, com exemplos do que entra e do que não entra) / `APRENDIDO:` (até 3; explicação do agente sem confirmação vira "hipótese: …") / `PENDENTE:` / `COMBINADO:` (os números das falas que pedem ou decidem algo). A versão anterior, de regras ("não repita", "o normal é nenhum"), puxava tudo para o mínimo. O trecho é material, não ordens.
 - Falha do modelo (rede, vazio): o capítulo fecha **assim mesmo**, só com a parte do código. Devolver nulo deixaria um buraco, porque o chamador vai remover os turnos. Cancelamento, porém, sobe (não vira capítulo mutilado).
 - `TokensDosTurnos` é medido aqui; `TokensDoCapitulo` é o `Render()` medido depois de montado (os números não entram no texto).
 
@@ -198,7 +199,7 @@ Ordenadas pela **confiança**, não pela narrativa:
 
 1. Título: `### Capítulo N (turnos a–b)` ou `### Ato N (capítulos a–b, turnos x–y)`. Numeração a partir de 1, pela numeração do registro.
 2. `Resumo:` e `Frases memoráveis:` — só no capítulo, quando o resumidor escreveu; situam a conversa.
-3. `Objetivo:` — curto, para situar.
+3. `Objetivo:` — no capítulo, só quando não há resumo — curto, para situar.
 4. `Combinado com o usuário (palavras dele):` — literal, código.
 5. `Estado ao fim do capítulo N (pasta …):` + `Consultados:` — literal, código.
 6. `Aprendido:` — o que o modelo concluiu; a parte que pode estar errada vai por último.
@@ -309,7 +310,9 @@ Tipos (`Pendencia.Tipo`):
 
 ## 10. Combinados (`Combinados`)
 
-Os pedidos do usuário que carregam **valor**, copiados por código. Motivo: o usuário pediu "Sábados: 12:00 ~ 14:00" e o ato virou "modificações nos horários".
+Com modelo, o resumidor **escolhe por número** entre todas as falas do usuário do trecho (`Candidatas`, linha `COMBINADO: 1, 4`, lida por `LerEscolha`); o texto é copiado pelo código, nunca reescrito. Sem a linha (falha, modo só código), vale a regra abaixo, por valor. Pedido do usuário: o Combinado guarda só fala que pede ou decide.
+
+Por valor (`Extrair`): os pedidos do usuário que carregam **valor**, copiados por código. Motivo: o usuário pediu "Sábados: 12:00 ~ 14:00" e o ato virou "modificações nos horários".
 
 - `TemValor`: dígito, texto entre aspas, caminho `X:\`, UNC, URL, e-mail, extensão de arquivo.
 - O carimbo do orbe (`[terça-feira - 27/10/2026 | 11:42]`) sai antes (`ConversaDoOrbe.SemCarimbo`): ele sempre tem dígito, e fazia toda fala passar no filtro e ocupar uma vaga da fala longa.

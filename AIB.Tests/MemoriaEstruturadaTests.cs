@@ -270,12 +270,53 @@ namespace AIB.Tests
 
             capitulo.Resumo.Should().Be("Carlos se desculpou por negar uma ação e Ellen levou na brincadeira.");
             capitulo.Frases.Should().Equal("Carlos: \"acho que neguei essa sua ultima ação sem querer\"");
-            capitulo.Objetivo.Should().Be("Reorganizar a lista de lojas.", "o valor na linha de baixo do rótulo vale");
-            capitulo.Pendencias!.Should().ContainSingle(p => p.Texto == "criar as demais lojas");
+            capitulo.Objetivo.Should().BeNull("com resumo, a primeira frase dele situa o trecho");
+            capitulo.Pendencias!.Should().ContainSingle(p => p.Texto == "criar as demais lojas",
+                "o valor na linha de baixo do rótulo vale");
 
             string texto = capitulo.Render();
             texto.IndexOf("Resumo:").Should().BeLessThan(texto.IndexOf("Frases memoráveis:"));
-            texto.IndexOf("Frases memoráveis:").Should().BeLessThan(texto.IndexOf("Objetivo:"));
+            texto.Should().NotContain("Objetivo:");
+        }
+
+        /// <summary>
+        /// Pedido do usuário: o Combinado guarda só fala que pede ou decide. No capítulo 105 do
+        /// shadow, o filtro por valor deixava "foi mal, ellen. te neguei de novo sem querer" e
+        /// perdia "pode fazer dois grupos para eu ver como ficaria?". O código numera todas as falas,
+        /// o modelo escolhe por número e o texto copiado é o do usuário. Sem a linha COMBINADO, fica
+        /// o Combinado de código: falha do modelo não apaga pedido.
+        /// </summary>
+        [Fact]
+        public async Task Combinado_EscolhidoPorNumero_CopiaAFalaDoUsuario()
+        {
+            var turnos = new[]
+            {
+                TurnoCarimbado(0, "pode fazer dois grupos para eu ver como ficaria?", "Feito."),
+                TurnoCarimbado(1, "foi mal, ellen. te neguei de novo sem querer em 2 itens", "Sem problema.")
+            };
+
+            var escolheu = await new Compactor(new ProviderQueConta("RESUMO: nenhum\nPENDENTE: nenhuma\nCOMBINADO:\n1"))
+                .SummarizeAsync(0, turnos, default);
+            escolheu.Combinado!.Select(f => f.Texto).Should().Equal("pode fazer dois grupos para eu ver como ficaria?");
+
+            var semLinha = await new Compactor(new ProviderQueConta("RESUMO: nenhum\nPENDENTE: nenhuma"))
+                .SummarizeAsync(0, turnos, default);
+            semLinha.Combinado!.Select(f => f.Texto).Should().Equal("foi mal, ellen. te neguei de novo sem querer em 2 itens");
+        }
+
+        /// <summary>
+        /// Caso real (teste do ato 5 no shadow): deduzidos do texto, os nomes saíam "Carlo" (a pasta
+        /// do Windows), "Carlos" e "Ellen W.". Agora vêm das configurações; sem eles, "o usuário" e
+        /// "o agente".
+        /// </summary>
+        [Fact]
+        public async Task PromptDoCapitulo_UsaOsNomesDasConfiguracoes()
+        {
+            var provider = new ProviderQueConta("RESUMO: nenhum");
+            await new Compactor(provider, usuario: "Carlos", agente: "Ellen").SummarizeAsync(0, new[] { TurnoCarimbado(0, "oi", "oi") }, default);
+
+            provider.UltimoSistema.Should().Contain("Você escreve a memória de Ellen sobre um trecho da conversa com Carlos");
+            Compactor.PromptDoCapitulo(null, null).Should().Contain("memória do agente sobre um trecho da conversa com o usuário");
         }
 
         /// <summary>
@@ -469,6 +510,7 @@ namespace AIB.Tests
             public ProviderQueConta(string resposta = "OBJETIVO: x") => _resposta = resposta;
 
             public int Chamadas { get; private set; }
+            public string UltimoSistema { get; private set; } = "";
             public string Name => "Fake";
             public string Model => "fake";
 
@@ -482,6 +524,7 @@ namespace AIB.Tests
             public Task<ChatCompletionResult> CompleteAsync(IReadOnlyList<ChatMessage> m, IReadOnlyList<ChatTool> t, ChatRequestOptions o, CancellationToken ct)
             {
                 Chamadas++;
+                UltimoSistema = m.Count > 0 ? string.Concat(m[0].Content.Select(p => p.Text)) : "";
                 return Task.FromResult(new ChatCompletionResult(_resposta, null, null));
             }
 

@@ -1373,7 +1373,11 @@ public sealed class ConversationService : IMessageStore
             _providerFactory.GetProvider(settings), _registroDaCompactacao, _tokenCounter,
             comModelo: settings.MemoriaComModelo,
             limites: LimitesDoProvedor.Para(settings.AiProvider),
-            jeitos: jeitos);
+            jeitos: jeitos,
+            // Os nomes vêm daqui, e não do texto: deduzidos dos turnos, o resumidor chamava o
+            // usuário pelo nome da pasta do Windows.
+            usuario: settings.NomeDoUsuario,
+            agente: string.IsNullOrWhiteSpace(LoadActiveCharacterSoul(settings.ActiveCharacter)) ? null : settings.ActiveCharacter);
     }
 
     private readonly Habitos _habitos = new();
