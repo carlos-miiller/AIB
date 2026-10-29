@@ -477,6 +477,29 @@ namespace AIB.Tests
             ato.Render().Should().Contain("Dinâmica entre agente e usuário:").And.NotContain("Objetivo:");
         }
 
+        /// <summary>
+        /// Caso real (ato 5 do shadow refeito): cinco comandos que falharam e nunca foram refeitos
+        /// (leituras de um CSV no dia do painel, um git restore) seguiam no Pendente do ato, com o
+        /// assunto já andado. Com a linha PENDENTE do modelo, ficam só as falhas do último capítulo;
+        /// sem ela (modelo falhou), nada sai.
+        /// </summary>
+        [Fact]
+        public async Task Ato_FalhaAntiga_SaiQuandoOModeloEscrevePendente()
+        {
+            Chapter Cap(int i, string comando) => new(i, "", i, i, "x", Array.Empty<Artifact>(),
+                Pendencias: new[] { new Pendencia(Pendencia.Falha, $"executar {comando} falhou", comando, ArtifactKind.CommandRun) },
+                Versao: BlocoEstruturado.Versao, Resumo: "x", Estado: EstadoDoTrecho.Vazio);
+            var caps = new[] { Cap(0, "Import-Csv antigo.csv"), Cap(1, "git restore bitrix.ps1") };
+
+            var comPendente = await new Compactor(new ProviderQueConta("RESUMO: arco\nPENDENTE: validar o painel"))
+                .PromoteAsync(0, caps, default);
+            comPendente.Pendencias!.Select(p => p.Texto).Should().BeEquivalentTo(
+                "executar git restore bitrix.ps1 falhou", "validar o painel");
+
+            var semModelo = await new Compactor(new ProviderQueConta("RESUMO: arco")).PromoteAsync(0, caps, default);
+            semModelo.Pendencias!.Should().HaveCount(2, "sem a linha PENDENTE, o código não descarta nada");
+        }
+
         [Fact]
         public async Task Ato_EhFusao_EOsLiteraisSobemIntactos()
         {
