@@ -269,7 +269,8 @@ Quanto as ferramentas trazem e como a memória se comporta, por provedor. No Oll
 | `AlvoDepoisDeCompactar` (fração da cota viva) | 0,5 | 0,3 |
 | `CapitulosPorAto` (teto) | 12 | 24 |
 | `LinhasDoAto` (lições no ato) | 5 | 10 |
-| `TetoDoResumoDoAto` (tokens) | 400 | 700 |
+| `TetoDoResumoDoAto` (tokens) | 1.000 | 2.600 |
+| `PalavrasDoArco` (teto do resumo do arco; o piso pedido é a metade) | 300 | 800 |
 
 `LimitesDoProvedor.Atual` é o do provedor da conversa, atualizado pelo `SettingsService`. A memória, porém, lê `LimitesDoProvedor.Para(settings.AiProvider)` das configurações da conversa, e não o estático (que é de quem salvou por último).
 

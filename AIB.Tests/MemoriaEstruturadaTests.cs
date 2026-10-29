@@ -378,6 +378,42 @@ namespace AIB.Tests
             capitulo.Render().Should().Contain("Estado ao fim do capítulo 1").And.Contain("Sábados: 12:00 ~ 14:00");
         }
 
+        /// <summary>
+        /// Caso real (teste do ato 5 no shadow): o ato só via objetivo e lições dos capítulos e
+        /// perdia a história do arco; sem o registro do código, manteve como pendente um cadastro
+        /// já feito; e, sem nenhuma dinâmica nos capítulos, inventou duas linhas vagas. Agora ele
+        /// recebe o que cada capítulo escreveu e o registro do arco, escreve o resumo do arco, e o
+        /// código só aceita frase que veio de um capítulo e dinâmica que cita trechos do arco.
+        /// </summary>
+        [Fact]
+        public async Task Ato_ResumoDoArco_FrasesDosCapitulos_EDinamicaComTrechos()
+        {
+            Chapter Cap(int i, string resumo, string frase) => new(i, "", i, i, resumo, Array.Empty<Artifact>(),
+                Versao: BlocoEstruturado.Versao, Resumo: resumo, Frases: new[] { frase },
+                Combinado: new[] { new FalaCombinada(i, $"pedido {i}") }, Estado: EstadoDoTrecho.Vazio);
+            var caps = new[]
+            {
+                Cap(0, "Carlos pediu um painel e Ellen montou o rascunho.", "Carlos: \"COMO DIABOS você sabe??\""),
+                Cap(1, "Carlos corrigiu o nome e Ellen passou a usar Carlos.", "Ellen: \"anotado, Carlos com s!\"")
+            };
+            const string resposta = "RESUMO:\nCarlos pediu um painel e Ellen montou o rascunho. Depois ele corrigiu o nome.\n\n"
+                                  + "FRASES:\n- Carlos: \"COMO DIABOS você sabe??\"\n- Ellen: \"frase que nenhum capítulo tem\"\n\n"
+                                  + "DINÂMICA:\n- Ellen passou a chamar Carlos com s depois da correção (trechos 2)\n"
+                                  + "- A relação ficou mais madura\n- Carlos passou a confiar mais (trechos 9)\n\n"
+                                  + "APRENDIDO:\n- o painel parte do rascunho\nPENDENTE: nenhuma";
+            var provider = new ProviderQueConta(resposta);
+
+            var ato = await new Compactor(provider, usuario: "Carlos", agente: "Ellen").PromoteAsync(0, caps, default);
+
+            provider.UltimoUsuario.Should().Contain("RESUMO: Carlos corrigiu o nome").And.Contain("--- REGISTRADO POR CÓDIGO NO ARCO ---")
+                .And.Contain("pedido 1");
+            ato.Resumo.Should().StartWith("Carlos pediu um painel");
+            ato.Frases.Should().Equal("Carlos: \"COMO DIABOS você sabe??\"");
+            ato.Dinamica.Should().Equal("Ellen passou a chamar Carlos com s depois da correção (trechos 2)");
+            ato.Objetivo.Should().BeNull();
+            ato.Render().Should().Contain("Dinâmica entre agente e usuário:").And.NotContain("Objetivo:");
+        }
+
         [Fact]
         public async Task Ato_EhFusao_EOsLiteraisSobemIntactos()
         {
@@ -511,6 +547,7 @@ namespace AIB.Tests
 
             public int Chamadas { get; private set; }
             public string UltimoSistema { get; private set; } = "";
+            public string UltimoUsuario { get; private set; } = "";
             public string Name => "Fake";
             public string Model => "fake";
 
@@ -525,6 +562,7 @@ namespace AIB.Tests
             {
                 Chamadas++;
                 UltimoSistema = m.Count > 0 ? string.Concat(m[0].Content.Select(p => p.Text)) : "";
+                UltimoUsuario = m.Count > 1 ? string.Concat(m[^1].Content.Select(p => p.Text)) : "";
                 return Task.FromResult(new ChatCompletionResult(_resposta, null, null));
             }
 

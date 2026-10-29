@@ -145,7 +145,7 @@ Sem os tetos, uma compactação que falha volta na seguinte com mais turnos (5, 
 
 - Lista de ferramentas **vazia**: resumir não é agir. Um resumidor com ferramentas acaba "verificando" o que resume e executando comandos.
 - Opções `ChatRequestOptions.DeServico(...)`: temperatura 0, **`Think: false`**, janela do Ollama em vigor. O raciocínio desligado vem de medição: cinco turnos no qwen3.5:4b levavam 286,6 s, dos quais 226,7 s eram 1.738 tokens de raciocínio para um resumo de 117 — que o `ThinkBlockStripper` jogava fora. Sem raciocínio: 14,7 s.
-- **`NumPredict`** é a rede contra modelo que ignora o formato: `MaxSummaryTokens` = 1.500 no capítulo (resumo de até 400 palavras, frases, lições, pendências, Combinado e jeito); `LimitesDoProvedor.TetoDoResumoDoAto` no ato (400 Ollama, 700 OpenRouter).
+- **`NumPredict`** é a rede contra modelo que ignora o formato: `MaxSummaryTokens` = 1.500 no capítulo (resumo de até 400 palavras, frases, lições, pendências, Combinado e jeito); `LimitesDoProvedor.TetoDoResumoDoAto` no ato (1.000 Ollama, 2.600 nuvem: o resumo do arco, as frases e a dinâmica cabem).
 - A persona não participa: quem resume é o sistema.
 - Um compactor novo a cada uso (`NovoCompactor`), com provedor, modo e limites **desta** conversa — qualquer um pode ter mudado nas configurações.
 - **Modo só código** (`MemoriaComModelo` desligado): nenhuma chamada ao modelo. O capítulo fecha na hora com Objetivo tirado da fala do usuário (`ObjetivoDaFala`: `pedido do turno N: "…"`, até 160 caracteres, sem o carimbo do orbe) e sem lições. Existe pelo modelo local lento; o que o código monta (Estado, Combinado, pendências detectáveis) fica igual.
@@ -182,7 +182,7 @@ O **código** monta: artefatos (`ArtifactExtractor.Extract`), `EstadoDoTrecho.Mo
   - Combinado: `Combinados.Juntar` (código; até `TetoNoAto` = 16, os mais recentes).
   - Artefatos: `ArtifactDigest.Condense` (um por chave, até 12, falhas primeiro).
   - Pendências: `Pendencias.Resolver` sobre os capítulos; as de assunto são trocadas pelas que o modelo apontar, se ele escrever a linha `PENDENTE:`.
-  - Objetivo e Aprendido: o modelo recebe `RenderChaptersForSummary` (objetivo, lições e pendências de cada trecho) e o `PromptDoAto(linhas)` pede a versão atualizada — juntar lições repetidas, manter a mais recente, tirar pendência resolvida. Sem modelo (ou em falha): objetivo do capítulo mais recente e as últimas `LinhasDoAto` lições distintas.
+  - Resumo do arco, Frases, Dinâmica, Aprendido e pendências de assunto: o modelo recebe `RenderChaptersForSummary` (de cada trecho: resumo, frases, objetivo se houver, lições, pendências) **e o registro do código do arco** (`RegistroDoArco`: Combinado e Estado fundidos e as pendências herdadas), com `PromptDoAto(linhas, palavras, usuario, agente)`, que começa pelo propósito como o do capítulo. Resumo do arco entre `PalavrasDoArco`/2 e `PalavrasDoArco` palavras (400–800 na nuvem, a medir; até 300 no Ollama). `LerDoAto` confere: frase do resumo com valor sem origem sai; frase memorável só se estiver numa frase de algum capítulo do arco (até 6); linha de **Dinâmica** só se citar trechos, todos dentro do arco, "(trechos 12, 15)" (até 4). Com resumo, o ato não tem Objetivo. Sem modelo (ou em falha): objetivo do capítulo mais recente e as últimas `LinhasDoAto` lições distintas. No teste do ato 5 do shadow, sem o registro do código o ato manteve um cadastro já feito como pendente, e sem a exigência de trechos inventou duas linhas de dinâmica vagas.
   - Motivo: foi no parágrafo sobre parágrafos que horários pedidos pelo usuário sumiram e a causa inventada de um capítulo virou fato.
 - **Algum capítulo v1 → caminho antigo**: `ActPrompt` pede um parágrafo de até 150 palavras + `PENDENTE:`; em falha, o resumo vira `[resumo indisponível: …]`.
 - `TokensDosTurnos` do ato é o cru herdado dos capítulos (economia total); `TokensDosCapitulos` separa a economia da promoção (`EconomiaDaPromocao`).
@@ -198,7 +198,7 @@ O **código** monta: artefatos (`ArtifactExtractor.Extract`), `EstadoDoTrecho.Mo
 Ordenadas pela **confiança**, não pela narrativa:
 
 1. Título: `### Capítulo N (turnos a–b)` ou `### Ato N (capítulos a–b, turnos x–y)`. Numeração a partir de 1, pela numeração do registro.
-2. `Resumo:` e `Frases memoráveis:` — só no capítulo, quando o resumidor escreveu; situam a conversa.
+2. `Resumo:` e `Frases memoráveis:` — quando o resumidor escreveu; situam a conversa. No ato, depois delas, `Dinâmica entre agente e usuário:`.
 3. `Objetivo:` — no capítulo, só quando não há resumo — curto, para situar.
 4. `Combinado com o usuário (palavras dele):` — literal, código.
 5. `Estado ao fim do capítulo N (pasta …):` + `Consultados:` — literal, código.

@@ -24,7 +24,7 @@ public static class BlocoEstruturado
         string titulo, string? objetivo, IReadOnlyList<FalaCombinada>? combinado,
         EstadoDoTrecho? estado, string fimDe, IReadOnlyList<string>? aprendido,
         int tetoDeItens = EstadoDoTrecho.TetoDeItens, bool comConsultados = true,
-        string? resumo = null, IReadOnlyList<string>? frases = null)
+        string? resumo = null, IReadOnlyList<string>? frases = null, IReadOnlyList<string>? dinamica = null)
     {
         var texto = new StringBuilder();
         texto.Append(titulo).Append('\n');
@@ -37,6 +37,13 @@ public static class BlocoEstruturado
         {
             texto.Append("Frases memoráveis:\n");
             foreach (var frase in frases) texto.Append("- ").Append(frase.Trim()).Append('\n');
+        }
+
+        // Só no ato: como a relação mudou ao longo do arco.
+        if (dinamica is { Count: > 0 })
+        {
+            texto.Append("Dinâmica entre agente e usuário:\n");
+            foreach (var linha in dinamica) texto.Append("- ").Append(linha.Trim()).Append('\n');
         }
 
         if (!string.IsNullOrWhiteSpace(objetivo))
@@ -79,7 +86,7 @@ public static class BlocoEstruturado
         string titulo, string? objetivo, IReadOnlyList<FalaCombinada>? combinado,
         EstadoDoTrecho? estado, string fimDe, IReadOnlyList<string>? aprendido,
         int tetoDeItens = EstadoDoTrecho.TetoDeItens,
-        string? resumo = null, IReadOnlyList<string>? frases = null)
+        string? resumo = null, IReadOnlyList<string>? frases = null, IReadOnlyList<string>? dinamica = null)
     {
         if (maxTokens <= 0) return "";
 
@@ -103,7 +110,7 @@ public static class BlocoEstruturado
         {
             string bloco = Render(titulo, objetivo, combinado?.TakeLast(pedidos).ToList(), estado, fimDe,
                 comAprendido ? aprendido : null, teto, consultados,
-                comResumo ? resumo : null, comAprendido ? frases : null);
+                comResumo ? resumo : null, comAprendido ? frases : null, comAprendido ? dinamica : null);
             if (counter.CountText(bloco) <= maxTokens) return bloco;
         }
 

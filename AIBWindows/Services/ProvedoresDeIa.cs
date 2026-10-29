@@ -306,21 +306,27 @@ public sealed class PerfilDeProvedor
 /// </param>
 /// <param name="TetoDoResumoDoAto">
 /// Teto de tokens que o resumidor do ato pode gerar. Acompanha <paramref name="LinhasDoAto"/>:
-/// mais linhas pedidas com o mesmo teto seria pedir e cortar no meio.
+/// mais linhas pedidas com o mesmo teto seria pedir e cortar no meio. Cabe também o resumo do
+/// arco (<paramref name="PalavrasDoArco"/>), as frases e a dinâmica.
+/// </param>
+/// <param name="PalavrasDoArco">
+/// Teto de palavras do resumo do arco no ato; o piso pedido é a metade. Pedido do usuário: o
+/// ato conta a história do arco inteiro, que o ato de lições e objetivo perdia. Na nuvem,
+/// 400–800 para começar (a medir); no Ollama, até 300, porque cada palavra é espera na CPU.
 /// </param>
 public sealed record LimitesDoProvedor(
     int LinhasDeLeitura, int ItensDaPasta, int EmailPorMensagem, int EmailPorLeitura, int LoteDaTriagem,
-    double AlvoDepoisDeCompactar, int CapitulosPorAto, int LinhasDoAto, int TetoDoResumoDoAto)
+    double AlvoDepoisDeCompactar, int CapitulosPorAto, int LinhasDoAto, int TetoDoResumoDoAto,
+    int PalavrasDoArco = 800)
 {
     public static readonly LimitesDoProvedor Local = new(
         Tools.ReadFileTool.LinhasPadrao, Tools.ReadFileTool.TetoDaPasta,
         Tools.LerEmailTool.TetoPorMensagem, Tools.LerEmailTool.TetoDaLeitura,
         Mail.MailDigestService.TetoDoLote, 0.5, 12, 5,
-        // 400 tokens para cinco lições. Coincide com o teto do resumo do capítulo
-        // (Compactor.MaxSummaryTokens), mas é número do ato: um não deve arrastar o outro.
-        400);
+        // Cinco lições e um resumo do arco de até 300 palavras.
+        1000, PalavrasDoArco: 300);
 
-    public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3, 24, 10, 700);
+    public static readonly LimitesDoProvedor Nuvem = new(1500, 300, 12000, 32000, 60, 0.3, 24, 10, 2600, PalavrasDoArco: 800);
 
     public static LimitesDoProvedor Para(string? provedor) =>
         ProvedoresDeIa.EhNuvem(provedor) ? Nuvem : Local;
