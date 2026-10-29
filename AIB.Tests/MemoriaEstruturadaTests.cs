@@ -430,6 +430,25 @@ namespace AIB.Tests
             capitulo.Artifacts.Should().NotContain(a => a.Value.Contains(token));
         }
 
+        /// <summary>
+        /// Caso real (ato 3 do shadow refeito): o modelo escreveu "PENDENTE:" e os itens numa lista
+        /// com "- " embaixo. O leitor gravou "- - Replicar…" e os outros itens ficavam sem lugar
+        /// (ou viravam lição, se o Aprendido viesse antes).
+        /// </summary>
+        [Fact]
+        public void Pendente_EmLista_ViraUmItemPorLinha()
+        {
+            var (_, aprendido, assunto) = Compactor.LerSecoes(
+                "APRENDIDO:\n- lição um\nPENDENTE:\n- Replicar o portal para o GLPI\n- Definir a nova missão\n",
+                "lição um");
+
+            aprendido.Should().Equal("lição um");
+            assunto.Select(p => p.Texto).Should().Equal("Replicar o portal para o GLPI", "Definir a nova missão");
+
+            Pendencias.LerDoResumo("PENDENTE: - Replicar o portal; Definir a missão").Assunto
+                .Select(p => p.Texto).Should().Equal("Replicar o portal", "Definir a missão");
+        }
+
         [Fact]
         public async Task SoCodigo_NaoChamaOModelo_EOObjetivoEhAFalaLiteral()
         {

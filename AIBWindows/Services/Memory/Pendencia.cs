@@ -204,18 +204,25 @@ public static class Pendencias
     public static (string Resumo, IReadOnlyList<Pendencia> Assunto) LerDoResumo(string? texto)
     {
         string t = (texto ?? "").Trim();
-        var m = Regex.Match(t, @"(?im)^[\s*_]*PENDENTES?[\s*_]*:[\s*_]*(.*)$");
+
+        // A linha PENDENTE e, logo abaixo, os itens em lista: no shadow refeito, o ato escreveu
+        // "PENDENTE:" e uma lista com "- ", e o leitor, que só olhava a mesma linha, gravou
+        // "- - Replicar…" e deixou os outros itens caírem no Aprendido.
+        var m = Regex.Match(t, @"(?im)^[\s*_]*PENDENTES?[\s*_]*:[\s*_]*(.*)$((?:\r?\n[ \t]*(?:[-•*]|\d+[.)])[ \t]*[^\r\n]*)*)");
         if (!m.Success) return (t, Array.Empty<Pendencia>());
 
         string resumo = (t[..m.Index] + t[(m.Index + m.Length)..]).Trim();
         string itens = m.Groups[1].Value.Trim().TrimEnd('.');
+        var naLista = m.Groups[2].Value.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
-        if (Regex.IsMatch(itens, @"^(nenhum|nenhuma|nada|n/a|-)?$", RegexOptions.IgnoreCase))
+        if (naLista.Length == 0 && Regex.IsMatch(itens, @"^(nenhum|nenhuma|nada|n/a|-)?$", RegexOptions.IgnoreCase))
             return (resumo, Array.Empty<Pendencia>());
 
         var assunto = itens
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(i => i.Length > 2)
+            .Concat(naLista)
+            .Select(i => Regex.Replace(i.Trim(), @"^(?:[-•*]|\d+[.)])\s*", "").Trim().TrimEnd('.', ';'))
+            .Where(i => i.Length > 2 && !Regex.IsMatch(i, @"^(nenhum|nenhuma|nada|n/a)$", RegexOptions.IgnoreCase))
             .Take(TetoDoResumidor)
             .Select(i => new Pendencia(Pendencia.Assunto, Cortar(i, TetoDaLinha)))
             .ToList();

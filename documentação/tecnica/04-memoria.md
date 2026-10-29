@@ -171,7 +171,7 @@ Antes de tudo, os turnos passam por `Turn.SemSegredos()`: `Segredos.Redigir` nas
 
 `Compactor.LerSecoes(texto, fonte, índice, maxLicoes)`:
 
-- Tolerante: aceita negrito, `*`/`•`/numeração no lugar de `- `, ou linha sem marcador nenhum dentro da seção (o Gemini escreveu as lições de um ato assim, e todas eram descartadas), rótulos em qualquer caixa. `PENDENTE:` sai por `Pendencias.LerDoResumo` (até `TetoDoResumidor` = 3 itens de assunto; "nenhuma", "nada", "n/a" valem vazio).
+- Tolerante: aceita negrito, `*`/`•`/numeração no lugar de `- `, ou linha sem marcador nenhum dentro da seção (o Gemini escreveu as lições de um ato assim, e todas eram descartadas), rótulos em qualquer caixa. `PENDENTE:` sai por `Pendencias.LerDoResumo` (itens separados por `;` na mesma linha ou em lista com `- ` logo abaixo, sem o marcador; até `TetoDoResumidor` = 3 itens de assunto; "nenhuma", "nada", "n/a" valem vazio).
 - `maxLicoes`: `LicoesDoCapitulo` = 5 no capítulo (o prompt pede 3; 5 é folga); `LimitesDoProvedor.LinhasDoAto` no ato (5 Ollama, 10 OpenRouter).
 - **`Conferencia`**: cada lição e o objetivo passam por `Conferencia.Confere(texto, fonte)`. Ela extrai os **valores** citados (caminho absoluto, texto entre aspas, nome de arquivo com extensão, horário `hh:mm`, número com dois ou mais dígitos) e exige que cada um apareça no material. Lição com valor sem origem é descartada; objetivo com valor sem origem vira nulo e cai na fala do usuário. É cega ao sentido — não pega causa inventada em palavras comuns —, mas pega a que cita arquivo ou número que não existe. Uma segunda chamada de revisão custaria minutos no modelo local.
 
