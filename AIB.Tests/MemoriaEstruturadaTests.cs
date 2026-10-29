@@ -535,7 +535,9 @@ namespace AIB.Tests
         {
             var s = new UserAppSettings { TurnosPorCapitulo = 99, CapitulosPorAto = 1, EsconderResultadosDepoisDe = -3 }.Sanear();
 
-            s.TurnosPorCapitulo.Should().Be(20);
+            // 40, e não 20: pedido do usuário, capítulos maiores (35–50 mil tokens crus) para o
+            // ato receber menos capítulos e mais ricos; com 20 turnos, o teto de tokens nunca chegava.
+            s.TurnosPorCapitulo.Should().Be(40);
             s.CapitulosPorAto.Should().Be(2);
             s.EsconderResultadosDepoisDe.Should().Be(0);
             new UserAppSettings().MemoriaComModelo.Should().BeTrue();

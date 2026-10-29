@@ -191,7 +191,7 @@ Os campos `AiProvider`, `ApiUrl`, `ModelName`, `KeepAlive`, `ContextWindow` e `R
 | `MemoryFraction` | 0,05–0,60 | 0,25 |
 | `TurnosSoltos` | 4–200 (≤ 0 volta ao padrão) | 20 |
 | `TokensSoltos` | 8.000–1.000.000 (≤ 0 volta ao padrão) | 135.000 |
-| `TurnosPorCapitulo` | 2–20 (≤ 0 volta ao padrão) | 15 |
+| `TurnosPorCapitulo` | 2–40 (≤ 0 volta ao padrão) | 15 |
 | `TokensPorCapitulo` | 4.000–60.000 (≤ 0 volta ao padrão) | 20.000 |
 | `CapitulosPorAto` | 0 = automático; senão 2–24 | 0 |
 | `EsconderResultadosDepoisDe` | 0 = desligado; senão 2–50 | 0 |

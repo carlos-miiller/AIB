@@ -1866,7 +1866,7 @@
                                             <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                                                 <TextBlock Text="Turnos por capítulo" Style="{StaticResource FieldLabelText}"/>
                                                 <TextBlock Style="{StaticResource FieldHelpText}" TextWrapping="Wrap"
-                                                           Text="Quantos turnos cada compactação resume de uma vez (2 a 20). Menos turnos, resumo mais rápido num modelo local; mais turnos, menos compactações."/>
+                                                           Text="Quantos turnos cada compactação resume de uma vez (2 a 40). Menos turnos, resumo mais rápido num modelo local; mais turnos, menos compactações."/>
                                             </StackPanel>
                                             <TextBox x:Name="TurnosPorCapituloTextBox" Grid.Column="1" VerticalAlignment="Center"
                                                      Style="{StaticResource ControlTextBoxMono}"

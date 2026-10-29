@@ -598,7 +598,7 @@ public sealed class UserAppSettings
         MaxTurnIterations = Entre(MaxTurnIterations, 1, 60);
         CompactionTrigger = Entre(CompactionTrigger, 0.50, 0.99);
         MemoryFraction = Entre(MemoryFraction, 0.05, 0.60);
-        TurnosPorCapitulo = Entre(TurnosPorCapitulo <= 0 ? PadraoDeTurnosPorCapitulo : TurnosPorCapitulo, 2, 20);
+        TurnosPorCapitulo = Entre(TurnosPorCapitulo <= 0 ? PadraoDeTurnosPorCapitulo : TurnosPorCapitulo, 2, 40);
         TokensPorCapitulo = Entre(
             TokensPorCapitulo <= 0 ? PadraoDeTokensPorCapitulo : TokensPorCapitulo, 4_000, 60_000);
         TurnosSoltos = Entre(TurnosSoltos <= 0 ? PadraoDeTurnosSoltos : TurnosSoltos, 4, 200);

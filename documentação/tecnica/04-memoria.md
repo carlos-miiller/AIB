@@ -115,7 +115,7 @@ Pedido explícito, sem regra de cota. Mínimo `max(2, minimoParaOAto ?? 2)`: ato
 2. **Recentes que ficam** (`RecentesQueFicam`): até `KeepRecentTurns` = 2 turnos do fim, e só enquanto somados cabem em `FracaoDosRecentes` = 15% da cota viva. Era "os dois últimos, sempre": um turno de 18 ferramentas com 19 mil tokens não saía do contexto e o `/compact` respondia "nada a compactar". Turno grande recente vira capítulo; o que ele deixou por fazer segue na seção Pendente.
 3. Percorre do mais antigo, parando quando:
    - atingiu o alvo de tokens (a não ser que `forcado`);
-   - chegou em `TurnosPorCapitulo` (padrão 15, era 8; saneado 2–20);
+   - chegou em `TurnosPorCapitulo` (padrão 15, era 8; saneado 2–40 — era 2–20, subiu para capítulos maiores, de 35–50 mil tokens crus, a pedido do usuário);
    - encontrou um turno que ainda pode mudar (para; não pula): não fechado **e** o último. Um aberto com outro turno depois dele morreu sem marca e não muda mais, então entra (`TurnSplitter.Acabou`) — sem isso uma conversa ficou com 172 mil tokens vivos e "nada a compactar";
    - somar o próximo turno passaria do teto de tokens do capítulo.
 4. **Teto de tokens** (`TetoDeTokensDoCapitulo`): `TokensPorCapitulo` (padrão 20.000, saneado 4.000–60.000). No **Ollama** é limitado a `FracaoDaJanelaPorCapitulo` = 60% da janela, porque um prompt maior que o `num_ctx` é **truncado em silêncio pelo começo** — o resumidor perderia as instruções. Com a janela padrão de 32.768 isso dá 19.660, abaixo dos 20.000. No OpenRouter vale o número da tela (estourar dá erro, não corte calado).
