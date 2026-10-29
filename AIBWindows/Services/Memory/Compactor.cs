@@ -505,7 +505,10 @@ public sealed class Compactor
                 continue;
             }
 
-            if (emAprendido && System.Text.RegularExpressions.Regex.IsMatch(linha, @"^([-•*]|\d+[.)])\s*"))
+            // Dentro da seção, toda linha é lição, com ou sem marcador. No ato 5 do shadow refeito,
+            // o Gemini escreveu as sete lições sem "- " e o leitor, que só aceitava linha com
+            // marcador, descartou todas em silêncio: o ato saiu sem Aprendido.
+            if (emAprendido)
                 Aprender(System.Text.RegularExpressions.Regex.Replace(linha, @"^([-•*]|\d+[.)])\s*", ""));
         }
 

@@ -393,6 +393,21 @@ namespace AIB.Tests
                 .Which.Texto.Should().Contain("Pedido: \"Ellen ficou perfeito!").And.NotContain("27/10/2026");
         }
 
+        /// <summary>
+        /// Caso real (ato 5 do shadow refeito): o Gemini escreveu as sete lições do APRENDIDO sem
+        /// "- " na frente, e o leitor descartou todas em silêncio.
+        /// </summary>
+        [Fact]
+        public void LicoesSemMarcador_SaoLidas()
+        {
+            var (_, aprendido, assunto) = Compactor.LerSecoes(
+                "APRENDIDO:\nA pasta da skill não é repositório git.\n- O nome do usuário é Carlos.\nPENDENTE:\nvalidar o painel",
+                "A pasta da skill não é repositório git. O nome do usuário é Carlos.");
+
+            aprendido.Should().Equal("A pasta da skill não é repositório git.", "O nome do usuário é Carlos.");
+            assunto.Should().ContainSingle().Which.Texto.Should().Be("validar o painel");
+        }
+
         [Fact]
         public async Task SoCodigo_NaoChamaOModelo_EOObjetivoEhAFalaLiteral()
         {
