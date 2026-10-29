@@ -35,7 +35,7 @@ Renomear uma ferramenta é mudar só a constante.
 | `edit` (`Editar`) | `EditFileTool` | 2 | sim — dispensável por pasta | Troca um trecho de um arquivo; o fim de linha do trecho não precisa bater com o do arquivo (§7). |
 | `shell` (`Shell`) | `RunCommandTool` | 2 | sim — nunca dispensado; passa pela floor list | Roda um comando PowerShell (30 s). |
 | `skill` (`Habilidade`) | `ExecuteSkillTool` | 2 | sim — a skill só-manual é dispensada; passa pela floor list | Roda uma habilidade instalada, ou entrega o manual dela. |
-| `fs` (`Arquivos`) | `FsTool` | 2 | sim — só `mkdir` é dispensável por pasta; apagar pasta com conteúdo tem piso tipado (Nível 7) | Cria pasta, copia, move, renomeia e apaga (para a **Lixeira**). Nunca sobrescreve. |
+| `fs` (`Arquivos`) | `FsTool` | 2 | sim — `mkdir`/`copy`/`move`/`rename` dispensáveis por pasta (origem e destino nela), `delete` sempre pergunta; apagar pasta com conteúdo tem piso tipado (Nível 7) | Cria pasta, copia, move, renomeia e apaga (para a **Lixeira**). Nunca sobrescreve. |
 | `browser` (`Navegador`) | `BrowserTool` | 2 | **por ação** (`PedeConfirmacao`) — ler não pergunta; clicar e digitar perguntam, com "sempre" por site; site novo pergunta uma vez | Navegador (Edge, perfil próprio, logado pelo usuário): abre, lê a vista, procura, lê tabela, clica, digita (§7). |
 | `mail` (`Email`) | `ConsultarEmailsTool` | 1 | não | Consulta o diário da triagem de e-mail (disco, não o servidor). |
 | `mail_read` (`LerEmail`) | `LerEmailTool` | 1 | não | Relê no servidor o e-mail da conversa aberta (somente leitura). |
@@ -417,8 +417,9 @@ ferramenta desconhecida. Essas ficam registradas só pela decisão no `raw.jsonl
   - **piso tipado** (`ITool.PisoTipado`, chamado por `BateNoPiso` antes da regex): apagar pasta com
     conteúdo exige Nível 7, como `Remove-Item -Recurse` no shell — sem isso a ferramenta nova seria
     o caminho por baixo do piso. Respeita `ConfirmDangerousCommands`;
-  - **só `mkdir` é dispensado** nas pastas sem confirmação: copiar, mover, renomear e apagar
-    sempre perguntam;
+  - nas pastas sem confirmação, `mkdir`, `copy`, `move` e `rename` são dispensados quando a
+    origem **e** o destino estão nelas (reorganizar a pasta não pergunta a cada arquivo; tirar ou
+    trazer de fora pergunta). **`delete` sempre pergunta**;
   - o autorizado viaja até a execução: se a descrição (com contagem e tamanho) mudou entre o
     cartão e o clique, não executa;
   - no Estado da memória a operação entra tipada (`criado`, `movido`, `APAGADO … (foi para a
@@ -899,7 +900,8 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
 - Configuração `UserAppSettings.PastasSemConfirmacao` (texto, uma pasta por linha). O
   `SettingsService` chama `PastasSemConfirmacao.Configurar` ao carregar e ao salvar — um ponto só de
   sincronia, para a ferramenta nunca ficar com a lista velha.
-- **Só DISPENSAM o cartão** de `write` e `edit` cujo alvo está dentro de uma das pastas. **Nada é
+- **Só DISPENSAM o cartão** de `write` e `edit` cujo alvo está dentro de uma das pastas, e do `fs`
+  sem `delete` com origem e destino dentro delas. **Nada é
   recusado por estar fora**: fora, o cartão aparece como sempre. Antes a lista era confinamento, e o
   usuário recebia erro sem nunca ver a pergunta.
 - Lista vazia (padrão) → tudo pergunta.

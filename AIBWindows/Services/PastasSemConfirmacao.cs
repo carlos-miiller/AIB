@@ -14,7 +14,8 @@ namespace AIB.Services;
 /// o modelo tentando caminhos alternativos.
 /// </para>
 /// <para>
-/// Agora a lista só DISPENSA o portão: dentro dela, <c>write</c> e <c>edit</c> executam direto;
+/// Agora a lista só DISPENSA o portão: dentro dela, <c>write</c> e <c>edit</c> executam direto
+/// (e o <c>fs</c>, exceto apagar, quando origem e destino estão nela — ver <see cref="Tools.FsTool"/>);
 /// fora dela, o card de confirmação aparece como sempre apareceu. Nada é recusado por causa desta
 /// lista. Vazia — o padrão — tudo pergunta.
 /// </para>
