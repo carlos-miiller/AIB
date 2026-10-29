@@ -76,6 +76,10 @@ public static class ConversaNaTela
     /// <summary>Nulo para o <c>remember</c> que falhou: ao vivo ele também não aparece.</summary>
     private static Item? DaChamada(ToolCallRecord feita, string resultado)
     {
+        // Uma operação do 'file' volta à tela como a ferramenta antiga dela, igual ao vivo.
+        var (nome, args) = Tools.FileTool.Simples(feita.Name, feita.Arguments);
+        feita = feita with { Name = nome, Arguments = args };
+
         bool falhou = ArtifactExtractor.Falhou(resultado);
         string argumento = ArtifactExtractor.ResumirParaTela(feita.Name, feita.Arguments);
 

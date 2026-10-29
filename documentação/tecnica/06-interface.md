@@ -304,6 +304,7 @@ Substitui a janela modal: a pergunta aparece na coluna da IA, logo abaixo da aç
 |---|---|
 | `write` | "Criar este arquivo?" ou "Sobrescrever este arquivo?" (o `WriteFileTool` escreve `CRIAR ` no início do alvo quando o arquivo não existe) |
 | `edit` | "Editar este arquivo?" |
+| `file` (lote) | "Fazer estas N operações em arquivos?"; o alvo é uma linha numerada por operação, a prévia junta as gravações e edições, e a pill da janela flutuante fica vermelha se alguma sobrescreve ou edita. Uma `file` de operação só chega com o nome do motor (`write`, `edit`, `fs`) e usa a linha dele |
 | `shell` | "Executar este comando?" |
 | `skill` | "Executar esta habilidade?" ou "Ler o manual desta habilidade?" |
 

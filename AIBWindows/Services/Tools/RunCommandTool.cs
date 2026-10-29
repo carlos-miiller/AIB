@@ -25,8 +25,8 @@ public class RunCommandTool : ITool
     /// </summary>
     public string Description =>
         "Executa um comando no PowerShell do usuário (não é Bash). Use para docker, git, rede, "
-        + "processos, instalação e scripts. NÃO use para arquivo: ler, listar, procurar e gravar "
-        + "têm ferramenta própria, e 'write' já cria a pasta que falta. Nada interativo; "
+        + "processos, instalação e scripts. NÃO use para arquivo: ler, listar, procurar, gravar, "
+        + "mover e apagar têm ferramenta própria ('file' faz em lote). Nada interativo; "
         + "senha de ssh/git o usuário digita à parte (não peça no chat). "
         + $"Teto de {Prazo.TotalSeconds:0} s.";
 

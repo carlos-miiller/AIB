@@ -83,7 +83,7 @@ public static class ToolIcons
 
     private static string? PeloNome(string? ferramenta) => ferramenta switch
     {
-        Ferramentas.Gravar => Gravar,
+        Ferramentas.Gravar or Ferramentas.Arquivo => Gravar,
         Ferramentas.Ler => Ler,
         Ferramentas.Editar => Editar,
         Ferramentas.Procurar => Procurar,

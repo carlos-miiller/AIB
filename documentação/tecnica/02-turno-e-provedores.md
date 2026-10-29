@@ -165,7 +165,7 @@ Todo turno termina com uma fala de assistente. Quando não há, entra a marca `A
 - `jaFalharam` vive no turno (fora do laço): assinatura `Assinatura(nome, args)` = nome + `\0` + argumentos, letra por letra → primeira linha do erro (`Resumir`, até 300 caracteres).
 - Chamada idêntica a uma que já falhou **neste turno** não executa: recebe `RecadoDeRepeticao` (começa com `ERRO:`, cita o erro anterior e manda mudar argumentos, trocar de ferramenta ou explicar ao usuário). Decisão registrada como `repeticao_bloqueada`.
 - Escopo é o **turno**, não a conversa: entre mensagens o usuário pode ter mudado o mundo.
-- `jaFalharam` é limpo quando um `write`, `edit` ou `shell` dá certo na rodada: o mundo mudou e a tentativa anterior pode passar agora.
+- `jaFalharam` é limpo quando um `write`, `edit`, `file` ou `shell` dá certo na rodada: o mundo mudou e a tentativa anterior pode passar agora.
 
 ### 3.5 Fim do laço
 

@@ -478,18 +478,23 @@ public class ToolRegistry
     {
         try
         {
-            if (ferramenta is not (Ferramentas.Gravar or Ferramentas.Editar)) return;
-            if (Memory.ArtifactExtractor.Falhou(resultado)) return;
+            // A chamada 'file' (uma operação ou lote) aberta nas gravações e edições dela.
+            foreach (var (nome, args, deu) in FileTool.Abrir(ferramenta, argumentsJson, resultado))
+            {
+                if (nome is not (Ferramentas.Gravar or Ferramentas.Editar)) continue;
+                if (Memory.ArtifactExtractor.Falhou(deu)) continue;
 
-            var args = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(argumentsJson);
-            if (args.ValueKind != System.Text.Json.JsonValueKind.Object) return;
-            if (!args.TryGetProperty("path", out var p) || p.ValueKind != System.Text.Json.JsonValueKind.String) return;
+                string caminho = Memory.ArtifactExtractor.StringDe(args, "path");
+                if (caminho.Length == 0) continue;
 
-            string caminho = PathArgumentRepair.Normalize(p.GetString());
-
-            // A mesma comparação de "está dentro da pasta" das pastas sem confirmação: resolve
-            // '..' e junções, e não confunde "skills" com "skills-velhas".
-            if (PastasSemConfirmacao.Dispensa(caminho, SkillService.Raiz)) Refresh();
+                // A mesma comparação de "está dentro da pasta" das pastas sem confirmação: resolve
+                // '..' e junções, e não confunde "skills" com "skills-velhas".
+                if (PastasSemConfirmacao.Dispensa(PathArgumentRepair.Normalize(caminho), SkillService.Raiz))
+                {
+                    Refresh();
+                    return;
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -531,6 +536,10 @@ public class ToolRegistry
             new RunCommandTool(cofre: () => Cofre),
             new WriteFileTool(),
             new FsTool(),
+
+            // Gravar, editar e organizar, com lote. Os três acima são os motores dela: ficam
+            // registrados (o histórico antigo os chama) e fora do schema (Oferecida = false).
+            new FileTool(),
             new LembrarTool(),
             new LembreteTool(),
             new DocTool(autor: () => _settingsService?.LoadSettings().ActiveCharacter ?? "AIB"),

@@ -41,6 +41,9 @@ public sealed class FsTool : ITool
 
     public bool RequiresConfirmation => true;
 
+    /// <summary>Motor da <see cref="FileTool"/> (mkdir, copy, move, rename, delete): registrado, fora do schema.</summary>
+    public bool Oferecida => false;
+
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         functionName: Name,
         functionDescription: Description,

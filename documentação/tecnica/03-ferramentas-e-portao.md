@@ -31,11 +31,12 @@ Renomear uma ferramenta é mudar só a constante.
 | `read` (`Ler`) | `ReadFileTool` | 1 | não | Lê arquivo por faixa (`offset`/`limit`) com número de linha; se o caminho é pasta, lista a pasta. |
 | `glob` (`Procurar`) | `GlobTool` | 1 | não | Acha arquivos por padrão de nome (`**` entra em subpastas), mais recente primeiro, teto de 100 e prazo de 10 s. |
 | `grep` (`Buscar`) | `GrepTool` | 1 | não | Regex dentro dos arquivos; devolve `arquivo:linha: trecho`. Tetos de 60 linhas, 2000 arquivos e 10 s. |
-| `write` (`Gravar`) | `WriteFileTool` | 2 | sim — dispensável por pasta | Cria ou substitui todo o conteúdo de um arquivo, **criando as pastas que faltarem**. |
-| `edit` (`Editar`) | `EditFileTool` | 2 | sim — dispensável por pasta | Troca um trecho de um arquivo; o fim de linha do trecho não precisa bater com o do arquivo (§7). |
+| `file` (`Arquivo`) | `FileTool` | 2 | sim — dispensável quando **todas** as operações seriam; um cartão por chamada (lote incluído); piso do `fs` por operação | Grava (`write`), edita (`edit`), cria pasta, copia, move, renomeia e apaga, uma operação ou um **lote** (`ops`), em ordem, parando na primeira falha (§7). |
+| `write` (`Gravar`) | `WriteFileTool` | 2 | sim — dispensável por pasta | **Motor da `file`, fora do schema** (`Oferecida = false`). Cria ou substitui todo o conteúdo de um arquivo, **criando as pastas que faltarem**. |
+| `edit` (`Editar`) | `EditFileTool` | 2 | sim — dispensável por pasta | **Motor da `file`, fora do schema.** Troca um trecho de um arquivo; o fim de linha do trecho não precisa bater com o do arquivo (§7). |
 | `shell` (`Shell`) | `RunCommandTool` | 2 | sim — nunca dispensado; passa pela floor list | Roda um comando PowerShell (30 s). |
 | `skill` (`Habilidade`) | `ExecuteSkillTool` | 2 | sim — a skill só-manual é dispensada; passa pela floor list | Roda uma habilidade instalada, ou entrega o manual dela. |
-| `fs` (`Arquivos`) | `FsTool` | 2 | sim — `mkdir`/`copy`/`move`/`rename` dispensáveis por pasta (origem e destino nela), `delete` sempre pergunta; apagar pasta com conteúdo tem piso tipado (Nível 7) | Cria pasta, copia, move, renomeia e apaga (para a **Lixeira**). Nunca sobrescreve. |
+| `fs` (`Arquivos`) | `FsTool` | 2 | sim — **motor da `file`, fora do schema**; `mkdir`/`copy`/`move`/`rename` dispensáveis por pasta (origem e destino nela), `delete` sempre pergunta; apagar pasta com conteúdo tem piso tipado (Nível 7) | Cria pasta, copia, move, renomeia e apaga (para a **Lixeira**). Nunca sobrescreve. |
 | `browser` (`Navegador`) | `BrowserTool` | 2 | **por ação** (`PedeConfirmacao`) — ler não pergunta; clicar e digitar perguntam, com "sempre" por site; site novo pergunta uma vez | Navegador (Edge, perfil próprio, logado pelo usuário): abre, lê a vista, procura, lê tabela, clica, digita (§7). |
 | `mail` (`Email`) | `ConsultarEmailsTool` | 1 | não | Consulta o diário da triagem de e-mail (disco, não o servidor). |
 | `mail_read` (`LerEmail`) | `LerEmailTool` | 1 | não | Relê no servidor o e-mail da conversa aberta (somente leitura). |
@@ -543,6 +544,41 @@ entra quando a própria raiz da busca pedia cartão — uma busca a partir da pa
   com `action='info'`. Lidos como texto, eram uma página de lixo binário paga em prefill — e o
   bloco de anexos do prompt manda usar `read` com o caminho, então é aqui que o anexo vira `doc`.
 
+### `file` — `FileTool`
+
+- **Por que existe.** Eram três ferramentas (`write`, `edit`, `fs`), uma chamada por arquivo. Visto
+  em 29/10/2026: para organizar uma pasta, ~30 arquivos movidos em ~30 voltas ao modelo — 98 de 98
+  respostas do dia com uma ferramenta só, cada volta reenviando o contexto. Com `ops`, o lote vai
+  numa chamada, num cartão, e volta numa resposta. De quebra, um schema no lugar de três (332
+  caracteres de descrição contra ~760).
+- **A lógica não mudou de lugar.** Cada operação é executada pelo motor que já existia
+  (`WriteFileTool`, `EditFileTool`, `FsTool`): mesmo pré-voo, cartão, dispensa e piso. Os motores
+  continuam **registrados** e fora do schema: o histórico antigo os chama, e um modelo que imite o
+  histórico passa pelo portão em vez de receber "ferramenta não encontrada".
+- **Uma operação** (`action` + campos, ou `ops` com um item) é, para o cartão, a memória e a tela,
+  a chamada antiga: `BuildConfirmationContext` devolve o contexto do motor (`Tool = "write"` etc.).
+  `FileTool.Simples` faz a tradução para quem lê o histórico (eventos do laço, `ArtifactExtractor`,
+  `ConversaNaTela`).
+- **Lote** (`ops`, 2 a 100 itens; `ops` junto de `action` é recusado):
+  - **pré-voo** de cada operação; a primeira impossível recusa o lote inteiro, dizendo qual, antes
+    do cartão;
+  - operação **dependente** — mexe num caminho que uma anterior do lote tocou (o mesmo, um de
+    dentro, ou a pasta que o contém) — não se confere no disco antes: o cartão a descreve pelos
+    argumentos (`Prevista`: `MOVER a → b`, sem tamanho) e a conferência acontece na hora;
+  - **cartão** `Tool = "file"`, `Command` com uma linha numerada por operação (`LinhasDoLote`), e a
+    prévia das gravações e edições no `ScriptBody`;
+  - **dispensa** só se todas as operações seriam dispensadas sozinhas;
+  - **piso**: o do `fs` aplicado a cada linha (apagar pasta com conteúdo abaixo do Nível 7 barra o
+    lote inteiro);
+  - **execução em ordem**, conferindo cada operação independente contra a linha do cartão ("o alvo
+    mudou"), e **parando na primeira falha**. Resultado: cabeça `SUCESSO: as N operações…` ou
+    `ERRO: o lote parou na operação K de N; M feita(s)…`, e uma linha `[i/N] …` por operação, com
+    as não executadas como `ERRO: não executada`.
+- **Para quem lê o histórico**, `FileTool.Abrir(nome, args, resultado)` abre o lote nas chamadas
+  antigas, cada uma com a sua linha `[i/N]`; operação sem linha (recusa, pré-voo, piso) recebe o
+  resultado inteiro. Usado pelo `ArtifactExtractor.Extract`, pelo `EstadoDoTrecho`, pela lista de
+  recentes e por `ReavaliarSkillsSeTocou`.
+
 ### `write` — `WriteFileTool`
 
 - Uma leitura única dos argumentos (`Ler`) serve dispensa, pré-voo, cartão e execução — quatro
@@ -901,7 +937,8 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   `SettingsService` chama `PastasSemConfirmacao.Configurar` ao carregar e ao salvar — um ponto só de
   sincronia, para a ferramenta nunca ficar com a lista velha.
 - **Só DISPENSAM o cartão** de `write` e `edit` cujo alvo está dentro de uma das pastas, e do `fs`
-  sem `delete` com origem e destino dentro delas. **Nada é
+  sem `delete` com origem e destino dentro delas. Na `file`, o lote é dispensado quando todas as
+  operações seriam. **Nada é
   recusado por estar fora**: fora, o cartão aparece como sempre. Antes a lista era confinamento, e o
   usuário recebia erro sem nunca ver a pergunta.
 - Lista vazia (padrão) → tudo pergunta.
@@ -919,7 +956,7 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
 ## 9. `ReavaliarSkillsSeTocou`
 
 Depois de cada lote de ferramentas, o `AgentLoop` chama `ToolRegistry.ReavaliarSkillsSeTocou` para
-cada resultado. Se foi `write`/`edit` bem-sucedido com `path` dentro de `SkillService.Raiz` (mesma
+cada resultado. Se foi `write`/`edit` bem-sucedido (também dentro de uma `file`, aberta por `FileTool.Abrir`) com `path` dentro de `SkillService.Raiz` (mesma
 comparação de `PastasSemConfirmacao.Dispensa`), chama `Refresh` → a ferramenta `skill` passa a existir
 (ou deixa de existir) já na próxima requisição. Roda **fora** do lote paralelo porque `Refresh` mexe
 no dicionário que as outras chamadas estão lendo. Falha aqui não vira erro da gravação.

@@ -81,6 +81,10 @@ public partial class ConfirmCardView : UserControl
         bool manual = ferramenta == Ferramentas.Habilidade
                       && alvo.StartsWith("LER MANUAL ", StringComparison.Ordinal);
 
+        // Lote do 'file': uma linha por operação. Operação única chega com o nome do motor
+        // (write, edit, fs) e cai nos casos de sempre.
+        int operacoes = ferramenta == Ferramentas.Arquivo ? AIB.Services.Tools.FileTool.LinhasDoLote(alvo).Count : 0;
+
         TituloText.Text = ferramenta switch
         {
             Ferramentas.Gravar => criar ? "Criar este arquivo?" : "Sobrescrever este arquivo?",
@@ -89,6 +93,7 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Habilidade => manual ? "Ler o manual desta habilidade?" : "Executar esta habilidade?",
             Ferramentas.Arquivos when alvo.StartsWith("APAGAR ", StringComparison.Ordinal) => "Mandar para a Lixeira?",
             Ferramentas.Arquivos => "Mexer nestes arquivos?",
+            Ferramentas.Arquivo => $"Fazer estas {operacoes} operações em arquivos?",
             Ferramentas.Navegador when alvo.StartsWith("ABRIR SITE NOVO ", StringComparison.Ordinal) => "Abrir este site?",
             Ferramentas.Navegador when alvo.StartsWith("DIGITAR ", StringComparison.Ordinal) => "Digitar nesta página?",
             Ferramentas.Navegador when alvo.StartsWith("ANOTAR ", StringComparison.Ordinal) => "Guardar esta anotação?",
@@ -123,6 +128,10 @@ public partial class ConfirmCardView : UserControl
                 "Vai para a Lixeira do Windows: dá para restaurar de lá.",
             Ferramentas.Arquivos =>
                 "Nada existente é sobrescrito: se o destino já existir, a ação é recusada.",
+            Ferramentas.Arquivo =>
+                "Rodam nesta ordem; se uma falhar, as seguintes não rodam. Mover e copiar nunca "
+                + "sobrescrevem, apagar vai para a Lixeira; gravar e editar mudam o arquivo sem "
+                + "desfazer pelo AIB.",
             Ferramentas.Navegador when alvo.StartsWith("ABRIR SITE NOVO ", StringComparison.Ordinal) =>
                 "O Edge do AIB abre este endereço, com o login que você tiver feito nele.",
             Ferramentas.Navegador when alvo.StartsWith("ANOTAR ", StringComparison.Ordinal) =>
@@ -449,6 +458,12 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Habilidade => (Risco.Cuidado, "Roda uma habilidade"),
             Ferramentas.Arquivos when comeca("APAGAR ") => (Risco.Cuidado, "Dá para restaurar"),
             Ferramentas.Arquivos => (Risco.Cuidado, "Mexe em arquivos"),
+            // Lote: vermelho se alguma operação sobrescreve ou edita, laranja se só organiza.
+            Ferramentas.Arquivo when AIB.Services.Tools.FileTool.LinhasDoLote(alvo).Any(l =>
+                    l.StartsWith("SOBRESCREVER ", StringComparison.Ordinal) || l.StartsWith("EDITAR ", StringComparison.Ordinal)
+                    || l.StartsWith("GRAVAR ", StringComparison.Ordinal))
+                => (Risco.Destrutivo, "Muda conteúdo de arquivos"),
+            Ferramentas.Arquivo => (Risco.Cuidado, "Mexe em arquivos"),
             Ferramentas.Navegador when comeca("ABRIR SITE NOVO ") => (Risco.Cuidado, "Abre um site"),
             Ferramentas.Navegador when comeca("ANOTAR ") => (Risco.Leitura, "Guarda uma nota"),
             Ferramentas.Navegador => (Risco.Cuidado, "Age no site, com seu login"),

@@ -333,7 +333,7 @@ public static class ActionLogService
     {
         Ferramentas.Ler or Ferramentas.Procurar or Ferramentas.Buscar
             or Ferramentas.Email or Ferramentas.LerEmail => ArtifactKind.FileRead,
-        Ferramentas.Gravar or Ferramentas.Editar => ArtifactKind.FileWritten,
+        Ferramentas.Gravar or Ferramentas.Editar or Ferramentas.Arquivo => ArtifactKind.FileWritten,
         _ => ArtifactKind.CommandRun
     };
 

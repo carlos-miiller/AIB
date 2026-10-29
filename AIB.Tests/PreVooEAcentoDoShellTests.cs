@@ -94,7 +94,7 @@ namespace AIB.Tests
 
             d.Should().Contain("não é Bash");
             d.Should().Contain("NÃO use para arquivo");
-            d.Should().Contain("write", "a ferramenta que cria a pasta é nomeada aqui");
+            d.Should().Contain("'file'", "a ferramenta que grava e organiza arquivo é nomeada aqui");
         }
 
         [Fact]

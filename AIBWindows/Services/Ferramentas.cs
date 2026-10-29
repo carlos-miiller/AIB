@@ -27,6 +27,12 @@ public static class Ferramentas
     public const string Email = "mail";
     public const string LerEmail = "mail_read";
     public const string Arquivos = "fs";
+
+    /// <summary>
+    /// Gravar, editar e organizar, com lote (<see cref="Tools.FileTool"/>). <c>write</c>,
+    /// <c>edit</c> e <c>fs</c> continuam como os motores dela, fora do schema.
+    /// </summary>
+    public const string Arquivo = "file";
     public const string Navegador = "browser";
     public const string Lembrar = "remember";
     public const string Lembrete = "remind";
@@ -56,6 +62,7 @@ public static class Ferramentas
         Email => "Consultando e-mails",
         LerEmail => "Lendo o e-mail",
         Arquivos => "Mexendo em arquivos",
+        Arquivo => "Mexendo em arquivos",
         Navegador => "Navegando",
         Lembrar => "Guardando na memória",
         Lembrete => "Agendando lembrete",

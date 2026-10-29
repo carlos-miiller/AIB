@@ -279,7 +279,7 @@ O que o nível libera:
 | Nível | O que muda |
 |---|---|
 | 1 | `read`, `glob`, `grep`, `mail` e `mail_read` (esta só na conversa de um e-mail) — `RequiredLevel => 1`. |
-| 2 | `write`, `edit`, `shell` e `skill` — `RequiredLevel => 2`. Todas pedem confirmação; `skill` só existe com alguma skill instalada. |
+| 2 | `file` (e os motores dela, `write`, `edit` e `fs`), `shell` e `skill` — `RequiredLevel => 2`. Todas pedem confirmação; `skill` só existe com alguma skill instalada. |
 | 7 | A floor list de comandos destrutivos (`CommandFloorList.Match`) deixa de barrar `shell` e `skill`; o cartão de confirmação passa a ser a única autoridade. Abaixo de 7, com `ConfirmDangerousCommands` ligado (padrão), deleção recursiva, formatação, desligamento, registro destrutivo e `-EncodedCommand` são recusados antes do cartão. |
 
 `ToolRegistry.GetActiveTools` só oferece ao modelo as ferramentas do nível, e `ToolRegistry.ExecuteToolAsync` recusa com `ACESSO NEGADO` a que estiver acima dele. Detalhes em [03-ferramentas-e-portao.md](03-ferramentas-e-portao.md).

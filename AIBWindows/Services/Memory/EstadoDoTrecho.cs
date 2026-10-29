@@ -565,8 +565,15 @@ public sealed record EstadoDoTrecho(
         return linha == null ? null : Regex.Replace(linha, @"^ERRO(\s*\([^)]*\))?\s*:\s*", "");
     }
 
-    /// <summary>Chamada e resultado pareados por id, na ordem em que os resultados chegaram.</summary>
-    private static IEnumerable<(string Nome, string Args, string Resultado)> Pares(IReadOnlyList<ChatMessage> mensagens)
+    /// <summary>
+    /// Chamada e resultado pareados por id, na ordem em que os resultados chegaram. A chamada
+    /// <c>file</c> sai aberta nas operações dela (<c>write</c>, <c>edit</c>, <c>fs</c>), cada uma
+    /// com o seu resultado: o Estado de um lote é o mesmo das chamadas soltas.
+    /// </summary>
+    private static IEnumerable<(string Nome, string Args, string Resultado)> Pares(IReadOnlyList<ChatMessage> mensagens) =>
+        PorId(mensagens).SelectMany(p => Tools.FileTool.Abrir(p.Nome, p.Args, p.Resultado));
+
+    private static IEnumerable<(string Nome, string Args, string Resultado)> PorId(IReadOnlyList<ChatMessage> mensagens)
     {
         var chamadas = new Dictionary<string, (string, string)>(StringComparer.Ordinal);
 

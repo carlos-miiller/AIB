@@ -55,6 +55,9 @@ public sealed class EditFileTool : ITool
 
     public bool RequiresConfirmation => true;
 
+    /// <summary>Motor da <see cref="FileTool"/> (action=edit): registrado, fora do schema.</summary>
+    public bool Oferecida => false;
+
     /// <summary>
     /// Editar dentro de uma pasta dispensada não para no card. Fora dela, o card aparece como
     /// sempre. Ver <see cref="PastasSemConfirmacao"/>.
@@ -116,8 +119,8 @@ public sealed class EditFileTool : ITool
                        ?? $"ERRO: '{a.Caminho}' não é um arquivo.";
 
             if (a.De.Length == 0)
-                return "ERRO: 'old_string' vazio. Para criar um arquivo use a ferramenta "
-                       + $"'{Ferramentas.Gravar}'.";
+                return "ERRO: 'old_string' vazio. Para criar um arquivo use action='write' da "
+                       + $"ferramenta '{Ferramentas.Arquivo}'.";
 
             if (Segredos.TemMarca(a.De) || Segredos.TemMarca(a.Para)) return Segredos.RecadoDeGravacao;
 

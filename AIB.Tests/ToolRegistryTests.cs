@@ -57,8 +57,9 @@ namespace AIB.Tests
             var nove = new ITool[]
             {
                 new AIB.Services.Tools.ReadFileTool(),
-                new AIB.Services.Tools.WriteFileTool(),
-                new AIB.Services.Tools.EditFileTool(),
+                // 'write' e 'edit' saíram do schema (29/10/2026): a 'file' faz os dois, mais o
+                // 'fs', com lote. Ela entra no lugar deles, e o orçamento não mexe.
+                new AIB.Services.Tools.FileTool(),
                 new AIB.Services.Tools.GlobTool(),
                 new AIB.Services.Tools.GrepTool(),
                 new AIB.Services.Tools.RunCommandTool(),
@@ -177,7 +178,9 @@ namespace AIB.Tests
             //
             // remember guarda o que o usuário conta sobre si (LembrarTool); remind agenda
             // lembretes únicos (LembreteTool). doc lê e grava planilhas, Word e PDF (DocTool).
-            names.Should().Equal("browser", "doc", "edit", "fs", "glob", "grep", "mail", "read", "remember", "remind", "shell", "write");
+            // file grava, edita e organiza (com lote); write, edit e fs são os motores dela,
+            // registrados e fora do schema.
+            names.Should().Equal("browser", "doc", "file", "glob", "grep", "mail", "read", "remember", "remind", "shell");
         }
 
         [Fact]
@@ -241,7 +244,7 @@ namespace AIB.Tests
 
             var (natives, dynamics) = registry.GetCategorizedTools();
 
-            natives.Should().HaveCount(13, "mail_read é registrada sempre, e só oferecida na conversa de um e-mail");
+            natives.Should().HaveCount(14, "mail_read é registrada sempre, e só oferecida na conversa de um e-mail; write, edit e fs ficam como motores da file");
             dynamics.Should().BeEmpty("no lazy loading as skills não entram no registry");
         }
 

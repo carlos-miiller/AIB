@@ -56,8 +56,9 @@ public static class ArtifactExtractor
 
             pendentes.Remove(tool.ToolCallId);
 
-            var artefato = Build(chamada.Nome, chamada.Args, Turn.TextOf(tool));
-            if (artefato != null) artefatos.Add(artefato);
+            // Um lote do 'file' deixa um artefato por operação, como deixariam as chamadas soltas.
+            foreach (var (nome, args, resultado) in Tools.FileTool.Abrir(chamada.Nome, chamada.Args, Turn.TextOf(tool)))
+                if (Build(nome, args, resultado) is { } artefato) artefatos.Add(artefato);
         }
 
         return artefatos;
@@ -72,8 +73,11 @@ public static class ArtifactExtractor
     /// que foi feito.
     /// </para>
     /// </summary>
-    public static Artifact? Construir(string ferramenta, string argumentosJson, string resultado) =>
-        Build(ferramenta, argumentosJson, resultado);
+    public static Artifact? Construir(string ferramenta, string argumentosJson, string resultado)
+    {
+        var (nome, args) = Tools.FileTool.Simples(ferramenta, argumentosJson);
+        return Build(nome, args, resultado);
+    }
 
     /// <summary>
     /// Se o resultado de uma ferramenta representa fracasso.
@@ -135,7 +139,23 @@ public static class ArtifactExtractor
     /// chip só com o nome do que um JSON cru espremido em 11px.
     /// </para>
     /// </summary>
-    public static string ResumirArgumento(string ferramenta, string argumentosJson) =>
+    public static string ResumirArgumento(string ferramenta, string argumentosJson)
+    {
+        (ferramenta, argumentosJson) = Tools.FileTool.Simples(ferramenta, argumentosJson);
+        return ferramenta == Ferramentas.Arquivo ? ResumirLote(argumentosJson) : ResumirUma(ferramenta, argumentosJson);
+    }
+
+    /// <summary>"3 operações: move a.txt, move b.txt, mkdir 01-incidentes".</summary>
+    private static string ResumirLote(string argumentosJson)
+    {
+        var ops = Tools.FileTool.Abrir(Ferramentas.Arquivo, argumentosJson, "");
+        if (ops.Count == 0) return "";
+
+        var partes = ops.Select(o => (StringDe(o.Args, "action") + " " + Path.GetFileName(CaminhoDe(o.Args))).Trim());
+        return $"{ops.Count} operações: " + string.Join(", ", partes);
+    }
+
+    private static string ResumirUma(string ferramenta, string argumentosJson) =>
         ferramenta switch
         {
             Ferramentas.Gravar or Ferramentas.Ler or Ferramentas.Editar => CaminhoDe(argumentosJson),
@@ -282,6 +302,7 @@ public static class ArtifactExtractor
     /// </summary>
     public static TrocaDeTexto? TrocaDaEdicao(string ferramenta, string argumentosJson)
     {
+        (ferramenta, argumentosJson) = Tools.FileTool.Simples(ferramenta, argumentosJson);
         if (ferramenta != Ferramentas.Editar) return null;
 
         string antes = StringDe(argumentosJson, "old_string");

@@ -136,6 +136,14 @@ var casos = new List<Caso>
         r => r.ChamouCom("write", "teste-aib.txt")
             ? Passou() : Falhou("devia chamar write com o caminho")),
 
+    // LOTE. Visto em 29/10/2026: para organizar uma pasta, ~30 arquivos movidos em ~30
+    // respostas, uma ferramenta por vez. O certo é mandar as três numa resposta só — em 'ops'
+    // ou em chamadas paralelas; o errado é uma e esperar.
+    new("lote", $@"mova os arquivos {home}\Desktop.txt, {home}\Desktop.txt e {home}\Desktop\c.txt para a pasta {home}\Desktoprquivo, que já existe",
+        r => r.Chamadas.Count(c => c.Nome == "fs" && c.Args.Contains("move")) >= 3 ? Passou()
+            : r.Chamadas.Any(c => c.Nome == "fs" && c.Args.Contains("move")) ? Falhou("uma operação por resposta, em vez das três juntas")
+            : Falhou("devia mover os três arquivos")),
+
     new("ler", $@"leia o arquivo {home}\CPAPS\AIB\README.md",
         r => r.ChamouCom("read", "README.md")
             ? Passou() : Falhou("devia chamar read com o caminho")),
@@ -595,7 +603,13 @@ static async Task<Resultado> RodarAsync(ConversationService.PrimeiroEnvio envio,
 
     r.TotalMs = relogio.Elapsed.TotalMilliseconds;
     r.Texto = texto.ToString();
-    r.Chamadas = chamadas.Values.Select(c => (c.Nome.ToString(), c.Args.ToString())).ToList();
+    r.Brutas = chamadas.Values.Select(c => (c.Nome.ToString(), c.Args.ToString())).ToList();
+
+    // A 'file' aberta nas operações dela (write, edit, fs): os casos conferem a operação, e
+    // não se ela veio sozinha ou num lote.
+    r.Chamadas = r.Brutas
+        .SelectMany(c => AIB.Services.Tools.FileTool.Abrir(c.Nome, c.Args, "").Select(o => (o.Nome, o.Args)))
+        .ToList();
     return r;
 }
 
@@ -663,6 +677,9 @@ sealed class Resultado
 {
     public string Texto { get; set; } = "";
     public List<(string Nome, string Args)> Chamadas { get; set; } = new();
+
+    /// <summary>As chamadas como o modelo mandou, antes de abrir o lote da 'file'.</summary>
+    public List<(string Nome, string Args)> Brutas { get; set; } = new();
     public int RaciocinioChars { get; set; }
     public int PromptTokens { get; set; }
     public int GeracaoTokens { get; set; }

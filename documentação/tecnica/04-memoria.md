@@ -237,7 +237,7 @@ Substitui, no prompt, a lista cronológica de artefatos. A lista dizia "gravou X
 
 ### 8.1 `Montar(turnos)`
 
-Pareia chamada e resultado por id e dobra cada ação no seu alvo (`ItemDeEstado`: alvo, tipo arquivo/pasta/comando, situação, detalhe, turno, vezes):
+Pareia chamada e resultado por id — a `file` aberta nas operações dela (`FileTool.Abrir`), cada uma com o seu resultado — e dobra cada ação no seu alvo (`ItemDeEstado`: alvo, tipo arquivo/pasta/comando, situação, detalhe, turno, vezes):
 
 | Ferramenta | Efeito |
 |---|---|

@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AIB.Services.Ai;
+using AIB.Services.Tools;
 using OpenAI.Chat;
 
 namespace AIB.Services.Agent;
@@ -296,7 +297,10 @@ public sealed class AgentLoop
                 {
                     pulso.FerramentaComecou(tc.Name);
                     yield return new AgentEvent.Technical($"[FERRAMENTA] Nome: {tc.Name} | Args: {tc.ArgumentsOrEmpty()}\n");
-                    yield return new AgentEvent.ToolStarted(tc.Id, tc.Name, tc.ArgumentsOrEmpty());
+                    // Uma operação do 'file' aparece na tela como a ferramenta antiga dela (ícone,
+                    // rótulo, cartão); o lote aparece como 'file'.
+                    var (naTela, argsNaTela) = FileTool.Simples(tc.Name, tc.ArgumentsOrEmpty());
+                    yield return new AgentEvent.ToolStarted(tc.Id, naTela, argsNaTela);
                 }
 
                 // EXECUÇÃO PARALELA: dispara todas e espera o conjunto. Em CPU lenta, três
@@ -325,9 +329,10 @@ public sealed class AgentLoop
 
                     // O fracasso vem do resultado, não do artefato: ferramenta sem extrator
                     // próprio devolve artefato nulo mesmo quando deu erro.
+                    var (feita, argsFeita) = FileTool.Simples(tc.Name, tc.ArgumentsOrEmpty());
                     yield return new AgentEvent.ToolFinished(
-                        tc.Id, tc.Name, Memory.ArtifactExtractor.Falhou(result), artefato, result,
-                        tc.ArgumentsOrEmpty(), duracaoMs, esperaMs, decisao);
+                        tc.Id, feita, Memory.ArtifactExtractor.Falhou(result), artefato, result,
+                        argsFeita, duracaoMs, esperaMs, decisao);
 
                     // O modelo lê o erro com o recado no fim; a tela e o registro de ações, não.
                     // Leitura repetida no turno vai como aviso, e não como o texto de novo.
@@ -345,7 +350,7 @@ public sealed class AgentLoop
                 // antes pode dar certo agora — rodar o script de novo depois de recriar o template
                 // é exatamente o conserto, e não repetição. Desde que o shell passou a dizer
                 // quando falha, sem isto o bloqueio barraria a segunda execução.
-                if (results.Any(r => r.Tc.Name is Ferramentas.Gravar or Ferramentas.Editar or Ferramentas.Shell
+                if (results.Any(r => r.Tc.Name is Ferramentas.Gravar or Ferramentas.Editar or Ferramentas.Arquivo or Ferramentas.Shell
                                      && !Memory.ArtifactExtractor.Falhou(r.Result)))
                     jaFalharam.Clear();
 
@@ -673,22 +678,19 @@ public sealed class AgentLoop
     /// </summary>
     private static void TrackRecentFile(ToolCallAccumulator tc, string resultado)
     {
-        if (tc.Name is not (Ferramentas.Ler or Ferramentas.Gravar or Ferramentas.Editar)) return;
-        if (Memory.ArtifactExtractor.Falhou(resultado)) return;
-
-        try
+        // O 'file' aberto nas operações dela: num lote, cada gravação e edição que deu certo conta.
+        foreach (var (nome, args, deu) in FileTool.Abrir(tc.Name, tc.ArgumentsOrEmpty(), resultado))
         {
-            var dict = System.Text.Json.JsonSerializer
-                .Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(tc.ArgumentsOrEmpty());
+            if (nome is not (Ferramentas.Ler or Ferramentas.Gravar or Ferramentas.Editar)) continue;
+            if (Memory.ArtifactExtractor.Falhou(deu)) continue;
 
-            string? path = dict != null && dict.TryGetValue("path", out var p)
-                           && p.ValueKind == System.Text.Json.JsonValueKind.String
-                ? p.GetString()
-                : null;
-
-            if (!string.IsNullOrEmpty(path)) ContextService.AddRecentFile(path);
+            try
+            {
+                string path = Memory.ArtifactExtractor.StringDe(args, "path");
+                if (path.Length > 0) ContextService.AddRecentFile(path);
+            }
+            catch { }
         }
-        catch { }
     }
 
     /// <summary>
