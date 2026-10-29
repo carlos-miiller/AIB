@@ -1527,9 +1527,13 @@ public sealed class ConversationService : IMessageStore
 
             // TODOS os capítulos que couberem, e não um. Um capítulo leva no máximo
             // TurnosPorCapitulo turnos: numa conversa reaberta com vinte turnos soltos, o comando
-            // fechava um e parava, e o usuário tinha de repetir sem saber quantas vezes. O teto
-            // é o mesmo da passada automática — cada capítulo é uma chamada ao modelo.
-            for (int feitos = 0; feitos < MaxCapitulosPorPassada && !token.IsCancellationRequested; feitos++)
+            // fechava um e parava, e o usuário tinha de repetir sem saber quantas vezes.
+            //
+            // Sem o teto de MaxCapitulosPorPassada: ele existe para a passada AUTOMÁTICA não
+            // prender a interface sem ninguém ter pedido. Aqui o usuário pediu, vê o andamento na
+            // faixa e pode interromper. Pedido do usuário, para refazer a memória do shadow a
+            // partir do raw: 601 turnos, que com o teto de dez pediriam o comando várias vezes.
+            for (int feitos = 0; !token.IsCancellationRequested; feitos++)
             {
                 CompactacaoAndou?.Invoke(new PassoDaCompactacao("capítulo", _memory.NextChapterIndex, feitos));
 

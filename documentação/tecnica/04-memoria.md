@@ -98,7 +98,7 @@ Exemplo: nível 1 (24.000), prefixo de 3.000 tokens → disponível 21.000; mem�
 
 ### 3.2 A pedido: `/compact` (`ForcarCompactacaoAsync`)
 
-- Fecha **todos** os capítulos que couberem (até 10), cada um via `ForcarCapituloAsync` (que pega o portão e usa `SelectTurnsToCompact(…, forcado: true)`, ignorando o alvo de tokens).
+- Fecha **todos** os capítulos que couberem, **sem o teto de 10** da passada automática (o usuário pediu, vê o andamento e pode interromper; para refazer a memória de uma conversa longa, o teto pediria o comando várias vezes), cada um via `ForcarCapituloAsync` (que pega o portão e usa `SelectTurnsToCompact(…, forcado: true)`, ignorando o alvo de tokens).
 - Depois promove atos pela **mesma regra de cota** da passada automática (`CapitulosParaAto`). Já foi "de dois em dois", e numa sessão real quatro capítulos viraram dois atos que economizaram 119 e 570 tokens com 21 mil tokens de cota sobrando — dois resumos de resumos pagos por nada.
 - Devolve a frase que a interface mostra, inclusive a de recusa.
 - `/memoria` mostra a conta (`MemoriaEmTexto`): capítulo por capítulo, atos, Pendente, cru resumido, memória no prompt, economia, descartado ao reabrir, custo e linhas do cache.

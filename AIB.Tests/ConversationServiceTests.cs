@@ -1538,6 +1538,35 @@ namespace AIB.Tests
             resposta.Should().NotContain("Nada a compactar", "o fim da fila não é recusa");
         }
 
+        /// <summary>
+        /// Pedido do usuário: refazer a memória do shadow a partir do raw (601 turnos). O /compact
+        /// parava em dez capítulos, o teto da passada automática, e teria de ser repetido várias
+        /// vezes. Pedido à mão, ele vai até o fim.
+        /// </summary>
+        [Fact]
+        public async Task Compact_AMao_PassaDoTetoDeDezCapitulos()
+        {
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var provider = ProviderQueResponde("certo");
+            provider.CompleteReply = "resumo";
+
+            var s = settings.LoadSettings();
+            s.TurnosPorCapitulo = 2;
+            s.TurnosSoltos = 200;
+            s.CapitulosPorAto = 24;
+            settings.SaveSettings(s.Sanear());
+
+            var conversation = BuildConversation(settings, provider, out _);
+            for (int i = 0; i < 30; i++)
+                await foreach (var _ in conversation.StreamResponseAsync($"pergunta {i}")) { }
+
+            int antes = conversation.Chapters.Count;
+            await conversation.ForcarCompactacaoAsync(userLevel: 9);
+
+            (conversation.Chapters.Count - antes).Should().BeGreaterThan(10, "o teto de dez é da passada automática");
+            AIB.Services.Memory.TurnSplitter.Split(conversation.SnapshotHistory()).Should().HaveCount(2);
+        }
+
         [Fact]
         public async Task Compact_NAO_PromoveAtoAntesDoNumeroConfigurado()
         {
