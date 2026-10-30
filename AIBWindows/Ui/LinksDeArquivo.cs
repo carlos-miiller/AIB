@@ -234,6 +234,10 @@ public static class LinksDeArquivo
         // A cor do link vence a do código inline: o caminho entre crases também tem de parecer clicável.
         texto.SetResourceReference(TextElement.ForegroundProperty, "AccentBlueBrush");
 
+        // Sem o fundo do código inline. Visto no uso (30/10/2026): o caminho entre crases virava
+        // link azul sobre um bloco branco, destoando do vidro escuro.
+        texto.Background = System.Windows.Media.Brushes.Transparent;
+
         var link = new Hyperlink(texto)
         {
             ToolTip = caminho + "\nClique para mostrar no Explorer",

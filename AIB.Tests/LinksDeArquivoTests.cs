@@ -92,6 +92,22 @@ namespace AIB.Tests
                     link.Tag.Should().Be(arquivo);
                     new TextRange(doc.ContentStart, doc.ContentEnd).Text.Trim().Should().Be(frase);
                 });
+
+                // Visto no uso (30/10/2026): caminho entre crases virava link azul sobre fundo
+                // branco, herdado do estilo de código inline. O link fica sem fundo.
+                WpfHost.EmSta(() =>
+                {
+                    var codigo = new System.Windows.Style();
+                    codigo.Setters.Add(new System.Windows.Setter(TextElement.BackgroundProperty,
+                        System.Windows.Media.Brushes.White));
+                    var doc = new FlowDocument(new Paragraph(new Run(arquivo) { Style = codigo }));
+
+                    LinksDeArquivo.Aplicar(doc, LinksDeArquivo.Existe, Nenhum);
+
+                    var link = ((Paragraph)doc.Blocks.FirstBlock).Inlines.OfType<Hyperlink>().Single();
+                    var run = link.Inlines.OfType<Run>().Single();
+                    run.Background.Should().Be(System.Windows.Media.Brushes.Transparent);
+                });
             }
             finally
             {
