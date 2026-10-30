@@ -136,6 +136,49 @@ public sealed class LeituraDaPagina
         return sb.ToString().TrimEnd();
     }
 
+    /// <summary>Teto da lista do que apareceu com o mouse: um menu, não uma página.</summary>
+    public const int TetoDoQueSurgiu = 3000;
+
+    /// <summary>
+    /// O que está na tela agora e não estava em <paramref name="antes"/>: a janela que a página
+    /// abre no hover. No Bitrix, o mouse em cima de uma tarefa ou pessoa abre um cartão com vários
+    /// itens, alguns clicáveis.
+    /// <para>
+    /// À PARTE, E NO TOPO. A janela de hover costuma ser acrescentada no FIM do documento, e a
+    /// vista segue a ordem dele: numa página cheia, o teto de <see cref="TetoDaVista"/> a cortaria
+    /// justamente. Comparado por papel e texto, contando repetidos — as refs mudam a cada leitura.
+    /// </para>
+    /// </summary>
+    /// <returns>As linhas novas, já com as refs desta leitura; vazio se nada apareceu.</returns>
+    public string Surgiu(LeituraDaPagina antes)
+    {
+        static (string, string) Chave(NoDaPagina n) => (n.Papel, n.Texto);
+        static bool Conta(NoDaPagina n) => n.Visivel && n.NaTela && (n.Texto.Length > 0 || n.Ref.Length > 0);
+
+        var vistos = new Dictionary<(string, string), int>();
+        foreach (var n in antes.Nos.Where(Conta))
+            vistos[Chave(n)] = vistos.GetValueOrDefault(Chave(n)) + 1;
+
+        var sb = new StringBuilder();
+        foreach (var n in Nos.Where(Conta))
+        {
+            if (vistos.TryGetValue(Chave(n), out int k) && k > 0)
+            {
+                vistos[Chave(n)] = k - 1;
+                continue;
+            }
+
+            string linha = Linha(n with { Prof = 1 });
+            if (sb.Length + linha.Length > TetoDoQueSurgiu)
+            {
+                sb.AppendLine("  … (mais itens; use view)");
+                break;
+            }
+            sb.AppendLine(linha);
+        }
+        return sb.ToString().TrimEnd('\r', '\n');
+    }
+
     /// <summary>
     /// Todo o texto visível, ignorando se está coberto ou fora da tela — a saída quando a vista
     /// erra. Os quadros (iframes) vêm primeiro: painéis que se abrem por cima, como a tarefa do

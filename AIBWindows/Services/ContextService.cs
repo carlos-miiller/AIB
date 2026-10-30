@@ -103,6 +103,15 @@ public static class ContextService
     public static ObservableCollection<ContextFile> RecentFiles => Recentes;
 
     /// <summary>
+    /// Os caminhos recentes, copiados sob a trava: a lista muda pela thread do agente enquanto a
+    /// tela a lê (ver <see cref="Ui.LinksDeArquivo"/>).
+    /// </summary>
+    public static IReadOnlyList<string> CaminhosRecentes()
+    {
+        lock (Trava) return Recentes.Select(f => f.FilePath).ToList();
+    }
+
+    /// <summary>
     /// Acrescenta ou atualiza um arquivo no contexto.
     /// <para>
     /// Repetido não duplica: o mesmo caminho encostado de novo sobe para o topo e atualiza a

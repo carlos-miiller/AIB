@@ -39,6 +39,16 @@ namespace AIB.Tests
             ProvedoresDeIa.NormalizarUrlDoOllama(entrada).Should().Be(esperado);
         }
 
+        // Caso real (23/10/2026): o usuário escolheu "gemini-2.5-pro" na lista de sugestões e a
+        // conversa, o orbe e o título falharam com "O Google não encontrou o modelo (404)". A
+        // família 2.5 só é servida a quem já a usava; a lista não pode oferecê-la.
+        [Fact]
+        public void ASugestaoDoGoogle_NaoOfereceAFamilia25()
+        {
+            ProvedoresDeIa.ModelosDoGoogle.Should().NotContain(m => m.StartsWith("gemini-2.5", StringComparison.Ordinal));
+            ProvedoresDeIa.ModelosDoGoogle.Should().Contain(ProvedoresDeIa.ModeloPadraoDoGoogle);
+        }
+
         [Fact]
         public void OEnderecoPadrao_JaEstaNormalizado()
         {
@@ -609,6 +619,38 @@ namespace AIB.Tests
             string MensagensCruas(int requisicao) => JsonDocument.Parse(rede.Corpos[requisicao]).RootElement.GetProperty("messages").GetRawText();
             string prefixo = MensagensCruas(1).TrimEnd(']');
             MensagensCruas(3).Should().StartWith(prefixo);
+        }
+
+        [Fact]
+        public async Task RaciocinioReenviado_ContaOTextoQueVoltaComOHistorico_ENaoOCifrado()
+        {
+            // Caso real, 15/10, conversa do Bitrix: o OpenRouter cobrou 239.393 tokens de entrada
+            // numa volta em que o contador da AIB dava ~190 mil. A diferença era o raciocínio das
+            // voltas com ferramenta, que o provedor devolve ao modelo e o contador não via.
+            var rede = new RedeFingida(n => n switch
+            {
+                1 => Sse("""{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.text","text":"vou ler o arquivo a e depois o b","index":0}],"tool_calls":[{"index":0,"id":"c1","function":{"name":"read","arguments":"{}"}}]}}]}"""),
+                _ => Sse("""{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.encrypted","data":"QUJDREVGR0hJSktMTU5PUA==","index":0}],"tool_calls":[{"index":0,"id":"c2","function":{"name":"read","arguments":"{}"}}]}}]}""")
+            });
+            var p = ComRede(rede);
+            var ferramenta = ChatTool.CreateFunctionTool("read", "lê", System.BinaryData.FromString("{\"type\":\"object\"}"));
+
+            var historico = new List<ChatMessage> { ChatMessage.CreateUserMessage("lê a.txt") };
+            await Drenar(p.StreamAsync(historico, new[] { ferramenta }, new ChatRequestOptions(), CancellationToken.None));
+            historico.Add(ChatMessage.CreateAssistantMessage(new[] { ChatToolCall.CreateFunctionToolCall("c1", "read", System.BinaryData.FromString("{}")) }));
+            historico.Add(ChatMessage.CreateToolMessage("c1", "conteúdo"));
+            await Drenar(p.StreamAsync(historico, new[] { ferramenta }, new ChatRequestOptions(), CancellationToken.None));
+            historico.Add(ChatMessage.CreateAssistantMessage(new[] { ChatToolCall.CreateFunctionToolCall("c2", "read", System.BinaryData.FromString("{}")) }));
+            historico.Add(ChatMessage.CreateToolMessage("c2", "outro"));
+
+            var contados = new List<string>();
+            int total = p.RaciocinioReenviado(historico, s => { contados.Add(s); return s.Length; });
+
+            contados.Should().ContainSingle().Which.Should().Contain("vou ler o arquivo a e depois o b");
+            total.Should().Be(contados[0].Length, "a parte cifrada é opaca e fica de fora");
+
+            p.RaciocinioReenviado(new List<ChatMessage> { historico[0] }, s => s.Length)
+                .Should().Be(0, "sem a mensagem no histórico, o raciocínio não vai junto");
         }
 
         [Fact]

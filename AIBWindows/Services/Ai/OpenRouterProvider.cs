@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ClientModel.Primitives;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -67,6 +67,9 @@ public sealed class OpenRouterProvider : IChatProvider
         public RaciocinioGuardado(string json, long vistoEm) { Json = json; VistoEm = vistoEm; }
         public string Json { get; }
         public long VistoEm;
+
+        /// <summary>Os tokens do texto, contados uma vez. -1 até a primeira conta.</summary>
+        public int Tokens = -1;
     }
 
     /// <summary>Contador de requisições montadas. Serve de relógio para a poda.</summary>
@@ -561,6 +564,56 @@ public sealed class OpenRouterProvider : IChatProvider
     public int RaciociniosGuardados => _raciocinioPorChamada.Count;
 
     /// <summary>
+    /// O raciocínio que <see cref="Mensagens"/> poria de volta neste histórico: o mesmo laço, sem
+    /// mexer no relógio da poda. Conta o texto (<c>text</c>, <c>summary</c>); a parte cifrada
+    /// (<c>data</c>) é opaca e não tem como ser contada aqui.
+    /// </summary>
+    public int RaciocinioReenviado(IReadOnlyList<ChatMessage> messages, Func<string, int> contar)
+    {
+        int total = 0;
+
+        foreach (var m in messages)
+        {
+            if (m is not AssistantChatMessage { ToolCalls.Count: > 0 } assistente) continue;
+
+            foreach (var chamada in assistente.ToolCalls)
+            {
+                if (chamada?.Id == null || !_raciocinioPorChamada.TryGetValue(chamada.Id, out var guardado)) continue;
+
+                if (guardado.Tokens < 0)
+                {
+                    string texto = TextoDoRaciocinio(guardado.Json);
+                    guardado.Tokens = texto.Length == 0 ? 0 : contar(texto);
+                }
+                total += guardado.Tokens;
+                break;
+            }
+        }
+
+        return total;
+    }
+
+    /// <summary>O texto legível de um <c>reasoning_details</c> guardado.</summary>
+    public static string TextoDoRaciocinio(string json)
+    {
+        try
+        {
+            if (JsonNode.Parse(json) is not JsonArray lista) return "";
+
+            var texto = new StringBuilder();
+            foreach (var item in lista.OfType<JsonObject>())
+                foreach (string campo in new[] { "text", "summary" })
+                    if (item[campo] is JsonValue v && v.TryGetValue(out string? s)) texto.Append(s).Append('\n');
+
+            return texto.ToString();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return "";
+        }
+    }
+
+    /// <summary>
     /// Junta os pedaços de <c>reasoning_details</c> pelo <c>index</c>. O texto chega aos poucos,
     /// como o <c>content</c>; a assinatura e o formato chegam uma vez, em geral no último pedaço.
     /// </summary>
@@ -700,6 +753,7 @@ public sealed class OpenRouterProvider : IChatProvider
         var texto = new StringBuilder();
         int? entrada = null, saida = null;
         decimal? custo = null;
+        bool cortada = false;
 
         await foreach (var chunk in StreamAsync(messages, tools, options, ct).ConfigureAwait(false))
         {
@@ -714,14 +768,94 @@ public sealed class OpenRouterProvider : IChatProvider
                     saida = u.EvalCount ?? saida;
                     custo = u.CustoUsd ?? custo;
                     break;
+
+                case StreamChunk.Done d:
+                    cortada = d.Reason == StreamFinishReason.Length;
+                    break;
             }
         }
 
-        return new ChatCompletionResult(texto.ToString(), entrada, saida, custo);
+        return new ChatCompletionResult(texto.ToString(), entrada, saida, custo, cortada);
     }
 
     /// <summary>Nada a aquecer: o modelo roda do outro lado, e aquecer seria pagar por nada.</summary>
     public Task WarmupAsync(CancellationToken ct) => Task.CompletedTask;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Pesquisa na internet
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public bool TemPesquisa => true;
+
+    /// <summary>
+    /// O corpo da pesquisa: o plugin <c>web</c>, sem motor escolhido. Assim o OpenRouter usa a
+    /// busca nativa do modelo quando ela existe (OpenAI, Anthropic, Gemini, Grok, Perplexity) e a
+    /// do Exa nos outros — US$ 0,007 por busca, mais os tokens. Público para ensaio.
+    /// </summary>
+    public string MontarCorpoDaPesquisa(string consulta)
+    {
+        var corpo = new JsonObject
+        {
+            ["model"] = Model,
+            ["stream"] = false,
+            ["messages"] = new JsonArray
+            {
+                new JsonObject { ["role"] = "system", ["content"] = Pesquisa.Instrucao },
+                new JsonObject { ["role"] = "user", ["content"] = consulta }
+            },
+            ["plugins"] = new JsonArray
+            {
+                new JsonObject { ["id"] = "web", ["max_results"] = Pesquisa.Resultados }
+            },
+            ["usage"] = new JsonObject { ["include"] = true },
+
+            // Resumir o que as páginas dizem não ganha nada com raciocínio, e aqui ele é pago.
+            ["reasoning"] = new JsonObject { ["enabled"] = false }
+        };
+
+        if (_semColetaDeDados) corpo["provider"] = new JsonObject { ["data_collection"] = "deny" };
+        return corpo.ToJsonString();
+    }
+
+    public async Task<ResultadoDaPesquisa> PesquisarAsync(string consulta, CancellationToken ct)
+    {
+        using var resp = await EnviarAsync(MontarCorpoDaPesquisa(consulta), stream: false, ct).ConfigureAwait(false);
+        string json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        return LerPesquisa(json);
+    }
+
+    /// <summary>
+    /// A resposta da pesquisa: o texto e as fontes de <c>message.annotations</c>
+    /// (<c>url_citation</c>, com o trecho em <c>content</c> quando o OpenRouter o tem). Público
+    /// para ensaio. Erro no corpo de um 200 vira exceção, como no stream.
+    /// </summary>
+    public static ResultadoDaPesquisa LerPesquisa(string json)
+    {
+        var trecho = LerTrecho(json);
+        if (trecho.Erro != null) throw new InvalidOperationException("OpenRouter: " + trecho.Erro);
+
+        var fontes = new List<FonteDaPesquisa>();
+        using var doc = JsonDocument.Parse(json);
+
+        if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array
+            && choices.GetArrayLength() > 0
+            && choices[0].TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.Object
+            && msg.TryGetProperty("annotations", out var notas) && notas.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var nota in notas.EnumerateArray())
+            {
+                if (nota.ValueKind != JsonValueKind.Object
+                    || !nota.TryGetProperty("url_citation", out var c) || c.ValueKind != JsonValueKind.Object) continue;
+
+                string url = Texto(c, "url") ?? "";
+                if (url.Length == 0 || fontes.Exists(f => f.Url == url)) continue;
+
+                fontes.Add(new FonteDaPesquisa(Texto(c, "title") ?? "", url, Texto(c, "content") ?? ""));
+            }
+        }
+
+        return new ResultadoDaPesquisa(trecho.Texto ?? "", fontes, trecho.Uso?.CustoUsd);
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
 

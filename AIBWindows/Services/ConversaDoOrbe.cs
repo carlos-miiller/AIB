@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -56,47 +57,157 @@ public sealed class ConversaDoOrbe
     /// <summary>O passo do turno: rótulo e ferramenta (nula quando é pensar). Vazio no fim.</summary>
     public event Action<string, string?>? PassoMudou;
 
-    /// <summary>O texto final do turno, sem marca de quebra.</summary>
+    /// <summary>
+    /// O texto final do turno, sem marca de quebra. Vazio quando tudo já saiu por
+    /// <see cref="Falou"/>: o evento continua vindo, porque é ele que apaga o anel.
+    /// </summary>
     public event Action<string>? Respondeu;
+
+    /// <summary>
+    /// Uma fala que fechou com o turno ainda rodando: a que vem antes de uma ferramenta, ou a
+    /// separada pela <see cref="QuebraDeFala"/>. Visto no uso (21/10/2026): o "Vou consultar a
+    /// tarefa" chegava junto com o resultado, no fim, porque o turno guardava tudo para o final.
+    /// </summary>
+    public event Action<string>? Falou;
 
     /// <summary>Um turno do usuário terminou: o que ele escreveu nele.</summary>
     public event Action<string>? UsuarioFalou;
 
     private int Nivel => LevelService.GetLevel(_settings.LoadSettings().MessageCount);
 
+    private bool _parou;
+
+    /// <summary>
+    /// Para o turno em andamento, a pedido do usuário. O turno fecha como cancelado (a conversa
+    /// cuida disso) e a barra recebe o que já tinha sido dito, ou "Parei.".
+    /// </summary>
+    public void Parar()
+    {
+        if (!Ocupada) return;
+
+        _parou = true;
+        Conversa.CancelGeneration();
+
+        // O /compact não é um turno: quem o interrompe é a desistência da compactação.
+        Conversa.InterromperCompactacao();
+    }
+
+    /// <summary>O relógio do carimbo. Trocável no ensaio.</summary>
+    public Func<DateTime> Agora { get; set; } = () => DateTime.Now;
+
+    private static readonly System.Globalization.CultureInfo PtBr = new("pt-BR");
+
+    private static readonly System.Text.RegularExpressions.Regex ComCarimbo = new(
+        @"^\[[^\]\r\n]+ - \d{2}/\d{2}/\d{4} \| \d{2}:\d{2}\]\r?\n",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// A fala do usuário com o dia e a hora na frente, como o modelo a recebe:
+    /// <c>[sexta-feira - 09/10/2026 | 14:32]</c> e o texto na linha de baixo.
+    /// <para>
+    /// Pedido: "quero dar à Ellen o senso de tempo". A conversa do orbe é uma só para sempre;
+    /// sem carimbo o modelo não sabe se a fala anterior foi há cinco minutos ou há três dias,
+    /// e a data do prompt de sistema é a do dia em que ele foi montado.
+    /// </para>
+    /// <para>
+    /// Na fala, e não no prompt de sistema: a hora muda a cada minuto, e mexer no começo do
+    /// prompt perderia o cache inteiro a cada mensagem. Só na fala do USUÁRIO: carimbo na fala
+    /// dela ensinaria o modelo a escrever carimbo nas respostas.
+    /// </para>
+    /// </summary>
+    public static string Carimbar(string texto, DateTime agora) =>
+        $"[{agora.ToString("dddd", PtBr)} - {agora:dd/MM/yyyy} | {agora:HH:mm}]\n{texto}";
+
+    /// <summary>A fala sem o carimbo: é o que a barra mostra.</summary>
+    public static string SemCarimbo(string texto) => ComCarimbo.Replace(texto ?? "", "", 1);
+
+    /// <summary>Os comandos de barra que o orbe entende.</summary>
+    public enum Comando { Nenhum, Compactar, Memoria }
+
+    /// <summary>
+    /// O comando que o texto da barra é, se for um. Os mesmos da janela de chat que fazem
+    /// sentido aqui, mais <c>/memory</c>, que é como o usuário pediu.
+    /// </summary>
+    public static Comando ComandoDe(string? texto) => (texto ?? "").Trim().ToLowerInvariant() switch
+    {
+        "/compact" => Comando.Compactar,
+        "/memoria" or "/memória" or "/memory" => Comando.Memoria,
+        _ => Comando.Nenhum
+    };
+
+    /// <summary>
+    /// Roda um comando de barra na conversa DO ORBE. Não passa pelo modelo como mensagem: no
+    /// orbe o <c>/compact</c> ia ao modelo como texto comum, e ele respondia a ele.
+    /// <para>
+    /// Não conta como conversa: não dispara <see cref="UsuarioFalou"/> (o afeto e o contato não
+    /// andam por um comando) nem marca atividade nova para a compactação da pausa.
+    /// </para>
+    /// </summary>
+    private async Task RodarComandoAsync(Comando comando)
+    {
+        Ocupada = true;
+        _parou = false;
+        string resposta;
+
+        try
+        {
+            if (comando == Comando.Memoria)
+            {
+                // Entre cercas: a conta é alinhada por espaços, e o Markdown juntaria as colunas.
+                resposta = "```\n" + Conversa.MemoriaEmTexto(Nivel) + "\n```";
+            }
+            else
+            {
+                PassoMudou?.Invoke("Compactando", null);
+                resposta = await Conversa.ForcarCompactacaoAsync(Nivel).ConfigureAwait(true);
+
+                // O que havia de novo acabou de ser compactado: a pausa não pede de novo.
+                _compactarNaPausa = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ORBE] comando falhou: {ex.Message}");
+            resposta = $"O comando falhou: {ex.Message}";
+        }
+        finally
+        {
+            Ocupada = false;
+            PassoMudou?.Invoke("", null);
+        }
+
+        Respondeu?.Invoke(resposta);
+    }
+
     /// <summary>Roda um turno com o que o usuário escreveu na barra.</summary>
     public async Task EnviarAsync(string texto)
     {
         if (string.IsNullOrWhiteSpace(texto) || Ocupada) return;
 
+        if (ComandoDe(texto) is var comando and not Comando.Nenhum)
+        {
+            await RodarComandoAsync(comando);
+            return;
+        }
+
         Ocupada = true;
+        _parou = false;
         Marcar();
         string fala = "";
         string? erro = null;
+        bool disse = false;
 
         try
         {
             PassoMudou?.Invoke("Pensando", null);
 
-            await foreach (var item in Conversa.StreamResponseAsync(texto, Console.Write))
-            {
-                switch (item)
-                {
-                    case ChatStreamItem.ToolStarted iniciada:
-                        PassoMudou?.Invoke(Ferramentas.Rotulo(iniciada.Tool), iniciada.Tool);
-                        break;
-                    case ChatStreamItem.ToolFinished terminada:
-                        AIB.Views.ChatWindow.RegistrarAcao(terminada);
-                        PassoMudou?.Invoke("Pensando", null);
-                        break;
-                    case ChatStreamItem.SegmentBreak:
-                        fala += "\n\n";
-                        break;
-                    case ChatStreamItem.Text t:
-                        fala += t.Value;
-                        break;
-                }
-            }
+            fala = await AcompanharAsync(
+                Conversa.StreamResponseAsync(Carimbar(texto, Agora()), Console.Write),
+                () => disse = true);
+        }
+        catch (OperationCanceledException) when (_parou)
+        {
+            // Parar não é erro: a barra não mostra "algo deu errado" para o que o usuário pediu.
         }
         catch (Exception ex)
         {
@@ -113,7 +224,54 @@ public sealed class ConversaDoOrbe
         UsuarioFalou?.Invoke(texto);
 
         string final = erro ?? QuebraDeFala.Limpar(fala).Trim();
-        Respondeu?.Invoke(final.Length > 0 ? final : "Feito.");
+        Respondeu?.Invoke(final.Length > 0 ? final : _parou ? "Parei." : disse ? "" : "Feito.");
+    }
+
+    /// <summary>
+    /// Lê o turno: o passo vai para o anel e cada fala fechada sai por <see cref="Falou"/> na
+    /// hora, como os balões da janela de chat. Devolve a última fala, ainda não dita.
+    /// </summary>
+    public async Task<string> AcompanharAsync(IAsyncEnumerable<ChatStreamItem> itens, Action? disse = null)
+    {
+        string fala = "";
+
+        void Fechar(IEnumerable<string> partes)
+        {
+            foreach (var parte in partes)
+            {
+                Falou?.Invoke(parte);
+                disse?.Invoke();
+            }
+        }
+
+        await foreach (var item in itens)
+        {
+            switch (item)
+            {
+                case ChatStreamItem.ToolStarted iniciada:
+                    PassoMudou?.Invoke(Ferramentas.Rotulo(iniciada.Tool), iniciada.Tool);
+                    break;
+                case ChatStreamItem.ToolFinished terminada:
+                    AIB.Views.ChatWindow.RegistrarAcao(terminada);
+                    PassoMudou?.Invoke("Pensando", null);
+                    break;
+                case ChatStreamItem.SegmentBreak:
+                    Fechar(QuebraDeFala.Dividir(fala));
+                    fala = "";
+                    break;
+                case ChatStreamItem.Text t:
+                    fala += t.Value;
+                    var (prontas, resto) = QuebraDeFala.Separar(fala);
+                    if (prontas.Count > 0)
+                    {
+                        Fechar(prontas);
+                        fala = resto;
+                    }
+                    break;
+            }
+        }
+
+        return fala;
     }
 
     /// <summary>

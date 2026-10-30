@@ -81,4 +81,40 @@ public static class PertoDoOrbe
         janela.SizeChanged += (_, _) => Aplicar();
         janela.Loaded += (_, _) => Aplicar();
     }
+
+    /// <summary>
+    /// Os avisos: perto do orbe quando ele está na tela; sem orbe, no canto de baixo à direita,
+    /// logo acima da bandeja — onde o balão do Windows aparecia. O centro da tela é das perguntas,
+    /// que pedem resposta; um aviso no meio da tela interromperia quem está trabalhando.
+    /// </summary>
+    public static void PosicionarOuNaBandeja(Window janela, double sombraEmbaixo = 0)
+    {
+        janela.WindowStartupLocation = WindowStartupLocation.Manual;
+
+        void Aplicar()
+        {
+            if (janela.ActualWidth <= 0) return;
+
+            var tamanho = new Size(janela.ActualWidth, janela.ActualHeight);
+            var area = SystemParameters.WorkArea;
+            var orbe = Ancora?.Invoke();
+
+            var p = orbe is Rect r
+                ? Calcular(r, tamanho, area, sombraEmbaixo)
+                : NaBandeja(tamanho, area, sombraEmbaixo);
+
+            double escala = System.Windows.Media.VisualTreeHelper.GetDpi(janela).DpiScaleX;
+            janela.Left = NoPixel(p.X, escala);
+            janela.Top = NoPixel(p.Y, escala);
+        }
+
+        janela.Left = -10000;
+        janela.Top = -10000;
+        janela.SizeChanged += (_, _) => Aplicar();
+        janela.Loaded += (_, _) => Aplicar();
+    }
+
+    /// <summary>Canto de baixo à direita da área de trabalho, com a sombra podendo sobrar embaixo.</summary>
+    public static Point NaBandeja(Size janela, Rect area, double sombraEmbaixo = 0) =>
+        new(area.Right - janela.Width, area.Bottom - janela.Height + sombraEmbaixo);
 }

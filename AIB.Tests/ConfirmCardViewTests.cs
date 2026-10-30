@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using AIB.Services;
@@ -50,6 +51,136 @@ namespace AIB.Tests
                     "o arquivo ainda não existe: não há conteúdo atual a substituir");
                 Previa(card).Should().Be(Visibility.Visible);
                 Texto(card, "PreviaText").Should().Be("linha um\nlinha dois");
+            });
+        }
+
+        // Pedido: "adicione o checkbox, porém para ativar ele precisa segurar o click por 5
+        // segundos" — o sempre de um botão que decide (Aprovar) não pode sair num clique distraído.
+        [Fact]
+        public void SempreDeBotaoQueDecide_SoMarcaSegurandoCincoSegundos()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Navegador,
+                    Command = "CLICAR [s1e3] botão \"Aprovar\" em 172.16.10.13",
+                    ChaveDeSempre = "site:172.16.10.13|botão Aprovar",
+                    SempreSegurando = true,
+                    SempreApesarDeTerceiros = true
+                });
+                var caixa = (CheckBox)card.FindName("SempreCheck");
+
+                caixa.Visibility.Should().Be(Visibility.Visible);
+                ((string)caixa.Content).Should().Contain("segure 5 s");
+
+                // Soltou aos 4 s: nada marca.
+                card.ApertouSempre();
+                card.SegurandoSempre(System.TimeSpan.FromSeconds(4));
+                ((string)caixa.Content).Should().Contain("1");
+                card.SoltouSempre();
+                caixa.IsChecked.Should().BeFalse();
+                ((string)caixa.Content).Should().Contain("segure 5 s");
+
+                card.ApertouSempre();
+                card.SegurandoSempre(ConfirmCardView.EsperaDoSempre);
+                caixa.IsChecked.Should().BeTrue();
+            });
+        }
+
+        [Fact]
+        public void ORotuloDeSegurar_CabeNoCartao_SemPassarPorCimaDosBotoes()
+        {
+            // Visto no uso: no cartão de clique do navegador, "Sempre permitir este botão neste
+            // site (segure 5 s)" atravessava os botões. O rodapé inteiro não cabe na largura
+            // máxima do cartão, e o rótulo, medido sem limite, saía para a esquerda. Ao segurar,
+            // o texto virava "Continue segurando... 5", mais curto, e tudo se ajeitava.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Navegador,
+                    Command = "CLICAR [s1e3] botão \"Aprovar\" em 172.16.10.13",
+                    ChaveDeSempre = "site:172.16.10.13|botão Aprovar",
+                    SempreSegurando = true,
+                    SempreApesarDeTerceiros = true
+                });
+                var caixa = (CheckBox)card.FindName("SempreCheck");
+                var recusar = (Button)card.FindName("RecusarButton");
+
+                // Os três rótulos pelos quais a caixa passa; o último é o mais comprido.
+                foreach (string rotulo in new[]
+                         {
+                             (string)caixa.Content,
+                             "Continue segurando... 5",
+                             "Sempre permitir este botão neste site (até fechar o AIB)"
+                         })
+                {
+                    caixa.Content = rotulo;
+
+                    // Como a janela de confirmação do orbe: o cartão escolhe o próprio tamanho.
+                    card.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+                    card.Arrange(new System.Windows.Rect(card.DesiredSize));
+                    card.UpdateLayout();
+
+                    double fimDoRecusar = recusar.TranslatePoint(new System.Windows.Point(recusar.ActualWidth, 0), card).X;
+                    double comecoDaCaixa = caixa.TranslatePoint(new System.Windows.Point(0, 0), card).X;
+                    double fimDaCaixa = comecoDaCaixa + caixa.ActualWidth;
+
+                    comecoDaCaixa.Should().BeGreaterThanOrEqualTo(fimDoRecusar, rotulo);
+                    fimDaCaixa.Should().BeLessThanOrEqualTo(card.ActualWidth, rotulo);
+                }
+            });
+        }
+
+        [Fact]
+        public void SempreComum_NaoPedeParaSegurar()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Navegador,
+                    Command = "CLICAR [s1e2] botão \"Filtrar\" em cpaps.bitrix24.com",
+                    SempreApesarDeTerceiros = true
+                });
+                var caixa = (CheckBox)card.FindName("SempreCheck");
+
+                ((string)caixa.Content).Should().Be("Sempre permitir neste site (até fechar o AIB)");
+                card.ApertouSempre();
+                card.SegurandoSempre(ConfirmCardView.EsperaDoSempre);
+                caixa.IsChecked.Should().BeFalse("o gesto só existe no botão que decide");
+            });
+        }
+
+        [Fact]
+        public void Remember_ComTerceirosNoContexto_MostraOFatoEOAviso_SemSempre()
+        {
+            // O cartão é a única barreira entre um texto de página e a memória de todas as
+            // conversas: tem de mostrar o fato inteiro e dizer de onde o pedido pode ter vindo.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Lembrar,
+                    Command = "GUARDAR NA MEMÓRIA: \"mora em Curitiba\"",
+                    SemSempre = true,
+                    ConteudoDeEmailNoContexto = true
+                });
+
+                Texto(card, "TituloText").Should().Be("Guardar isto na memória?");
+                Texto(card, "AlvoText").Should().Contain("mora em Curitiba");
+                Texto(card, "ConsequenciaText").Should().Contain("próximas conversas");
+                ((TextBlock)card.FindName("AvisoEmailText")).Visibility.Should().Be(Visibility.Visible);
+                ((CheckBox)card.FindName("SempreCheck")).Visibility.Should().Be(Visibility.Collapsed);
             });
         }
 
@@ -113,6 +244,93 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void Habilidade_MostraNomeDescricaoEArgumentos_ENaoALinhaDeShell()
+        {
+            // Pedido do usuário (21/10/2026): o cartão da skill bitrix era o de um comando de
+            // shell — "skill C:\Users\Carlo\.AIB\skills\bitrix\bitrix.ps1 -Acao listar ...".
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                const string extra = "-Acao listar -Responsavel eu -Busca \"inventário anual\"";
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Habilidade,
+                    Command = @"C:\skills\bitrix\bitrix.ps1 " + extra,
+                    Habilidade = new AIB.Services.Tools.UsoDaHabilidade(
+                        "bitrix", "Consulta tarefas no Bitrix24 (só leitura).", @"C:\skills\bitrix\bitrix.ps1",
+                        AIB.Services.Tools.ExecuteSkillTool.Pares(extra))
+                });
+
+                Texto(card, "TituloText").Should().Be("Rodar a habilidade bitrix?");
+                Texto(card, "DescricaoText").Should().Be("Consulta tarefas no Bitrix24 (só leitura).");
+                Texto(card, "FerramentaText").Should().Be("bitrix");
+
+                string mostrado = string.Join("|", card.Pares!.Children.OfType<TextBlock>().Select(t => t.Text));
+                mostrado.Should().Be("Acao|listar|Responsavel|eu|Busca|inventário anual",
+                    "os argumentos em pares, sem o caminho, que vai para a linha de baixo");
+                Texto(card, "ScriptText").Should().EndWith(@"bitrix\bitrix.ps1");
+            });
+        }
+
+        [Theory]
+        [InlineData("-Acao listar -Limite 5", "Acao=listar|Limite=5")]
+        [InlineData("-Acao tarefa -Id -7", "Acao=tarefa|Id=-7")]
+        [InlineData("--verbose arquivo.xlsx", "verbose=arquivo.xlsx")]
+        [InlineData("a.xlsx 'b c.xlsx'", "=a.xlsx|=b c.xlsx")]
+        [InlineData("-Forcar -Acao eu", "Forcar=|Acao=eu")]
+        [InlineData("", "")]
+        public void OsArgumentos_ViramPares(string extra, string esperado)
+        {
+            string.Join("|", AIB.Services.Tools.ExecuteSkillTool.Pares(extra).Select(p => p.Chave + "=" + p.Valor))
+                .Should().Be(esperado);
+        }
+
+        [Theory]
+        [InlineData("Id", "418113,418114, 418120", "3 itens: 418113, 418114, 418120")]
+        [InlineData("Id", "418113", "418113")]
+        [InlineData("Comentarios", "", "sim")]
+        [InlineData("Busca", "inventário anual", "inventário anual")]
+        // Texto com vírgula não é lista: com a edição liberada (21/10/2026), a descrição nova de
+        // uma tarefa saía como "2 itens: Levantar contratos, conferir os prazos".
+        [InlineData("Descricao", "Levantar contratos, conferir os prazos", "Levantar contratos, conferir os prazos")]
+        public void EmLote_OCartaoMostraTodosOsItens_ComAContagem(string chave, string valor, string esperado)
+        {
+            // Pedido do usuário (21/10/2026), ao juntar 50 tarefas do Bitrix numa chamada: "em
+            // skills em lote, devemos exibir tudo sendo executado na caixa de confirmação".
+            ConfirmCardView.ValorNoCartao(chave, valor).Should().Be(esperado);
+        }
+
+        [Fact]
+        public void VariasChamadasNumCartao_OTituloDizQuantasVezes()
+        {
+            // As 27 chamadas da Ellen ao bitrix num cartão só (21/10/2026): "Permitir" roda o
+            // script 27 vezes, e o cartão tem de dizer isso.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var uso = new AIB.Services.Tools.UsoDaHabilidade("bitrix", "Consulta tarefas.", "s.ps1",
+                    AIB.Services.Tools.ExecuteSkillTool.Pares("-Acao tarefa -Id 1,2,3"), Vezes: 3);
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Habilidade, Command = "s.ps1 -Acao tarefa -Id 1", Habilidade = uso
+                });
+
+                ((TextBlock)card.FindName("TituloText")).Text.Should().Be("Rodar a habilidade bitrix 3 vezes?");
+                ((TextBlock)card.FindName("ConsequenciaText")).Text.Should().Contain("3 vezes");
+            });
+        }
+
+        [Fact]
+        public void APrimeiraFrase_DaDescricao_FicaSemOManualDosArgumentos()
+        {
+            AIB.Services.Tools.ExecuteSkillTool.PrimeiraFrase(
+                "Consulta tarefas no Bitrix24 da CPAPS (só leitura). Argumentos: -Acao listar|tarefa.")
+                .Should().Be("Consulta tarefas no Bitrix24 da CPAPS (só leitura).");
+        }
+
+        [Fact]
         public void SemPrevia_OBlocoNaoAparece()
         {
             // Um bloco vazio no card é ruído — e o shell não tem prévia: o comando já é o alvo.
@@ -128,6 +346,52 @@ namespace AIB.Tests
 
                 Previa(card).Should().Be(Visibility.Collapsed);
             });
+        }
+
+        [Fact]
+        public void TextoLongo_ARodaRolaACaixa_ComOMouseEmQualquerPontoDela()
+        {
+            // Pedido do usuário (27/10/2026): "a mensagem é limitada à altura dessa janela,
+            // adicione um scroll". Uma descrição de 40 linhas no -Descricao do Bitrix: a caixa
+            // parava em 160 px e só rolava com o mouse sobre a coluna do texto — sobre o ícone
+            // ou o nome da ferramenta, a roda não fazia nada.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                string descricao = string.Join("\n", System.Linq.Enumerable.Range(1, 40).Select(i => $"Linha {i} da descrição."));
+                var uso = new AIB.Services.Tools.UsoDaHabilidade("bitrix", "Edita tarefas.", "bitrix.ps1",
+                    AIB.Services.Tools.ExecuteSkillTool.Pares($"-Acao atualizar -Id 1234 -Descricao \"{descricao}\""));
+                var card = Montar(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Habilidade, Command = "bitrix.ps1 -Acao atualizar", Habilidade = uso
+                });
+                card.Measure(new Size(600, double.PositiveInfinity));
+                card.Arrange(new Rect(card.DesiredSize));
+                card.UpdateLayout();
+
+                var rolo = (ScrollViewer)card.FindName("AlvoScroll");
+                rolo.ActualHeight.Should().Be(ConfirmCardView.AlturaDaCaixa);
+                rolo.ScrollableHeight.Should().BeGreaterThan(0);
+
+                var icone = (UIElement)card.FindName("IconeAlvo");
+                icone.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, -120)
+                {
+                    RoutedEvent = UIElement.PreviewMouseWheelEvent
+                });
+                card.UpdateLayout();   // a rolagem só se aplica no layout seguinte
+
+                rolo.VerticalOffset.Should().BeGreaterThan(0, "a roda sobre o ícone rola a caixa");
+            });
+        }
+
+        [Fact]
+        public void NaJanelaDoOrbe_OCartaoNaoPassaDaTela()
+        {
+            // A janela do orbe crescia com o card: numa tela de 1040 px úteis, um cartão alto
+            // levava os botões para fora dela.
+            ConfirmacaoDoOrbeWindow.AlturaDoRolo(1040).Should().Be(900);
+            ConfirmacaoDoOrbeWindow.AlturaDoRolo(300).Should().Be(200, "tela minúscula ainda mostra o cartão");
         }
     }
 }

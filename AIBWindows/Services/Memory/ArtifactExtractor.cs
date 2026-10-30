@@ -56,8 +56,9 @@ public static class ArtifactExtractor
 
             pendentes.Remove(tool.ToolCallId);
 
-            var artefato = Build(chamada.Nome, chamada.Args, Turn.TextOf(tool));
-            if (artefato != null) artefatos.Add(artefato);
+            // Um lote do 'file' deixa um artefato por operação, como deixariam as chamadas soltas.
+            foreach (var (nome, args, resultado) in Tools.FileTool.Abrir(chamada.Nome, chamada.Args, Turn.TextOf(tool)))
+                if (Build(nome, args, resultado) is { } artefato) artefatos.Add(artefato);
         }
 
         return artefatos;
@@ -72,8 +73,11 @@ public static class ArtifactExtractor
     /// que foi feito.
     /// </para>
     /// </summary>
-    public static Artifact? Construir(string ferramenta, string argumentosJson, string resultado) =>
-        Build(ferramenta, argumentosJson, resultado);
+    public static Artifact? Construir(string ferramenta, string argumentosJson, string resultado)
+    {
+        var (nome, args) = Tools.FileTool.Simples(ferramenta, argumentosJson);
+        return Build(nome, args, resultado);
+    }
 
     /// <summary>
     /// Se o resultado de uma ferramenta representa fracasso.
@@ -135,7 +139,23 @@ public static class ArtifactExtractor
     /// chip só com o nome do que um JSON cru espremido em 11px.
     /// </para>
     /// </summary>
-    public static string ResumirArgumento(string ferramenta, string argumentosJson) =>
+    public static string ResumirArgumento(string ferramenta, string argumentosJson)
+    {
+        (ferramenta, argumentosJson) = Tools.FileTool.Simples(ferramenta, argumentosJson);
+        return ferramenta == Ferramentas.Arquivo ? ResumirLote(argumentosJson) : ResumirUma(ferramenta, argumentosJson);
+    }
+
+    /// <summary>"3 operações: move a.txt, move b.txt, mkdir 01-incidentes".</summary>
+    private static string ResumirLote(string argumentosJson)
+    {
+        var ops = Tools.FileTool.Abrir(Ferramentas.Arquivo, argumentosJson, "");
+        if (ops.Count == 0) return "";
+
+        var partes = ops.Select(o => (StringDe(o.Args, "action") + " " + Path.GetFileName(CaminhoDe(o.Args))).Trim());
+        return $"{ops.Count} operações: " + string.Join(", ", partes);
+    }
+
+    private static string ResumirUma(string ferramenta, string argumentosJson) =>
         ferramenta switch
         {
             Ferramentas.Gravar or Ferramentas.Ler or Ferramentas.Editar => CaminhoDe(argumentosJson),
@@ -147,6 +167,8 @@ public static class ArtifactExtractor
             Ferramentas.Email => ConsultaDeEmail(argumentosJson),
             Ferramentas.LerEmail => "e-mail desta conversa",
             Ferramentas.Lembrar => Tools.LembrarTool.FatoDe(argumentosJson),
+            Ferramentas.Pesquisar => Tools.PesquisaWebTool.ConsultaDe(argumentosJson),
+            Ferramentas.Documento => (StringDe(argumentosJson, "action") + " " + CaminhoDe(argumentosJson)).Trim(),
             Ferramentas.Lembrete => (StringDe(argumentosJson, "action") + " " + StringDe(argumentosJson, "subject")).Trim(),
             Ferramentas.Navegador => string.Join(" ", new[]
             {
@@ -155,6 +177,46 @@ public static class ArtifactExtractor
             }.Where(s => s.Length > 0)),
             _ => ""
         };
+
+    /// <summary>
+    /// O resumo dos argumentos para a TELA — o chip e o registro de ações. Igual a
+    /// <see cref="ResumirArgumento"/>, menos no navegador: ali a ref do elemento (<c>s21e17</c>)
+    /// vira o nome dele e a ação sai em português, "clicar botão \"OK\"".
+    /// <para>
+    /// Separado porque o nome é texto da página. <see cref="ResumirArgumento"/> também alimenta
+    /// o resumo que a memória guarda e manda ao modelo, e lá conteúdo de terceiros não entra.
+    /// </para>
+    /// </summary>
+    public static string ResumirParaTela(string ferramenta, string argumentosJson)
+    {
+        if (ferramenta != Ferramentas.Navegador) return ResumirArgumento(ferramenta, argumentosJson);
+
+        string acao = StringDe(argumentosJson, "action");
+        string refe = StringDe(argumentosJson, "ref");
+
+        return string.Join(" ", new[]
+        {
+            AcaoDoNavegador(acao), StringDe(argumentosJson, "url"),
+            refe.Length == 0 ? "" : Navegador.NomesDeElemento.De(refe) ?? refe,
+            StringDe(argumentosJson, "text")
+        }.Where(s => s.Length > 0));
+    }
+
+    private static string AcaoDoNavegador(string acao) => acao.ToLowerInvariant() switch
+    {
+        "open" => "abrir",
+        "view" => "ver a página",
+        "find" => "procurar",
+        "table" => "ler tabela",
+        "click" => "clicar",
+        "type" => "digitar em",
+        "hover" => "passar o mouse em",
+        "scroll" => "rolar",
+        "back" => "voltar",
+        "note" => "anotar",
+        "unnote" => "apagar anotação",
+        _ => acao
+    };
 
     /// <summary>
     /// O resultado em poucas palavras, para o registro de ações e o tooltip (§6.4 e):
@@ -240,6 +302,7 @@ public static class ArtifactExtractor
     /// </summary>
     public static TrocaDeTexto? TrocaDaEdicao(string ferramenta, string argumentosJson)
     {
+        (ferramenta, argumentosJson) = Tools.FileTool.Simples(ferramenta, argumentosJson);
         if (ferramenta != Ferramentas.Editar) return null;
 
         string antes = StringDe(argumentosJson, "old_string");
@@ -315,6 +378,20 @@ public static class ArtifactExtractor
                     falhou ? PrimeiraLinha(resultado) : null);
             }
 
+            case Ferramentas.Documento:
+            {
+                // Planilha e Word gravados contam como arquivo gravado: a memória precisa saber
+                // que o arquivo mudou. Ler, procurar e consultar são leitura.
+                string caminho = CaminhoDe(argumentosJson);
+                if (caminho.Length == 0) return null;
+                string acao = StringDe(argumentosJson, "action");
+                bool grava = acao is "create" or "edit";
+                if (recusado) return new Artifact(ArtifactKind.Denied, ferramenta, caminho, true, grava ? "gravação recusada" : "leitura recusada");
+
+                return new Artifact(grava ? ArtifactKind.FileWritten : ArtifactKind.FileRead, ferramenta, caminho, falhou,
+                    falhou ? PrimeiraLinha(resultado) : acao);
+            }
+
             case Ferramentas.Shell:
             {
                 string comando = StringDe(argumentosJson, "command");
@@ -368,7 +445,7 @@ public static class ArtifactExtractor
         return extra.Length == 0 ? nome : nome + " " + extra;
     }
 
-    private static string CaminhoDe(string argumentosJson)
+    internal static string CaminhoDe(string argumentosJson)
     {
         string bruto = PathArgumentRepair.Normalize(StringDe(argumentosJson, "path"));
         if (string.IsNullOrWhiteSpace(bruto)) return "";

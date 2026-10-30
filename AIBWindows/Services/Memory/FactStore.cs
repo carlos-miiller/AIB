@@ -19,8 +19,10 @@ namespace AIB.Services.Memory;
 /// <para>
 /// São dois arquivos com papéis opostos, e a separação é deliberada:
 /// <list type="bullet">
-/// <item><description><c>facts.md</c> — do USUÁRIO. Ele abre, edita, reordena e apaga. A AIB só
-/// acrescenta linhas no fim; nunca reescreve nem remove nada que esteja lá.</description></item>
+/// <item><description><c>facts.md</c> — do USUÁRIO. Ele edita, reordena e apaga, pela aba
+/// Memória das configurações (<see cref="Regravar"/>): o arquivo é cifrado por linha
+/// (<see cref="ArquivoCifrado"/>) e não abre mais no bloco de notas. A AIB só acrescenta linhas
+/// no fim; nunca reescreve nem remove nada que esteja lá.</description></item>
 /// <item><description><c>facts.index.jsonl</c> — da MÁQUINA. Append-only, guarda a chave de tudo
 /// que já foi promovido alguma vez.</description></item>
 /// </list>
@@ -46,8 +48,8 @@ public sealed class FactStore
 
         <!--
         A AIB acrescenta linhas aqui quando algo se repete o bastante para valer memória
-        permanente. Você pode editar, reordenar ou apagar qualquer linha: nada é reescrito
-        automaticamente, e o que você apagar não volta.
+        permanente. Você pode editar, reordenar ou apagar qualquer linha em Configurações >
+        Memória: nada é reescrito automaticamente, e o que você apagar não volta.
 
         Só linhas que começam com "- " entram no prompt. As de cima têm prioridade quando não
         cabe tudo, então ponha o que mais importa no começo.
@@ -60,7 +62,13 @@ public sealed class FactStore
 
     /// <param name="rootOverride">Raiz alternativa. Existe para o teste não escrever no ~/.AIB real.</param>
     public FactStore(string? rootOverride = null) =>
-        _root = rootOverride ?? DirectoryService.MemoryDir;
+        _root = rootOverride ?? RaizPadrao ?? DirectoryService.MemoryDir;
+
+    /// <summary>
+    /// Troca a raiz de quem não passa uma. Só a suíte usa: a aba Memória cria o seu
+    /// <c>FactStore</c> sem raiz, e uma tela de ensaio leria os fatos de verdade do usuário.
+    /// </summary>
+    public static string? RaizPadrao { get; set; }
 
     public string FactsPath => Path.Combine(_root, "facts.md");
 
@@ -77,7 +85,7 @@ public sealed class FactStore
         {
             if (!File.Exists(FactsPath)) return Array.Empty<string>();
 
-            return File.ReadLines(FactsPath, SemBom)
+            return ArquivoCifrado.Linhas(FactsPath)
                 .Select(l => l.TrimEnd())
                 .Where(l => l.StartsWith("- ", StringComparison.Ordinal) && l.Length > 2)
                 .ToList();
@@ -86,6 +94,44 @@ public sealed class FactStore
         {
             Console.WriteLine($"[MEMORIA] Falha ao ler facts.md: {ex.Message}");
             return Array.Empty<string>();
+        }
+    }
+
+    /// <summary>O arquivo inteiro em texto claro, como o usuário o vê na aba Memória. Vazio sem arquivo.</summary>
+    public string Texto()
+    {
+        try { return string.Join(Environment.NewLine, ArquivoCifrado.Linhas(FactsPath)); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Falha ao ler facts.md: {ex.Message}");
+            return "";
+        }
+    }
+
+    /// <summary>
+    /// Troca o arquivo pelo texto que o usuário editou na aba Memória. É a edição à mão de
+    /// antes, agora que o arquivo é cifrado. O índice não muda: o que ele apagou não volta.
+    /// Por um temporário — uma queda no meio deixa o arquivo anterior.
+    /// </summary>
+    public bool Regravar(string texto)
+    {
+        try
+        {
+            lock (_gate)
+            {
+                Directory.CreateDirectory(_root);
+                string temporario = FactsPath + ".tmp";
+                if (File.Exists(temporario)) File.Delete(temporario);
+                ArquivoCifrado.Acrescentar(temporario, texto ?? "");
+                if (!File.Exists(temporario)) File.WriteAllText(temporario, "", SemBom);
+                File.Move(temporario, FactsPath, overwrite: true);
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Falha ao regravar facts.md: {ex.Message}");
+            return false;
         }
     }
 
@@ -98,7 +144,7 @@ public sealed class FactStore
         {
             if (!File.Exists(LedgerPath)) return chaves;
 
-            foreach (var linha in File.ReadLines(LedgerPath, SemBom))
+            foreach (var linha in ArquivoCifrado.Linhas(LedgerPath))
             {
                 if (string.IsNullOrWhiteSpace(linha)) continue;
                 try
@@ -147,18 +193,18 @@ public sealed class FactStore
                 Directory.CreateDirectory(_root);
 
                 if (!File.Exists(FactsPath))
-                    File.WriteAllText(FactsPath, Cabecalho, SemBom);
+                    ArquivoCifrado.Acrescentar(FactsPath, Cabecalho);
 
                 var texto = new StringBuilder();
                 foreach (var fato in novos) texto.Append(fato.Line.TrimEnd()).Append(Environment.NewLine);
-                File.AppendAllText(FactsPath, texto.ToString(), SemBom);
+                ArquivoCifrado.Acrescentar(FactsPath, texto.ToString());
 
                 string agora = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
                 var registro = new StringBuilder();
                 foreach (var fato in novos)
                     registro.Append(JsonSerializer.Serialize(new FactRecord(fato.Key, fato.Line, agora), Json))
                             .Append(Environment.NewLine);
-                File.AppendAllText(LedgerPath, registro.ToString(), SemBom);
+                ArquivoCifrado.Acrescentar(LedgerPath, registro.ToString());
 
                 return novos.Count;
             }

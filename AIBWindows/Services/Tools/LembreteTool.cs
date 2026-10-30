@@ -151,6 +151,33 @@ public sealed class LembreteTool : ITool
         }
     }
 
+    /// <summary>Listar só lê o que já foi agendado: não precisa do usuário para confirmar.</summary>
+    public bool PedeFalaDoUsuario(string argumentsJson) => Ler(argumentsJson).Acao != "list";
+
+    /// <summary>
+    /// O cartão que o registry mostra quando há texto de terceiros no contexto: a hora e a fala
+    /// inteira, ou o lembrete que sai. Sem "sempre".
+    /// </summary>
+    public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel)
+    {
+        var a = Ler(argumentsJson);
+        string? comando = null;
+
+        if (a.Acao == "cancel" && a.Id.Length > 0)
+        {
+            comando = $"CANCELAR LEMBRETE {a.Id}";
+        }
+        else if (a.Acao == "create" && a.Texto.Length > 0)
+        {
+            var (quando, _) = Resolver(a.Em, a.Minutos, _agora());
+            if (quando is DateTime q) comando = $"AGENDAR LEMBRETE para {q:dd/MM HH:mm}: \"{a.Texto}\"";
+        }
+
+        if (comando == null) return null;
+
+        return new CommandConfirmationContext { Tool = Name, Command = comando, Level = userLevel, SemSempre = true };
+    }
+
     public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
         var a = Ler(argumentsJson);
@@ -171,12 +198,16 @@ public sealed class LembreteTool : ITool
         var (quando, _) = Resolver(a.Em, a.Minutos, agora);
         string assunto = a.Assunto.Length > 0 ? a.Assunto : Resumo(a.Texto);
 
-        var novo = _lembretes.Criar(quando!.Value.ToUniversalTime(), a.Texto, assunto);
+        // De onde o pedido veio: a conversa de e-mail (o aviso oferece "Abrir o e-mail") e se é o
+        // Shadow (o aviso leva o selo). Ver ContextoDoTurno.
+        var contexto = ContextoDoTurno.Atual;
+        var novo = _lembretes.Criar(quando!.Value.ToUniversalTime(), a.Texto, assunto,
+                                    contexto?.ChaveDoEmail ?? "", contexto?.Shadow ?? false);
         if (novo == null)
             return $"ERRO: já há {Lembretes.Teto} lembretes pendentes. Peça ao usuário para cancelar algum.";
 
         return $"Agendado (id {novo.Id}) para {Quando(quando.Value, agora)}: {assunto}. "
-               + "O aviso chega pelo orbe, ou pela bandeja com ele desligado.";
+               + "O aviso chega numa janela perto do orbe, ou acima da bandeja com ele desligado.";
     }
 
     private string Listar(DateTime agora)

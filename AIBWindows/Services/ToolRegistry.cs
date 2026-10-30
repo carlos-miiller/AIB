@@ -57,7 +57,29 @@ public class ToolRegistry
     /// </summary>
     public Func<bool>? EmailNoContexto { get; set; }
 
+    /// <summary>
+    /// O cofre de aliases: o shell tira dele os valores, e toda saída de ferramenta passa por
+    /// <see cref="Services.Cofre.Redigir(string?, out int)"/>. Os ensaios trocam por um temporário.
+    /// </summary>
+    public Cofre Cofre { get; init; } = new();
+
     private bool EmConversaDeEmail => !string.IsNullOrWhiteSpace(ChaveDaConversaDeEmail?.Invoke());
+
+    /// <summary>
+    /// Se a chamada a uma ferramenta de e-mail é barrada por <see cref="UserAppSettings.EmailSoLocal"/>.
+    /// <para>
+    /// O provedor vem DA CHAMADA, e não de um gancho da conversa: o registry é dividido entre a
+    /// conversa principal e a do orbe, e as duas podem estar em provedores diferentes — a do
+    /// e-mail no Ollama, a do orbe no OpenRouter. Um gancho único responderia pela última que o
+    /// ligou.
+    /// </para>
+    /// </summary>
+    private bool EmailBarrado(string toolName, string? provedor)
+    {
+        if (toolName != Ferramentas.Email && toolName != Ferramentas.LerEmail) return false;
+        if (_settingsService?.LoadSettings().EmailSoLocal != true) return false;
+        return provedor == null || ProvedoresDeIa.EhNuvem(provedor);
+    }
 
     /// <remarks>
     /// <c>mail_read</c> só é oferecida na conversa DE um e-mail. Fora dela não há o que ler, e o
@@ -67,6 +89,7 @@ public class ToolRegistry
         => _tools.Values
             .Where(t => t.RequiredLevel <= userLevel)
             .Where(t => t.Name != Ferramentas.LerEmail || EmConversaDeEmail)
+            .Where(t => t.Oferecida)
             .Select(t => t.ChatToolDefinition)
             .ToList();
 
@@ -85,20 +108,41 @@ public class ToolRegistry
     /// Recebe COMO a chamada passou pelo portão, numa palavra: <c>automatica</c> (não pede
     /// confirmação), <c>pasta_dispensada</c>, <c>permitida</c>, <c>permitida_sempre</c>,
     /// <c>sempre_na_sessao</c>, <c>recusada</c>, <c>barrada_pelo_piso</c>, <c>negada_sem_contexto</c>,
-    /// <c>negada_sem_interface</c>, <c>nivel_insuficiente</c>, <c>recusada_no_pre_voo</c> ou
-    /// <c>ferramenta_desconhecida</c>. Vai para o raw.jsonl com o resultado: sem ela, um comando
-    /// que você autorizou e um que nunca pediu confirmação ficam iguais no registro.
+    /// <c>negada_sem_interface</c>, <c>nivel_insuficiente</c>, <c>recusada_no_pre_voo</c>,
+    /// <c>email_so_local</c> ou <c>ferramenta_desconhecida</c>. Vai para o raw.jsonl com o
+    /// resultado: sem ela, um comando que você autorizou e um que nunca pediu confirmação ficam
+    /// iguais no registro.
+    /// </param>
+    /// <param name="provedor">
+    /// O provedor que vai RECEBER o resultado — o do turno que pediu a chamada. Nulo é "não sei",
+    /// e para <see cref="UserAppSettings.EmailSoLocal"/> não saber conta como nuvem.
+    /// </param>
+    /// <param name="vaga">
+    /// O lugar desta chamada num cartão dividido com outras do mesmo lote (ver
+    /// <see cref="Agrupar"/>). Null: cartão próprio. A vaga é sempre liberada aqui — perguntando
+    /// ou saindo —, ou as outras chamadas do grupo ficariam esperando para sempre.
     /// </param>
     public async Task<string> ExecuteToolAsync(
         string toolName, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null,
-        Action<string>? aoDecidir = null)
+        Action<string>? aoDecidir = null, string? provedor = null, VagaNoCartao? vaga = null)
     {
+        using var saida = vaga;
+
         if (_tools.TryGetValue(toolName, out var tool))
         {
             if (tool.RequiredLevel > userLevel)
             {
                 aoDecidir?.Invoke("nivel_insuficiente");
                 return $"ACESSO NEGADO: A ferramenta '{toolName}' exige Nível {tool.RequiredLevel}, mas o seu nível atual é {userLevel}.";
+            }
+
+            if (EmailBarrado(toolName, provedor))
+            {
+                Console.WriteLine($"[REGISTRY] {toolName} barrada: e-mail só com modelo local.");
+                aoDecidir?.Invoke("email_so_local");
+                return $"ACESSO NEGADO: '{toolName}' está desligada para modelos na nuvem (Configurações › "
+                       + "E-mail › \"E-mail só com modelo local\"). Nada foi lido. Diga isso ao usuário; "
+                       + "não tente outro caminho para chegar à caixa de entrada.";
             }
 
             // ANTES do portão humano: chamada impossível não vira pergunta. Ver ITool.Validar.
@@ -110,15 +154,15 @@ public class ToolRegistry
                 return recusa;
             }
 
-            // A memória sobre o usuário não aceita pedido que pode ter vindo de um e-mail ou de
-            // uma página: "anote que o usuário quer X" valeria em todas as conversas seguintes.
-            if (tool.SoComFalaDoUsuario && ConteudoDeEmailNoContexto?.Invoke() == true)
-            {
-                Console.WriteLine($"[REGISTRY] {toolName} recusada: texto de terceiros no contexto.");
-                aoDecidir?.Invoke("recusada_no_pre_voo");
-                return $"ACESSO NEGADO: '{toolName}' não roda com texto de e-mail ou de página no contexto. "
-                       + "Se o usuário contou isso, guarde numa próxima conversa.";
-            }
+            // A memória sobre o usuário não aceita, sem ele ver, pedido que pode ter vindo de um
+            // e-mail ou de uma página: "anote que o usuário quer X" valeria em todas as conversas
+            // seguintes. Com texto de terceiros no contexto, a chamada vai ao cartão.
+            // Era recusa direta, e pegava também o que ele mesmo tinha ditado: depois de navegar,
+            // "lembre que <frase>" foi negado cinco vezes seguidas, e a conversa inteira ficava
+            // sem memória.
+            bool terceiros = false;
+            try { terceiros = tool.PedeFalaDoUsuario(argumentsJson) && ConteudoDeEmailNoContexto?.Invoke() == true; }
+            catch { terceiros = true; }
 
             // O que foi autorizado viaja até a execução: a ferramenta confere se ainda é aquilo.
             // Ver ITool.ExecutarAutorizadoAsync.
@@ -126,12 +170,12 @@ public class ToolRegistry
 
             // Na dúvida, pergunta: exceção ao decidir é pedir confirmação, nunca pular.
             bool pede;
-            try { pede = tool.PedeConfirmacao(argumentsJson); }
+            try { pede = terceiros || tool.PedeConfirmacao(argumentsJson); }
             catch { pede = true; }
 
             if (pede)
             {
-                if (DispensaPelaPasta(tool, argumentsJson))
+                if (!terceiros && DispensaPelaPasta(tool, argumentsJson))
                 {
                     var (liberado, motivo, ctxDispensa) = await DispensarAsync(tool, argumentsJson, userLevel, aoDecidir);
                     if (!liberado) return motivo!;
@@ -139,7 +183,7 @@ public class ToolRegistry
                 }
                 else
                 {
-                    var (permitido, motivo, ctxCard) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano, aoDecidir);
+                    var (permitido, motivo, ctxCard) = await AuthorizeAsync(tool, argumentsJson, userLevel, aoEsperarHumano, aoDecidir, vaga);
                     if (!permitido) return motivo!;
                     autorizado = ctxCard;
                 }
@@ -149,10 +193,19 @@ public class ToolRegistry
                 aoDecidir?.Invoke("automatica");
             }
 
+            // Não vai ao cartão (dispensa, sem confirmação, "sempre"): o grupo não espera por ela
+            // enquanto o script roda.
+            vaga?.Dispose();
+
             Console.WriteLine($"[REGISTRY] Executando: {toolName}({(argumentsJson.Length > 100 ? argumentsJson[..100] + "..." : argumentsJson)})");
             try
             {
                 string resultado = await tool.ExecutarAutorizadoAsync(argumentsJson, userLevel, autorizado);
+
+                // Valor do cofre que voltou na saída (eco, erro que repete a URL, API que devolve a
+                // chave) volta como [cofre: nome]. Troca exata, antes do filtro por formato.
+                resultado = Cofre.Redigir(resultado, out int doCofre);
+                if (doCofre > 0) Console.WriteLine($"[REGISTRY] {toolName}: {doCofre} valor(es) do cofre trocado(s) pelo nome.");
 
                 // Segredo que veio de carona na saída (variável de ambiente, .env, string de
                 // conexão) não vai ao modelo, e por isso também não vai ao raw.jsonl. Ver Segredos.
@@ -172,6 +225,37 @@ public class ToolRegistry
         Console.WriteLine($"[REGISTRY] AVISO: Ferramenta desconhecida '{toolName}'.");
         aoDecidir?.Invoke("ferramenta_desconhecida");
         return $"ERRO: Ferramenta '{toolName}' não encontrada no registry. Ferramentas disponíveis: {string.Join(", ", _tools.Keys)}.";
+    }
+
+    /// <summary>
+    /// As vagas no cartão das chamadas de um lote paralelo, na ordem delas: as que a ferramenta
+    /// junta pela mesma <see cref="ITool.ChaveDoCartao"/> dividem um cartão, as outras recebem
+    /// null. Visto no uso (21/10/2026): 27 chamadas ao bitrix no mesmo turno, 27 cartões.
+    /// Quem recebe as vagas TEM de passar cada uma ao <see cref="ExecuteToolAsync"/> (ou
+    /// descartá-la): o cartão só sai quando todas as do grupo chegaram.
+    /// </summary>
+    public IReadOnlyList<VagaNoCartao?> Agrupar(IReadOnlyList<(string Nome, string Argumentos)> chamadas)
+    {
+        var vagas = new VagaNoCartao?[chamadas.Count];
+        if (_confirmationPrompt is not { } prompt) return vagas;
+
+        var chaves = new List<(ITool Tool, string Chave, int Indice)>();
+        for (int i = 0; i < chamadas.Count; i++)
+        {
+            if (!_tools.TryGetValue(chamadas[i].Nome, out var tool)) continue;
+
+            string? chave;
+            try { chave = tool.ChaveDoCartao(chamadas[i].Argumentos); }
+            catch { chave = null; }
+            if (chave != null) chaves.Add((tool, tool.Name + "|" + chave, i));
+        }
+
+        foreach (var grupo in chaves.GroupBy(c => c.Chave).Where(g => g.Count() > 1))
+        {
+            var cartao = new GrupoDoCartao(grupo.First().Tool, grupo.Count(), prompt.PerguntarAsync);
+            foreach (var c in grupo) vagas[c.Indice] = new VagaNoCartao(cartao, c.Indice);
+        }
+        return vagas;
     }
 
     /// <summary>
@@ -249,7 +333,7 @@ public class ToolRegistry
     /// </summary>
     private async Task<(bool Autorizado, string? Motivo, CommandConfirmationContext? Contexto)> AuthorizeAsync(
         ITool tool, string argumentsJson, int userLevel, Action<long>? aoEsperarHumano = null,
-        Action<string>? aoDecidir = null)
+        Action<string>? aoDecidir = null, VagaNoCartao? vaga = null)
     {
         var ctx = MontarContexto(tool, argumentsJson, userLevel);
         if (ctx == null) return (false, await NegarSemContextoAsync(tool, userLevel, aoDecidir), null);
@@ -295,7 +379,10 @@ public class ToolRegistry
             Console.WriteLine($"[REGISTRY] {tool.Name}: esperando você autorizar...");
 
             var cronometro = System.Diagnostics.Stopwatch.StartNew();
-            var resposta = await _confirmationPrompt.PerguntarAsync(ctx);
+            // Em grupo, a resposta é a do cartão único; a auditoria e o "sempre" seguem por chamada.
+            var resposta = vaga != null
+                ? await vaga.PerguntarAsync(ctx)
+                : await _confirmationPrompt.PerguntarAsync(ctx);
             cronometro.Stop();
 
             // Ninguém respondeu: nega como sem interface, e não como recusa do usuário. O modelo
@@ -391,18 +478,23 @@ public class ToolRegistry
     {
         try
         {
-            if (ferramenta is not (Ferramentas.Gravar or Ferramentas.Editar)) return;
-            if (Memory.ArtifactExtractor.Falhou(resultado)) return;
+            // A chamada 'file' (uma operação ou lote) aberta nas gravações e edições dela.
+            foreach (var (nome, args, deu) in FileTool.Abrir(ferramenta, argumentsJson, resultado))
+            {
+                if (nome is not (Ferramentas.Gravar or Ferramentas.Editar)) continue;
+                if (Memory.ArtifactExtractor.Falhou(deu)) continue;
 
-            var args = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(argumentsJson);
-            if (args.ValueKind != System.Text.Json.JsonValueKind.Object) return;
-            if (!args.TryGetProperty("path", out var p) || p.ValueKind != System.Text.Json.JsonValueKind.String) return;
+                string caminho = Memory.ArtifactExtractor.StringDe(args, "path");
+                if (caminho.Length == 0) continue;
 
-            string caminho = PathArgumentRepair.Normalize(p.GetString());
-
-            // A mesma comparação de "está dentro da pasta" das pastas sem confirmação: resolve
-            // '..' e junções, e não confunde "skills" com "skills-velhas".
-            if (PastasSemConfirmacao.Dispensa(caminho, SkillService.Raiz)) Refresh();
+                // A mesma comparação de "está dentro da pasta" das pastas sem confirmação: resolve
+                // '..' e junções, e não confunde "skills" com "skills-velhas".
+                if (PastasSemConfirmacao.Dispensa(PathArgumentRepair.Normalize(caminho), SkillService.Raiz))
+                {
+                    Refresh();
+                    return;
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -441,11 +533,16 @@ public class ToolRegistry
             new EditFileTool(),
             new GlobTool(),
             new GrepTool(),
-            new RunCommandTool(),
+            new RunCommandTool(cofre: () => Cofre),
             new WriteFileTool(),
             new FsTool(),
+
+            // Gravar, editar e organizar, com lote. Os três acima são os motores dela: ficam
+            // registrados (o histórico antigo os chama) e fora do schema (Oferecida = false).
+            new FileTool(),
             new LembrarTool(),
             new LembreteTool(),
+            new DocTool(autor: () => _settingsService?.LoadSettings().ActiveCharacter ?? "AIB"),
 
             // O Edge só abre na primeira chamada: construir aqui não toca disco nem processo.
             new BrowserTool(Navegador.NavegadorService.Padrao,
@@ -465,7 +562,11 @@ public class ToolRegistry
                 () => _settingsService?.LoadSettings().MailAccounts ?? new List<MailAccountSettings>(),
                 endereco => new MailVault().Ler(endereco),
                 () => new MailKitMailService(
-                    _settingsService?.LoadSettings().MailTimeoutSeconds ?? new UserAppSettings().MailTimeoutSeconds))
+                    _settingsService?.LoadSettings().MailTimeoutSeconds ?? new UserAppSettings().MailTimeoutSeconds),
+                // mail_read só existe na conversa de um e-mail, e essa roda no provedor da triagem.
+                () => _settingsService == null
+                    ? LimitesDoProvedor.Atual
+                    : LimitesDoProvedor.Para(_settingsService.LoadSettings().ParaTriagem().AiProvider))
         };
 
         foreach (var tool in nativeTools)
@@ -491,7 +592,7 @@ public class ToolRegistry
     /// </summary>
     private void AtualizarFerramentaDeSkills()
     {
-        var skill = new ExecuteSkillTool();
+        var skill = new ExecuteSkillTool(() => Cofre);
         int quantas = SkillService.GetSkillCount();
 
         if (quantas > 0)

@@ -1,0 +1,130 @@
+<UserControl x:Class="AIB.Views.EsperaItem"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Cursor="Hand"
+             MouseLeftButtonUp="Item_Click">
+
+    <!--
+        Uma linha da seção "Aguardando retorno" do modo e-mail: uma conversa em que a última
+        palavra é sua. Irmã do MailListItem, e não uma variante dele: lá a linha é sobre o que
+        chegou (urgência, resumo da IA); aqui é sobre o que você mandou e quanto falta do prazo.
+
+        Três estados, pintados em código (Pintar): normal em lilás, VENCENDO (falta um dia) em
+        laranja e VENCIDA em vermelho. Cor e texto andam juntos — "1 dia", "venceu" — pelo
+        mesmo motivo do selo de urgência: daltonismo e captura em tons de cinza.
+    -->
+
+    <Border x:Name="Casca"
+            CornerRadius="12" Padding="12,11,14,11" BorderThickness="1"
+            Background="{StaticResource AccentFill07Brush}"
+            BorderBrush="{StaticResource AccentEdge28Brush}">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="30"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>   <!-- ícone, textos, prazo -->
+                <RowDefinition Height="Auto"/>   <!-- barra do prazo       -->
+                <RowDefinition Height="Auto"/>   <!-- corpo do acordeão    -->
+            </Grid.RowDefinitions>
+
+            <Border x:Name="Circulo" Grid.Column="0" Grid.Row="0"
+                    Width="30" Height="30" CornerRadius="15" VerticalAlignment="Top"
+                    Background="{StaticResource AccentFill12Brush}">
+                <Path x:Name="Icone"
+                      Data="M10,2.5 A7.5,7.5 0 1 1 9.99,2.5 Z M10,5.5 V10 L13,12"
+                      Stroke="{StaticResource AccentLilacBrush}"
+                      StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Width="14" Height="14" Stretch="Uniform"
+                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+
+            <StackPanel Grid.Column="1" Grid.Row="0" Margin="12,0,0,0">
+                <TextBlock x:Name="AssuntoTexto"
+                           FontSize="13" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{StaticResource TextStrongBrush}"/>
+                <TextBlock x:Name="ParaTexto"
+                           FontSize="11.5" Margin="0,2,0,0"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                <TextBlock x:Name="LinhaTexto"
+                           FontSize="10.5" Margin="0,3,0,0"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Grid.Row="0" Margin="10,0,0,0"
+                        VerticalAlignment="Top" HorizontalAlignment="Right">
+                <TextBlock x:Name="PrazoTexto"
+                           FontFamily="{StaticResource MonoFontFamily}"
+                           FontSize="11" FontWeight="SemiBold"
+                           HorizontalAlignment="Right"
+                           Foreground="{StaticResource AccentLilacBrush}"/>
+                <TextBlock x:Name="DataDoPrazoTexto"
+                           FontSize="10" HorizontalAlignment="Right"
+                           Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+
+            <!-- A BARRA: quanto do prazo já passou. Duas colunas em estrela, cheia e vazia,
+                 com os pesos postos em código — sem conversor nem medida de largura. -->
+            <Grid x:Name="Barra" Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="1"
+                  Height="3" Margin="12,9,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="Cheia" Width="0*"/>
+                    <ColumnDefinition x:Name="Vazia" Width="1*"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.ColumnSpan="2" CornerRadius="2"
+                        Background="{StaticResource SurfaceHoverSoftBrush}"/>
+                <Border x:Name="Preenchimento" Grid.Column="0" CornerRadius="2"
+                        Opacity="0.6"
+                        Background="{StaticResource AccentLilacBrush}"/>
+            </Grid>
+
+            <!-- ── O CORPO DO ACORDEÃO ────────────────────────────────────────
+                 Cursor de seta: aqui dentro se lê e se decide, não se fecha. -->
+            <StackPanel x:Name="Corpo" Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="2"
+                        Margin="12,10,0,0" Cursor="Arrow" Visibility="Collapsed">
+                <Rectangle Height="1" Fill="{StaticResource DividerBrush}" Margin="0,0,0,9"/>
+                <TextBlock x:Name="HistoricoTexto"
+                           FontFamily="{StaticResource MonoFontFamily}"
+                           FontSize="11" LineHeight="17"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource TextSecondaryBrush}"/>
+
+                <!-- As ações, na geometria do MailListItem. "Abrir com" é o primário: é ele
+                     que leva a uma decisão (um texto de cobrança, uma revisão da proposta).
+                     "Parar de vigiar" vira "Dispensar" quando o prazo já venceu — o gesto é o
+                     mesmo, mas a pergunta que ele responde mudou. -->
+                <WrapPanel Margin="0,12,0,0">
+                    <Button x:Name="BotaoAbrirComIA"
+                            Style="{StaticResource AcaoDoCorpo}"
+                            Margin="0,0,8,6"
+                            Click="AbrirComIA_Click">
+                        <TextBlock>
+                            <Run Text="Abrir com "/><Run x:Name="NomeDaIA" Text="AIB"/>
+                        </TextBlock>
+                    </Button>
+                    <Button x:Name="BotaoAbrirNoCliente"
+                            Style="{StaticResource AcaoSecundariaDoCorpo}"
+                            Margin="0,0,8,6"
+                            Content="Abrir no cliente"
+                            Click="AbrirNoCliente_Click"/>
+                    <Button x:Name="BotaoEstender"
+                            Style="{StaticResource AcaoSecundariaDoCorpo}"
+                            Margin="0,0,8,6"
+                            Content="+7 dias"
+                            ToolTip="Esperar mais uma semana"
+                            Click="Estender_Click"/>
+                    <Button x:Name="BotaoParar"
+                            Style="{StaticResource AcaoSecundariaDoCorpo}"
+                            Margin="0,0,8,6"
+                            Content="Parar de vigiar"
+                            Click="Parar_Click"/>
+                </WrapPanel>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

@@ -1,0 +1,1 @@
+Rubrica de avaliação (fornecedor) numa aba: cabeçalho de identificação, critérios com descrição, nota de 0 a 4 escolhida numa lista, peso, pontos e nota final ponderada, escala explicada e resultado (aprovado, com ressalvas, reprovado) pintado. Serve para avaliar qualquer coisa por critérios: candidato, proposta, projeto.

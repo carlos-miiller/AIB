@@ -123,6 +123,86 @@ namespace AIB.Tests
             estado.Itens.Should().ContainSingle().Which.Alvo.Should().Be("(comando que apaga arquivos)");
         }
 
+        /// <summary>
+        /// Caso real (shadow, capítulo 105): vinte chamadas "skill bitrix -Acao adicionar -Id 421099
+        /// -Texto …" viravam vinte linhas do Estado, 60% do capítulo, todas com "efeitos em disco
+        /// não rastreados", que para uma API é falso. A mesma skill, ação e alvo viram uma linha,
+        /// com a contagem, as recusas e a última chamada.
+        /// </summary>
+        [Fact]
+        public void Estado_ChamadasDaMesmaSkill_ViramUmaLinha()
+        {
+            object Add(string texto) => new { skill_name = "bitrix", arguments = $"-Acao adicionar -Id 421099 -Texto \"{texto}\" -Grupo 495217" };
+            var estado = EstadoDoTrecho.Montar(new[]
+            {
+                Turno(0, "cadastra",
+                    Chamada("skill", Add("SP - Campinas - Celular Geral"), "Item adicionado."),
+                    Chamada("skill", Add("SP - Itaim Bibi - Celular Geral"), ToolRegistry.RecusaDoUsuario),
+                    Chamada("skill", Add("SP - Ribeirão Preto - Celular Geral"), "Item adicionado."),
+                    Chamada("skill", new { skill_name = "bitrix", arguments = "-Acao checklist -Id 421099" }, "1. SP - Campinas"))
+            });
+            string texto = estado.Render("do capítulo 1");
+
+            texto.Should().Contain("skill bitrix -Acao adicionar -Id 421099 (3×): última: ok — 1 recusada pelo usuário; última: -Texto \"SP - Ribeirão Preto - Celular Geral\" -Grupo 495217");
+            texto.Should().Contain("skill bitrix -Acao checklist -Id 421099: última: ok");
+            texto.Should().NotContain("efeitos em disco");
+            estado.Itens.Should().HaveCount(2);
+        }
+
+        /// <summary>
+        /// Caso real (ato 5 do shadow refeito): a mesma "-Acao adicionar -Id 421099" com "-Grupo" na
+        /// frente virou outro item do Estado; a falha do Nordeste, refeita com os parâmetros em outra
+        /// ordem, ficou viva no Pendente; e scripts de várias linhas quebravam a lista do Estado.
+        /// </summary>
+        [Fact]
+        public void Skill_ParametrosEmOutraOrdem_SaoAMesmaChamada_EComandoFicaNumaLinha()
+        {
+            const string nordeste = "-Acao adicionar -Id 421099 -Grupo \"Nordeste\" -Texto \"BA - Salvador\"";
+            var turnos = new[]
+            {
+                Turno(0, "cadastra",
+                    Chamada("skill", new { skill_name = "bitrix", arguments = nordeste }, "ERRO: esta chamada exata já foi feita"),
+                    Chamada("skill", new { skill_name = "bitrix", arguments = "-Grupo \"Nordeste\" -Acao adicionar -Texto \"BA - Salvador\" -Id 421099" }, "Item adicionado."),
+                    Chamada("shell", new { command = "powershell -Command \"\n$a = 1\n$b = 2\"" }, "ok"))
+            };
+
+            var estado = EstadoDoTrecho.Montar(turnos);
+            estado.Itens.Where(i => i.Alvo.StartsWith("skill ")).Should().ContainSingle()
+                .Which.Alvo.Should().Be("skill bitrix -Acao adicionar -Id 421099");
+            estado.Render("do capítulo 1").Split('\n').Should().Contain(l => l.Contains("powershell") && l.Contains("$b = 2"),
+                "o script inteiro numa linha só");
+
+            Pendencias.Extrair(turnos).Should().BeEmpty("a falha foi refeita com sucesso, só em outra ordem");
+        }
+
+        /// <summary>
+        /// Caso real (shadow, turnos 512 e 549): o agente criou duas planilhas pela ferramenta doc
+        /// (um create e três edits cada) e nenhuma aparecia no Estado do capítulo nem do ato. O
+        /// Montar não tinha caso para "doc", e a memória não sabia que os arquivos existiam.
+        /// </summary>
+        [Fact]
+        public void Estado_PlanilhaCriadaEEditadaPeloDoc_EntraComoArquivoDoAgente()
+        {
+            string xlsx = Pasta + @"\dashboard-tarefas-ti-mock.xlsx";
+            string docx = Pasta + @"\ata.docx";
+            var estado = EstadoDoTrecho.Montar(new[]
+            {
+                Turno(0, "monte uma planilha de tarefas",
+                    Chamada("doc", new { action = "create", path = xlsx, content = new { sheets = Array.Empty<object>() } },
+                        $"SUCESSO: Planilha criada em '{xlsx}'."),
+                    Chamada("doc", new { action = "edit", path = xlsx, ops = new object[] { new { cell = "A1", value = "x" }, new { cell = "B1", value = "y" } } },
+                        $"SUCESSO: 2 alterações em '{xlsx}'."),
+                    Chamada("doc", new { action = "read", path = docx }, "¶1 Ata da reunião"),
+                    Chamada("doc", new { action = "help", topic = "criar" }, "Ajuda"))
+            });
+            string texto = estado.Render("do capítulo 1");
+
+            texto.Should().Contain("dashboard-tarefas-ti-mock.xlsx: criado pelo agente (2 alterações)",
+                "editar o que o agente criou mantém a origem");
+            texto.Should().Contain("ata.docx: já existia", "ler pelo doc prova que o arquivo existia, como o read");
+            estado.Consultas.Should().Be(1, "só a leitura conta; help não tem arquivo");
+        }
+
         // ─────────────────────────────────────────────────────────────────────
         // Combinado
         // ─────────────────────────────────────────────────────────────────────
@@ -139,6 +219,29 @@ namespace AIB.Tests
 
             falas.Should().ContainSingle().Which.Texto.Should().Be("altere o horário para Sábados: 12:00 ~ 14:00");
             Combinados.Render(falas).Should().Contain("(turno 2) \"altere o horário para Sábados: 12:00 ~ 14:00\"");
+        }
+
+        /// <summary>
+        /// Caso real (shadow, turno 558): a fala longa virou duas linhas no Combinado, uma só com
+        /// "[terça-feira - 27/10/2026 | 11:42]". O carimbo do orbe sempre tem número, então passava
+        /// no filtro de valor, tomava uma das três vagas da fala longa e fazia "continue" carimbado
+        /// entrar no Combinado.
+        /// </summary>
+        [Fact]
+        public void Combinado_IgnoraOCarimboDoOrbe()
+        {
+            string longa = "Ellen modifica essa tarefa que criei 421099\n"
+                         + new string('x', 300) + "\n"
+                         + "prazo 30/10\n"
+                         + "responsável: 2 pessoas";
+            var falas = Combinados.Extrair(new[]
+            {
+                Turno(0, ConversaDoOrbe.Carimbar("continue", new DateTime(2026, 10, 27, 11, 40, 0))),
+                Turno(1, ConversaDoOrbe.Carimbar(longa, new DateTime(2026, 10, 27, 11, 42, 0)))
+            });
+
+            falas.Select(f => f.Texto).Should().Equal(
+                "Ellen modifica essa tarefa que criei 421099", "prazo 30/10", "responsável: 2 pessoas");
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -159,6 +262,193 @@ namespace AIB.Tests
             aprendido.Should().ContainSingle().Which.Should().StartWith("gerar.ps1 não existia");
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // Resumo e frases memoráveis
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static Turn TurnoCarimbado(int indice, string fala, string resposta) => new(indice, new ChatMessage[]
+        {
+            ChatMessage.CreateUserMessage(ConversaDoOrbe.Carimbar(fala, new DateTime(2026, 10, 27, 12, 8, 0))),
+            ChatMessage.CreateAssistantMessage(resposta)
+        });
+
+        /// <summary>
+        /// Caso real (shadow, capítulo 105): a memória perdia a conversa — a pergunta do usuário
+        /// sobre a ordem da lista e a resposta da agente não ficavam em lugar nenhum. O resumidor
+        /// passou a escrever RESUMO e FRASES. No teste com o Gemini, ele pôs cada valor na linha de
+        /// baixo do rótulo, e o leitor antigo descartava o objetivo; e frase só fica se estiver no
+        /// trecho, palavra por palavra.
+        /// </summary>
+        [Fact]
+        public async Task ResumoEFrases_EntramNoCapitulo_EFraseInventadaSai()
+        {
+            const string resposta = "RESUMO:\nCarlos se desculpou por negar uma ação e Ellen levou na brincadeira.\n\n"
+                                  + "FRASES:\n- Carlos: \"acho que neguei essa sua ultima ação sem querer\"\n"
+                                  + "- Ellen: \"uma frase que ninguém disse\"\n\n"
+                                  + "OBJETIVO:\nReorganizar a lista de lojas.\n\nAPRENDIDO: nenhum\n\nPENDENTE:\ncriar as demais lojas";
+            var turnos = new[]
+            {
+                TurnoCarimbado(0, "ellen desculpa, acho que neguei essa sua ultima ação sem querer",
+                    "Não esquenta, Carlos! O botão de negar fica bem ali no clique rápido.")
+            };
+
+            var capitulo = await new Compactor(new ProviderQueConta(resposta)).SummarizeAsync(0, turnos, default);
+
+            capitulo.Resumo.Should().Be("Carlos se desculpou por negar uma ação e Ellen levou na brincadeira.");
+            capitulo.Frases.Should().Equal("Carlos: \"acho que neguei essa sua ultima ação sem querer\"");
+            capitulo.Objetivo.Should().BeNull("com resumo, a primeira frase dele situa o trecho");
+            capitulo.Pendencias!.Should().ContainSingle(p => p.Texto == "criar as demais lojas",
+                "o valor na linha de baixo do rótulo vale");
+
+            string texto = capitulo.Render();
+            texto.IndexOf("Resumo:").Should().BeLessThan(texto.IndexOf("Frases memoráveis:"));
+            texto.Should().NotContain("Objetivo:");
+        }
+
+        /// <summary>
+        /// Pedido do usuário: o Combinado guarda só fala que pede ou decide. No capítulo 105 do
+        /// shadow, o filtro por valor deixava "foi mal, ellen. te neguei de novo sem querer" e
+        /// perdia "pode fazer dois grupos para eu ver como ficaria?". O código numera todas as falas,
+        /// o modelo escolhe por número e o texto copiado é o do usuário. Sem a linha COMBINADO, fica
+        /// o Combinado de código: falha do modelo não apaga pedido.
+        /// </summary>
+        [Fact]
+        public async Task Combinado_EscolhidoPorNumero_CopiaAFalaDoUsuario()
+        {
+            var turnos = new[]
+            {
+                TurnoCarimbado(0, "pode fazer dois grupos para eu ver como ficaria?", "Feito."),
+                TurnoCarimbado(1, "foi mal, ellen. te neguei de novo sem querer em 2 itens", "Sem problema.")
+            };
+
+            var escolheu = await new Compactor(new ProviderQueConta("RESUMO: nenhum\nPENDENTE: nenhuma\nCOMBINADO:\n1"))
+                .SummarizeAsync(0, turnos, default);
+            escolheu.Combinado!.Select(f => f.Texto).Should().Equal("pode fazer dois grupos para eu ver como ficaria?");
+
+            var semLinha = await new Compactor(new ProviderQueConta("RESUMO: nenhum\nPENDENTE: nenhuma"))
+                .SummarizeAsync(0, turnos, default);
+            semLinha.Combinado!.Select(f => f.Texto).Should().Equal("foi mal, ellen. te neguei de novo sem querer em 2 itens");
+        }
+
+        /// <summary>
+        /// Caso real (teste do ato 5 no shadow): deduzidos do texto, os nomes saíam "Carlo" (a pasta
+        /// do Windows), "Carlos" e "Ellen W.". Agora vêm das configurações; sem eles, "o usuário" e
+        /// "o agente".
+        /// </summary>
+        [Fact]
+        public async Task PromptDoCapitulo_UsaOsNomesDasConfiguracoes()
+        {
+            var provider = new ProviderQueConta("RESUMO: nenhum");
+            await new Compactor(provider, usuario: "Carlos", agente: "Ellen").SummarizeAsync(0, new[] { TurnoCarimbado(0, "oi", "oi") }, default);
+
+            provider.UltimoSistema.Should().Contain("Você escreve a memória de Ellen sobre um trecho da conversa com Carlos");
+            Compactor.PromptDoCapitulo(null, null).Should().Contain("memória do agente sobre um trecho da conversa com o usuário");
+        }
+
+        /// <summary>
+        /// Trecho só de execução: o resumidor escreve "nenhum" e o capítulo fica como era, sem as
+        /// linhas novas gastando tokens.
+        /// </summary>
+        [Fact]
+        public async Task ResumoNenhum_NaoEntraNoCapitulo()
+        {
+            var turnos = new[] { TurnoCarimbado(0, "crie o arquivo", "Criado.") };
+            var capitulo = await new Compactor(new ProviderQueConta("RESUMO: nenhum\nFRASES: nenhuma\nOBJETIVO: criar o arquivo"))
+                .SummarizeAsync(0, turnos, default);
+
+            capitulo.Resumo.Should().BeNull();
+            capitulo.Frases.Should().BeEmpty();
+            capitulo.Render().Should().NotContain("Resumo:").And.NotContain("Frases memoráveis:");
+        }
+
+        /// <summary>
+        /// O resumo passa pela mesma conferência das lições: a frase que cita um valor sem origem
+        /// no trecho sai, e o resto do resumo fica.
+        /// </summary>
+        [Fact]
+        public void Resumo_FraseComValorSemOrigem_Sai()
+        {
+            var turnos = new[] { TurnoCarimbado(0, "separa as lojas por estado", "Separei.") };
+            var (resumo, _, _) = Compactor.LerResumoEFrases(
+                "RESUMO: Carlos pediu para separar as lojas por estado. Ellen criou 27 grupos.\nOBJETIVO: separar",
+                "separa as lojas por estado\nSeparei.", turnos);
+
+            resumo.Should().Be("Carlos pediu para separar as lojas por estado.");
+        }
+
+        /// <summary>
+        /// Caso real (shadow, capítulo 105): o objetivo reserva e a pendência do turno interrompido
+        /// começavam por "[terça-feira - 27/10/2026 | 12:08]", o carimbo que o orbe põe na fala.
+        /// </summary>
+        [Fact]
+        public void ObjetivoReservaEPendenciaInterrompida_SemCarimbo()
+        {
+            var turnos = new[]
+            {
+                TurnoCarimbado(0, "Ellen ficou perfeito! pode criar as demais", "[turno encerrado sem resposta: cancelado por você]")
+            };
+
+            Compactor.ObjetivoDaFala(turnos).Should().Be("pedido do turno 1: \"Ellen ficou perfeito! pode criar as demais\"");
+            Pendencias.Extrair(turnos).Should().ContainSingle()
+                .Which.Texto.Should().Contain("Pedido: \"Ellen ficou perfeito!").And.NotContain("27/10/2026");
+        }
+
+        /// <summary>
+        /// Caso real (ato 5 do shadow refeito): o Gemini escreveu as sete lições do APRENDIDO sem
+        /// "- " na frente, e o leitor descartou todas em silêncio.
+        /// </summary>
+        [Fact]
+        public void LicoesSemMarcador_SaoLidas()
+        {
+            var (_, aprendido, assunto) = Compactor.LerSecoes(
+                "APRENDIDO:\nA pasta da skill não é repositório git.\n- O nome do usuário é Carlos.\nPENDENTE:\nvalidar o painel",
+                "A pasta da skill não é repositório git. O nome do usuário é Carlos.");
+
+            aprendido.Should().Equal("A pasta da skill não é repositório git.", "O nome do usuário é Carlos.");
+            assunto.Should().ContainSingle().Which.Texto.Should().Be("validar o painel");
+        }
+
+        /// <summary>
+        /// Caso real (ato 5 do shadow refeito): a agente testou um webhook antigo do Bitrix num
+        /// Invoke-RestMethod; o endereço, que traz o token, foi para o Estado do capítulo e para uma
+        /// lição do ato. A redação só limpava resultados de ferramenta, não o comando que o agente
+        /// escreveu. Token de exemplo, inventado.
+        /// </summary>
+        [Fact]
+        public async Task WebhookNoComando_NaoChegaNaMemoriaNemNoResumidor()
+        {
+            const string token = "abc123def456ghi7";
+            string comando = $"Invoke-RestMethod -Uri 'https://empresa.bitrix24.com/rest/1/{token}/user.current.json'";
+            var turnos = new[] { Turno(0, "testa o webhook", Chamada("shell", new { command = comando }, "ok")) };
+            var provider = new ProviderQueConta($"RESUMO: Ellen testou o webhook.\nAPRENDIDO:\n- o webhook /rest/1/{token}/ está ativo");
+
+            var capitulo = await new Compactor(provider).SummarizeAsync(0, turnos, default);
+
+            Segredos.Redigir(comando).Should().NotContain(token).And.Contain("/rest/1/" + Segredos.Omitido);
+            provider.UltimoUsuario.Should().NotContain(token, "o resumidor não recebe o token");
+            capitulo.Render().Should().NotContain(token).And.Contain("bitrix24.com/rest/1/");
+            capitulo.Artifacts.Should().NotContain(a => a.Value.Contains(token));
+        }
+
+        /// <summary>
+        /// Caso real (ato 3 do shadow refeito): o modelo escreveu "PENDENTE:" e os itens numa lista
+        /// com "- " embaixo. O leitor gravou "- - Replicar…" e os outros itens ficavam sem lugar
+        /// (ou viravam lição, se o Aprendido viesse antes).
+        /// </summary>
+        [Fact]
+        public void Pendente_EmLista_ViraUmItemPorLinha()
+        {
+            var (_, aprendido, assunto) = Compactor.LerSecoes(
+                "APRENDIDO:\n- lição um\nPENDENTE:\n- Replicar o portal para o GLPI\n- Definir a nova missão\n",
+                "lição um");
+
+            aprendido.Should().Equal("lição um");
+            assunto.Select(p => p.Texto).Should().Equal("Replicar o portal para o GLPI", "Definir a nova missão");
+
+            Pendencias.LerDoResumo("PENDENTE: - Replicar o portal; Definir a missão").Assunto
+                .Select(p => p.Texto).Should().Equal("Replicar o portal", "Definir a missão");
+        }
+
         [Fact]
         public async Task SoCodigo_NaoChamaOModelo_EOObjetivoEhAFalaLiteral()
         {
@@ -168,6 +458,65 @@ namespace AIB.Tests
             provider.Chamadas.Should().Be(0, "o modo só código existe para o modelo local lento");
             capitulo.Objetivo.Should().Be($"pedido do turno 1: \"dê uma olhada nos arquivos em \"{Pasta}\"\"");
             capitulo.Render().Should().Contain("Estado ao fim do capítulo 1").And.Contain("Sábados: 12:00 ~ 14:00");
+        }
+
+        /// <summary>
+        /// Caso real (teste do ato 5 no shadow): o ato só via objetivo e lições dos capítulos e
+        /// perdia a história do arco; sem o registro do código, manteve como pendente um cadastro
+        /// já feito; e, sem nenhuma dinâmica nos capítulos, inventou duas linhas vagas. Agora ele
+        /// recebe o que cada capítulo escreveu e o registro do arco, escreve o resumo do arco, e o
+        /// código só aceita frase que veio de um capítulo e dinâmica que cita trechos do arco.
+        /// </summary>
+        [Fact]
+        public async Task Ato_ResumoDoArco_FrasesDosCapitulos_EDinamicaComTrechos()
+        {
+            Chapter Cap(int i, string resumo, string frase) => new(i, "", i, i, resumo, Array.Empty<Artifact>(),
+                Versao: BlocoEstruturado.Versao, Resumo: resumo, Frases: new[] { frase },
+                Combinado: new[] { new FalaCombinada(i, $"pedido {i}") }, Estado: EstadoDoTrecho.Vazio);
+            var caps = new[]
+            {
+                Cap(0, "Carlos pediu um painel e Ellen montou o rascunho.", "Carlos: \"COMO DIABOS você sabe??\""),
+                Cap(1, "Carlos corrigiu o nome e Ellen passou a usar Carlos.", "Ellen: \"anotado, Carlos com s!\"")
+            };
+            const string resposta = "RESUMO:\nCarlos pediu um painel e Ellen montou o rascunho. Depois ele corrigiu o nome.\n\n"
+                                  + "FRASES:\n- Carlos: \"COMO DIABOS você sabe??\"\n- Ellen: \"frase que nenhum capítulo tem\"\n\n"
+                                  + "DINÂMICA:\n- Ellen passou a chamar Carlos com s depois da correção (trechos 2)\n"
+                                  + "- A relação ficou mais madura\n- Carlos passou a confiar mais (trechos 9)\n\n"
+                                  + "APRENDIDO:\n- o painel parte do rascunho\nPENDENTE: nenhuma";
+            var provider = new ProviderQueConta(resposta);
+
+            var ato = await new Compactor(provider, usuario: "Carlos", agente: "Ellen").PromoteAsync(0, caps, default);
+
+            provider.UltimoUsuario.Should().Contain("RESUMO: Carlos corrigiu o nome").And.Contain("--- REGISTRADO POR CÓDIGO NO ARCO ---")
+                .And.Contain("pedido 1");
+            ato.Resumo.Should().StartWith("Carlos pediu um painel");
+            ato.Frases.Should().Equal("Carlos: \"COMO DIABOS você sabe??\"");
+            ato.Dinamica.Should().Equal("Ellen passou a chamar Carlos com s depois da correção (trechos 2)");
+            ato.Objetivo.Should().BeNull();
+            ato.Render().Should().Contain("Dinâmica entre agente e usuário:").And.NotContain("Objetivo:");
+        }
+
+        /// <summary>
+        /// Caso real (ato 5 do shadow refeito): cinco comandos que falharam e nunca foram refeitos
+        /// (leituras de um CSV no dia do painel, um git restore) seguiam no Pendente do ato, com o
+        /// assunto já andado. Com a linha PENDENTE do modelo, ficam só as falhas do último capítulo;
+        /// sem ela (modelo falhou), nada sai.
+        /// </summary>
+        [Fact]
+        public async Task Ato_FalhaAntiga_SaiQuandoOModeloEscrevePendente()
+        {
+            Chapter Cap(int i, string comando) => new(i, "", i, i, "x", Array.Empty<Artifact>(),
+                Pendencias: new[] { new Pendencia(Pendencia.Falha, $"executar {comando} falhou", comando, ArtifactKind.CommandRun) },
+                Versao: BlocoEstruturado.Versao, Resumo: "x", Estado: EstadoDoTrecho.Vazio);
+            var caps = new[] { Cap(0, "Import-Csv antigo.csv"), Cap(1, "git restore bitrix.ps1") };
+
+            var comPendente = await new Compactor(new ProviderQueConta("RESUMO: arco\nPENDENTE: validar o painel"))
+                .PromoteAsync(0, caps, default);
+            comPendente.Pendencias!.Select(p => p.Texto).Should().BeEquivalentTo(
+                "executar git restore bitrix.ps1 falhou", "validar o painel");
+
+            var semModelo = await new Compactor(new ProviderQueConta("RESUMO: arco")).PromoteAsync(0, caps, default);
+            semModelo.Pendencias!.Should().HaveCount(2, "sem a linha PENDENTE, o código não descarta nada");
         }
 
         [Fact]
@@ -291,14 +640,21 @@ namespace AIB.Tests
         {
             var s = new UserAppSettings { TurnosPorCapitulo = 99, CapitulosPorAto = 1, EsconderResultadosDepoisDe = -3 }.Sanear();
 
-            s.TurnosPorCapitulo.Should().Be(20);
+            // 40, e não 20: pedido do usuário, capítulos maiores (35–50 mil tokens crus) para o
+            // ato receber menos capítulos e mais ricos; com 20 turnos, o teto de tokens nunca chegava.
+            s.TurnosPorCapitulo.Should().Be(40);
             s.CapitulosPorAto.Should().Be(2);
             s.EsconderResultadosDepoisDe.Should().Be(0);
             new UserAppSettings().MemoriaComModelo.Should().BeTrue();
         }
         private sealed class ProviderQueConta : IChatProvider
         {
+            private readonly string _resposta;
+            public ProviderQueConta(string resposta = "OBJETIVO: x") => _resposta = resposta;
+
             public int Chamadas { get; private set; }
+            public string UltimoSistema { get; private set; } = "";
+            public string UltimoUsuario { get; private set; } = "";
             public string Name => "Fake";
             public string Model => "fake";
 
@@ -312,7 +668,9 @@ namespace AIB.Tests
             public Task<ChatCompletionResult> CompleteAsync(IReadOnlyList<ChatMessage> m, IReadOnlyList<ChatTool> t, ChatRequestOptions o, CancellationToken ct)
             {
                 Chamadas++;
-                return Task.FromResult(new ChatCompletionResult("OBJETIVO: x", null, null));
+                UltimoSistema = m.Count > 0 ? string.Concat(m[0].Content.Select(p => p.Text)) : "";
+                UltimoUsuario = m.Count > 1 ? string.Concat(m[^1].Content.Select(p => p.Text)) : "";
+                return Task.FromResult(new ChatCompletionResult(_resposta, null, null));
             }
 
             public Task WarmupAsync(CancellationToken ct) => Task.CompletedTask;

@@ -41,6 +41,27 @@ namespace AIB.Tests
 
             Directory.CreateDirectory(historico);
             ChatHistoryService.HistoryDirectoryOverride = historico;
+
+            // Os fatos, pelo mesmo motivo: a aba Memória lê e regrava o facts.md, e a tela de
+            // ensaio abriria (e ao salvar, reescreveria) o do usuário.
+            string fatos = Path.Combine(Path.GetTempPath(), "AIB_TestFatos_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(fatos);
+            AIB.Services.Memory.FactStore.RaizPadrao = fatos;
+
+            // O arquivo de status, que o prompt de sistema lê para o afeto: sem desviar, o
+            // prompt de todo ensaio dependeria do afeto que o usuário tem hoje.
+            string status = Path.Combine(Path.GetTempPath(), "AIB_TestStatus_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(status);
+            StatusDosPersonagens.RaizPadrao = status;
+
+            // Os hábitos, que o fechamento de capítulo grava e o prompt de sistema lê.
+            Habitos.RaizPadrao = status;
+
+            // O cofre de aliases: todo ToolRegistry da suíte redige a saída com ele, e sem
+            // desviar leria (e o shell injetaria) os segredos reais do usuário.
+            string cofre = Path.Combine(Path.GetTempPath(), "AIB_TestCofre_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(cofre);
+            Cofre.RaizPadrao = cofre;
         }
     }
 }

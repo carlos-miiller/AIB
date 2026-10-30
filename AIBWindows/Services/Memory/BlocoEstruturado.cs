@@ -23,10 +23,28 @@ public static class BlocoEstruturado
     public static string Render(
         string titulo, string? objetivo, IReadOnlyList<FalaCombinada>? combinado,
         EstadoDoTrecho? estado, string fimDe, IReadOnlyList<string>? aprendido,
-        int tetoDeItens = EstadoDoTrecho.TetoDeItens, bool comConsultados = true)
+        int tetoDeItens = EstadoDoTrecho.TetoDeItens, bool comConsultados = true,
+        string? resumo = null, IReadOnlyList<string>? frases = null, IReadOnlyList<string>? dinamica = null)
     {
         var texto = new StringBuilder();
         texto.Append(titulo).Append('\n');
+
+        // Resumo e frases logo depois do título: situam a conversa antes dos registros literais.
+        if (!string.IsNullOrWhiteSpace(resumo))
+            texto.Append("Resumo: ").Append(resumo.Trim()).Append('\n');
+
+        if (frases is { Count: > 0 })
+        {
+            texto.Append("Frases memoráveis:\n");
+            foreach (var frase in frases) texto.Append("- ").Append(frase.Trim()).Append('\n');
+        }
+
+        // Só no ato: como a relação mudou ao longo do arco.
+        if (dinamica is { Count: > 0 })
+        {
+            texto.Append("Dinâmica entre agente e usuário:\n");
+            foreach (var linha in dinamica) texto.Append("- ").Append(linha.Trim()).Append('\n');
+        }
 
         if (!string.IsNullOrWhiteSpace(objetivo))
             texto.Append("Objetivo: ").Append(objetivo.Trim()).Append('\n');
@@ -67,27 +85,32 @@ public static class BlocoEstruturado
         int maxTokens, TokenCounter counter,
         string titulo, string? objetivo, IReadOnlyList<FalaCombinada>? combinado,
         EstadoDoTrecho? estado, string fimDe, IReadOnlyList<string>? aprendido,
-        int tetoDeItens = EstadoDoTrecho.TetoDeItens)
+        int tetoDeItens = EstadoDoTrecho.TetoDeItens,
+        string? resumo = null, IReadOnlyList<string>? frases = null, IReadOnlyList<string>? dinamica = null)
     {
         if (maxTokens <= 0) return "";
 
         int falas = combinado?.Count ?? 0;
 
-        foreach (var (teto, consultados, comAprendido, pedidos) in new[]
+        // As frases saem junto com o Aprendido; o resumo, só quando o Combinado já encolheu:
+        // ele é o que conta a conversa, e o Combinado antigo vale menos que ele.
+        foreach (var (teto, consultados, comAprendido, pedidos, comResumo) in new[]
                  {
-                     (tetoDeItens, true, true, falas),
-                     (tetoDeItens, false, true, falas),
-                     (10, false, true, falas),
-                     (5, false, true, falas),
-                     (5, false, false, falas),
-                     (5, false, false, Math.Min(falas, 4)),
-                     (5, false, false, Math.Min(falas, 2)),
-                     (3, false, false, 0),
-                     (0, false, false, 0)
+                     (tetoDeItens, true, true, falas, true),
+                     (tetoDeItens, false, true, falas, true),
+                     (10, false, true, falas, true),
+                     (5, false, true, falas, true),
+                     (5, false, false, falas, true),
+                     (5, false, false, Math.Min(falas, 4), true),
+                     (5, false, false, Math.Min(falas, 2), true),
+                     (5, false, false, Math.Min(falas, 2), false),
+                     (3, false, false, 0, false),
+                     (0, false, false, 0, false)
                  })
         {
             string bloco = Render(titulo, objetivo, combinado?.TakeLast(pedidos).ToList(), estado, fimDe,
-                comAprendido ? aprendido : null, teto, consultados);
+                comAprendido ? aprendido : null, teto, consultados,
+                comResumo ? resumo : null, comAprendido ? frases : null, comAprendido ? dinamica : null);
             if (counter.CountText(bloco) <= maxTokens) return bloco;
         }
 

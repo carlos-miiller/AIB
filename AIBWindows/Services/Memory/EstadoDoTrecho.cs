@@ -89,6 +89,9 @@ public sealed record EstadoDoTrecho(
         // leitura pode ter sido gerado por ele — e não ser "já existia".
         bool houveComandoOpaco = false;
 
+        // Recusas e falhas de cada skill agrupada, para o detalhe do item.
+        var contagem = new Dictionary<string, (int Recusadas, int Falhas)>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var turno in turnos ?? Array.Empty<Turn>())
         {
             foreach (var (nome, args, resultado) in Pares(turno.Messages))
@@ -99,72 +102,39 @@ public sealed record EstadoDoTrecho(
                 switch (nome)
                 {
                     case Ferramentas.Ler:
-                    {
-                        string caminho = ArtifactExtractor.ResumirArgumento(nome, args);
-                        if (caminho.Length == 0) break;
-                        consultas++;
-
-                        if (falhou)
-                        {
-                            if (!itens.ContainsKey(caminho))
-                                Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não encontrado ao ler", Primeira(resultado), turno.Index));
-                            break;
-                        }
-
-                        bool pasta = resultado.Contains("é uma PASTA", StringComparison.Ordinal);
-                        Consultar(consultados, caminho);
-
-                        if (!itens.TryGetValue(caminho, out var existente))
-                        {
-                            // A leitura é prova de existência NAQUELE momento. Sem gravação
-                            // conhecida antes, ou já existia, ou um comando o gerou.
-                            if (!pasta)
-                                Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo,
-                                    houveComandoOpaco ? "existia (ou foi gerado por comando)" : "já existia", null, turno.Index));
-                        }
-                        else if (existente.Situacao.StartsWith("apagad", StringComparison.OrdinalIgnoreCase)
-                                 || existente.Situacao.StartsWith("não encontrado", StringComparison.Ordinal))
-                        {
-                            Guardar(existente with { Situacao = "reapareceu (gerado por comando)", Detalhe = null, Turno = turno.Index });
-                        }
+                        Leitura(ArtifactExtractor.ResumirArgumento(nome, args), falhou, resultado, turno.Index);
                         break;
-                    }
 
                     case Ferramentas.Gravar:
                     case Ferramentas.Editar:
                     {
                         string caminho = ArtifactExtractor.ResumirArgumento(nome, args);
                         if (caminho.Length == 0) break;
-                        itens.TryGetValue(caminho, out var antes);
-                        bool gravar = nome == Ferramentas.Gravar;
+                        Gravacao(caminho, nome == Ferramentas.Gravar, recusado, falhou, resultado, turno.Index,
+                            () => ArtifactExtractor.Construir(nome, args, resultado)?.Detail);
+                        break;
+                    }
 
-                        if (recusado)
+                    case Ferramentas.Documento:
+                    {
+                        // Planilha e Word que o agente cria ou edita são arquivo gravado como
+                        // qualquer outro. Sem este caso, o shadow fez duas planilhas inteiras
+                        // (dashboard-tarefas-ti-mock.xlsx, comparativo-edicoes-google-workspace.xlsx,
+                        // um create e três edits cada) e nenhuma apareceu na memória.
+                        string acao = ArtifactExtractor.StringDe(args, "action").Trim().ToLowerInvariant();
+                        string caminho = ArtifactExtractor.CaminhoDe(args);
+                        if (caminho.Length == 0) break;
+
+                        if (acao is "create" or "edit")
                         {
-                            Guardar((antes ?? new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não tocado", null, turno.Index))
-                                with { Detalhe = (gravar ? "gravação" : "edição") + " recusada pelo usuário", Turno = turno.Index });
-                            break;
+                            bool criar = acao == "create";
+                            Gravacao(caminho, criar, recusado, falhou, resultado, turno.Index,
+                                () => criar ? null : Alteracoes(args));
                         }
-
-                        if (falhou)
+                        else if (acao is "info" or "read" or "find" or "query" or "layout")
                         {
-                            Guardar((antes ?? new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não tocado", null, turno.Index))
-                                with { Detalhe = (gravar ? "gravação" : "edição") + " falhou: " + Primeira(resultado), Turno = turno.Index });
-                            break;
+                            Leitura(caminho, falhou, resultado, turno.Index);
                         }
-
-                        var artefato = ArtifactExtractor.Construir(nome, args, resultado);
-                        string situacao = gravar
-                            ? antes == null ? "criado pelo agente"
-                              : antes.Situacao.StartsWith("apagad", StringComparison.OrdinalIgnoreCase) ? "recriado pelo agente"
-                              : "reescrito pelo agente"
-                            : "editado pelo agente";
-
-                        // Editar o que o agente criou continua sendo "criado pelo agente": é a
-                        // ORIGEM que o próximo turno precisa saber.
-                        if (!gravar && antes != null && antes.Situacao.Contains("pelo agente", StringComparison.Ordinal))
-                            situacao = antes.Situacao;
-
-                        Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, situacao, artefato?.Detail, turno.Index));
                         break;
                     }
 
@@ -256,14 +226,10 @@ public sealed record EstadoDoTrecho(
 
                     case Ferramentas.Habilidade:
                     {
-                        string chamada = ArtifactExtractor.ResumirArgumento(nome, args).Trim();
-                        if (chamada.Length == 0) break;
-                        if (recusado)
-                        {
-                            Guardar(new ItemDeEstado("skill " + chamada, ItemDeEstado.TipoComando, "recusado pelo usuário", null, turno.Index));
-                            break;
-                        }
-                        ComandoOpaco("skill " + chamada, falhou, resultado, turno.Index);
+                        string skill = ArtifactExtractor.StringDe(args, "skill_name").Trim();
+                        if (skill.Length == 0) break;
+                        var (acao, resto) = SepararChamada(ArtifactExtractor.StringDe(args, "arguments"));
+                        Habilidade(("skill " + skill + " " + acao).Trim(), resto, recusado, falhou, resultado, turno.Index);
                         break;
                     }
 
@@ -285,6 +251,93 @@ public sealed record EstadoDoTrecho(
             if (itens.ContainsKey(chave)) ordem.Remove(chave);
             itens[chave] = item;
             ordem.Add(chave);
+        }
+
+        void Leitura(string caminho, bool falhou, string resultado, int turno)
+        {
+            if (caminho.Length == 0) return;
+            consultas++;
+
+            if (falhou)
+            {
+                if (!itens.ContainsKey(caminho))
+                    Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não encontrado ao ler", Primeira(resultado), turno));
+                return;
+            }
+
+            bool pasta = resultado.Contains("é uma PASTA", StringComparison.Ordinal);
+            Consultar(consultados, caminho);
+
+            if (!itens.TryGetValue(caminho, out var existente))
+            {
+                // A leitura é prova de existência NAQUELE momento. Sem gravação
+                // conhecida antes, ou já existia, ou um comando o gerou.
+                if (!pasta)
+                    Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo,
+                        houveComandoOpaco ? "existia (ou foi gerado por comando)" : "já existia", null, turno));
+            }
+            else if (existente.Situacao.StartsWith("apagad", StringComparison.OrdinalIgnoreCase)
+                     || existente.Situacao.StartsWith("não encontrado", StringComparison.Ordinal))
+            {
+                Guardar(existente with { Situacao = "reapareceu (gerado por comando)", Detalhe = null, Turno = turno });
+            }
+        }
+
+        void Gravacao(string caminho, bool gravar, bool recusado, bool falhou, string resultado, int turno, Func<string?> detalhe)
+        {
+            itens.TryGetValue(caminho, out var antes);
+
+            if (recusado)
+            {
+                Guardar((antes ?? new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não tocado", null, turno))
+                    with { Detalhe = (gravar ? "gravação" : "edição") + " recusada pelo usuário", Turno = turno });
+                return;
+            }
+
+            if (falhou)
+            {
+                Guardar((antes ?? new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, "não tocado", null, turno))
+                    with { Detalhe = (gravar ? "gravação" : "edição") + " falhou: " + Primeira(resultado), Turno = turno });
+                return;
+            }
+
+            string situacao = gravar
+                ? antes == null ? "criado pelo agente"
+                  : antes.Situacao.StartsWith("apagad", StringComparison.OrdinalIgnoreCase) ? "recriado pelo agente"
+                  : "reescrito pelo agente"
+                : "editado pelo agente";
+
+            // Editar o que o agente criou continua sendo "criado pelo agente": é a
+            // ORIGEM que o próximo turno precisa saber.
+            if (!gravar && antes != null && antes.Situacao.Contains("pelo agente", StringComparison.Ordinal))
+                situacao = antes.Situacao;
+
+            Guardar(new ItemDeEstado(caminho, ItemDeEstado.TipoArquivo, situacao, detalhe(), turno));
+        }
+
+        // Chamadas da mesma skill, ação e alvo viram UM item, com a contagem. No shadow, um
+        // capítulo de checklist do Bitrix tinha vinte linhas "skill bitrix -Acao adicionar -Id
+        // 421099 -Texto …", uma por item: 60% do capítulo, e o grupo de cada item se perdia
+        // no meio do comando.
+        void Habilidade(string alvo, string resto, bool recusado, bool falhou, string resultado, int turno)
+        {
+            itens.TryGetValue(ChaveDeComando(alvo), out var antes);
+            contagem.TryGetValue(alvo, out var c);
+            if (recusado) c.Recusadas++;
+            else if (falhou) c.Falhas++;
+            contagem[alvo] = c;
+
+            var detalhe = new List<string>();
+            if (falhou && !recusado && Primeira(resultado) is string erro) detalhe.Add(erro);
+            if (c.Recusadas > 0) detalhe.Add(c.Recusadas == 1 ? "1 recusada pelo usuário" : $"{c.Recusadas} recusadas pelo usuário");
+            if (c.Falhas > 0 && !(falhou && c.Falhas == 1)) detalhe.Add(c.Falhas == 1 ? "1 falhou" : $"{c.Falhas} falharam");
+            if (resto.Length > 0) detalhe.Add("última: " + (resto.Length > 120 ? resto[..120] + "…" : resto));
+
+            Guardar(new ItemDeEstado(alvo, ItemDeEstado.TipoComando,
+                recusado ? "recusado pelo usuário" : falhou ? "FALHOU" : "ok",
+                detalhe.Count == 0 ? null : string.Join("; ", detalhe),
+                turno,
+                (antes?.Vezes ?? 0) + 1));
         }
 
         void ComandoOpaco(string comando, bool falhou, string resultado, int turno)
@@ -417,14 +470,110 @@ public sealed record EstadoDoTrecho(
         consultados.Add(caminho);
     }
 
+    private static readonly Regex TokenDeArgumento = new(@"""[^""]*""|'[^']*'|\S+", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Separa os argumentos de uma skill em ação + alvo (os dois primeiros pares
+    /// <c>-Nome valor</c>, que por convenção dizem o que fazer e onde) e o resto. Valor entre
+    /// aspas na parte da ação vira "…": texto livre não pode separar chamadas da mesma ação.
+    /// </summary>
+    internal static (string Acao, string Resto) SepararChamada(string? argumentos)
+    {
+        var pares = Pares(argumentos);
+
+        // A ação e o alvo pelo NOME quando existem (-Acao, -Id), e não pela posição: no shadow, a
+        // mesma "-Acao adicionar -Id 421099" chamada com "-Grupo" na frente virou outro item.
+        int iAcao = pares.FindIndex(p => Nomeado(p.Nome, "acao", "action"));
+        if (iAcao < 0) iAcao = pares.Count > 0 ? 0 : -1;
+        int iAlvo = pares.FindIndex(p => Nomeado(p.Nome, "id"));
+        if (iAlvo < 0 || iAlvo == iAcao)
+        {
+            iAlvo = -1;
+            for (int i = 0; i < pares.Count && iAlvo < 0; i++)
+                if (i != iAcao && pares[i].Nome.Length > 0) iAlvo = i;
+        }
+
+        string Mostrar((string Nome, string? Valor) p)
+        {
+            if (p.Valor == null) return p.Nome;
+            string valor = p.Valor.StartsWith('"') || p.Valor.StartsWith('\'') ? "…" : p.Valor;
+            return p.Nome.Length == 0 ? valor : p.Nome + " " + valor;
+        }
+
+        var acao = new[] { iAcao, iAlvo }.Where(i => i >= 0).Select(i => Mostrar(pares[i]));
+        var resto = pares.Where((p, i) => i != iAcao && i != iAlvo)
+            .Select(p => p.Nome.Length == 0 ? p.Valor! : p.Valor == null ? p.Nome : p.Nome + " " + p.Valor);
+        return (string.Join(" ", acao), string.Join(" ", resto));
+    }
+
+    /// <summary>
+    /// A chave de uma chamada de skill ("bitrix -Acao adicionar -Id 1 -Texto …") com os pares
+    /// em ordem alfabética: a mesma chamada com os parâmetros em outra ordem é a mesma chamada.
+    /// No shadow, a pendência "adicionar Nordeste falhou" ficou viva porque o sucesso veio com
+    /// "-Grupo" na frente.
+    /// </summary>
+    public static string ChaveDeSkill(string? chamada)
+    {
+        string c = (chamada ?? "").Trim();
+        int espaco = c.IndexOf(' ');
+        string nome = espaco < 0 ? c : c[..espaco];
+        var pares = Pares(espaco < 0 ? "" : c[(espaco + 1)..])
+            .Select(p => p.Nome.Length == 0 ? p.Valor! : p.Valor == null ? p.Nome : p.Nome + " " + p.Valor)
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase);
+        return Regex.Replace((nome + " " + string.Join(" ", pares)).Trim(), @"\s+", " ").ToLowerInvariant();
+    }
+
+    private static bool Nomeado(string nome, params string[] nomes) =>
+        nomes.Any(n => nome.TrimStart('-').Equals(n, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Os argumentos em pares "-Nome valor"; token solto vira par sem nome.</summary>
+    private static List<(string Nome, string? Valor)> Pares(string? argumentos)
+    {
+        var tokens = TokenDeArgumento.Matches(argumentos ?? "").Select(m => m.Value).ToList();
+        var pares = new List<(string, string?)>();
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            if (tokens[i].StartsWith('-') && tokens[i].Length > 1)
+            {
+                bool temValor = i + 1 < tokens.Count && !(tokens[i + 1].StartsWith('-') && tokens[i + 1].Length > 1);
+                pares.Add((tokens[i], temValor ? tokens[++i] : null));
+            }
+            else pares.Add(("", tokens[i]));
+        }
+        return pares;
+    }
+
+    /// <summary>"3 alterações" de um <c>doc edit</c>, pelo tamanho de <c>ops</c>.</summary>
+    private static string? Alteracoes(string args)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(args);
+            if (doc.RootElement.TryGetProperty("ops", out var ops) && ops.ValueKind == JsonValueKind.Array)
+            {
+                int n = ops.GetArrayLength();
+                return n == 1 ? "1 alteração" : $"{n} alterações";
+            }
+        }
+        catch (JsonException) { }
+        return null;
+    }
+
     private static string? Primeira(string? resultado)
     {
         string? linha = ArtifactExtractor.PrimeiraLinhaDoErro(resultado);
         return linha == null ? null : Regex.Replace(linha, @"^ERRO(\s*\([^)]*\))?\s*:\s*", "");
     }
 
-    /// <summary>Chamada e resultado pareados por id, na ordem em que os resultados chegaram.</summary>
-    private static IEnumerable<(string Nome, string Args, string Resultado)> Pares(IReadOnlyList<ChatMessage> mensagens)
+    /// <summary>
+    /// Chamada e resultado pareados por id, na ordem em que os resultados chegaram. A chamada
+    /// <c>file</c> sai aberta nas operações dela (<c>write</c>, <c>edit</c>, <c>fs</c>), cada uma
+    /// com o seu resultado: o Estado de um lote é o mesmo das chamadas soltas.
+    /// </summary>
+    private static IEnumerable<(string Nome, string Args, string Resultado)> Pares(IReadOnlyList<ChatMessage> mensagens) =>
+        PorId(mensagens).SelectMany(p => Tools.FileTool.Abrir(p.Nome, p.Args, p.Resultado));
+
+    private static IEnumerable<(string Nome, string Args, string Resultado)> PorId(IReadOnlyList<ChatMessage> mensagens)
     {
         var chamadas = new Dictionary<string, (string, string)>(StringComparer.Ordinal);
 
@@ -496,9 +645,21 @@ public sealed record EstadoDoTrecho(
 
     private static string Linha(ItemDeEstado item, string? comum)
     {
+        // Skill não diz "efeitos em disco não rastreados": ela fala com uma API ou faz o que o
+        // script dela faz, e a frase sobre disco era falsa para o Bitrix.
+        if (item.Tipo == ItemDeEstado.TipoComando && item.Alvo.StartsWith("skill ", StringComparison.Ordinal))
+        {
+            string vezes = item.Vezes > 1 ? $" ({item.Vezes}×)" : "";
+            string desfecho = item.Situacao is "ok" or "FALHOU" ? "última: " + item.Situacao : item.Situacao;
+            if (item.Detalhe != null) desfecho += " — " + UmaLinha(item.Detalhe);
+            return $"{UmaLinha(item.Alvo)}{vezes}: {desfecho} (turno {item.Turno + 1})";
+        }
+
         if (item.Tipo == ItemDeEstado.TipoComando)
         {
-            string cmd = item.Alvo.Length > 160 ? item.Alvo[..160] + "…" : item.Alvo;
+            // Numa linha só: um script de várias linhas quebrava a lista do Estado ao meio.
+            string umaLinha = UmaLinha(item.Alvo);
+            string cmd = umaLinha.Length > 160 ? umaLinha[..160] + "…" : umaLinha;
             string vezes = item.Vezes > 1 ? $" ({item.Vezes}×)" : "";
             string desfecho = item.Situacao == "ok"
                 ? "última: ok — efeitos em disco não rastreados"
@@ -517,6 +678,8 @@ public sealed record EstadoDoTrecho(
         if (!string.IsNullOrEmpty(item.Detalhe)) linha += $" ({item.Detalhe})";
         return linha + $" (turno {item.Turno + 1})";
     }
+
+    private static string UmaLinha(string texto) => Regex.Replace(texto, @"\s*[\r\n]+\s*", " ⏎ ");
 
     private static string NomeCurto(string caminho)
     {

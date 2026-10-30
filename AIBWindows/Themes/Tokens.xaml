@@ -97,6 +97,10 @@
          removido de propósito. Chat A11. -->
     <sys:Double x:Key="IconTrackMaxWidth">142</sys:Double>
     <sys:Double x:Key="TooltipBlockWidth">340</sys:Double>
+    <!-- A largura da barra do Shadow, e de toda janela flutuante (confirmação, senha do
+         terminal, aviso): elas aparecem em cima do orbe, e com larguras próprias (460, 520,
+         440) cada uma desalinhava das bordas da barra de um jeito. -->
+    <sys:Double x:Key="ShadowWidth">624</sys:Double>
     <sys:Double x:Key="TooltipRawMaxHeight">118</sys:Double>
     <sys:Double x:Key="TooltipDiffMaxHeight">180</sys:Double>
 
