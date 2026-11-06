@@ -16,6 +16,30 @@ namespace AIB.Tests
             new("assistant", fala, new List<ToolCallRecord> { new(id, ferramenta, args) });
 
         [Fact]
+        public void UltimasFalas_VemDoRegistro_ESoAsUltimas()
+        {
+            // Visto no uso (06/11/2026): um turno longo virou capítulo, o contexto vivo ficou
+            // vazio, e o Shadow reabriu só com o "continue" e a marca de erro. As falas do orbe
+            // ao reabrir vêm do raw.jsonl.
+            var turnos = new[]
+            {
+                Turno(new MessageRecord("user", "migre o locacoes"),
+                      Chamada("c1", "read"),
+                      new MessageRecord("tool", "conteúdo", ToolCallId: "c1"),
+                      new MessageRecord("assistant", "Migrei o arquivo.")),
+                Turno(new MessageRecord("user", "continue"),
+                      new MessageRecord("assistant", "[turno encerrado sem resposta: o turno parou por um erro]")),
+            };
+
+            ConversaNaTela.UltimasFalas(turnos, 12).Select(f => f.Texto).Should().Equal(
+                "migre o locacoes", "Migrei o arquivo.", "continue",
+                "[turno encerrado sem resposta: o turno parou por um erro]");
+
+            ConversaNaTela.UltimasFalas(turnos, 2).Select(f => f.Texto).Should().Equal(
+                "continue", "[turno encerrado sem resposta: o turno parou por um erro]");
+        }
+
+        [Fact]
         public void TurnoQueParouNoTeto_VoltaComAsFerramentas_ENaoSoComAMarca()
         {
             // Caso real, 15/10, "Editar tarefa 3103 no Bitrix": turnos de 60 ferramentas que

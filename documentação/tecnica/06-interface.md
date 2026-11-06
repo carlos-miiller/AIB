@@ -438,9 +438,10 @@ fica no monitor primário, centralizado, 45 px acima da barra de tarefas
   cada pedaço). O clique abre o Explorer com o arquivo selecionado (pasta: aberta) e **nunca abre
   nem executa o arquivo** — o texto é do modelo. Destinos de mover, copiar e renomear entram nos
   recentes (`AgentLoop.TrackRecentFile`).
-  No arranque (e ao religar o orbe), `LigarOrbe` devolve à pilha as últimas 12 falas do contexto
-  vivo (`ConversationService.UltimasFalas` → `RestaurarFalas`), escondidas até a barra abrir; o
-  que já virou capítulo não volta como bolha.
+  No arranque (e ao religar o orbe), `LigarOrbe` devolve à pilha as últimas 12 falas gravadas no
+  `raw.jsonl` (`ConversationService.FalasGravadas` → `ConversaNaTela.UltimasFalas` →
+  `RestaurarFalas`), escondidas até a barra abrir. Vinham do contexto vivo, que a compactação
+  esvazia: em 06/11/2026 o Shadow reabriu só com o "continue" e a marca de erro.
   A resposta de um turno da JANELA não entra nessa pilha, nem com a janela fechada no meio do
   turno: o orbe só acende o anel do passo (`PassoDoTurnoMudou`). `OrbeDeveFalar` vale só para a
   ligação sem conversa própria (ensaios).

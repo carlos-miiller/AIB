@@ -73,6 +73,30 @@ public static class ConversaNaTela
         return itens;
     }
 
+    /// <summary>
+    /// As últimas <paramref name="quantas"/> falas gravadas, do <c>raw.jsonl</c>: o que o orbe
+    /// redesenha ao reabrir.
+    /// <para>
+    /// Antes vinham do contexto vivo do modelo, e a compactação o esvazia. Visto no uso
+    /// (06/11/2026): depois de um turno longo virar capítulo, o Shadow reabriu só com o
+    /// "continue" e o "[turno encerrado sem resposta]", como se a conversa tivesse sumido.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<Fala> UltimasFalas(IReadOnlyList<TurnRecord>? turnos, int quantas)
+    {
+        if (turnos == null || quantas <= 0) return Array.Empty<Fala>();
+
+        // Todo turno tem ao menos a fala do usuário: os últimos N turnos bastam.
+        var ultimos = new List<TurnRecord>();
+        for (int i = Math.Max(0, turnos.Count - quantas); i < turnos.Count; i++) ultimos.Add(turnos[i]);
+
+        var falas = new List<Fala>();
+        foreach (var item in Montar(ultimos))
+            if (item is Fala f) falas.Add(f);
+
+        return falas.GetRange(Math.Max(0, falas.Count - quantas), Math.Min(quantas, falas.Count));
+    }
+
     /// <summary>Nulo para o <c>remember</c> que falhou: ao vivo ele também não aparece.</summary>
     private static Item? DaChamada(ToolCallRecord feita, string resultado)
     {

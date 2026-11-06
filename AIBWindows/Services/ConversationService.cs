@@ -2615,6 +2615,28 @@ public sealed class ConversationService : IMessageStore
         return falas.Skip(Math.Max(0, falas.Count - quantas)).ToList();
     }
 
+    /// <summary>
+    /// As últimas falas gravadas no <c>raw.jsonl</c> — ver <see cref="ConversaNaTela.UltimasFalas"/>.
+    /// Sem registro, ou ilegível, cai nas do contexto vivo.
+    /// </summary>
+    public IReadOnlyList<(bool DoUsuario, string Texto)> FalasGravadas(int quantas)
+    {
+        try
+        {
+            var falas = ConversaNaTela.UltimasFalas(_sessionMemory?.ReadTurns(), quantas)
+                .Select(f => (f.DoUsuario, QuebraDeFala.Limpar(f.Texto).Trim()))
+                .Where(f => f.Item2.Length > 0)
+                .ToList();
+            if (falas.Count > 0) return falas;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MEMORIA] Falas gravadas ilegíveis: {ex.Message}");
+        }
+
+        return UltimasFalas(quantas, int.MaxValue);
+    }
+
     private void DefinirTitulo(string? titulo)
     {
         if (string.IsNullOrWhiteSpace(titulo)) return;
