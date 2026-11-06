@@ -338,6 +338,68 @@ namespace AIB.Tests
             conversation.CountTokens().Should().BeLessThanOrEqualTo(ConversationService.TetoDaPoda);
         }
 
+        private static ChatToolCall Chamada(string id) =>
+            ChatToolCall.CreateFunctionToolCall(id, "read", BinaryData.FromString("""{"path":"C:\\1.txt"}"""));
+
+        [Fact]
+        public void Trim_QuandoCortaOPedidoAntigo_LevaORestoDoTurnoJunto()
+        {
+            // Visto no uso (06/11/2026): a poda cortou o pedido de um turno antigo e parou ali.
+            // O histórico passou a começar por chamada de ferramenta da Ellen, o Google respondeu
+            // 400 "function call turn comes immediately after a user turn or after a function
+            // response turn", e todo turno seguinte do orbe falhou.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            conversation.AppendRecoveredContext("antigo", "pedido antigo");
+            int quantas = MensagensParaEstourarAJanela(2000);
+            for (int i = 0; i < quantas; i++)
+            {
+                conversation.AppendAssistantToolCalls(new[] { Chamada("c" + i) });
+                conversation.AppendToolResult("c" + i, Filler(2000));
+            }
+            conversation.AppendRecoveredContext("novo", "pedido novo");
+
+            conversation.Trim(1);
+
+            conversation.SnapshotHistory()[0].Should().BeOfType<UserChatMessage>();
+        }
+
+        [Fact]
+        public void Trim_HistoricoQueJaComecaPorChamada_ECurado()
+        {
+            // O mesmo caso, depois do estrago: a conversa já salva quebrada precisa voltar a
+            // andar sem o usuário ter de abrir outra.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            conversation.AppendAssistantToolCalls(new[] { Chamada("x") });
+            conversation.AppendToolResult("x", "conteúdo");
+            conversation.AppendAssistantText("Pronto.");
+            conversation.AppendRecoveredContext("novo", "pedido novo");
+
+            conversation.Trim(1);
+
+            var depois = conversation.SnapshotHistory();
+            depois[0].Should().BeOfType<UserChatMessage>();
+            depois.Should().HaveCount(2);
+        }
+
+        [Fact]
+        public void Trim_FalaEspontaneaNoComeco_Fica()
+        {
+            // A fala que abre a conversa sem pedido é só texto e é legítima.
+            var settings = BuildSettings(sendSystemPrompt: false);
+            var conversation = BuildConversation(settings, new FakeProvider(), out _);
+
+            conversation.AppendAssistantText("Bom dia! Vi que chegou e-mail novo.");
+            conversation.AppendRecoveredContext("novo", "pedido novo");
+
+            conversation.Trim(1);
+
+            conversation.SnapshotHistory().Should().HaveCount(3);
+        }
+
         [Fact]
         public async Task UmaPassada_FECHA_QuantosCapitulosForemPrecisos()
         {

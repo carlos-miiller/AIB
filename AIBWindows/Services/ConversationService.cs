@@ -2116,6 +2116,13 @@ public sealed class ConversationService : IMessageStore
             var abertura = ChatMessage.CreateUserMessage(userMessage);
             lock (_gate)
             {
+                // Antes do pedido novo: um histórico que uma poda antiga deixou começando por
+                // chamada de ferramenta faria TODO turno falhar no Google. Ver CortarRestoSemPedido.
+                int semTurno = int.MaxValue;
+                int curadas = CortarRestoSemPedido(FirstRemovableIndex(), ref semTurno);
+                if (curadas > 0)
+                    Console.WriteLine($"[MEMORIA] {curadas} mensagem(ns) de um turno sem pedido tirada(s) do começo do histórico.");
+
                 _metaDasMensagens.AddOrUpdate(abertura, new MetaDaMensagem(
                     AtUtc: DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture)));
                 _metaDaProximaFala = null;
@@ -2889,6 +2896,38 @@ public sealed class ConversationService : IMessageStore
     /// <summary>O mesmo teto sobre a janela DESTA conversa — ver <see cref="Janela"/>.</summary>
     private int TetoDaPodaAgora => Janela() - MargemDaResposta;
 
+    /// <summary>
+    /// Tira do começo do histórico o resto de um turno cujo pedido já saiu, quando esse resto
+    /// tem chamada de ferramenta. Devolve quantas mensagens saíram. Chamar sob <see cref="_gate"/>.
+    /// <para>
+    /// Visto no uso (06/11/2026): a poda de emergência cortou o pedido de um turno antigo e parou
+    /// ali, deixando as chamadas de ferramenta da Ellen logo depois do prompt de sistema. O Google
+    /// recusa isso ("function call turn comes immediately after a user turn or after a function
+    /// response turn") e todo turno seguinte do orbe falhou com 400.
+    /// </para>
+    /// <para>
+    /// Resto só de texto fica: a fala espontânea, que abre a conversa sem pedido, é legítima.
+    /// </para>
+    /// </summary>
+    private int CortarRestoSemPedido(int inicio, ref int protegida)
+    {
+        int fim = inicio;
+        while (fim < _history.Count && fim < protegida && _history[fim] is not UserChatMessage) fim++;
+
+        bool temFerramenta = false;
+        for (int i = inicio; i < fim; i++)
+            if (_history[i] is ToolChatMessage
+                || _history[i] is AssistantChatMessage { ToolCalls.Count: > 0 })
+                temFerramenta = true;
+
+        if (!temFerramenta) return 0;
+
+        int n = fim - inicio;
+        _history.RemoveRange(inicio, n);
+        if (protegida >= fim) protegida -= n;
+        return n;
+    }
+
     public void Trim(int userLevel)
     {
         // O teto do NÍVEL não entra mais aqui. Ele governa a compactação, que substitui o que
@@ -2914,7 +2953,10 @@ public sealed class ConversationService : IMessageStore
             int protegida = UltimoIndiceDeUsuario();
 
             antes = _tokenCounter.CountMessages(_history);
-            int currentTokens = antes;
+
+            // Cura o histórico que uma poda antiga já deixou quebrado.
+            cortadas += CortarRestoSemPedido(firstRemovable, ref protegida);
+            int currentTokens = _tokenCounter.CountMessages(_history);
 
             int safetyCounter = 0;
             while (currentTokens > maxTokens
@@ -2940,6 +2982,10 @@ public sealed class ConversationService : IMessageStore
                         if (alvo < protegida) protegida--;
                     }
                 }
+
+                // Saiu o pedido de um turno antigo: o resto dele vai junto.
+                if (alvo == firstRemovable)
+                    cortadas += CortarRestoSemPedido(firstRemovable, ref protegida);
 
                 currentTokens = _tokenCounter.CountMessages(_history);
             }

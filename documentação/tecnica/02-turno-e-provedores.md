@@ -123,6 +123,7 @@ Todo turno termina com uma fala de assistente. Quando não há, entra a marca `A
 - Age só acima de `TetoDaPoda` = `ChatRequestOptions.Default.NumCtx - MargemDaResposta` (2048) — na conversa de e-mail, sobre a janela do provedor da triagem (`ConversationService.Janela`). O teto do **nível** não entra aqui: ele é orçamento de compactação, não limite do modelo. Podar no teto do nível destruía material que cabia com folga.
 - Não pode ser removida: mensagens de sistema do começo e a **mensagem de usuário que abriu o turno em andamento** (`UltimoIndiceDeUsuario`). Comê-la deixava o modelo trabalhando sem saber o pedido e fazia o turno sumir do `raw.jsonl`.
 - Ao remover um assistant com tool_calls, remove junto os `tool` seguintes (par órfão é rejeitado pela API).
+- Ao remover o pedido de um turno antigo, remove junto o resto daquele turno quando ele tem ferramenta (`CortarRestoSemPedido`). O Google recusa (400) histórico em que a chamada de ferramenta vem logo depois do sistema; visto em 06/11/2026, quando todo turno do orbe passou a falhar. A mesma limpeza roda no começo de `Trim` e antes de cada pedido novo, o que cura conversa já quebrada. Resto só de texto (fala espontânea) fica.
 - A poda existe porque, passando da janela, o Ollama trunca sozinho **pelo começo** — leva o prompt de sistema e a alma.
 
 ---
