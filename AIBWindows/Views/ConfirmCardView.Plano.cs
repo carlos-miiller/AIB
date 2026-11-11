@@ -15,60 +15,119 @@ namespace AIB.Views;
 /// (19/10/2026): célula, antes e depois; linhas que saem e entram; o efeito nas fórmulas que já
 /// existiam; e a cópia guardada antes de gravar.
 /// </summary>
+/// <summary>
+/// Onde um plano é desenhado: os elementos do XAML (o plano único) ou um bloco montado em código,
+/// um por arquivo no cartão de várias gravações. O "mostrar mais" de cada grupo é deste painel:
+/// dois arquivos com o grupo 1 não abrem um ao outro.
+/// </summary>
+internal sealed class PainelDoPlano
+{
+    public required StackPanel Painel { get; init; }
+    public required TextBlock Resumo { get; init; }
+    public required WrapPanel Contagens { get; init; }
+    public required Border TabelaBorda { get; init; }
+    public required Grid Tabela { get; init; }
+    public required ScrollViewer EfeitosRolo { get; init; }
+    public required StackPanel Efeitos { get; init; }
+    public required ScrollViewer AvisosRolo { get; init; }
+    public required StackPanel Avisos { get; init; }
+    public required TextBlock Copia { get; init; }
+
+    public readonly HashSet<int> Expandidos = new();
+    public readonly Dictionary<int, List<UIElement>> Extras = new();
+    public readonly Dictionary<int, UIElement> Mostrar = new();
+    public readonly Dictionary<int, UIElement> Menos = new();
+
+    public void Alternar(int grupo)
+    {
+        bool abrir = Expandidos.Add(grupo);
+        if (!abrir) Expandidos.Remove(grupo);
+
+        if (Mostrar.TryGetValue(grupo, out var linkMostrar))
+            linkMostrar.Visibility = abrir ? Visibility.Collapsed : Visibility.Visible;
+        if (Extras.TryGetValue(grupo, out var extras))
+            foreach (var el in extras) el.Visibility = abrir ? Visibility.Visible : Visibility.Collapsed;
+        if (Menos.TryGetValue(grupo, out var linkMenos))
+            linkMenos.Visibility = abrir ? Visibility.Visible : Visibility.Collapsed;
+    }
+}
+
 public partial class ConfirmCardView
 {
-    private readonly HashSet<int> _gruposExpandidos = new();
-    private readonly Dictionary<int, List<UIElement>> _extrasPorGrupo = new();
-    private readonly Dictionary<int, UIElement> _linkMostrarPorGrupo = new();
-    private readonly Dictionary<int, UIElement> _linkMenosPorGrupo = new();
+    private PainelDoPlano? _painel;
 
-    public bool Expandido(int grupo) => _gruposExpandidos.Contains(grupo);
+    public bool Expandido(int grupo) => _painel?.Expandidos.Contains(grupo) == true;
 
-    public void AlternarGrupo(int grupo)
-    {
-        if (_gruposExpandidos.Contains(grupo))
-        {
-            _gruposExpandidos.Remove(grupo);
-            if (_linkMostrarPorGrupo.TryGetValue(grupo, out var linkMostrar))
-                linkMostrar.Visibility = Visibility.Visible;
-            if (_extrasPorGrupo.TryGetValue(grupo, out var extras))
-            {
-                foreach (var el in extras)
-                    el.Visibility = Visibility.Collapsed;
-            }
-            if (_linkMenosPorGrupo.TryGetValue(grupo, out var linkMenos))
-                linkMenos.Visibility = Visibility.Collapsed;
-        }
-        else
-        {
-            _gruposExpandidos.Add(grupo);
-            if (_linkMostrarPorGrupo.TryGetValue(grupo, out var linkMostrar))
-                linkMostrar.Visibility = Visibility.Collapsed;
-            if (_extrasPorGrupo.TryGetValue(grupo, out var extras))
-            {
-                foreach (var el in extras)
-                    el.Visibility = Visibility.Visible;
-            }
-            if (_linkMenosPorGrupo.TryGetValue(grupo, out var linkMenos))
-                linkMenos.Visibility = Visibility.Visible;
-        }
-    }
+    public void AlternarGrupo(int grupo) => _painel?.Alternar(grupo);
 
     /// <summary>Desenha o plano. Chamado pelo <see cref="Preencher"/> quando há um.</summary>
-    private void MostrarPlano(PlanoDeGravacao plano)
+    private void MostrarPlano(PlanoDeGravacao plano) => MostrarPlano(plano, _painel = new PainelDoPlano
     {
-        _gruposExpandidos.Clear();
-        _extrasPorGrupo.Clear();
-        _linkMostrarPorGrupo.Clear();
-        _linkMenosPorGrupo.Clear();
+        Painel = PlanoPanel, Resumo = PlanoResumoText, Contagens = PlanoContagens,
+        TabelaBorda = PlanoTabelaBorder, Tabela = PlanoTabela,
+        EfeitosRolo = PlanoEfeitosScroll, Efeitos = PlanoEfeitos,
+        AvisosRolo = PlanoAvisosScroll, Avisos = PlanoAvisos, Copia = PlanoCopiaText
+    });
 
-        PlanoPanel.Visibility = Visibility.Visible;
-        PlanoResumoText.Text = plano.Resumo;
-        PlanoResumoText.Visibility = plano.Resumo.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>Um painel de plano em código, igual ao do XAML. Para o cartão de várias gravações.</summary>
+    private PainelDoPlano NovoPainel()
+    {
+        var resumo = new TextBlock
+        {
+            FontFamily = (System.Windows.Media.FontFamily)FindResource("MonoFontFamily"), FontSize = 11,
+            Foreground = Pincel("TextMutedBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0)
+        };
+        var contagens = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+        var tabela = new Grid { Margin = new Thickness(10, 0, 10, 0) };
+        var borda = new Border
+        {
+            Visibility = Visibility.Collapsed, Background = Pincel("SurfaceCodeBrush"),
+            CornerRadius = (CornerRadius)FindResource("RadiusCard"), Padding = new Thickness(0, 4, 0, 4),
+            Margin = new Thickness(0, 8, 0, 0),
+            Child = new ScrollViewer
+            {
+                MaxHeight = 240, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = tabela
+            }
+        };
+        var efeitos = new StackPanel();
+        var efeitosRolo = new ScrollViewer
+        {
+            MaxHeight = 96, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Visibility = Visibility.Collapsed,
+            Margin = new Thickness(0, 8, 0, 0), Content = efeitos
+        };
+        var avisos = new StackPanel();
+        var avisosRolo = new ScrollViewer
+        {
+            MaxHeight = 96, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Visibility = Visibility.Collapsed, Content = avisos
+        };
+        var copia = new TextBlock
+        {
+            Visibility = Visibility.Collapsed, FontSize = 11.5, Foreground = Pincel("SuccessBrush"),
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 9, 0, 0)
+        };
+        var painel = new StackPanel();
+        foreach (UIElement e in new UIElement[] { resumo, contagens, borda, efeitosRolo, avisosRolo, copia })
+            painel.Children.Add(e);
+
+        return new PainelDoPlano
+        {
+            Painel = painel, Resumo = resumo, Contagens = contagens, TabelaBorda = borda, Tabela = tabela,
+            EfeitosRolo = efeitosRolo, Efeitos = efeitos, AvisosRolo = avisosRolo, Avisos = avisos, Copia = copia
+        };
+    }
+
+    private void MostrarPlano(PlanoDeGravacao plano, PainelDoPlano p)
+    {
+        p.Painel.Visibility = Visibility.Visible;
+        p.Resumo.Text = plano.Resumo;
+        p.Resumo.Visibility = plano.Resumo.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         foreach (var c in plano.Contagens)
         {
-            PlanoContagens.Children.Add(new Border
+            p.Contagens.Children.Add(new Border
             {
                 Background = Pincel("SurfaceCodeBrush"),
                 CornerRadius = new CornerRadius(8),
@@ -78,43 +137,43 @@ public partial class ConfirmCardView
             });
         }
 
-        if (plano.Mudancas.Count > 0) MontarTabela(plano);
-        else if (plano.Previa != null) MontarPrevia(plano.Previa);
+        if (plano.Mudancas.Count > 0) MontarTabela(plano, p);
+        else if (plano.Previa != null) MontarPrevia(plano.Previa, p);
 
         if (plano.Efeitos.Count > 0)
         {
-            PlanoEfeitosScroll.Visibility = Visibility.Visible;
-            PlanoEfeitos.Visibility = Visibility.Visible;
+            p.EfeitosRolo.Visibility = Visibility.Visible;
+            p.Efeitos.Visibility = Visibility.Visible;
             // Só aparência não mexe em conta: ali as linhas são as regras condicionais que ficam.
             if (!plano.SoAparencia)
-                PlanoEfeitos.Children.Add(Linha("Efeito nas fórmulas que já existem:", "TextSecondaryBrush"));
-            foreach (var e in plano.Efeitos) PlanoEfeitos.Children.Add(Linha(e, "AccentBlueBrush", mono: true));
+                p.Efeitos.Children.Add(Linha("Efeito nas fórmulas que já existem:", "TextSecondaryBrush"));
+            foreach (var e in plano.Efeitos) p.Efeitos.Children.Add(Linha(e, "AccentBlueBrush", mono: true));
         }
 
         if (plano.Avisos.Count > 0)
         {
-            PlanoAvisosScroll.Visibility = Visibility.Visible;
-            PlanoAvisos.Visibility = Visibility.Visible;
+            p.AvisosRolo.Visibility = Visibility.Visible;
+            p.Avisos.Visibility = Visibility.Visible;
             foreach (var a in plano.Avisos)
             {
                 var t = Linha(a, "WarnBrush");
                 t.Margin = new Thickness(0, 8, 0, 0);
-                PlanoAvisos.Children.Add(t);
+                p.Avisos.Children.Add(t);
             }
         }
 
         if (plano.Copia != null)
         {
-            PlanoCopiaText.Text = $"Antes de gravar, o original é guardado em {plano.Copia} (as 5 últimas versões, por 3 meses).";
-            PlanoCopiaText.Visibility = Visibility.Visible;
+            p.Copia.Text = $"Antes de gravar, o original é guardado em {plano.Copia} (as 5 últimas versões, por 3 meses).";
+            p.Copia.Visibility = Visibility.Visible;
         }
     }
 
     /// <summary>A tabela: onde, antes, depois. Grupo e "+ N" ocupam a linha inteira.</summary>
-    private void MontarTabela(PlanoDeGravacao plano)
+    private void MontarTabela(PlanoDeGravacao plano, PainelDoPlano p)
     {
-        PlanoTabelaBorder.Visibility = Visibility.Visible;
-        var g = PlanoTabela;
+        p.TabelaBorda.Visibility = Visibility.Visible;
+        var g = p.Tabela;
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -131,10 +190,10 @@ public partial class ConfirmCardView
 
         List<UIElement> ObterExtras(int gId)
         {
-            if (!_extrasPorGrupo.TryGetValue(gId, out var lista))
+            if (!p.Extras.TryGetValue(gId, out var lista))
             {
                 lista = new List<UIElement>();
-                _extrasPorGrupo[gId] = lista;
+                p.Extras[gId] = lista;
             }
             return lista;
         }
@@ -151,7 +210,7 @@ public partial class ConfirmCardView
                 Grid.SetRow(b, linha);
                 Grid.SetColumnSpan(b, 3);
                 g.Children.Add(b);
-                _linkMenosPorGrupo[gId] = b;
+                p.Menos[gId] = b;
                 grupoAtual = 0;
             }
         }
@@ -180,7 +239,7 @@ public partial class ConfirmCardView
                     Grid.SetRow(linkMostrar, linha);
                     Grid.SetColumnSpan(linkMostrar, 3);
                     g.Children.Add(linkMostrar);
-                    _linkMostrarPorGrupo[m.Grupo] = linkMostrar;
+                    p.Mostrar[m.Grupo] = linkMostrar;
                     break;
 
                 case TipoDeMudanca.Mais:
@@ -310,15 +369,15 @@ public partial class ConfirmCardView
             };
             b.MouseEnter += (s, e) => t.TextDecorations = TextDecorations.Underline;
             b.MouseLeave += (s, e) => t.TextDecorations = null;
-            b.MouseLeftButtonUp += (s, e) => AlternarGrupo(gId);
+            b.MouseLeftButtonUp += (s, e) => p.Alternar(gId);
             return b;
         }
     }
 
     /// <summary>A prévia de arquivo novo: as abas e as primeiras linhas, separadas por │.</summary>
-    private void MontarPrevia(PreviaDeArquivo previa)
+    private void MontarPrevia(PreviaDeArquivo previa, PainelDoPlano p)
     {
-        PlanoTabelaBorder.Visibility = Visibility.Visible;
+        p.TabelaBorda.Visibility = Visibility.Visible;
         var painel = new StackPanel();
         if (previa.Partes.Count > 0)
             painel.Children.Add(Linha("Abas: " + string.Join(" · ", previa.Partes), "TextSecondaryBrush"));
@@ -354,7 +413,7 @@ public partial class ConfirmCardView
         if (previa.Omitidas > 0)
             painel.Children.Add(Linha($"+ {previa.Omitidas} linhas", "TextMutedBrush"));
 
-        PlanoTabela.Children.Add(painel);
+        p.Tabela.Children.Add(painel);
     }
 
     /// <summary>

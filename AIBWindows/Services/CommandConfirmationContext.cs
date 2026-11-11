@@ -71,5 +71,17 @@
         /// Com E-MAIL no contexto não vale: quem escreveu o e-mail poderia mandar clicar.
         /// </summary>
         public bool SempreApesarDeTerceiros { get; set; }
+
+        /// <summary>
+        /// As chamadas que este cartão juntou, quando cada uma tem a SUA decisão (o doc: um
+        /// Permitir e um Recusar por arquivo). Null: um cartão, uma decisão para tudo.
+        /// </summary>
+        public System.Collections.Generic.IReadOnlyList<CommandConfirmationContext>? Itens { get; set; }
+
+        /// <summary>
+        /// As posições, em <see cref="Itens"/>, que o usuário recusou num cartão permitido. O
+        /// cartão preenche antes de responder; o grupo lê depois, e recusa só essas chamadas.
+        /// </summary>
+        public System.Collections.Generic.ISet<int> Recusados { get; } = new System.Collections.Generic.HashSet<int>();
     }
 }

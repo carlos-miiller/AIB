@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -261,6 +262,32 @@ public class DocTool : ITool
             SemSempre = true
         };
     }
+
+    /// <summary>
+    /// As gravações pedidas na mesma resposta dividem um cartão, com um Permitir e um Recusar por
+    /// arquivo. Pedido do usuário (11/11/2026): a planilha de comparação pediu 8 cartões num dia,
+    /// um por chamada; mockup "Edição de documentos do AIB", cena "Várias mudanças de uma vez".
+    /// Leitura (o cartão da pasta de dados) não entra.
+    /// </summary>
+    public string? ChaveDoCartao(string argumentsJson) => Ler(argumentsJson) is { Grava: true } ? "gravar" : null;
+
+    /// <summary>
+    /// O cartão das N gravações: cada uma com o seu plano (<see cref="CommandConfirmationContext.Itens"/>)
+    /// e a sua decisão. Cada chamada continua autorizada pelo SEU contexto na execução.
+    /// </summary>
+    public CommandConfirmationContext JuntarNoCartao(IReadOnlyList<CommandConfirmationContext> contextos) => new()
+    {
+        Tool = Name,
+        Command = string.Join("\n", contextos.Select(c => c.Command)),
+        Level = contextos[0].Level,
+        Cwd = contextos[0].Cwd,
+        ScriptBody = string.Join("\n\n", contextos.Select(c => c.ScriptBody)),
+        Itens = contextos,
+        Aviso = string.Join("\n", contextos.Select(c => c.Aviso).Where(a => a.Length > 0).Distinct()),
+        ConteudoDeEmailNoContexto = contextos.Any(c => c.ConteudoDeEmailNoContexto),
+        EmailNoContexto = contextos.Any(c => c.EmailNoContexto),
+        SemSempre = true
+    };
 
     // ─────────────────────────────────────────────────────────────────────────
     // A execução

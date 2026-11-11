@@ -159,6 +159,10 @@
                            TextWrapping="Wrap" Margin="0,9,0,0"/>
             </StackPanel>
 
+            <!-- VÁRIAS GRAVAÇÕES de documento num cartão: um bloco por arquivo, cada um com o seu
+                 plano e os seus Permitir e Recusar (ConfirmCardView.Itens.cs). -->
+            <StackPanel x:Name="ItensPanel" Visibility="Collapsed"/>
+
             <!-- Motivo do bloqueio, quando veio da lista de negação. -->
             <TextBlock x:Name="MotivoText" Visibility="Collapsed"
                        FontSize="11.5" Foreground="{StaticResource WarnBrush}"

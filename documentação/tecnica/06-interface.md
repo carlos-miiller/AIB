@@ -325,7 +325,15 @@ laranja e a linha verde da cópia `.antes-AIB`. Arquivo novo mostra a prévia em
 primeiras linhas). Mockup "Edição de documentos do AIB", 19/10/2026.
 Linha "+ N … · mostrar" (lilás, mão, sublinhado no hover) revela as `Extra` do grupo e troca por
 "mostrar menos" no fim (`AlternarGrupo`/`Expandido`). Rolagem com altura máxima em tudo: tabela
-240, efeitos e avisos 96, alvo e prévia 300. Na janela do orbe (`ConfirmacaoDoOrbeWindow`) o cartão inteiro rola quando passa da área útil da tela menos 140 px (`AlturaDoRolo`): antes a janela crescia para fora da tela e levava os botões.
+240, efeitos e avisos 96, alvo e prévia 300.
+**Várias gravações** (`ConfirmCardView.Itens.cs`): com `CommandConfirmationContext.Itens` (o `doc`
+juntou gravações da mesma resposta), o título é "Gravar em N documentos?", o alvo some e cada
+arquivo vira um bloco com o verbo, o caminho, botões pequenos "Permitir" e "Recusar" (`Marcar`;
+clicar de novo tira a marca) e o seu plano, desenhado num `PainelDoPlano` montado em código igual
+ao do XAML (cada painel com o seu "mostrar mais"). Recusado: nome riscado, plano esmaecido. O botão
+de baixo confirma o que ficou marcado e diz a conta ("Permitir os 2", "Permitir 1 de 2",
+"Confirmar a recusa"); arquivo sem marca vai junto, e "Recusar tudo" recusa todos. Mockup "Edição
+de documentos do AIB", cena "Várias mudanças de uma vez" (11/11/2026). Na janela do orbe (`ConfirmacaoDoOrbeWindow`) o cartão inteiro rola quando passa da área útil da tela menos 140 px (`AlturaDoRolo`): antes a janela crescia para fora da tela e levava os botões.
 Formatação (mockup "Formatação de planilhas do AIB"): `Mudanca.AmostraAntes/AmostraDepois`
 desenham a célula como o Excel a mostra (`Amostra`: fundo e grade pelos tokens `Celula*`, iguais
 nos dois temas porque retratam o arquivo; cores, negrito, alinhamento, bordas e escala vindos do

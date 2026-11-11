@@ -54,7 +54,10 @@ internal sealed class GrupoDoCartao
     private readonly ITool _ferramenta;
     private readonly Func<CommandConfirmationContext, Task<RespostaDoPortao>> _perguntar;
     private readonly List<(int Indice, CommandConfirmationContext Contexto)> _pedidos = new();
-    private readonly TaskCompletionSource<RespostaDoPortao> _resposta =
+
+    // A resposta do cartão, a ordem em que as chamadas apareceram nele e as posições recusadas
+    // uma a uma (cartão com decisão por item, como o do doc).
+    private readonly TaskCompletionSource<(RespostaDoPortao Resposta, List<int> Ordem, ISet<int> Recusados)> _resposta =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _faltam;
 
@@ -65,7 +68,7 @@ internal sealed class GrupoDoCartao
         _perguntar = perguntar;
     }
 
-    public Task<RespostaDoPortao> Entrar(int indice, CommandConfirmationContext contexto)
+    public async Task<RespostaDoPortao> Entrar(int indice, CommandConfirmationContext contexto)
     {
         bool ultima;
         lock (_pedidos)
@@ -74,7 +77,12 @@ internal sealed class GrupoDoCartao
             ultima = --_faltam == 0;
         }
         if (ultima) _ = PerguntarAsync();
-        return _resposta.Task;
+
+        // Permitido no cartão, mas esta chamada foi recusada no botão dela: só ela não roda.
+        var (resposta, ordem, recusados) = await _resposta.Task.ConfigureAwait(false);
+        return resposta.Allowed && recusados.Contains(ordem.IndexOf(indice))
+            ? new RespostaDoPortao(false, false, null)
+            : resposta;
     }
 
     public void Sair()
@@ -89,9 +97,11 @@ internal sealed class GrupoDoCartao
         try
         {
             // Na ordem das chamadas, e não na de chegada: o cartão lista o que o modelo pediu.
-            var contextos = _pedidos.OrderBy(p => p.Indice).Select(p => p.Contexto).ToList();
+            var ordenados = _pedidos.OrderBy(p => p.Indice).ToList();
+            var contextos = ordenados.Select(p => p.Contexto).ToList();
             var cartao = contextos.Count == 1 ? contextos[0] : _ferramenta.JuntarNoCartao(contextos);
-            _resposta.TrySetResult(await _perguntar(cartao).ConfigureAwait(false));
+            var resposta = await _perguntar(cartao).ConfigureAwait(false);
+            _resposta.TrySetResult((resposta, ordenados.Select(p => p.Indice).ToList(), cartao.Recusados));
         }
         catch (Exception ex)
         {

@@ -265,7 +265,12 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
   o argumento que muda virando lista, ou uma linha por chamada quando muda mais de um (ou quando o valor tem espaço ou vírgula, como um título). A resposta
   vale para todas; auditoria e execução seguem por chamada, cada uma com o seu contexto. A que não
   pergunta sai da vaga (`Dispose`, também na repetição bloqueada), senão o grupo esperaria para
-  sempre. Visto no uso: 27 chamadas ao bitrix, uma por tarefa, eram 27 cartões. A posição vem de `PertoDoOrbe` (centrada na
+  sempre. Visto no uso: 27 chamadas ao bitrix, uma por tarefa, eram 27 cartões. O `doc` também
+  junta: as gravações (`create`/`edit`) da mesma resposta caem num cartão, mas com **decisão por
+  arquivo** — o contexto juntado leva as chamadas em `Itens`, o cartão marca em `Recusados` as
+  posições que o usuário recusou no botão de cada arquivo, e `GrupoDoCartao` recusa só essas
+  (as outras recebem o "Permitir"). Pedido do usuário em 11/11/2026: a planilha de comparação
+  tinha pedido 8 cartões num dia. A posição vem de `PertoDoOrbe` (centrada na
   casca do orbe, `ShadowAssistantWindow.RetanguloDoOrbe`; sem espaço acima, abaixo; sempre dentro
   da área de trabalho), que também posiciona a janela de senha do terminal. Sem orbe, as duas
   ficam como antes: card na conversa, senha no centro da tela.

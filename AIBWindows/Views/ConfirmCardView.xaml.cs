@@ -161,7 +161,12 @@ public partial class ConfirmCardView : UserControl
         // A prévia que o WriteFileTool e o EditFileTool montavam e nenhuma view lia: o usuário
         // autorizava uma gravação vendo só o caminho. Autorizar sem ver o que muda é autorizar
         // no escuro.
-        if (contexto.Plano is { } plano)
+        if (contexto.Itens is { Count: > 1 } itens)
+        {
+            // Várias gravações de documento: um bloco por arquivo, cada um com a sua decisão.
+            MostrarItens(contexto, itens);
+        }
+        else if (contexto.Plano is { } plano)
         {
             // Documento: o plano diz a pergunta e a consequência, e desenha a tabela no lugar da
             // prévia em texto (que fica no ScriptBody para o histórico).
@@ -358,6 +363,9 @@ public partial class ConfirmCardView : UserControl
     /// </summary>
     private void Encerrar(bool permitido)
     {
+        // Várias gravações: os arquivos recusados um a um vão junto com a resposta.
+        permitido = FecharItens(permitido);
+
         PermitirButton.IsEnabled = false;
         RecusarButton.IsEnabled = false;
         SempreCheck.IsEnabled = false;
@@ -470,6 +478,11 @@ public partial class ConfirmCardView : UserControl
             Ferramentas.Lembrar => (Risco.Leitura, "Guarda na memória"),
             Ferramentas.Pesquisar => (Risco.Cuidado, "Manda a consulta para fora"),
             Ferramentas.Lembrete => (Risco.Cuidado, "Agenda uma fala"),
+            // Várias gravações num cartão: vermelho se alguma edita o original de uma planilha.
+            Ferramentas.Documento when alvo.Contains('\n') => alvo.Split('\n').Any(l =>
+                    l.StartsWith("EDITAR ", StringComparison.Ordinal) && !l.TrimEnd().EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+                ? (Risco.Destrutivo, "Edita arquivos originais")
+                : (Risco.Cuidado, "Muda documentos"),
             Ferramentas.Documento when comeca("CRIAR ") => (Risco.Cuidado, "Cria um arquivo"),
             Ferramentas.Documento when comeca("LER ") => (Risco.Leitura, "Só leitura"),
             // Só aparência: nenhum valor se perde, e o Desfazer devolve o original (19/10/2026).
