@@ -109,7 +109,7 @@ public class ToolRegistry
     /// confirmação), <c>pasta_dispensada</c>, <c>permitida</c>, <c>permitida_sempre</c>,
     /// <c>sempre_na_sessao</c>, <c>recusada</c>, <c>barrada_pelo_piso</c>, <c>negada_sem_contexto</c>,
     /// <c>negada_sem_interface</c>, <c>nivel_insuficiente</c>, <c>recusada_no_pre_voo</c>,
-    /// <c>email_so_local</c> ou <c>ferramenta_desconhecida</c>. Vai para o raw.jsonl com o
+    /// <c>pasta_do_aib</c>, <c>email_so_local</c> ou <c>ferramenta_desconhecida</c>. Vai para o raw.jsonl com o
     /// resultado: sem ela, um comando que você autorizou e um que nunca pediu confirmação ficam
     /// iguais no registro.
     /// </param>
@@ -152,6 +152,15 @@ public class ToolRegistry
                 Console.WriteLine($"[REGISTRY] {toolName} recusada no pré-voo.");
                 aoDecidir?.Invoke("recusada_no_pre_voo");
                 return recusa;
+            }
+
+            // As pastas do AIB são só leitura, com ou sem cartão. Ver PastasDoAib.
+            string? travada = PastasDoAib.Recusa(toolName, argumentsJson);
+            if (travada != null)
+            {
+                Console.WriteLine($"[REGISTRY] {toolName} recusada: mexeria na pasta do AIB.");
+                aoDecidir?.Invoke("pasta_do_aib");
+                return travada;
             }
 
             // A memória sobre o usuário não aceita, sem ele ver, pedido que pode ter vindo de um

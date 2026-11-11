@@ -110,6 +110,7 @@ Por quê:
 ferramenta existe? ──não──> "ERRO: Ferramenta 'x' não encontrada..."        [ferramenta_desconhecida]
 nível >= RequiredLevel? ──não──> "ACESSO NEGADO: ... exige Nível N..."      [nivel_insuficiente]
 Validar(args) ──texto──> devolve o texto (em geral "ERRO: ...")             [recusada_no_pre_voo]
+mexe na pasta do AIB? ──sim──> "ACESSO NEGADO: ... só podem ler..."       [pasta_do_aib]
 PedeConfirmacao(args)?   (default: RequiresConfirmation; exceção = sim)
  ├─ não ──────────────────────────────────────────────────────────────────> [automatica]
  └─ sim
@@ -124,6 +125,14 @@ Passo a passo:
 1. **Ferramenta desconhecida** → `ERRO`, com a lista das disponíveis.
 2. **Nível** → `ACESSO NEGADO: A ferramenta 'x' exige Nível N...`.
 3. **Pré-voo** (`Validar`) → o texto devolvido vai ao modelo.
+3a. **Pastas do AIB** (`PastasDoAib.Recusa`): gravar, editar, mover, renomear ou apagar dentro de
+   `~/.AIB` ou da pasta do programa (`AppContext.BaseDirectory`) é recusado, com ou sem cartão.
+   Olha os caminhos que a IA manda: `write`/`edit`, `fs` (a origem, menos na cópia, e o destino de
+   `copy`/`move`), cada operação de um lote do `file`, e o `path` de `doc` em `create`/`edit`.
+   Atalhos (link, junção) são resolvidos, também os de pastas no meio do caminho. Ler continua
+   como antes (`DadosProtegidos`). O que o AIB grava por conta própria (memória, backups do `doc`,
+   notas do navegador) não passa por aqui, e o `shell` também não: segue no cartão. Pedido do
+   usuário em 11/11/2026, depois de a Ellen reescrever o script da skill do Bitrix.
 4. **Sem confirmação** → executa (`automatica`).
 5. **Dispensa por pasta** (`DispensaPelaPasta`): vale só se não há conteúdo de e-mail no contexto
    *e* `tool.DispensaConfirmacao(args)` responde `true` (exceção conta como `false`). Então
@@ -153,7 +162,7 @@ Passo a passo:
 `aoDecidir` recebe, numa palavra, como a chamada passou: `automatica`, `pasta_dispensada`,
 `permitida`, `permitida_sempre`, `sempre_na_sessao`, `recusada`, `barrada_pelo_piso`,
 `negada_sem_contexto`, `negada_sem_interface`, `nivel_insuficiente`, `recusada_no_pre_voo`,
-`ferramenta_desconhecida`. O `AgentLoop` acrescenta `repeticao_bloqueada` (chamada idêntica que já
+`pasta_do_aib`, `ferramenta_desconhecida`. O `AgentLoop` acrescenta `repeticao_bloqueada` (chamada idêntica que já
 falhou no mesmo turno nem chega ao registry). A decisão vai para o `raw.jsonl` junto do resultado:
 sem ela, um comando autorizado e um que nunca pediu confirmação ficariam iguais no registro.
 
