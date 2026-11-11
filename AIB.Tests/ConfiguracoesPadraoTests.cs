@@ -367,8 +367,10 @@ namespace AIB.Tests
 
                 var alvos = Botoes(janela).Select(b => (string)b.Tag).OrderBy(t => t).ToList();
 
+                // O Cofre não tem padrão: "restaurar" seria apagar os segredos do usuário, e isso
+                // já é o "Apagar" de cada um, com dois cliques.
                 alvos.Should().BeEquivalentTo(
-                    Enum.GetNames<PaginaDeConfiguracoes>(),
+                    Enum.GetNames<PaginaDeConfiguracoes>().Where(n => n != nameof(PaginaDeConfiguracoes.Cofre)),
                     "uma página sem o botão é uma página de onde não se volta atrás");
 
                 janela.Close();

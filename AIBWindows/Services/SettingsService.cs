@@ -52,6 +52,14 @@ public sealed class UserAppSettings
     /// <summary>Modelo da triagem, no provedor dela. Vazio usa o modelo do perfil daquele provedor.</summary>
     public string MailTriageModel { get; set; } = "";
 
+    /// <summary>
+    /// <c>mail</c> e <c>mail_read</c> recusam quando o modelo que receberia o resultado está na
+    /// nuvem. Opt-in: com a conversa no OpenRouter, perguntar "tem algo urgente?" passa a ser
+    /// negado. A conversa ABERTA sobre um e-mail não depende disto: ela já roda no provedor da
+    /// triagem (<see cref="ParaTriagem"/>), e só é barrada se a própria triagem estiver na nuvem.
+    /// </summary>
+    public bool EmailSoLocal { get; set; } = false;
+
     /// <summary>Se a migração para perfis por provedor já rodou neste arquivo.</summary>
     public bool PerfisMigrados { get; set; }
 
@@ -134,7 +142,8 @@ public sealed class UserAppSettings
 
     /// <summary>
     /// Uma cópia destas configurações com o provedor e o modelo DA TRIAGEM no lugar dos da conversa
-    /// — é o que a fábrica de provider recebe quando quem pede é o vigia de e-mail.
+    /// — é o que a fábrica de provider recebe quando quem pede é o vigia de e-mail, e o que a
+    /// conversa aberta sobre um e-mail usa em tudo: turno, resumo de capítulo, título e cota.
     /// </summary>
     public UserAppSettings ParaTriagem()
     {
@@ -148,6 +157,13 @@ public sealed class UserAppSettings
         copia.Ativar(provedor, perfil);
         return copia;
     }
+
+    /// <summary>
+    /// A janela de contexto destas configurações. Método, e não propriedade, para não ir ao
+    /// arquivo. Existe pela conversa de e-mail: com ela no Ollama e a conversa no OpenRouter, a
+    /// janela em vigor no app (<see cref="Ai.ChatRequestOptions.JanelaAtual"/>) não é a dela.
+    /// </summary>
+    public int Janela() => ContextWindow > 0 ? ContextWindow : Ai.ChatRequestOptions.JanelaAtual;
     public bool SendSystemPrompt { get; set; } = true;
     public bool EnableIntelligentTools { get; set; } = true;
     // Opt-in: a funcionalidade Shadow Assistant fica desligada por default.
@@ -187,8 +203,7 @@ public sealed class UserAppSettings
     public bool ShadowHandlesMail { get; set; } = false;
 
     /// <summary>
-    /// Se a persona pode puxar assunto sozinha: retomar algo em aberto, perguntar sobre o
-    /// usuário. Opt-in, como o orbe: cada vez que ela pondera falar é uma requisição paga. O
+    /// Se a persona pode puxar assunto sozinha, mandando mensagem pelo orbe. Opt-in, como o orbe: cada vez que ela pondera falar é uma requisição paga. O
     /// ritmo se ajusta ao quanto o usuário responde (<see cref="Iniciativa"/>). Lembretes pedidos
     /// não dependem desta chave.
     /// </summary>
@@ -199,6 +214,28 @@ public sealed class UserAppSettings
     /// ritmo se ajusta abaixo dela, e quanto gastar é escolha do usuário.
     /// </summary>
     public int MensagensPorDia { get; set; } = Iniciativa.PadraoDeMensagensPorDia;
+
+    /// <summary>
+    /// Grava o diário da iniciativa em <c>~/.AIB/logs/iniciativa.log</c>
+    /// (<see cref="RegistroDaIniciativa"/>): cada sorteio com a conta da chance, o que segurou o
+    /// sorteio, e o que ela aprendeu.
+    /// <para>
+    /// Nasce LIGADA, ao contrário dos outros diários: grava números e motivos, nunca o texto
+    /// das mensagens, e sem ela "por que ela não falou hoje?" não tem resposta.
+    /// </para>
+    /// </summary>
+    public bool IniciativaLogging { get; set; } = true;
+
+    /// <summary>
+    /// Se o personagem pega hábitos na convivência (<see cref="Habitos"/>): o resumidor do
+    /// capítulo aponta o jeito dele que o usuário recebeu bem ou mal, e os vistos de novo entram
+    /// no prompt. Desligada, nem aprende nem usa o que aprendeu.
+    /// <para>
+    /// Nasce LIGADA — pedido do usuário. O custo é pequeno: a pergunta vai na chamada de resumo
+    /// que já é paga, e o prompt só muda quando um hábito se firma.
+    /// </para>
+    /// </summary>
+    public bool AprenderHabitos { get; set; } = true;
 
     /// <summary>Começo do horário de silêncio, "HH:mm". Lembrete pedido fura o silêncio.</summary>
     public string SilencioInicio { get; set; } = "22:00";
@@ -328,6 +365,26 @@ public sealed class UserAppSettings
     /// </para>
     /// </summary>
     public bool MemoriaComModelo { get; set; } = PadraoDaMemoriaComModelo;
+
+    public const int PadraoDeTurnosSoltos = 20;
+
+    /// <summary>
+    /// Com este tanto de turnos fora de capítulo, a conversa compacta — qualquer que seja a
+    /// janela do modelo. Decisão do usuário, junto com <see cref="TokensSoltos"/>: o gatilho por
+    /// fração da janela nunca disparava num modelo de janela enorme, e uma sessão de navegador
+    /// chegou a reenviar 165 mil tokens a cada requisição.
+    /// </summary>
+    public int TurnosSoltos { get; set; } = PadraoDeTurnosSoltos;
+
+    public const int PadraoDeTokensSoltos = 135_000;
+
+    /// <summary>
+    /// Com este tanto de tokens fora de capítulo, a conversa compacta. Vale o menor entre este
+    /// e a fração da cota viva (<see cref="CompactionTrigger"/>), que continua sendo o que
+    /// protege o modelo de janela pequena. Era 100 mil; subiu para 135 mil a pedido do usuário
+    /// (27/10/2026), junto com a escala de níveis que chega a 256 mil.
+    /// </summary>
+    public int TokensSoltos { get; set; } = PadraoDeTokensSoltos;
 
     /// <summary>Era 8; o usuário subiu para 15: capítulos maiores, menos compactações.</summary>
     public const int PadraoDeTurnosPorCapitulo = 15;
@@ -541,9 +598,11 @@ public sealed class UserAppSettings
         MaxTurnIterations = Entre(MaxTurnIterations, 1, 60);
         CompactionTrigger = Entre(CompactionTrigger, 0.50, 0.99);
         MemoryFraction = Entre(MemoryFraction, 0.05, 0.60);
-        TurnosPorCapitulo = Entre(TurnosPorCapitulo <= 0 ? PadraoDeTurnosPorCapitulo : TurnosPorCapitulo, 2, 20);
+        TurnosPorCapitulo = Entre(TurnosPorCapitulo <= 0 ? PadraoDeTurnosPorCapitulo : TurnosPorCapitulo, 2, 40);
         TokensPorCapitulo = Entre(
             TokensPorCapitulo <= 0 ? PadraoDeTokensPorCapitulo : TokensPorCapitulo, 4_000, 60_000);
+        TurnosSoltos = Entre(TurnosSoltos <= 0 ? PadraoDeTurnosSoltos : TurnosSoltos, 4, 200);
+        TokensSoltos = Entre(TokensSoltos <= 0 ? PadraoDeTokensSoltos : TokensSoltos, 8_000, 1_000_000);
         CapitulosPorAto = CapitulosPorAto <= 0 ? 0 : Entre(CapitulosPorAto, 2, 24);
         EsconderResultadosDepoisDe = EsconderResultadosDepoisDe <= 0 ? 0 : Entre(EsconderResultadosDepoisDe, 2, 50);
         ShadowMailPreviewCount = Entre(ShadowMailPreviewCount, 1, 10);

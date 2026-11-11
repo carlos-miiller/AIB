@@ -243,7 +243,7 @@ namespace AIB.Tests
 
             foreach (var t in turnos) memoria.AppendTurn(t).Should().BeTrue();
 
-            File.ReadAllLines(memoria.RawPath).Should().HaveCount(2);
+            Claro.Linhas(memoria.RawPath).Should().HaveCount(2);
 
             var lidos = memoria.ReadTurns();
             lidos.Should().HaveCount(2);
@@ -281,7 +281,7 @@ namespace AIB.Tests
             })[0]);
 
             // O arquivo é para o usuário abrir e ler.
-            File.ReadAllText(memoria.RawPath, Encoding.UTF8).Should().Contain("configuração");
+            Claro.Texto(memoria.RawPath, Encoding.UTF8).Should().Contain("configuração");
         }
 
         [Fact]

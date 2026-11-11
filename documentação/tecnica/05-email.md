@@ -52,7 +52,11 @@ e-mails"), lida **a cada batida** — ligar a chave vale sem reiniciar. Roda com
 - **Sondagem**: a cada **20 min** (`IntervaloDaSondagem`), **só código** — lê, agrupa, conta, procura
   rajada. Ela só acorda o modelo se `MailDigestService.Urgente(rajadas)` for verdadeiro, e o único
   motivo é a **rajada**. Resposta chegando numa conversa vigiada **não** acorda: espera o próximo
-  digest. (Havia um `Acorda9b` por vigia que prometia interromper na hora; ele era gravado sempre
+  digest. A exceção, sem modelo, é a resposta a uma conversa que **o usuário iniciou**
+  (`AnunciarRespostas`): ela entra na tela na hora, com urgência média e o resumo pendente
+  (`RespostaPendente`), anotada no histórico com origem `sondagem`; o digest seguinte a tria e
+  acrescenta a anotação dele (`vigia`) sem contar a mensagem duas vezes. O aviso (`Pronto`) leva só
+  as respostas, e uma resposta já anotada não é anunciada de novo. (Havia um `Acorda9b` por vigia que prometia interromper na hora; ele era gravado sempre
   falso e nunca teve interface — o campo saiu.)
 - `BaterAsync` registra no console **por que está parado**, uma linha por mudança de motivo.
 
@@ -65,9 +69,21 @@ e-mails"), lida **a cada batida** — ligar a chave vale sem reiniciar. Roda com
    (`TetoDeCorpos`), só a parte de texto (nunca anexo), limpo e cortado em 600 caracteres
    (`MensagemDeEmail.Limpar`/`Encurtar`). Também desce `X-GM-THRID`, `X-GM-LABELS` e três headers de
    lista (`List-Unsubscribe`, `List-Id`, `Precedence`).
-3. Mensagens enviadas pelo usuário viram entradas `Minha` no histórico da conversa e renovam as
+3. Mensagens enviadas pelo usuário viram entradas `Minha` no histórico da conversa — com **assunto,
+   destinatário** (o primeiro, "+N" quando há mais; `MailKitMailService.Destinatario`) e **`Abriu`**,
+   tirados só do envelope; o corpo não desce. `Abriu` é `X-GM-MSGID == X-GM-THRID`: no Gmail a thread
+   leva o id da primeira mensagem, então a sua abriu a conversa. Entrada sua gravada antes sem assunto
+   é completada na passada seguinte, sem contar duas vezes (`ArquivoDeConversas.Completa`). Elas renovam as
    **vigias** (`VigiasDoEmail`, `~/.AIB/email/vigias.json`): conversa em que ele respondeu fica
-   vigiada por 7 dias. Threads com histórico em disco também contam como vigiadas.
+   vigiada por 7 dias. Threads com histórico em disco também contam como vigiadas. Só a vigia
+   **ativa** (`VigiaDeThread.Ativa`: nem vencida, nem `Parada`) abre o funil. A **vencida fica** no
+   arquivo — é a conversa sem resposta que a seção "Aguardando retorno" mostra em vermelho — até o
+   usuário estender ou dispensar; sai sozinha só quando a outra parte respondeu
+   (`SemAsRespondidas`). A mesma mensagem relida da pasta de enviados não regrava a vigia (senão
+   desfaria "+7 dias" e "Parar de vigiar"); uma mensagem sua **mais nova** abre outra. A `Parada` sai
+   do arquivo quando a mensagem passa da janela dos enviados. `MailDigestService.Esperas()` cruza as
+   vigias não paradas com o histórico (assunto, destinatário, quem iniciou), descarta as já
+   respondidas e ordena: vencida, vencendo (≤ 1 dia), mais recente.
 4. `DetectorDeRajada.Encontrar` sobre o conjunto de todas as caixas (§4).
 5. Funil (`PassarPeloFunil` → `FiltroDeTriagem.Avaliar`).
 6. Se é digest (ou sondagem urgente): `ResumirAsync` manda o lote ao modelo (`TriadorDeEmail`),
@@ -81,6 +97,9 @@ quem acende o anel tem de apagá-lo, inclusive em erro).
 Ponteiros em `~/.AIB/email/estado.json` (`EstadoDasCaixas`), chaveado pelo endereço: `LastUid`
 (contagem da tela de configurações) e `LastTriagedUid` (triagem) são **separados** — quando eram um
 só, abrir as configurações "consumia" a fila do vigia. `UidValidity` trocado descarta os ponteiros.
+`LastTriagedUid` só avança numa passada que **tria** (digest ou sondagem com rajada): a sondagem
+comum lê e não grava o ponteiro, e a seguinte relê o mesmo trecho. Antes ela gravava, e o digest só
+via o que chegara depois da última sondagem — o resto ficava "triado" sem ter passado pelo modelo.
 
 ---
 
@@ -117,6 +136,7 @@ Toda queda vai para a lista de `Descartada` com o motivo — a triagem tem de se
 - Chamada **fora de banda**: sem ferramentas, sem histórico, não passa pela conversa. Um lote só.
 - Provedor e modelo **da triagem** (`config.ParaTriagem()`, `MailTriageProvider`/`MailTriageModel`),
   que pode ser diferente do da conversa — dá para conversar pela nuvem e manter os e-mails no Ollama.
+  A conversa aberta por "Abrir com" também roda nele (ver §9).
   Raciocínio opcional (`MailTriageThinking`, triplica o teto de resposta).
 - Lote: as mais recentes, até `LimitesDoProvedor.LoteDaTriagem` (25 local, 60 OpenRouter).
 - O prompt leva, por mensagem, `[uid] de`, `assunto`, `recebida` e o corpo limpo. O corpo vai
@@ -131,6 +151,10 @@ Toda queda vai para a lista de `Descartada` com o motivo — a triagem tem de se
 - Mensagem sem veredito **não some**: ganha resumo de código ("o resumo não saiu desta vez") e
   urgência média.
 - Urgência **baixa** não vai para a tela, mas é contada e entra no diário e na lista de descartados.
+- **Piso de quem iniciou** (`MailDigestService.Piso`): numa conversa que o usuário começou
+  (`Estado.Iniciada`, ver §3 passo 3), a resposta nunca fica abaixo de **média** — o modelo pode
+  subir, não descer. Vale na passada viva e no `Reconstituir`. O item leva `MailSummary.Iniciada`, que
+  acende o selo "Você iniciou".
 - `DigestoDeEmail.Frase` — a fala do orbe — é montada **por código** a partir dos números.
 
 ---
@@ -141,10 +165,10 @@ Toda queda vai para a lista de `Descartada` com o motivo — a triagem tem de se
 |---|---|---|---|
 | `estado.json` | `EstadoDasCaixas` | Ponteiros de UID e datas por endereço. | Permanente; sai com a conta. |
 | `ultimo-digest.txt` | `MarcoDoVigia` | Um instante. | — |
-| `vigias.json` | `VigiasDoEmail` | Id de thread, frase de motivo, duas datas. | 7 dias por vigia. |
+| `vigias.json` | `VigiasDoEmail` | Id de thread, frase de motivo, duas datas, `Parada`. | 7 dias por vigia; a vencida fica até ser dispensada ou respondida. |
 | `regras.md` | `RegrasDoVigia` | Escrito pelo usuário. | — |
 | `diario/diario-AAAA-MM-DD.json` | `DiarioDeTriagem` | Por passada: lidas, descartadas e cada triada (remetente, nome, assunto, resumo, urgência, conta, data). | `MailJournalDays` |
-| `conversas/<hash>/triagem.jsonl` + `chave.txt` | `ArquivoDeConversas` | Histórico por conversa (`EntradaDaConversa`). | `MailJournalDays` |
+| `conversas/<hash>/triagem.jsonl` + `chave.txt` | `ArquivoDeConversas` | Histórico por conversa (`EntradaDaConversa`): remetente, assunto, urgência e resumo; nas suas, também destinatário e se abriu a conversa. Nunca corpo. | `MailJournalDays` |
 | `ignoradas.json` | `ConversasIgnoradas` | Chaves ignoradas e datas. | 7 dias desde o clique. |
 
 `MailJournalDays` (padrão 7, 0–90):
@@ -226,6 +250,13 @@ Guarda **todas** as triadas, inclusive as baixas. Nenhum corpo: `EmailTriado` n�
 | Oferecida | Sempre (nível 1) | Só na conversa de um e-mail (nível 1) |
 | Devolve | Contagens, horário da última passada ("chegadas depois disso não foram lidas") e até 15 vereditos. Nunca corpo. | O texto original, mais recente primeiro dentro do teto (`LimitesDoProvedor.EmailPorLeitura`/`EmailPorMensagem`); remetente, data e assunto fora do embrulho, **corpo dentro de `ConteudoDeTerceiros.Embrulhar`**. |
 | Falhas | Triagem desligada, diário em 0, sem caixas → diz isso. | Sem thread (`X-GM-THRID`), conta desconectada, sem senha no cofre → `ERRO` explicando. |
+
+**`EmailSoLocal`** (Configurações › E-mail › "E-mail só com modelo local", nasce desligada): as duas
+ferramentas recusam com `ACESSO NEGADO` quando o modelo que receberia o resultado está na nuvem
+(`ProvedoresDeIa.EhNuvem`). O provedor vem **da chamada** — o `AgentLoop` passa o do turno a
+`ToolRegistry.ExecuteToolAsync` —, e não de um gancho da conversa: o registry é dividido com a conversa
+do orbe, que pode estar em outro provedor. Provedor desconhecido conta como nuvem. A decisão vai ao
+`raw.jsonl` como `email_so_local`.
 
 `mail_read` lê pelo mesmo caminho do "Recarregar" (`LerConversaAsync`: INBOX em `EXAMINE`, corpo com
 `BODY.PEEK`). Credenciais e conta são lidas **na chamada** — a conta pode ter mudado desde que o app
@@ -313,6 +344,13 @@ Parte da mesma `ChatWindow`, com três estados decididos só por `AplicarEstadoD
   (`ChatHistoryService.ConversaDoEmail`), **retoma** sem mandar turno. Senão, abre **conversa nova**
   (arquivando a anterior), vincula ao e-mail (`VincularAEmail`) **antes** do primeiro turno e envia o
   enquadramento. O cartão aparece no lugar da bolha do usuário.
+- **Provedor da conversa de e-mail.** Com a chave do e-mail ligada (`ConversationService.UsaTriagem`),
+  tudo o que manda texto da conversa a um modelo usa `ParaTriagem()` — o provedor e o modelo **da
+  triagem**: o turno (`AgentTurnRequest.UsaTriagem`), o resumo de capítulo, o título, a iniciativa e o
+  contador de raciocínio. A cota e a poda usam a janela desse provedor (`ConversationService.Janela`).
+  Antes o enquadramento e o corpo lido por `mail_read` iam ao provedor da conversa — o OpenRouter —
+  mesmo com a triagem no Ollama. `mail_read`, que só existe nessa conversa, usa os tetos
+  (`LimitesDoProvedor`) do provedor da triagem.
 - **"Recarregar"** (`RecarregarItemAsync` → `RecarregarConversaAsync`): relê a thread, chama o modelo
   e **acrescenta** os vereditos ao histórico. Custa uma chamada ao modelo; o botão desabilita
   enquanto roda. A lista não é reescrita daqui.
@@ -326,8 +364,11 @@ O orbe (`ShadowAssistantWindow`) só existe com `ShadowAssistantEnabled`; o vigi
 independentemente dele. Ligações em `App.xaml.cs`:
 
 - `Trabalhando` → `ComecarAProcessarEmail`: ícone de caixa de entrada no lugar do glifo, anel girando.
-- `Pronto` → `TerminarDeProcessarEmail(digesto.Frase(), digesto.Itens)`: **enfileira** a fala e pulsa;
-  nunca abre o balão sozinho. Os itens acompanham a fala quando ela é aberta.
+- `Pronto` → **janela de aviso** (`Avisos.DeDigesto` → `AvisoWindow`, pela fila das flutuantes): rajada
+  (vermelha), resposta a uma conversa sua (azul, "Você iniciou") ou triagem comum (lilás, até 3
+  linhas, fecha sozinha em 30 s). O orbe NÃO recebe mais fala nem pilha de e-mails (pedido do
+  usuário, 16/10/2026); dele só fica o anel com o ícone enquanto a triagem lê. Sem orbe, o aviso
+  aparece acima da bandeja, no lugar do balão do Windows.
 - `Terminou` → `PararDeProcessarEmail`: volta ao normal (idempotente).
 - `Reconstituir` repovoa a lista no arranque **sem** disparar `Pronto` — o orbe não anuncia e-mail
   velho como novidade.

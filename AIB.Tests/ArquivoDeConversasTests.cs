@@ -57,9 +57,62 @@ namespace AIB.Tests
                 .Select(p => p.Name)
                 .Should().BeEquivalentTo(new[]
                 {
-                    "Em", "Uid", "De", "Assunto", "Urgencia", "Resumo", "Minha", "Origem"
+                    "Em", "Uid", "De", "Assunto", "Urgencia", "Resumo", "Minha", "Origem",
+                    "Para", "Abriu"
                 });
         }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // O que você enviou
+        // ─────────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public void OEnviadoAntigoSEM_Assunto_EhCompletado_SemContarDuasVezes()
+        {
+            // Caso real (16/10/2026): duas propostas de parceria enviadas no mesmo dia ficaram
+            // gravadas só com thread e data, porque a pasta de enviados não descia o envelope.
+            // A lista "Aguardando retorno" não teria como dizer qual era qual.
+            string chave = ArquivoDeConversas.Chave("eu@casa.com", "T1", 0);
+
+            _arquivo.Anotar(chave, Minha(Base_)).Should().BeTrue();
+            _arquivo.Anotar(chave, Minha(Base_) with
+            {
+                Assunto = "Proposta de Parceria - Google Workspace", Para = "ana@parceiro.com", Abriu = true
+            }).Should().BeTrue("a gravada não tinha assunto");
+
+            _arquivo.Anotar(chave, Minha(Base_) with
+            {
+                Assunto = "Proposta de Parceria - Google Workspace", Para = "ana@parceiro.com", Abriu = true
+            }).Should().BeFalse("agora já tem");
+
+            var estado = _arquivo.EstadoDe(chave)!;
+            estado.Mensagens.Should().Be(1, "é a mesma mensagem, completada");
+            estado.Assunto.Should().Be("Proposta de Parceria - Google Workspace");
+            estado.Para.Should().Be("ana@parceiro.com");
+            estado.Iniciada.Should().BeTrue();
+            estado.EsperandoVoce.Should().BeFalse("a última palavra é sua: aguarda retorno");
+        }
+
+        [Fact]
+        public void ARespostaDELES_NaoTiraOSelo_DeQuemIniciou()
+        {
+            string chave = ArquivoDeConversas.Chave("eu@casa.com", "T1", 0);
+
+            _arquivo.Anotar(chave, Minha(Base_) with { Assunto = "Proposta", Para = "ana@parceiro.com", Abriu = true });
+            _arquivo.Anotar(chave, Deles(48, Base_.AddDays(2)) with { Assunto = "Re: Proposta" });
+
+            var estado = _arquivo.EstadoDe(chave)!;
+            estado.Iniciada.Should().BeTrue("quem começou continua sendo você");
+            estado.EsperandoVoce.Should().BeTrue();
+            estado.Assunto.Should().Be("Re: Proposta");
+        }
+
+        [Theory]
+        [InlineData(new string[0], "")]
+        [InlineData(new[] { "ana@x.com" }, "ana@x.com")]
+        [InlineData(new[] { "ana@x.com", "bia@x.com", " " , "caio@x.com" }, "ana@x.com +2")]
+        public void ODestinatario_EhOPrimeiro_MaisAContagem(string[] enderecos, string esperado) =>
+            MailKitMailService.Destinatario(enderecos).Should().Be(esperado);
 
         [Fact]
         public void APasta_EhUmHASH_ENaoOAssunto()

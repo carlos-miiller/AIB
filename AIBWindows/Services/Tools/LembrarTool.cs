@@ -112,6 +112,24 @@ public sealed class LembrarTool : ITool
         return null;
     }
 
+    /// <summary>
+    /// O cartão que o registry mostra quando há texto de terceiros no contexto: o fato inteiro,
+    /// para o usuário dizer se foi ele quem contou. Sem "sempre": cada fato é uma decisão.
+    /// </summary>
+    public CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel)
+    {
+        string fato = FatoDe(argumentsJson);
+        if (fato.Length == 0) return null;
+
+        return new CommandConfirmationContext
+        {
+            Tool = Name,
+            Command = $"GUARDAR NA MEMÓRIA: \"{fato}\"",
+            Level = userLevel,
+            SemSempre = true
+        };
+    }
+
     public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
     {
         string fato = FatoDe(argumentsJson);
@@ -124,7 +142,7 @@ public sealed class LembrarTool : ITool
         if (jaGuardados >= Teto)
             return Task.FromResult(
                 $"ERRO: já há {Teto} fatos sobre o usuário. Não guardei; se for importante, diga a ele "
-                + "que pode revisar a lista em ~/.AIB/memory/facts.md.");
+                + "que pode revisar a lista em Configurações > Memória.");
 
         int entraram = _fatos.Promote(new[] { new FactCandidate(chave, Prefixo + fato) });
 

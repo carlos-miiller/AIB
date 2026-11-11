@@ -37,6 +37,11 @@ namespace AIB.Services.Memory;
 /// <param name="Combinado">Versão 2: pedidos do usuário com valor, copiados literalmente.</param>
 /// <param name="Estado">Versão 2: como os arquivos e comandos terminaram o trecho.</param>
 /// <param name="CustoUsd">O que a chamada ao resumidor custou, quando o provedor relata (OpenRouter).</param>
+/// <param name="Resumo">
+/// Versão 2: a conversa do trecho em 1 ou 2 parágrafos, pelo resumidor. Nulo em trecho só de
+/// execução e nos capítulos gravados antes de existir.
+/// </param>
+/// <param name="Frases">Versão 2: até 3 frases memoráveis, "Nome: \"fala\"", conferidas contra o trecho.</param>
 public sealed record Chapter(
     int Index,
     string AtUtc,
@@ -52,7 +57,9 @@ public sealed record Chapter(
     string? Objetivo = null,
     IReadOnlyList<string>? Aprendido = null,
     IReadOnlyList<FalaCombinada>? Combinado = null,
-    EstadoDoTrecho? Estado = null)
+    EstadoDoTrecho? Estado = null,
+    string? Resumo = null,
+    IReadOnlyList<string>? Frases = null)
 {
     /// <summary>
     /// Quanto este capítulo tirou do prompt. Nunca negativo: um resumo que saiu maior que o
@@ -79,7 +86,8 @@ public sealed record Chapter(
     public string Render()
     {
         if (Versao >= BlocoEstruturado.Versao)
-            return BlocoEstruturado.Render(TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido);
+            return BlocoEstruturado.Render(TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido,
+                resumo: Resumo, frases: Frases);
 
         var texto = new StringBuilder();
         texto.Append("### Capítulo ").Append(Index + 1);
@@ -106,7 +114,8 @@ public sealed record Chapter(
     /// </summary>
     public string Render(int maxTokens, TokenCounter counter) =>
         Versao >= BlocoEstruturado.Versao
-            ? BlocoEstruturado.Fit(maxTokens, counter, TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido)
+            ? BlocoEstruturado.Fit(maxTokens, counter, TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido,
+                resumo: Resumo, frases: Frases)
             : MemoryRender.Fit(Render(), Summary, maxTokens, counter);
 
     /// <summary>Turnos pela numeração do registro, a mesma que o Estado e o Combinado citam.</summary>

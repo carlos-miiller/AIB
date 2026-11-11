@@ -296,7 +296,7 @@ public static class ActionLogService
                     falhou,
                     falhou ? ArtifactExtractor.PrimeiraLinhaDoErro(resultado) : null,
                     ArtifactExtractor.SaidaBruta(feita.Name, resultado),
-                    ArtifactExtractor.ResumirArgumento(feita.Name, feita.Arguments),
+                    ArtifactExtractor.ResumirParaTela(feita.Name, feita.Arguments),
                     falhou ? null : ArtifactExtractor.ResumirResultado(feita.Name, resultado),
                     quando,
                     ArtifactExtractor.TrocaDaEdicao(feita.Name, feita.Arguments)));
@@ -333,7 +333,7 @@ public static class ActionLogService
     {
         Ferramentas.Ler or Ferramentas.Procurar or Ferramentas.Buscar
             or Ferramentas.Email or Ferramentas.LerEmail => ArtifactKind.FileRead,
-        Ferramentas.Gravar or Ferramentas.Editar => ArtifactKind.FileWritten,
+        Ferramentas.Gravar or Ferramentas.Editar or Ferramentas.Arquivo => ArtifactKind.FileWritten,
         _ => ArtifactKind.CommandRun
     };
 

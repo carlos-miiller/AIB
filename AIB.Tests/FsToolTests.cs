@@ -178,17 +178,60 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void SoCriarPasta_EhDispensadoNasPastasSemConfirmacao()
+        public void ApagarNaPastaSemConfirmacao_ContinuaPerguntando()
         {
-            // A dispensa foi pensada para gravar e editar. Aqui o estrago é a árvore inteira.
             PastasSemConfirmacao.Configurar(_dir);
             _fs.DispensaConfirmacao(Args(new { action = "mkdir", path = Path.Combine(_dir, "n") })).Should().BeTrue();
 
             string arq = Path.Combine(_dir, "z.txt");
             File.WriteAllText(arq, "z");
-            PastasSemConfirmacao.Configurar(_dir);
             _fs.DispensaConfirmacao(Args(new { action = "delete", path = arq })).Should().BeFalse();
             PastasSemConfirmacao.Configurar("");
+        }
+
+        /// <summary>
+        /// Caso real: com C:\Users\Carlo\Ellen na lista de pastas sem confirmação, o usuário pediu
+        /// para organizar a pasta. As 4 subpastas foram criadas sem perguntar, e cada um dos ~30
+        /// arquivos movidos para elas abriu um cartão. Mover, copiar e renomear DENTRO da pasta
+        /// passam direto; com uma das pontas fora, o cartão volta.
+        /// </summary>
+        [Fact]
+        public async Task MoverCopiarRenomear_DentroDaPastaSemConfirmacao_NaoPerguntam()
+        {
+            string confianca = PastaCheia("Ellen", 0);
+            string fora = PastaCheia("fora", 0);
+            string sub = Path.Combine(confianca, "01-incidentes");
+            Directory.CreateDirectory(sub);
+            string arq = Path.Combine(confianca, "relatorio.md");
+            File.WriteAllText(arq, "r");
+
+            PastasSemConfirmacao.Configurar(confianca);
+            try
+            {
+                var prompt = new Prompt();
+                var registry = new ToolRegistry(prompt);
+
+                string movido = Path.Combine(sub, "relatorio.md");
+                (await registry.ExecuteToolAsync(Ferramentas.Arquivos, Args(new { action = "move", path = arq, destination = movido }), 2))
+                    .Should().StartWith("SUCESSO");
+                (await registry.ExecuteToolAsync(Ferramentas.Arquivos, Args(new { action = "copy", path = movido, destination = Path.Combine(confianca, "copia.md") }), 2))
+                    .Should().StartWith("SUCESSO");
+                (await registry.ExecuteToolAsync(Ferramentas.Arquivos, Args(new { action = "rename", path = movido, new_name = "r2.md" }), 2))
+                    .Should().StartWith("SUCESSO");
+                prompt.Perguntas.Should().Be(0);
+
+                // Para fora, ou de fora para dentro: pergunta.
+                _fs.DispensaConfirmacao(Args(new { action = "move", path = Path.Combine(sub, "r2.md"), destination = Path.Combine(fora, "r2.md") }))
+                    .Should().BeFalse();
+                string externo = Path.Combine(fora, "e.txt");
+                File.WriteAllText(externo, "e");
+                _fs.DispensaConfirmacao(Args(new { action = "copy", path = externo, destination = Path.Combine(confianca, "e.txt") }))
+                    .Should().BeFalse();
+            }
+            finally
+            {
+                PastasSemConfirmacao.Configurar("");
+            }
         }
 
         [Fact]

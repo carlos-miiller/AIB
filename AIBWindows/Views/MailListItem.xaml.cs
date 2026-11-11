@@ -20,6 +20,13 @@ namespace AIB.Views
         public MailListItem()
         {
             InitializeComponent();
+
+            // O selo "Você iniciou" pelo DataContext, em código: o item também é montado solto
+            // (ensaios, pilha do orbe), e o gatilho de estilo não chegava a avaliar ali.
+            DataContextChanged += (_, _) =>
+                SeloIniciou.Visibility = (DataContext as MailSummary)?.Iniciada == true
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
         }
 
         // ─────────────────────────────────────────────────────────────────────

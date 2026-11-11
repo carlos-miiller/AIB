@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using AIB.Services;
+using AIB.Services.Mail;
 using AIB.Views;
 using FluentAssertions;
 using Xunit;
@@ -606,6 +607,158 @@ namespace AIB.Tests
                 botao.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
 
                 pediu.Should().BeTrue();
+            });
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // "Aguardando retorno" — cenário A, escolhido pelo usuário em 16/10/2026
+        // ─────────────────────────────────────────────────────────────────
+
+        private static readonly DateTime Envio = new(2026, 10, 16, 19, 24, 0, DateTimeKind.Utc);
+
+        private static EsperaDeRetorno Espera(int mensagens = 1, string thread = "77") =>
+            new("eu@empresa.com", thread, "Proposta de Parceria - Google Workspace", "ana@parceiro.com",
+                Envio, Envio.AddDays(7), mensagens, Iniciada: true);
+
+        [Fact]
+        public void AConversaEmEspera_SAI_DePara_Voce_Responder_EVoltaQuandoRespondem()
+        {
+            // Uma conversa só aparece num lugar. Respondida pelo outro lado (AwaitingMe), ela
+            // volta para a caixa mesmo que a vigia ainda exista.
+            var minha = Email() with { ThreadId = "77", AwaitingMe = false };
+            var deles = Email() with { ThreadId = "77", AwaitingMe = true };
+            var outra = Email() with { ThreadId = "88", AwaitingMe = false };
+
+            ChatWindow.ForaDaEspera(new[] { minha, outra }, new[] { Espera() })
+                .Should().Equal(outra);
+
+            ChatWindow.ForaDaEspera(new[] { deles }, new[] { Espera() })
+                .Should().Equal(deles);
+        }
+
+        [Theory]
+        [InlineData(16, 21, "7 dias", "até 23/10", EsperaItem.Estado.Normal)]
+        [InlineData(22, 12, "1 dia", "até 23/10", EsperaItem.Estado.Vencendo)]
+        [InlineData(23, 12, "hoje", "até 23/10", EsperaItem.Estado.Vencendo)]
+        [InlineData(24, 12, "venceu", "em 23/10", EsperaItem.Estado.Vencida)]
+        public void OPrazo_DizQuantoFalta_ENaCorCerta(int dia, int hora, string prazo, string data,
+                                                       EsperaItem.Estado estado)
+        {
+            var agoraUtc = new DateTime(2026, 10, dia, hora, 0, 0, DateTimeKind.Utc);
+
+            EsperaItem.Prazo(Espera(), agoraUtc).Should().Be((prazo, data));
+            EsperaItem.EstadoDe(Espera(), agoraUtc).Should().Be(estado);
+        }
+
+        [Fact]
+        public void ALinha_DizSeVoceENVIOU_OuSeAConversaJaANDOU()
+        {
+            var agora = Envio.ToLocalTime().AddHours(1);
+
+            EsperaItem.Linha(Espera(1), agora).Should().StartWith("Enviado Hoje").And.EndWith("sem resposta");
+            EsperaItem.Linha(Espera(3), agora).Should().StartWith("Você respondeu Hoje").And.EndWith("3 mensagens");
+            EsperaItem.Assunto(Espera() with { Assunto = "" }).Should().Be("(assunto não guardado)");
+        }
+
+        [Fact]
+        public void OItemEmEspera_MONTA_ComPrazoEBarra()
+        {
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var item = new EsperaItem();
+                item.Preencher(Espera(), new DateTime(2026, 10, 22, 12, 0, 0, DateTimeKind.Utc).ToLocalTime());
+
+                item.Pintado.Should().Be(EsperaItem.Estado.Vencendo);
+                ((TextBlock)item.FindName("PrazoTexto")).Text.Should().Be("1 dia");
+                ((TextBlock)item.FindName("ParaTexto")).Text.Should().Be("Para: ana@parceiro.com");
+                ((FrameworkElement)item.FindName("Corpo")).Visibility.Should().Be(Visibility.Collapsed);
+
+                item.Aberto = true;
+                ((FrameworkElement)item.FindName("Corpo")).Visibility.Should().Be(Visibility.Visible);
+            });
+        }
+
+        [Theory]
+        [InlineData(3, false, null)]
+        [InlineData(9, false, "Mostrar mais 6 ▾")]
+        [InlineData(9, true, "Mostrar menos ▴")]
+        public void ASecaoDeEspera_ABRE_EVoltaARECOLHER(int total, bool todas, string? rotulo)
+        {
+            // Pedido do usuário (16/10/2026): havia "Mostrar mais", mas depois de abrir não
+            // havia como esconder de novo.
+            ChatWindow.RotuloDoAlternar(total, todas).Should().Be(rotulo);
+        }
+
+        [Fact]
+        public void AsAcoesDaEspera_PEDEM_ENaVencida_PararViraDispensar()
+        {
+            // Decisões do usuário (16/10/2026): o item em espera ganha "Abrir com <NOME>", e a
+            // conversa vencida continua na seção, com "Dispensar" no lugar de "Parar de vigiar".
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var item = new EsperaItem { NomeDaInteligencia = "Ellen", RotuloDoCliente = "" };
+                item.Preencher(Espera(), new DateTime(2026, 10, 17, 12, 0, 0, DateTimeKind.Utc).ToLocalTime());
+
+                var parar = (Button)item.FindName("BotaoParar");
+                parar.Content.Should().Be("Parar de vigiar");
+                ((Button)item.FindName("BotaoAbrirNoCliente")).Visibility.Should().Be(Visibility.Collapsed,
+                    "sem endereço do webmail o botão não teria para onde ir");
+
+                var pedidos = new System.Collections.Generic.List<string>();
+                item.PediuAbrirComIA += (_, _) => pedidos.Add("abrir");
+                item.PediuEstender += (_, _) => pedidos.Add("estender");
+                item.PediuParar += (_, _) => pedidos.Add("parar");
+
+                foreach (var nome in new[] { "BotaoAbrirComIA", "BotaoEstender", "BotaoParar" })
+                    ((Button)item.FindName(nome)).RaiseEvent(
+                        new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
+                pedidos.Should().Equal("abrir", "estender", "parar");
+
+                item.Preencher(Espera(), new DateTime(2026, 10, 25, 12, 0, 0, DateTimeKind.Utc).ToLocalTime());
+                parar.Content.Should().Be("Dispensar");
+            });
+        }
+
+        [Fact]
+        public void AbrirComIA_NumaEspera_UsaAMesmaChaveDaConversaDaLista()
+        {
+            // Quando a resposta chegar, o item passa para "Para você responder" — e "Abrir com"
+            // ali tem de reencontrar a conversa começada aqui, não abrir outra.
+            var email = ChatWindow.ComoEmail(Espera());
+
+            Services.Mail.ArquivoDeConversas.ChaveDaConversa(email)
+                .Should().Be(Services.Mail.ArquivoDeConversas.Chave("eu@empresa.com", "77", 0));
+            email.AwaitingMe.Should().BeFalse();
+            email.Iniciada.Should().BeTrue();
+            email.Description.Should().Contain("ana@parceiro.com").And.Contain("ainda não houve resposta");
+        }
+
+        [Fact]
+        public void OSelo_VOCE_INICIOU_SoAparece_NaConversaQueVoceComecou()
+        {
+            // Pedido do usuário (16/10/2026): quando chega a resposta a uma proposta que ele
+            // enviou, o item precisa dizer que a conversa é dele — senão ela se perde entre os
+            // e-mails que chegaram sozinhos.
+            EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var comum = new MailListItem { DataContext = Email() };
+                var dele = new MailListItem { DataContext = Email() with { Iniciada = true } };
+
+                foreach (var item in new[] { comum, dele })
+                {
+                    item.Measure(new Size(600, 200));
+                    item.Arrange(new Rect(0, 0, 600, 200));
+                }
+
+                ((FrameworkElement)comum.FindName("SeloIniciou")).Visibility.Should().Be(Visibility.Collapsed);
+                ((FrameworkElement)dele.FindName("SeloIniciou")).Visibility.Should().Be(Visibility.Visible);
             });
         }
 

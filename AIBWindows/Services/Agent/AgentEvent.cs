@@ -124,9 +124,16 @@ public abstract record AgentEvent
 }
 
 /// <summary>Parâmetros de um turno. O AgentLoop não guarda estado entre turnos.</summary>
+/// <param name="UsaTriagem">
+/// O turno vai ao provedor e ao modelo DA TRIAGEM de e-mail, e não aos da conversa — é a
+/// conversa aberta sobre um e-mail (<see cref="UserAppSettings.ParaTriagem"/>).
+/// </param>
+/// <param name="Contexto">De que conversa vem o turno — ver <see cref="ContextoDoTurno"/>.</param>
 public sealed record AgentTurnRequest(
     IMessageStore Store,
     IReadOnlyList<ChatTool> Tools,
     int UserLevel,
     ChatRequestOptions Options,
-    bool VerboseLogging);
+    bool VerboseLogging,
+    bool UsaTriagem = false,
+    ContextoDoTurno? Contexto = null);

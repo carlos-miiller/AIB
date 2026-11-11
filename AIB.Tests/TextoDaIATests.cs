@@ -1,0 +1,174 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Windows;
+using System.Windows.Documents;
+using System.Windows.Media;
+using AIB.Ui;
+using AIB.Views;
+using FluentAssertions;
+using Xunit;
+
+namespace AIB.Tests
+{
+    /// <summary>
+    /// As falas da IA no orbe em Markdown. Visto no uso: a mesma resposta saía formatada na
+    /// janela de chat e, no orbe, crua — asteriscos, cercas de código e marcadores à mostra.
+    /// </summary>
+    public class TextoDaIATests
+    {
+        private const string Resposta =
+            "Pronto! A **Retirada #38** foi aprovada:\n\n* Dell Optiplex `CPS-DTP-5752`\n* Monitor 19\"";
+
+        private static IEnumerable<T> Descendentes<T>(DependencyObject raiz) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(raiz); i++)
+            {
+                var filho = VisualTreeHelper.GetChild(raiz, i);
+                if (filho is T achado) yield return achado;
+                foreach (var neto in Descendentes<T>(filho)) yield return neto;
+            }
+        }
+
+        private static IEnumerable<Inline> Inlines(Block bloco) => bloco switch
+        {
+            Paragraph p => p.Inlines.SelectMany(Achatar),
+            List l => l.ListItems.SelectMany(i => i.Blocks).SelectMany(Inlines),
+            Section s => s.Blocks.SelectMany(Inlines),
+            _ => Enumerable.Empty<Inline>()
+        };
+
+        private static IEnumerable<Inline> Achatar(Inline inline) =>
+            inline is Span span ? new[] { inline }.Concat(span.Inlines.SelectMany(Achatar)) : new[] { inline };
+
+        private static void ConferirFormatado(FlowDocument documento)
+        {
+            string texto = new TextRange(documento.ContentStart, documento.ContentEnd).Text;
+
+            texto.Should().Contain("Retirada #38").And.Contain("CPS-DTP-5752");
+            texto.Should().NotContain("**", "negrito é formato, não asterisco").And.NotContain("`");
+
+            documento.Blocks.OfType<List>().Should().ContainSingle("os marcadores viram lista")
+                .Which.ListItems.Should().HaveCount(2);
+            documento.Blocks.SelectMany(Inlines).Should().Contain(
+                i => i.FontWeight == FontWeights.Bold || i is Bold, "o trecho entre asteriscos sai em negrito");
+        }
+
+        [Fact]
+        public void OControle_DesenhaOMarkdown_ETrocaQuandoOTextoMuda()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var controle = new TextoDaIA { Texto = Resposta };
+                var janela = new Window { Content = controle, Width = 500, Height = 300, ShowActivated = false };
+                janela.Show();
+                janela.UpdateLayout();
+
+                controle.Visor.Should().NotBeNull();
+                ConferirFormatado(controle.Visor!.Document);
+
+                controle.Texto = "só isto";
+                new TextRange(controle.Visor.Document.ContentStart, controle.Visor.Document.ContentEnd).Text
+                    .Trim().Should().Be("só isto");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void Titulo_UsaACorForteDoTema_NaoOPretoDoMarkdig()
+        {
+            // Visto no uso (21/10/2026): "os títulos ainda estão saindo com texto preto". O tema
+            // do Markdig.Wpf fixa #000 e 42px no "#"; sobre o vidro escuro o título sumia.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var controle = new TextoDaIA { Texto = "# Resumo\n\n## Itens\n\n#### Detalhe\n\ntexto" };
+                var janela = new Window { Content = controle, Width = 500, Height = 300, ShowActivated = false };
+                janela.Show();
+                janela.UpdateLayout();
+
+                var forte = (SolidColorBrush)controle.FindResource("TextStrongBrush");
+                double maximo = (double)controle.FindResource("FontSizeHeaderTitle");
+                var titulos = controle.Visor!.Document.Blocks.OfType<Paragraph>()
+                    .Where(p => new TextRange(p.ContentStart, p.ContentEnd).Text != "texto").ToList();
+
+                titulos.Should().HaveCount(3);
+                foreach (var t in titulos)
+                {
+                    ((SolidColorBrush)t.Foreground).Color.Should().Be(forte.Color);
+                    t.FontSize.Should().BeLessThanOrEqualTo(maximo);
+                }
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void DivisoriaTabelaECitacao_UsamAsCoresDoTema()
+        {
+            // Visto no uso (21/10/2026): "divisórias e tabelas" com cores mal postas. O tema do
+            // Markdig.Wpf desenha a linha e a grade em preto, para página branca.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var controle = new TextoDaIA
+                {
+                    Texto = "antes\n\n---\n\n| Item | Qtd |\n|---|---|\n| Mouse | 2 |\n\n> nota\n\n[site](https://exemplo.com)"
+                };
+                var janela = new Window { Content = controle, Width = 500, Height = 400, ShowActivated = false };
+                janela.Show();
+                janela.UpdateLayout();
+
+                Color Token(string chave) => ((SolidColorBrush)controle.FindResource(chave)).Color;
+                var blocos = controle.Visor!.Document.Blocks.ToList();
+
+                // A divisória é um Line dentro de um InlineUIContainer, num parágrafo próprio.
+                var linha = (System.Windows.Shapes.Line)blocos.SelectMany(Inlines).OfType<InlineUIContainer>().Single().Child;
+                ((SolidColorBrush)linha.Stroke).Color.Should().Be(Token("BorderControlBrush"));
+
+                var tabela = blocos.OfType<Table>().Single();
+                ((SolidColorBrush)tabela.BorderBrush).Color.Should().Be(Token("BorderOutlineBtnBrush"));
+                var celulas = tabela.RowGroups.SelectMany(g => g.Rows).SelectMany(r => r.Cells).ToList();
+                var grade = Token("BorderOutlineBtnBrush");
+                celulas.Should().HaveCount(4).And.OnlyContain(
+                    c => ((SolidColorBrush)c.BorderBrush).Color == grade);
+
+                var citacao = blocos.OfType<Section>().Single();
+                ((SolidColorBrush)citacao.BorderBrush).Color.Should().Be(Token("AccentBorderStrongBrush"));
+
+                var link = blocos.SelectMany(Inlines).OfType<Hyperlink>().Single();
+                ((SolidColorBrush)link.Foreground).Color.Should().Be(Token("AccentBlueBrush"));
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void AFalaNoOrbe_SaiFormatada_ComoNaJanelaDeChat()
+        {
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+
+                var orbe = new ShadowAssistantWindow();
+                orbe.AbrirBarra();
+                orbe.MostrarFala(Resposta);
+                orbe.Show();
+                orbe.UpdateLayout();
+
+                var fala = Descendentes<TextoDaIA>(orbe).Should().ContainSingle().Subject;
+                fala.Visor.Should().NotBeNull();
+                ConferirFormatado(fala.Visor!.Document);
+
+                // O texto cru continua sendo o que o orbe guarda: é ele que vai para o histórico.
+                orbe.TextoDaFala.Should().Be(Resposta);
+
+                orbe.Close();
+            });
+        }
+    }
+}

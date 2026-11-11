@@ -134,6 +134,16 @@ public readonly record struct TokenReport(
     public bool AcimaDoOrcamento => Max > 0 && Contexto > Max;
 
     /// <summary>
+    /// A chave do pincel do contador, pela ocupação: vermelho perto da rede (o único ponto em
+    /// que algo se perde), laranja acima do teto do nível (vai compactar), neutro no resto.
+    /// Uma regra só para o rodapé da janela e para a barra do orbe.
+    /// </summary>
+    public string PincelDaOcupacao =>
+        OcupacaoDaRedePct >= 90 ? "DangerTextBrush"
+        : AcimaDoOrcamento || OcupacaoPct >= 90 ? "WarnBrush"
+        : "TextSecondaryBrush";
+
+    /// <summary>
     /// O que a faixa cobra além do custo próprio dos capítulos: o cabeçalho do bloco.
     /// <para>
     /// Negativo significa outra coisa — a cota aparou capítulos na renderização, e parte do que

@@ -13,7 +13,14 @@ namespace AIB.Services;
 /// <param name="QuandoUtc">A hora de entregar.</param>
 /// <param name="Texto">A fala da persona, escrita no pedido e entregue como está.</param>
 /// <param name="Assunto">Do que se trata, em poucas palavras, para listar.</param>
-public sealed record Lembrete(string Id, DateTime QuandoUtc, string Texto, string Assunto);
+/// <param name="ChaveDoEmail">
+/// A conversa de e-mail em que ele nasceu (<c>conta|thr:id</c>), ou vazio. É o que dá ao aviso
+/// o botão "Abrir o e-mail" — antes o lembrete chegava sozinho, sem caminho de volta ao e-mail.
+/// </param>
+/// <param name="Shadow">Nasceu na conversa do orbe: o aviso leva o selo e "Abrir no Shadow".</param>
+public sealed record Lembrete(
+    string Id, DateTime QuandoUtc, string Texto, string Assunto,
+    string ChaveDoEmail = "", bool Shadow = false);
 
 /// <summary>
 /// Os lembretes únicos pendentes, em <c>~/.AIB/lembretes.json</c>.
@@ -60,7 +67,8 @@ public sealed class Lembretes
     }
 
     /// <summary>Agenda. Devolve o lembrete criado, ou null no teto.</summary>
-    public Lembrete? Criar(DateTime quandoUtc, string texto, string assunto)
+    public Lembrete? Criar(DateTime quandoUtc, string texto, string assunto,
+                           string chaveDoEmail = "", bool shadow = false)
     {
         lock (_gate)
         {
@@ -71,7 +79,8 @@ public sealed class Lembretes
             do id = Guid.NewGuid().ToString("N")[..4];
             while (todos.Any(l => l.Id == id));
 
-            var novo = new Lembrete(id, quandoUtc, texto.Trim(), assunto.Trim());
+            var novo = new Lembrete(id, quandoUtc, texto.Trim(), assunto.Trim(),
+                                    chaveDoEmail ?? "", shadow);
             todos.Add(novo);
             Gravar(todos);
             return novo;
@@ -79,6 +88,15 @@ public sealed class Lembretes
     }
 
     /// <summary>Tira o lembrete. Devolve se existia.</summary>
+    /// <summary>
+    /// "Adiar 1 h" do aviso: o mesmo lembrete, de novo na agenda, para daqui a
+    /// <paramref name="quanto"/>. Sem modelo: a fala é a que já estava escrita.
+    /// </summary>
+    public Lembrete? Adiar(Lembrete lembrete, TimeSpan quanto, DateTime agoraUtc) =>
+        lembrete == null
+            ? null
+            : Criar(agoraUtc + quanto, lembrete.Texto, lembrete.Assunto, lembrete.ChaveDoEmail, lembrete.Shadow);
+
     public bool Cancelar(string id)
     {
         lock (_gate)
@@ -128,7 +146,7 @@ public sealed class Lembretes
         try
         {
             if (!File.Exists(_arquivo)) return new List<Lembrete>();
-            return JsonSerializer.Deserialize<List<Lembrete>>(File.ReadAllText(_arquivo, Encoding.UTF8), Json)
+            return JsonSerializer.Deserialize<List<Lembrete>>(ArquivoCifrado.Ler(_arquivo) ?? "[]", Json)
                    ?? new List<Lembrete>();
         }
         catch (Exception ex)
@@ -141,9 +159,7 @@ public sealed class Lembretes
 
     private void Gravar(List<Lembrete> todos)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_arquivo)!);
-        string temporario = _arquivo + ".tmp";
-        File.WriteAllText(temporario, JsonSerializer.Serialize(todos, Json), new UTF8Encoding(false));
-        File.Move(temporario, _arquivo, overwrite: true);
+        // Cifrado: o texto do lembrete é fala sobre a vida do usuário.
+        ArquivoCifrado.GravarTexto(_arquivo, JsonSerializer.Serialize(todos, Json));
     }
 }

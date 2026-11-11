@@ -502,7 +502,58 @@
 
                     <!-- ── §3.7  BARRA DE INPUT ─────────────────────────── -->
                     <Grid x:Name="BarraDeInput" Grid.Row="2" Margin="20,0,20,0">
-                        <Border Background="{StaticResource InputFrameBrush}"
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Segredo na mensagem (pedido do usuário, 20/10/2026): o Enter não envia,
+                             e o alerta oferece guardar o trecho no cofre e mandar só o nome. Ver
+                             ChatWindow.Segredo.cs e SegredoNaMensagem. -->
+                        <Border x:Name="AlertaDeSegredo" Grid.Row="0" Visibility="Collapsed" Margin="0,0,0,8"
+                                Background="{StaticResource WarnFill10Brush}"
+                                BorderBrush="{StaticResource WarnBorderBrush}" BorderThickness="1"
+                                CornerRadius="12" Padding="12,10">
+                            <StackPanel>
+                                <TextBlock x:Name="AlertaTitulo" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextStrongBrush}"/>
+                                <TextBlock FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Foreground="{StaticResource TextBodyBrush}"
+                                           Text="Enviado assim, ele vai para o provedor do modelo e fica no histórico da conversa. Guardado no cofre, a IA usa pelo nome e não vê o valor."/>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="8"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="2*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Guardar como" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <TextBox x:Name="AlertaNome" Grid.Column="1" Style="{StaticResource ControlTextBoxMono}"/>
+                                    <TextBlock Grid.Column="3" Text="hosts" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <TextBox x:Name="AlertaHosts" Grid.Column="4" Style="{StaticResource ControlTextBoxMono}"/>
+                                </Grid>
+                                <TextBox x:Name="AlertaDescricao" Style="{StaticResource ControlTextBox}" Margin="0,6,0,0"
+                                         ToolTip="Para que serve (a IA lê isto)"/>
+                                <CheckBox x:Name="AlertaShell" IsChecked="True" Margin="0,6,0,0" FontSize="12"
+                                          Foreground="{StaticResource TextBodyBrush}" Content="Permite uso no shell"
+                                          ToolTip="Desmarcado, só as habilidades que declaram este segredo o usam."/>
+                                <TextBlock x:Name="AlertaErro" Visibility="Collapsed" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Foreground="{StaticResource DangerTextBrush}"/>
+                                <WrapPanel Margin="0,8,0,0">
+                                    <Button x:Name="AlertaGuardar" Style="{StaticResource AccentFilledButton}"
+                                            Content="Guardar e enviar com o nome" Click="AlertaGuardar_Click" Margin="0,0,8,0"/>
+                                    <Button x:Name="AlertaEditar" Style="{StaticResource OutlineButton}"
+                                            Content="Editar a mensagem" Click="AlertaEditar_Click" Margin="0,0,8,0"/>
+                                    <Button x:Name="AlertaEnviar" Style="{StaticResource OutlineButton}"
+                                            Content="Enviar mesmo assim" Click="AlertaEnviar_Click"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="1" Background="{StaticResource InputFrameBrush}"
                                 CornerRadius="{StaticResource RadiusInputFrame}"
                                 Padding="1.5">
                             <Border Background="{StaticResource SurfaceInputBarBrush}"

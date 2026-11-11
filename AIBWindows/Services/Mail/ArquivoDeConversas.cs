@@ -25,6 +25,11 @@ namespace AIB.Services.Mail;
 /// Veio da pasta de Enviados: foi VOCÊ quem escreveu. É o que vira a vez da conversa.
 /// </param>
 /// <param name="Origem"><c>vigia</c>, <c>enviados</c> ou <c>recarregar</c>.</param>
+/// <param name="Para">
+/// Só nas suas: a quem você escreveu (primeiro destinatário, "+N" quando há mais). É o que a
+/// lista "Aguardando retorno" mostra para dizer de quem se espera.
+/// </param>
+/// <param name="Abriu">Só nas suas: esta mensagem COMEÇOU a conversa.</param>
 public sealed record EntradaDaConversa(
     string Em,
     uint Uid,
@@ -33,7 +38,9 @@ public sealed record EntradaDaConversa(
     string Urgencia = "",
     string Resumo = "",
     bool Minha = false,
-    string Origem = "vigia");
+    string Origem = "vigia",
+    string Para = "",
+    bool Abriu = false);
 
 /// <summary>
 /// O histórico de cada conversa de e-mail, em <c>~/.AIB/email/conversas/{hash}/triagem.jsonl</c>.
@@ -235,11 +242,23 @@ public sealed class ArquivoDeConversas
 
         foreach (var e in LerArquivo(caminho))
             if (string.Equals(Identidade(e), id, StringComparison.Ordinal)
-                && string.Equals(e.Origem, nova.Origem, StringComparison.Ordinal))
+                && string.Equals(e.Origem, nova.Origem, StringComparison.Ordinal)
+                && !Completa(e, nova))
                 return true;
 
         return false;
     }
+
+    /// <summary>
+    /// A nova é uma entrada sua que traz o assunto que a gravada não tinha: entra, em vez de
+    /// ser barrada como repetida. Até 16/10/2026 a pasta de enviados só dava thread e data, e
+    /// as conversas daquela época ficariam sem nome para sempre. O carimbo é o mesmo, então a
+    /// contagem não muda (ver <see cref="Identidade"/>).
+    /// </summary>
+    private static bool Completa(EntradaDaConversa gravada, EntradaDaConversa nova) =>
+        nova.Minha
+        && string.IsNullOrWhiteSpace(gravada.Assunto)
+        && !string.IsNullOrWhiteSpace(nova.Assunto);
 
     /// <summary>
     /// O que faz uma entrada ser a MESMA mensagem.
@@ -310,6 +329,8 @@ public sealed class ArquivoDeConversas
     /// </param>
     /// <param name="Resumo">O resumo que acompanha esse veredito.</param>
     /// <param name="Assunto">Assunto da mensagem mais recente.</param>
+    /// <param name="Para">A quem você escreveu por último. Vazio se nunca escreveu.</param>
+    /// <param name="Iniciada">Foi você quem começou a conversa — o selo "Você iniciou".</param>
     /// <param name="De">
     /// Quem escreveu a mensagem do veredito — a mesma que dá <see cref="Urgencia"/>, e não a
     /// mais recente. Se fosse a mais recente, a conversa que você acabou de responder abriria o
@@ -322,7 +343,9 @@ public sealed class ArquivoDeConversas
         string Urgencia,
         string Resumo,
         string Assunto,
-        string De = "");
+        string De = "",
+        string Para = "",
+        bool Iniciada = false);
 
     /// <summary>
     /// Lê o histórico e devolve o que a linha de §3.10 mostra. <c>null</c> quando a conversa
@@ -351,14 +374,22 @@ public sealed class ArquivoDeConversas
         var comVeredito = ordenadas.LastOrDefault(
             e => !e.Minha && !string.IsNullOrWhiteSpace(e.Urgencia));
 
+        // O ASSUNTO é o da mais recente QUE TEM assunto. As suas gravadas antes de 16/10/2026
+        // vieram sem ele, e uma resposta sua deixava a conversa sem nome na tela.
+        var comAssunto = ordenadas.LastOrDefault(e => !string.IsNullOrWhiteSpace(e.Assunto));
+
+        var minha = ordenadas.LastOrDefault(e => e.Minha && !string.IsNullOrWhiteSpace(e.Para));
+
         return new Estado(
             mensagens,
             DiarioDeTriagem.Quando(ultima.Em),
             EsperandoVoce: !ultima.Minha,
             Urgencia: comVeredito?.Urgencia ?? "",
             Resumo: comVeredito?.Resumo ?? "",
-            Assunto: ultima.Assunto ?? "",
-            De: comVeredito?.De ?? ultima.De ?? "");
+            Assunto: comAssunto?.Assunto ?? "",
+            De: comVeredito?.De ?? ultima.De ?? "",
+            Para: minha?.Para ?? "",
+            Iniciada: ordenadas.Any(e => e.Minha && e.Abriu));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

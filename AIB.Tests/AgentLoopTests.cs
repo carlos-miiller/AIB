@@ -979,5 +979,61 @@ namespace AIB.Tests
             ultimoUsage.Should().BeGreaterThan(ultimoTexto,
                 "a última emissão do contador vem depois do último texto, fechando com o valor exato");
         }
+
+        [Fact]
+        public async Task FerramentaSincrona_NaoPrendeQuemPedeOProximoEvento()
+        {
+            // Visto em 19/10/2026: o Shadow congelou ~10 s enquanto a Ellen rodava
+            // grep "\bDBE\b" em C:\Users\Carlo\CPAPS. O GrepTool é síncrono
+            // (Task.FromResult(Buscar(...))) e o laço retoma depois de cada yield na thread de
+            // quem chama MoveNextAsync — a da interface. A busca rodava ali, e a janela parava.
+            using var portao = new ManualResetEventSlim(false);
+            var registry = new ToolRegistry();
+            registry.Registrar(new FerramentaQuePrende(portao));
+            var provider = new ScriptedProvider(null,
+                ToolTurn(("k0", "id0", "prende", "{}")),
+                TextTurn("pronto"));
+            var loop = new AgentLoop(registry, new FixedProviderFactory(provider), _settings,
+                                     new TokenCounter(), _ => { });
+
+            var eventos = loop.RunAsync(Request(new RecordingStore()), CancellationToken.None).GetAsyncEnumerator();
+            try
+            {
+                while (await eventos.MoveNextAsync())
+                    if (eventos.Current is AgentEvent.ToolStarted) break;
+
+                var relogio = System.Diagnostics.Stopwatch.StartNew();
+                var proximo = eventos.MoveNextAsync();
+                relogio.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(1),
+                    "pedir o próximo evento não pode esperar a ferramenta terminar");
+
+                portao.Set();
+                await proximo;
+                while (await eventos.MoveNextAsync()) { }
+            }
+            finally
+            {
+                portao.Set();
+                await eventos.DisposeAsync();
+            }
+        }
+
+        /// <summary>Uma ferramenta síncrona e lenta, como o grep numa pasta grande.</summary>
+        private sealed class FerramentaQuePrende : ITool
+        {
+            private readonly ManualResetEventSlim _portao;
+            public FerramentaQuePrende(ManualResetEventSlim portao) => _portao = portao;
+
+            public string Name => "prende";
+            public string Description => "";
+            public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool("prende");
+            public int RequiredLevel => 1;
+
+            public Task<string> ExecuteAsync(string argumentsJson, int userLevel = 1)
+            {
+                _portao.Wait(TimeSpan.FromSeconds(5));
+                return Task.FromResult("ok");
+            }
+        }
     }
 }

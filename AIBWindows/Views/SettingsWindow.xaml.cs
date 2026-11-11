@@ -25,6 +25,9 @@ public enum PaginaDeConfiguracoes
     /// </summary>
     Ferramentas,
 
+    /// <summary>Segredos que a IA usa no shell pelo nome, sem ver o valor. Ver <see cref="AIB.Services.Cofre"/>.</summary>
+    Cofre,
+
     /// <summary>O que a conversa lembra: compactação, fatia de contexto e onde isso mora.</summary>
     Memoria,
 
@@ -63,6 +66,10 @@ public partial class SettingsWindow : Window
 
     /// <summary>O catálogo do OpenRouter, quando já chegou. Dá a janela e o preço do modelo escolhido.</summary>
     private IReadOnlyList<AIB.Services.Ai.ModeloDoOpenRouter> _catalogo = Array.Empty<AIB.Services.Ai.ModeloDoOpenRouter>();
+
+    /// <summary>Os modelos do Google: a lista fixa até a chave trazer a de verdade (<see cref="CarregarModelosDoGoogleAsync"/>).</summary>
+    private IReadOnlyList<string> _modelosDoGoogle = ProvedoresDeIa.ModelosDoGoogle;
+    private bool _googleConsultado;
 
     private static readonly System.Net.Http.HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
 
@@ -188,6 +195,7 @@ public partial class SettingsWindow : Window
         KeepAssistantSpeechSwitch.IsChecked = _currentSettings.KeepAssistantSpeech;
         ThinkingInHistorySwitch.IsChecked = _currentSettings.ThinkingInHistory;
         MailTriageThinkingSwitch.IsChecked = _currentSettings.MailTriageThinking;
+        EmailSoLocalSwitch.IsChecked = _currentSettings.EmailSoLocal;
 
             TriagemProvedorComboBox.ItemsSource = ProvedoresDeIa.Todos.ToList();
             TriagemProvedorComboBox.SelectedItem = _currentSettings.MailTriageProvider;
@@ -198,6 +206,9 @@ public partial class SettingsWindow : Window
             IniciativaSwitch.IsChecked = _currentSettings.IniciativaLigada;
             IniciativaResumo.Text = App.ResumoDaIniciativa();
             MensagensPorDiaTextBox.Text = _currentSettings.MensagensPorDia.ToString();
+            IniciativaLogSwitch.IsChecked = _currentSettings.IniciativaLogging;
+            HabitosSwitch.IsChecked = _currentSettings.AprenderHabitos;
+            MostrarHabitos();
             SilencioInicioTextBox.Text = _currentSettings.SilencioInicio;
             SilencioFimTextBox.Text = _currentSettings.SilencioFim;
             MailWindowTextBox.Text = _currentSettings.MailWindowDays.ToString();
@@ -207,6 +218,8 @@ public partial class SettingsWindow : Window
             CompactionTriggerTextBox.Text = ParaPorcento(_currentSettings.CompactionTrigger);
             MemoryFractionTextBox.Text = ParaPorcento(_currentSettings.MemoryFraction);
             MostrarMemoria(_currentSettings);
+            _fatosAbertos = new AIB.Services.Memory.FactStore().Texto();
+            FatosTextBox.Text = _fatosAbertos;
 
             RefreshKeyTextBoxLabel();
             CarregarContas();
@@ -291,15 +304,24 @@ public partial class SettingsWindow : Window
         {
             var perfil = _perfis[provedor];
             bool openRouter = provedor == ProvedoresDeIa.OpenRouter;
+            bool google = provedor == ProvedoresDeIa.Google;
+            bool nuvem = ProvedoresDeIa.EhNuvem(provedor);
 
-            PainelOllama.Visibility = openRouter ? Visibility.Collapsed : Visibility.Visible;
+            PainelOllama.Visibility = nuvem ? Visibility.Collapsed : Visibility.Visible;
             PainelOpenRouter.Visibility = openRouter ? Visibility.Visible : Visibility.Collapsed;
+            PainelGoogle.Visibility = google ? Visibility.Visible : Visibility.Collapsed;
 
             if (openRouter)
             {
                 OpenRouterUrlTextBox.Text = ProvedoresDeIa.UrlDoOpenRouter;
                 OpenRouterModelComboBox.Text = perfil.Modelo;
                 _modeloDaJanela = perfil.Modelo;
+            }
+            else if (google)
+            {
+                GoogleUrlTextBox.Text = ProvedoresDeIa.UrlDoGoogle;
+                GoogleModelComboBox.ItemsSource = _modelosDoGoogle.ToList();
+                GoogleModelComboBox.Text = perfil.Modelo;
             }
             else
             {
@@ -309,14 +331,16 @@ public partial class SettingsWindow : Window
             }
 
             JanelaTextBox.Text = perfil.JanelaDeContexto.ToString();
-            JanelaAjuda.Text = openRouter
+            JanelaAjuda.Text = nuvem
                 ? "Quanto da conversa a AIB manda por turno — base dos orçamentos por nível. Não passa da janela do modelo, e cada token dela é pago."
                 : "O num_ctx pedido ao Ollama, e a base dos orçamentos por nível. Sem GPU, cada 16 mil tokens custam ~0,65 GB de RAM; mudar recarrega o modelo.";
 
             RaciocinioComboBox.ItemsSource = ProvedoresDeIa.OpcoesDeRaciocinio(provedor)
                 .Select(o => new { o.Valor, o.Rotulo }).ToList();
             RaciocinioComboBox.SelectedValue = perfil.Raciocinio;
-            RaciocinioAjuda.Text = openRouter
+            RaciocinioAjuda.Text = google
+                ? "Esforço de raciocínio pedido ao Gemini (reasoning_effort). Os tokens de raciocínio são cobrados como saída. Os modelos Pro não desligam: neles, \"Desligado\" vale o padrão do modelo."
+                : openRouter
                 ? "Esforço de raciocínio pedido ao modelo (parâmetro reasoning). Os tokens de raciocínio são cobrados como saída. O resumo e a triagem sempre pedem desligado."
                 : "O modelo pensa antes de responder. Sem GPU custa minutos por turno — medido: 953 tokens de pensamento em 12 minutos para zero texto.";
 
@@ -333,7 +357,8 @@ public partial class SettingsWindow : Window
         async System.Threading.Tasks.Task openRouterOuOllama(string p)
         {
             if (p == ProvedoresDeIa.OpenRouter) await CarregarCatalogoAsync();
-            else await RefreshModelsAsync();
+            else if (p == ProvedoresDeIa.Google) await CarregarModelosDoGoogleAsync();
+            else if (p == ProvedoresDeIa.Ollama) await RefreshModelsAsync();
         }
     }
 
@@ -346,6 +371,10 @@ public partial class SettingsWindow : Window
         if (openRouter)
         {
             perfil.Modelo = (OpenRouterModelComboBox.Text ?? "").Trim();
+        }
+        else if (provedor == ProvedoresDeIa.Google)
+        {
+            perfil.Modelo = (GoogleModelComboBox.Text ?? "").Trim();
         }
         else
         {
@@ -540,10 +569,43 @@ public partial class SettingsWindow : Window
         }
     }
 
+    /// <summary>
+    /// Os modelos que a chave do Google enxerga, nas duas listas que os usam: conversa e triagem.
+    /// Uma consulta por janela. Sem chave ou sem rede, fica a lista fixa, e a caixa aceita digitar.
+    /// </summary>
+    private async System.Threading.Tasks.Task CarregarModelosDoGoogleAsync()
+    {
+        if (_googleConsultado) return;
+        _googleConsultado = true;
+
+        string chave = AIB.Services.Ai.ChatProviderFactory.ChaveDe(ProvedoresDeIa.Google);
+        var lista = await AIB.Services.Ai.CatalogoDoGoogle.ListarAsync(_http, chave);
+        if (lista.Count == 0) return;
+
+        _modelosDoGoogle = lista;
+
+        bool antes = _carregando;
+        _carregando = true;
+        try
+        {
+            string atual = GoogleModelComboBox.Text;
+            GoogleModelComboBox.ItemsSource = _modelosDoGoogle.ToList();
+            GoogleModelComboBox.Text = atual;
+        }
+        finally
+        {
+            _carregando = antes;
+        }
+
+        EncherModelosDaTriagem();
+    }
+
     /// <summary>Os campos da aba Memória que não são porcentagem.</summary>
     private void MostrarMemoria(UserAppSettings s)
     {
         SelecionarPorTag(MemoriaQuemEscreveComboBox, s.MemoriaComModelo ? "modelo" : "codigo");
+        TurnosSoltosTextBox.Text = s.TurnosSoltos.ToString();
+        TokensSoltosTextBox.Text = s.TokensSoltos.ToString();
         TurnosPorCapituloTextBox.Text = s.TurnosPorCapitulo.ToString();
         TokensPorCapituloTextBox.Text = s.TokensPorCapitulo.ToString();
         SelecionarPorTag(CapitulosPorAtoComboBox, s.CapitulosPorAto.ToString(), n => n);
@@ -632,6 +694,69 @@ public partial class SettingsWindow : Window
         KeyTextBox.Text = configurada ? "••••••••••••" : "—";
         KeyTextBox.ToolTip = configurada ? "Configurada — guardada no cofre DPAPI" : "Não configurada";
         AlterarChaveBotao.Content = configurada ? "Alterar" : "Adicionar";
+
+        // A do Google, lida do cofre DELE.
+        bool doGoogle = AIB.Services.Ai.ChatProviderFactory.ChaveDe(ProvedoresDeIa.Google).Length > 0;
+        GoogleKeyTextBox.Text = doGoogle ? "••••••••••••" : "—";
+        GoogleKeyTextBox.ToolTip = doGoogle ? "Configurada — guardada no cofre DPAPI" : "Não configurada";
+        GoogleAlterarChaveBotao.Content = doGoogle ? "Alterar" : "Adicionar";
+    }
+
+    // ── A chave do Google: as mesmas regras da do OpenRouter, no cofre dele ──
+
+    private void GoogleAlterarChave_Click(object sender, RoutedEventArgs e)
+    {
+        GoogleNovaChaveLinha.Visibility = Visibility.Visible;
+        GoogleNovaChaveBox.Focus();
+    }
+
+    private void GoogleNovaChave_Mudou(object sender, RoutedEventArgs e)
+    {
+        GoogleGuardarChaveBotao.IsEnabled = ProvedoresDeIa.ChaveValida(ProvedoresDeIa.Google, GoogleNovaChaveBox.Password);
+        GoogleChaveErro.Visibility = Visibility.Collapsed;
+    }
+
+    private void GoogleCancelarChave_Click(object sender, RoutedEventArgs e)
+    {
+        GoogleNovaChaveBox.Clear();
+        GoogleNovaChaveLinha.Visibility = Visibility.Collapsed;
+        GoogleChaveErro.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Guarda a chave do Google AGORA, no cofre dele, sem esperar o "Salvar".</summary>
+    private async void GoogleGuardarChave_Click(object sender, RoutedEventArgs e)
+    {
+        string chave = GoogleNovaChaveBox.Password.Trim();
+
+        if (!ProvedoresDeIa.ChaveValida(ProvedoresDeIa.Google, chave))
+        {
+            GoogleChaveErro.Text = "Não parece uma chave do Google AI Studio: são pelo menos 30 letras, números, - ou _, sem espaço.";
+            GoogleChaveErro.Visibility = Visibility.Visible;
+            return;
+        }
+
+        string resultado = await CredentialService.StoreCredentialAsync(
+            ProvedoresDeIa.SistemaDaChave(ProvedoresDeIa.Google)!, ProvedoresDeIa.NomeDaChave, chave);
+
+        if (resultado.StartsWith("ERRO", StringComparison.Ordinal))
+        {
+            GoogleChaveErro.Text = resultado;
+            GoogleChaveErro.Visibility = Visibility.Visible;
+            return;
+        }
+
+        // Só os quatro últimos caracteres: o bastante para reconhecer qual chave foi, nada de uso.
+        _ = AuditLogService.AppendAsync(new
+        {
+            ts = DateTime.UtcNow.ToString("o"),
+            outcome = "chave_guardada",
+            provider = ProvedoresDeIa.Google,
+            key_last4 = chave[^4..]
+        });
+
+        GoogleNovaChaveBox.Clear();
+        GoogleNovaChaveLinha.Visibility = Visibility.Collapsed;
+        RefreshKeyTextBoxLabel();
     }
 
     private void NovaChave_Mudou(object sender, RoutedEventArgs e)
@@ -706,6 +831,7 @@ public partial class SettingsWindow : Window
             PaginaDeConfiguracoes.Email => NavEmail,
             PaginaDeConfiguracoes.Shadow => NavShadow,
             PaginaDeConfiguracoes.Ferramentas => NavFerramentas,
+            PaginaDeConfiguracoes.Cofre => NavCofre,
             PaginaDeConfiguracoes.Memoria => NavMemoria,
             PaginaDeConfiguracoes.Avancado => NavAvancado,
             PaginaDeConfiguracoes.Logs => NavLogs,
@@ -721,6 +847,7 @@ public partial class SettingsWindow : Window
         NavEmail.IsChecked == true ? PaginaDeConfiguracoes.Email :
         NavShadow.IsChecked == true ? PaginaDeConfiguracoes.Shadow :
         NavFerramentas.IsChecked == true ? PaginaDeConfiguracoes.Ferramentas :
+        NavCofre.IsChecked == true ? PaginaDeConfiguracoes.Cofre :
         NavMemoria.IsChecked == true ? PaginaDeConfiguracoes.Memoria :
         NavAvancado.IsChecked == true ? PaginaDeConfiguracoes.Avancado :
         NavLogs.IsChecked == true ? PaginaDeConfiguracoes.Logs :
@@ -741,6 +868,7 @@ public partial class SettingsWindow : Window
         PaginaEmail.Visibility = Visibilidade(NavEmail);
         PaginaShadow.Visibility = Visibilidade(NavShadow);
         PaginaFerramentas.Visibility = Visibilidade(NavFerramentas);
+        PaginaCofre.Visibility = Visibilidade(NavCofre);
         PaginaMemoria.Visibility = Visibilidade(NavMemoria);
         PaginaAvancado.Visibility = Visibilidade(NavAvancado);
         PaginaLogs.Visibility = Visibilidade(NavLogs);
@@ -756,6 +884,9 @@ public partial class SettingsWindow : Window
         }
 
         if (NavMemoria.IsChecked == true) AtualizarPastaDeMemoria();
+
+        // O uso conta enquanto a tela está aberta: "usado 3×" se lê do disco a cada visita.
+        if (NavCofre.IsChecked == true) CofrePagina.Atualizar();
 
         // A página Shadow depende de coisa que muda em OUTRA página: conectar uma caixa
         // acontece em E-mail. Reavaliar ao entrar é o que faz a ajuda parar de dizer "nenhuma
@@ -1067,11 +1198,9 @@ public partial class SettingsWindow : Window
 
         if (!_contas.PodeRemover(conta))
         {
-            System.Windows.MessageBox.Show(
+            AvisoWindow.Informar(this, AvisoWindow.Tom.Cuidado, "Não dá ainda",
                 "Promova outra conta a principal antes de remover esta.",
-                "Conta principal",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                "A conta principal é a que a triagem usa por padrão.");
             return;
         }
 
@@ -1081,7 +1210,10 @@ public partial class SettingsWindow : Window
             "Remover esta conta de e-mail?",
             $"A caixa {conta.Address} sai da lista e a senha de app dela é apagada do cofre. "
                 + "A conta de e-mail em si não é afetada.",
-            dica: "apaga a senha guardada");
+            dica: "apaga a senha guardada",
+            acao: "Remover conta",
+            temVolta: true,
+            pill: "Dá para conectar de novo");
 
         if (!permitido) return;
 
@@ -1260,6 +1392,67 @@ public partial class SettingsWindow : Window
         IniciativaResumo.Text = App.ResumoDaIniciativa();
     }
 
+    /// <summary>
+    /// Os hábitos do personagem ativo, cada um com o botão de tirar. Os que ainda não foram
+    /// vistos de novo aparecem como "se firmando": estão guardados, mas não vão ao prompt.
+    /// </summary>
+    private void MostrarHabitos()
+    {
+        HabitosLista.Children.Clear();
+
+        string personagem = _currentSettings.ActiveCharacter;
+        var habitos = new Habitos();
+        var todos = habitos.De(personagem);
+        if (todos.Count == 0)
+        {
+            HabitosLista.Children.Add(new TextBlock
+            {
+                Text = "Nenhum hábito ainda.",
+                Style = (Style)FindResource("FieldHelpText")
+            });
+            return;
+        }
+
+        var atributos = new StatusDosPersonagens().De(personagem, ConversationService.PerfilDoPersonagem(personagem)?.Atributos);
+        var ativos = habitos.Ativos(personagem, DateTime.UtcNow, Temperamento.De(atributos).Esquecimento);
+
+        foreach (var h in todos)
+        {
+            var linha = new DockPanel { Margin = new Thickness(0, 2, 0, 0) };
+
+            var esquecer = new System.Windows.Controls.Button
+            {
+                Content = "Esquecer",
+                Tag = h.Texto,
+                Margin = new Thickness(10, 0, 0, 0),
+                Style = (Style)FindResource("QuietButton")
+            };
+            esquecer.Click += EsquecerHabito_Click;
+            DockPanel.SetDock(esquecer, Dock.Right);
+            linha.Children.Add(esquecer);
+
+            linha.Children.Add(new TextBlock
+            {
+                Text = $"{(h.Evita ? "Evita" : "Faz")}: {h.Texto} · visto {h.Vezes}× · "
+                       + (ativos.Any(a => a.Texto == h.Texto) ? "em uso" : "se firmando"),
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center,
+                Style = (Style)FindResource("FieldHelpText")
+            });
+
+            HabitosLista.Children.Add(linha);
+        }
+    }
+
+    /// <summary>Tira um hábito. Vale na hora, sem "Salvar", como zerar a iniciativa: é memória dela.</summary>
+    private void EsquecerHabito_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not string texto) return;
+
+        new Habitos().Esquecer(_currentSettings.ActiveCharacter, texto);
+        MostrarHabitos();
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Restaurar padrões
     // ─────────────────────────────────────────────────────────────────────
@@ -1324,6 +1517,7 @@ public partial class SettingsWindow : Window
                 MailTimeoutTextBox.Text = padrao.MailTimeoutSeconds.ToString();
                 MailJournalTextBox.Text = padrao.MailJournalDays.ToString();
                 MailTriageThinkingSwitch.IsChecked = padrao.MailTriageThinking;
+                EmailSoLocalSwitch.IsChecked = padrao.EmailSoLocal;
                 TriagemProvedorComboBox.SelectedItem = padrao.MailTriageProvider;
                 TriagemModeloComboBox.Text = padrao.MailTriageModel;
                 break;
@@ -1334,6 +1528,8 @@ public partial class SettingsWindow : Window
                 ShadowMailPreviewTextBox.Text = padrao.ShadowMailPreviewCount.ToString();
                 IniciativaSwitch.IsChecked = padrao.IniciativaLigada;
                 MensagensPorDiaTextBox.Text = padrao.MensagensPorDia.ToString();
+                IniciativaLogSwitch.IsChecked = padrao.IniciativaLogging;
+                HabitosSwitch.IsChecked = padrao.AprenderHabitos;
                 SilencioInicioTextBox.Text = padrao.SilencioInicio;
                 SilencioFimTextBox.Text = padrao.SilencioFim;
                 AtualizarAjudaDoShadow();
@@ -1565,6 +1761,37 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>Abre a pasta no Explorer, como na aba Logs.</summary>
+    /// <summary>O texto dos fatos como foi carregado: só regrava o arquivo se o usuário mexeu.</summary>
+    private string _fatosAbertos = "";
+
+    /// <summary>
+    /// Copia conversas, fatos e lembretes em texto claro para a pasta escolhida. A cifra é da
+    /// conta do Windows; esta cópia é o que sobrevive a uma reinstalação ou troca de máquina.
+    /// </summary>
+    private void ExportarMemoria_Click(object sender, RoutedEventArgs e)
+    {
+        using var dialogo = new System.Windows.Forms.FolderBrowserDialog
+        {
+            Description = "Onde gravar a cópia em texto claro da memória do AIB",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = true
+        };
+        if (dialogo.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+
+        try
+        {
+            string destino = System.IO.Path.Combine(
+                dialogo.SelectedPath, "AIB-memoria-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+            int arquivos = AIB.Services.Memory.CifraDaMemoria.Exportar(destino);
+            ExportarMemoriaResultado.Text =
+                $"{arquivos} arquivo(s) copiados em texto claro para {destino}. Guarde em lugar seguro: qualquer um que abrir a pasta lê tudo.";
+        }
+        catch (Exception ex)
+        {
+            ExportarMemoriaResultado.Text = "Não consegui exportar: " + ex.Message;
+        }
+    }
+
     private void AbrirPastaDeMemoria_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -1829,10 +2056,13 @@ public partial class SettingsWindow : Window
     {
         if (TriagemAviso == null) return;
 
-        bool fora = TriagemProvedorComboBox.SelectedItem as string == ProvedoresDeIa.OpenRouter;
-        TriagemAviso.Text = fora
-            ? "No OpenRouter, remetente, assunto e o começo do corpo de cada e-mail triado são enviados ao OpenRouter e ao modelo escolhido."
-            : "Quem lê os e-mails para classificar. No Ollama, nada sai desta máquina.";
+        string? escolhido = TriagemProvedorComboBox.SelectedItem as string;
+        bool fora = ProvedoresDeIa.EhNuvem(escolhido);
+        TriagemAviso.Text = escolhido == ProvedoresDeIa.Google
+            ? "No Google, remetente, assunto e o começo do corpo de cada e-mail triado são enviados ao Google — e as conversas abertas por \"Abrir com\" também rodam nele. No nível gratuito ele pode usar esse conteúdo para treinar."
+            : fora
+            ? "No OpenRouter, remetente, assunto e o começo do corpo de cada e-mail triado são enviados ao OpenRouter e ao modelo escolhido — e as conversas abertas por \"Abrir com\" também rodam nele."
+            : "Quem lê os e-mails para classificar e quem conversa sobre o e-mail aberto por \"Abrir com\". No Ollama, nada sai desta máquina.";
         TriagemAviso.Foreground = (System.Windows.Media.Brush)FindResource(fora ? "WarnBrush" : "TextMutedBrush");
     }
 
@@ -1846,9 +2076,12 @@ public partial class SettingsWindow : Window
         try
         {
             string atual = TriagemModeloComboBox.Text;
-            TriagemModeloComboBox.ItemsSource = TriagemProvedorComboBox.SelectedItem as string == ProvedoresDeIa.OpenRouter
-                ? _catalogo.Select(m => m.Id).ToList()
-                : (ModelComboBox.ItemsSource as IEnumerable<string>)?.ToList();
+            TriagemModeloComboBox.ItemsSource = (TriagemProvedorComboBox.SelectedItem as string) switch
+            {
+                ProvedoresDeIa.OpenRouter => _catalogo.Select(m => m.Id).ToList(),
+                ProvedoresDeIa.Google => _modelosDoGoogle.ToList(),
+                _ => (ModelComboBox.ItemsSource as IEnumerable<string>)?.ToList()
+            };
             TriagemModeloComboBox.Text = atual;
         }
         finally
@@ -1858,6 +2091,8 @@ public partial class SettingsWindow : Window
 
         if (TriagemProvedorComboBox.SelectedItem as string == ProvedoresDeIa.OpenRouter && _catalogo.Count == 0)
             _ = CarregarCatalogoAsync();
+        if (TriagemProvedorComboBox.SelectedItem as string == ProvedoresDeIa.Google && !_googleConsultado)
+            _ = CarregarModelosDoGoogleAsync();
     }
 
     /// <summary>
@@ -1947,6 +2182,8 @@ public partial class SettingsWindow : Window
         _currentSettings.ShadowHandlesMail = ShadowMailSwitch.IsChecked ?? false;
         _currentSettings.IniciativaLigada = IniciativaSwitch.IsChecked ?? false;
         _currentSettings.MensagensPorDia = Numero(MensagensPorDiaTextBox, _currentSettings.MensagensPorDia);
+        _currentSettings.IniciativaLogging = IniciativaLogSwitch.IsChecked ?? false;
+        _currentSettings.AprenderHabitos = HabitosSwitch.IsChecked ?? false;
         // Hora ilegível volta ao que estava (o Sanear abaixo só cobre o que veio do disco).
         if (Iniciativa.Hora(SilencioInicioTextBox.Text) != null) _currentSettings.SilencioInicio = SilencioInicioTextBox.Text.Trim();
         if (Iniciativa.Hora(SilencioFimTextBox.Text) != null) _currentSettings.SilencioFim = SilencioFimTextBox.Text.Trim();
@@ -1958,8 +2195,13 @@ public partial class SettingsWindow : Window
         _currentSettings.ExecutionLogging = ExecutionLogSwitch.IsChecked ?? false;
         _currentSettings.CompactionLogging = CompactionLogSwitch.IsChecked ?? false;
         _currentSettings.KeepAssistantSpeech = KeepAssistantSpeechSwitch.IsChecked ?? true;
+
+        // Os fatos não são configuração: vão para o facts.md, e só quando o texto mudou.
+        string fatos = FatosTextBox.Text ?? "";
+        if (fatos != _fatosAbertos && new AIB.Services.Memory.FactStore().Regravar(fatos)) _fatosAbertos = fatos;
         _currentSettings.ThinkingInHistory = ThinkingInHistorySwitch.IsChecked ?? false;
         _currentSettings.MailTriageThinking = MailTriageThinkingSwitch.IsChecked ?? false;
+        _currentSettings.EmailSoLocal = EmailSoLocalSwitch.IsChecked ?? false;
 
         _currentSettings.ShadowMailPreviewCount =
             Numero(ShadowMailPreviewTextBox, _currentSettings.ShadowMailPreviewCount);
@@ -1970,6 +2212,8 @@ public partial class SettingsWindow : Window
         _currentSettings.CompactionTrigger = DePorcento(CompactionTriggerTextBox, _currentSettings.CompactionTrigger);
         _currentSettings.MemoryFraction = DePorcento(MemoryFractionTextBox, _currentSettings.MemoryFraction);
         _currentSettings.MemoriaComModelo = TagDe(MemoriaQuemEscreveComboBox) != "codigo";
+        _currentSettings.TurnosSoltos = Numero(TurnosSoltosTextBox, _currentSettings.TurnosSoltos);
+        _currentSettings.TokensSoltos = Numero(TokensSoltosTextBox, _currentSettings.TokensSoltos);
         _currentSettings.TurnosPorCapitulo = int.TryParse(TurnosPorCapituloTextBox.Text, out int turnosPorCapitulo)
             ? turnosPorCapitulo : _currentSettings.TurnosPorCapitulo;
         _currentSettings.TokensPorCapitulo = int.TryParse(TokensPorCapituloTextBox.Text, out int tokensPorCapitulo)
@@ -2003,7 +2247,8 @@ public partial class SettingsWindow : Window
                 this,
                 "Descartar as alterações?",
                 "As mudanças feitas nesta tela não foram salvas e serão perdidas.",
-                dica: "nada foi gravado ainda");
+                dica: "nada foi gravado ainda",
+                acao: "Descartar");
 
             if (!descartar) return;
         }
@@ -2031,7 +2276,12 @@ public partial class SettingsWindow : Window
                 + "Não é possível desfazer. O AIB será encerrado e volta como na primeira vez.",
             ferramenta: "factory_reset",
             alvo: DirectoryService.DataDir,
-            dica: "irreversível");
+            acao: "Apagar tudo",
+            pill: "Apaga tudo",
+
+            // Pedido do usuário (16/10/2026): a ação mais destrutiva do app pede uma palavra
+            // digitada, e não só um clique.
+            palavra: "RESTAURAR");
 
         if (!permitido) return;
 
@@ -2044,15 +2294,15 @@ public partial class SettingsWindow : Window
 
         var limpeza = ResetDeFabrica.Limpar();
 
-        System.Windows.MessageBox.Show(
-            "O AIB foi resetado e será encerrado. Inicie-o novamente."
-                + (limpeza.Falhas > 0
-                    ? $"\n\n{limpeza.Falhas} arquivo(s) não puderam ser removidos (em uso?). "
-                      + $"Feche o que estiver usando a pasta e apague o que restou em {DirectoryService.DataDir}."
-                    : ""),
+        AvisoWindow.Informar(this, limpeza.Falhas > 0 ? AvisoWindow.Tom.Cuidado : AvisoWindow.Tom.Verde,
             "Reset concluído",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+            "O AIB foi resetado e será encerrado.",
+            "Inicie-o novamente para começar como na primeira vez.",
+            detalhe: limpeza.Falhas > 0
+                ? $"{limpeza.Falhas} arquivo(s) não puderam ser removidos (em uso?). Feche o que estiver "
+                  + $"usando a pasta e apague o que restou em {DirectoryService.DataDir}."
+                : "",
+            botao: "Encerrar");
 
         // Segunda passada, colada na saída: enquanto a mensagem esteve na tela, um turno em
         // curso ou o vigia de e-mail podem ter gravado de novo. E Exit em vez de Shutdown: o

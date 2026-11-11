@@ -312,6 +312,7 @@ public sealed class MailDigestService : IDisposable
         var regras = RegrasDoVigia.Ler(_caminhoDasRegras);
         var lidas = new List<MensagemDeEmail>();
         var respondidas = new List<ThreadRespondida>();
+        var progresso = new List<(string Endereco, EstadoDaCaixa? Guardado, LeituraDaCaixa Leitura)>();
 
         foreach (var caixa in caixas)
         {
@@ -329,7 +330,9 @@ public sealed class MailDigestService : IDisposable
                 guardado, caixa.Address, ct).ConfigureAwait(false);
 
             lidas.AddRange(leitura.Mensagens);
-            GravarProgresso(caixa.Address, guardado, leitura);
+
+            // O progresso só é gravado se esta passada TRIAR — ver o fim do laço.
+            progresso.Add((caixa.Address, guardado, leitura));
 
             // A pasta de enviados diz em que conversas ELE escreveu. Sai de graça, sem modelo,
             // e é o que sustenta "quem responde geralmente espera retorno".
@@ -359,17 +362,23 @@ public sealed class MailDigestService : IDisposable
                         ArquivoDeConversas.Agora(minha.QuandoUtc),
                         Uid: 0,
                         De: caixa.Address,
-                        Assunto: "",
+                        Assunto: minha.Assunto,
                         Minha: true,
-                        Origem: "enviados"),
+                        Origem: "enviados",
+                        Para: minha.Para,
+                        Abriu: minha.Abriu),
                     config.MailJournalDays);
             }
         }
 
-        var vigiadas = VigiasDoEmail.Atualizar(_vigias.Ler(), respondidas, DateTime.UtcNow);
+        var agoraUtc = DateTime.UtcNow;
+        var vigiadas = SemAsRespondidas(VigiasDoEmail.Atualizar(_vigias.Ler(), respondidas, agoraUtc), agoraUtc);
         _vigias.Gravar(vigiadas);
 
-        var threadsVigiadas = new HashSet<string>(vigiadas.Select(v => v.Thrid), StringComparer.Ordinal);
+        // Só as ATIVAS abrem o funil: a vencida e a parada ficam no arquivo para a lista
+        // "Aguardando retorno", não para furar o filtro.
+        var threadsVigiadas = new HashSet<string>(
+            vigiadas.Where(v => v.Ativa(agoraUtc)).Select(v => v.Thrid), StringComparer.Ordinal);
 
         // TER HISTÓRICO é motivo de vigia. Sem isto, a resposta a uma conversa já triada podia
         // ser descartada pelo funil — mala-direta, envio em massa, remetente desconhecido — e o
@@ -392,7 +401,20 @@ public sealed class MailDigestService : IDisposable
         // significa rajadas vazias. O ramo que publicava um digest de rajada daqui era
         // inalcançável, e escondia que o caminho da rajada é o de baixo — com modelo,
         // resumindo o incidente.
-        if (!comModelo && !Urgente(rajadas)) return DigestoDeEmail.Vazio;
+        //
+        // E SEM GRAVAR O PROGRESSO. A sondagem lê as mensagens novas mas não as tria; marcar
+        // até onde leu fazia o digest seguinte partir dali e nunca ver o que ela tinha lido.
+        // Com a sondagem de vinte em vinte minutos, o digest das 12:55 só triava o que chegara
+        // depois das 12:40 — tudo o que entrou de manhã ficava marcado como triado sem ter
+        // passado pelo modelo. Sem gravar, a sondagem seguinte relê o mesmo trecho; é só IMAP.
+        if (!comModelo && !Urgente(rajadas))
+        {
+            AnunciarRespostas(lidas, config);
+            return DigestoDeEmail.Vazio;
+        }
+
+        foreach (var (endereco, guardado, leitura) in progresso)
+            GravarProgresso(endereco, guardado, leitura);
 
         _ignoradasPeloModelo = 0;
         var itens = await ResumirAsync(sobem, config, ct).ConfigureAwait(false);
@@ -703,8 +725,12 @@ public sealed class MailDigestService : IDisposable
                 // "1 mensagem" numa conversa de três.
                 var estado = _conversas.EstadoDe(chave);
 
+                bool iniciada = estado?.Iniciada ?? false;
+
                 return baseDaLinha with
                 {
+                    Urgency = Piso(baseDaLinha.Urgency, iniciada),
+                    Iniciada = iniciada,
                     LastMessageAt = (estado?.UltimaEm ?? m.RecebidaUtc).ToLocalTime(),
                     MessageCount = Math.Max(estado?.Mensagens ?? 0, c.Mensagens),
                     AwaitingMe = estado?.EsperandoVoce ?? c.EsperandoVoce,
@@ -833,6 +859,10 @@ public sealed class MailDigestService : IDisposable
                 // tudo o que se leu é o oposto de triar. Se as duas regras divergissem, a
                 // caixa mudaria de conteúdo só por ter reiniciado.
                 if (!Enum.TryParse<MailUrgency>(e.Urgencia, true, out var urgencia)) continue;
+
+                // O piso ANTES do corte da baixa: a resposta a uma conversa sua tem de voltar
+                // do disco como voltou da passada viva.
+                urgencia = Piso(urgencia, e.Iniciada);
                 if (urgencia == MailUrgency.Baixa) continue;
 
                 itens.Add(new MailSummary(
@@ -852,7 +882,8 @@ public sealed class MailDigestService : IDisposable
                     // a conversa com a IA de toda linha sem thread voltaria a ser uma só.
                     Uid: string.IsNullOrWhiteSpace(g.ThreadId)
                         ? ArquivoDeConversas.UidDaChave(g.Chave)
-                        : 0));
+                        : 0,
+                    Iniciada: e.Iniciada));
             }
 
             // As ignoradas ficam de fora também no arranque: sem isto, cada reinicialização
@@ -880,6 +911,194 @@ public sealed class MailDigestService : IDisposable
                               $"{ex.GetType().Name}: {ex.Message}");
             return 0;
         }
+    }
+
+    /// <summary>
+    /// Tira as vencidas que JÁ TIVERAM resposta. A vencida fica no arquivo para a lista
+    /// "Aguardando retorno" — mas, respondida, ela não aguarda mais nada, e guardá-la só faria o
+    /// arquivo crescer para sempre.
+    /// </summary>
+    private IReadOnlyList<VigiaDeThread> SemAsRespondidas(IReadOnlyList<VigiaDeThread> vigias, DateTime agoraUtc)
+    {
+        if (!vigias.Any(v => v.Vencida(agoraUtc))) return vigias;
+
+        var respondidas = new HashSet<string>(
+            _conversas.Guardadas().Where(g => g.Estado.EsperandoVoce).Select(g => g.ThreadId),
+            StringComparer.Ordinal);
+
+        return vigias.Where(v => !(v.Vencida(agoraUtc) && respondidas.Contains(v.Thrid))).ToList();
+    }
+
+    /// <summary>
+    /// A seção "Aguardando retorno": as conversas vigiadas em que a última palavra é sua.
+    /// <para>
+    /// Vigia (o prazo) cruzada com o histórico (assunto, destinatário, quem iniciou). Sem
+    /// histórico — diário desligado — a linha sai sem assunto e sem conta, mas sai: o prazo é
+    /// o que importa, e ele mora na vigia.
+    /// </para>
+    /// <para>
+    /// Ordem: vencida, vencendo e, dentro de cada uma, a mais recente primeiro. É a ordem do
+    /// que pede decisão sua; a tela mostra as três primeiras.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<EsperaDeRetorno> Esperas(DateTime? agora = null)
+    {
+        var agoraUtc = agora ?? DateTime.UtcNow;
+
+        try
+        {
+            var vigias = _vigias.Ler().Where(v => !v.Parada).ToList();
+            if (vigias.Count == 0) return Array.Empty<EsperaDeRetorno>();
+
+            var guardadas = _conversas.Guardadas()
+                .Where(g => g.ThreadId.Length > 0)
+                .GroupBy(g => g.ThreadId, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+
+            var saida = new List<EsperaDeRetorno>();
+
+            foreach (var v in vigias)
+            {
+                guardadas.TryGetValue(v.Thrid, out var g);
+
+                // A outra parte já respondeu: a conversa está em "Para você responder".
+                if (g != null && g.Estado.EsperandoVoce) continue;
+
+                saida.Add(new EsperaDeRetorno(
+                    Conta: g?.Conta ?? "",
+                    ThreadId: v.Thrid,
+                    Assunto: g?.Estado.Assunto ?? "",
+                    Para: g?.Estado.Para ?? "",
+                    EnviadaEm: v.RespondidaEm,
+                    Ate: v.Ate,
+                    Mensagens: Math.Max(1, g?.Estado.Mensagens ?? 1),
+                    Iniciada: g?.Estado.Iniciada ?? false));
+            }
+
+            return saida
+                .OrderByDescending(e => e.Vencida(agoraUtc))
+                .ThenByDescending(e => e.Vencendo(agoraUtc))
+                .ThenByDescending(e => e.EnviadaEm)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            // A seção é conforto; a caixa não pode deixar de abrir por causa dela.
+            Console.WriteLine($"[VIGIA] não consegui montar as conversas em espera — {ex.GetType().Name}: {ex.Message}");
+            return Array.Empty<EsperaDeRetorno>();
+        }
+    }
+
+    /// <summary>"+7 dias" de uma espera: mais uma semana, contada de hoje se já venceu.</summary>
+    public bool EstenderEspera(string thrid)
+    {
+        bool feito = _vigias.Estender(thrid, VigiasDoEmail.DiasDeVigia, DateTime.UtcNow);
+        Console.WriteLine($"[VIGIA] espera estendida por você: {(feito ? "ok" : "conversa não achada")}.");
+        return feito;
+    }
+
+    /// <summary>"Parar de vigiar" e "Dispensar": a conversa sai da seção e do funil.</summary>
+    public bool PararEspera(string thrid)
+    {
+        bool feito = _vigias.Parar(thrid);
+        Console.WriteLine($"[VIGIA] espera parada por você: {(feito ? "ok" : "conversa não achada")}.");
+        return feito;
+    }
+
+    /// <summary>
+    /// A urgência mínima de uma conversa que VOCÊ começou: Média.
+    /// <para>
+    /// Caso real (16/10/2026): duas propostas de parceria enviadas pelo usuário, "extremamente
+    /// importantes". Uma resposta curta ("recebido, vamos analisar") seria lida pelo modelo como
+    /// sem pedido, marcada Baixa e sumiria da tela — justamente a resposta que ele esperava.
+    /// O modelo pode subir; descer abaixo de Média, não.
+    /// </para>
+    /// </summary>
+    public static MailUrgency Piso(MailUrgency urgencia, bool iniciada) =>
+        iniciada && urgencia < MailUrgency.Media ? MailUrgency.Media : urgencia;
+
+    /// <summary>O resumo de uma resposta que a sondagem pôs na tela antes de o modelo ler.</summary>
+    public const string RespostaPendente = "Resposta recebida. O resumo sai no próximo digest.";
+
+    /// <summary>
+    /// Põe na tela, NA HORA, a resposta a uma conversa que você começou — sem esperar o digest.
+    /// <para>
+    /// A sondagem não chama o modelo, e por isso a resposta entra com o resumo pendente e
+    /// urgência Média (o piso). O digest seguinte a tria normalmente — esta anotação tem origem
+    /// <c>sondagem</c>, e a dele, <c>vigia</c>, entra ao lado sem contar a mensagem duas vezes.
+    /// Sem isto, a resposta que chega às 10h esperava o digest das 12:55 para aparecer.
+    /// </para>
+    /// <para>
+    /// Só quem tem histórico: é ele que diz quem iniciou. Com <c>MailJournalDays = 0</c> não há
+    /// histórico, e a resposta espera o digest como qualquer outra.
+    /// </para>
+    /// </summary>
+    private void AnunciarRespostas(IReadOnlyList<MensagemDeEmail> lidas, UserAppSettings config)
+    {
+        if (config.MailJournalDays <= 0) return;
+
+        var meus = new HashSet<string>(
+            EnderecosDoUsuario(config).Select(ConversaDeEmail.Endereco),
+            StringComparer.OrdinalIgnoreCase);
+
+        var novas = new Dictionary<string, MailSummary>(StringComparer.Ordinal);
+
+        foreach (var m in lidas.OrderBy(m => m.RecebidaUtc))
+        {
+            if (string.IsNullOrWhiteSpace(m.ThreadId)) continue;
+            if (meus.Contains(ConversaDeEmail.Endereco(m.De))) continue;
+
+            string chave = ArquivoDeConversas.Chave(m.Conta, m.ThreadId, 0);
+            var entradas = _conversas.Ler(chave);
+
+            // Já anotada (por esta sondagem antes, ou por um digest): não é novidade. A
+            // sondagem relê o mesmo trecho até o digest, e sem isto anunciaria a cada 20 min.
+            if (entradas.Count == 0 || entradas.Any(e => !e.Minha && e.Uid == m.Uid)) continue;
+            if (!ArquivoDeConversas.Resumir(entradas).Iniciada) continue;
+
+            _conversas.Anotar(chave, new EntradaDaConversa(
+                ArquivoDeConversas.Agora(m.RecebidaUtc), m.Uid, m.De, m.Assunto,
+                nameof(MailUrgency.Media), RespostaPendente,
+                Minha: false, Origem: "sondagem"), config.MailJournalDays);
+
+            var estado = _conversas.EstadoDe(chave);
+            if (estado == null) continue;
+
+            novas[chave] = new MailSummary(
+                Name: estado.Assunto,
+                Description: RespostaPendente,
+                Urgency: MailUrgency.Media,
+                Url: LinkDoEmail.Para(m.Conta, m.ThreadId),
+                Account: m.Conta,
+                LastMessageAt: estado.UltimaEm.ToLocalTime(),
+                MessageCount: Math.Max(1, estado.Mensagens),
+                AwaitingMe: true,
+                ThreadId: m.ThreadId,
+                De: m.De,
+                Iniciada: true);
+        }
+
+        if (novas.Count == 0) return;
+
+        var visiveis = _ignoradas.Filtrar(novas.Values.ToList()).Visiveis;
+        if (visiveis.Count == 0) return;
+
+        var trocadas = new HashSet<string>(
+            visiveis.Select(i => ArquivoDeConversas.Chave(i.Account, i.ThreadId, 0)), StringComparer.Ordinal);
+
+        Ultimo = Ultimo with
+        {
+            Itens = Ordenar(Ultimo.Itens
+                .Where(i => !trocadas.Contains(ArquivoDeConversas.Chave(i.Account, i.ThreadId, 0)))
+                .Concat(visiveis))
+        };
+
+        Console.WriteLine($"[VIGIA] {visiveis.Count} resposta(s) a conversa(s) que você iniciou — " +
+                          "na tela antes do digest.");
+
+        // O aviso leva SÓ as respostas: o orbe mostraria a caixa inteira como se fosse novidade.
+        Pronto?.Invoke(new DigestoDeEmail(
+            visiveis, visiveis.Count, Array.Empty<Descartada>(), Array.Empty<Rajada>(), DateTime.UtcNow));
     }
 
     /// <summary>

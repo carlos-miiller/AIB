@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using AIB.Services;
 using FluentAssertions;
 using Xunit;
@@ -32,6 +33,119 @@ namespace AIB.Tests
         public void SemAtividade_NaoCompacta()
         {
             ConversaDoOrbe.DeveCompactar(true, false, null, Agora).Should().BeFalse();
+        }
+
+        // Pedido: "no modo shadow, quero mandar a informação de dia da semana - DD/MM/YYYY |
+        // hh:mm ... quero dar à Ellen o senso de tempo".
+        private static readonly DateTime Sexta = new(2026, 10, 9, 14, 32, 0);
+
+        [Fact]
+        public void OCarimbo_TemDiaDaSemanaDataEHora_ESaiInteiro()
+        {
+            string fala = ConversaDoOrbe.Carimbar("lembra do ramal?", Sexta);
+
+            fala.Should().Be("[sexta-feira - 09/10/2026 | 14:32]\nlembra do ramal?");
+            ConversaDoOrbe.SemCarimbo(fala).Should().Be("lembra do ramal?");
+
+            // Só o carimbo do começo sai; colchete digitado pelo usuário fica.
+            ConversaDoOrbe.SemCarimbo("[urgente] liga pro Fernando").Should().Be("[urgente] liga pro Fernando");
+            ConversaDoOrbe.SemCarimbo(ConversaDoOrbe.Carimbar(fala, Sexta)).Should().Be(fala);
+        }
+
+        [Fact]
+        public async Task AFalaDoUsuario_VaiAoModeloComOCarimbo_EABarraFicaSemEle()
+        {
+            var servico = JanelaDeEnsaio.Servico();
+            var doOrbe = new ConversaDoOrbe(JanelaDeEnsaio.Conversa(servico), servico) { Agora = () => Sexta };
+
+            string? ouvido = null;
+            doOrbe.UsuarioFalou += texto => ouvido = texto;
+
+            await doOrbe.EnviarAsync("que horas são?");
+
+            var falas = doOrbe.Conversa.UltimasFalas(10, int.MaxValue);
+            falas.Should().Contain((true, "[sexta-feira - 09/10/2026 | 14:32]\nque horas são?"),
+                "é o que o modelo recebe e o que fica no histórico");
+            ouvido.Should().Be("que horas são?", "o resto do programa conta as palavras que o usuário digitou");
+        }
+
+        [Theory]
+        [InlineData("/compact", ConversaDoOrbe.Comando.Compactar)]
+        [InlineData("  /COMPACT ", ConversaDoOrbe.Comando.Compactar)]
+        [InlineData("/memoria", ConversaDoOrbe.Comando.Memoria)]
+        [InlineData("/memória", ConversaDoOrbe.Comando.Memoria)]
+        [InlineData("/memory", ConversaDoOrbe.Comando.Memoria)]
+        [InlineData("/compact agora", ConversaDoOrbe.Comando.Nenhum)]
+        [InlineData("o que é /compact?", ConversaDoOrbe.Comando.Nenhum)]
+        [InlineData("", ConversaDoOrbe.Comando.Nenhum)]
+        public void ReconheceOsComandosDeBarra(string texto, ConversaDoOrbe.Comando esperado)
+        {
+            ConversaDoOrbe.ComandoDe(texto).Should().Be(esperado);
+        }
+
+        [Theory]
+        [InlineData("/memory")]
+        [InlineData("/compact")]
+        public async Task OComando_RespondeNaBarra_SemIrAoModeloNemContarComoConversa(string comando)
+        {
+            // Visto no uso: no orbe o /compact ia ao modelo como texto comum. Os comandos de
+            // barra só existiam na janela de chat, e lá agem sobre a conversa da janela.
+            var servico = JanelaDeEnsaio.Servico();
+            var doOrbe = new ConversaDoOrbe(JanelaDeEnsaio.Conversa(servico), servico);
+            int antes = doOrbe.Conversa.SnapshotHistory().Count;
+
+            string? resposta = null;
+            bool falou = false;
+            doOrbe.Respondeu += texto => resposta = texto;
+            doOrbe.UsuarioFalou += _ => falou = true;
+
+            await doOrbe.EnviarAsync(comando);
+
+            resposta.Should().NotBeNullOrWhiteSpace();
+            if (comando == "/memory") resposta.Should().StartWith("```", "a conta é alinhada por espaços");
+
+            doOrbe.Conversa.SnapshotHistory().Count.Should().Be(antes, "o comando não entra na conversa");
+            falou.Should().BeFalse("comando não é conversa: o afeto não anda");
+            doOrbe.Ocupada.Should().BeFalse();
+            doOrbe.UltimaAtividadeUtc.Should().BeNull();
+        }
+
+        private static async System.Collections.Generic.IAsyncEnumerable<ChatStreamItem> Turno(
+            System.Collections.Generic.List<string> log, params ChatStreamItem[] itens)
+        {
+            foreach (var item in itens)
+            {
+                log.Add("item " + item.GetType().Name);
+                yield return item;
+                await Task.Yield();
+            }
+        }
+
+        [Fact]
+        public async Task AFalaAntesDaFerramenta_SaiNaHora_ENaoNoFimDoTurno()
+        {
+            // Visto no uso (21/10/2026), no Shadow: "Vou consultar a tarefa (419073)" chegava
+            // junto com o resultado, no fim, porque o turno guardava todo o texto para o final.
+            var servico = JanelaDeEnsaio.Servico();
+            var doOrbe = new ConversaDoOrbe(JanelaDeEnsaio.Conversa(servico), servico);
+            var log = new System.Collections.Generic.List<string>();
+            doOrbe.Falou += f => log.Add("fala " + f);
+
+            string resto = await doOrbe.AcompanharAsync(Turno(log,
+                new ChatStreamItem.Text("Vou consultar "),
+                new ChatStreamItem.Text("a tarefa."),
+                new ChatStreamItem.SegmentBreak(1),
+                new ChatStreamItem.ToolStarted("c1", Ferramentas.Habilidade, "bitrix"),
+                new ChatStreamItem.Text("Achei ⁂ Ela vence"),
+                new ChatStreamItem.Text(" amanhã.")));
+
+            log.Should().Equal(
+                "item Text", "item Text", "item SegmentBreak",
+                "fala Vou consultar a tarefa.",
+                "item ToolStarted",
+                "item Text", "fala Achei",
+                "item Text");
+            resto.Trim().Should().Be("Ela vence amanhã.", "a última fala sai pelo Respondeu, que apaga o anel");
         }
 
         [Theory]

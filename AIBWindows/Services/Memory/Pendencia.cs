@@ -23,7 +23,8 @@ namespace AIB.Services.Memory;
 /// <param name="Texto">A linha que vai ao prompt.</param>
 /// <param name="Alvo">Falha: o literal (caminho ou comando). É por ele que um sucesso posterior a resolve.</param>
 /// <param name="Kind">Falha: a natureza do artefato que falhou.</param>
-public sealed record Pendencia(string Tipo, string Texto, string? Alvo = null, ArtifactKind? Kind = null)
+/// <param name="Ferramenta">Falha: a ferramenta que falhou. Nula nas gravadas antes de existir.</param>
+public sealed record Pendencia(string Tipo, string Texto, string? Alvo = null, ArtifactKind? Kind = null, string? Ferramenta = null)
 {
     public const string Interrompido = "interrompido";
     public const string Falha = "falha";
@@ -88,7 +89,7 @@ public static class Pendencias
                         ordem.Add(chave);
 
                     falhas[chave] = new Pendencia(
-                        Pendencia.Falha, TextoDaFalha(artefato), artefato.Value, artefato.Kind);
+                        Pendencia.Falha, TextoDaFalha(artefato), artefato.Value, artefato.Kind, artefato.Tool);
                 }
                 else
                 {
@@ -103,7 +104,9 @@ public static class Pendencias
         {
             var texto = new StringBuilder($"o último turno parou sem terminar ({motivo}).");
 
-            string pedido = Linha(turnos[^1].UserText);
+            // Sem o carimbo do orbe: no shadow, o pedido do turno 566 aparecia como
+            // "[terça-feira - 27/10/2026 | 12:20] Ellen ficou perfeito!…".
+            string pedido = Linha(ConversaDoOrbe.SemCarimbo(turnos[^1].UserText));
             if (pedido.Length > 0) texto.Append($" Pedido: \"{Cortar(pedido, 120)}\".");
 
             var doTurno = ArtifactExtractor.Extract(turnos[^1]);
@@ -201,18 +204,25 @@ public static class Pendencias
     public static (string Resumo, IReadOnlyList<Pendencia> Assunto) LerDoResumo(string? texto)
     {
         string t = (texto ?? "").Trim();
-        var m = Regex.Match(t, @"(?im)^[\s*_]*PENDENTES?[\s*_]*:[\s*_]*(.*)$");
+
+        // A linha PENDENTE e, logo abaixo, os itens em lista: no shadow refeito, o ato escreveu
+        // "PENDENTE:" e uma lista com "- ", e o leitor, que só olhava a mesma linha, gravou
+        // "- - Replicar…" e deixou os outros itens caírem no Aprendido.
+        var m = Regex.Match(t, @"(?im)^[\s*_]*PENDENTES?[\s*_]*:[\s*_]*(.*)$((?:\r?\n[ \t]*(?:[-•*]|\d+[.)])[ \t]*[^\r\n]*)*)");
         if (!m.Success) return (t, Array.Empty<Pendencia>());
 
         string resumo = (t[..m.Index] + t[(m.Index + m.Length)..]).Trim();
         string itens = m.Groups[1].Value.Trim().TrimEnd('.');
+        var naLista = m.Groups[2].Value.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
-        if (Regex.IsMatch(itens, @"^(nenhum|nenhuma|nada|n/a|-)?$", RegexOptions.IgnoreCase))
+        if (naLista.Length == 0 && Regex.IsMatch(itens, @"^(nenhum|nenhuma|nada|n/a|-)?$", RegexOptions.IgnoreCase))
             return (resumo, Array.Empty<Pendencia>());
 
         var assunto = itens
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(i => i.Length > 2)
+            .Concat(naLista)
+            .Select(i => Regex.Replace(i.Trim(), @"^(?:[-•*]|\d+[.)])\s*", "").Trim().TrimEnd('.', ';'))
+            .Where(i => i.Length > 2 && !Regex.IsMatch(i, @"^(nenhum|nenhuma|nada|n/a)$", RegexOptions.IgnoreCase))
             .Take(TetoDoResumidor)
             .Select(i => new Pendencia(Pendencia.Assunto, Cortar(i, TetoDaLinha)))
             .ToList();
@@ -242,13 +252,17 @@ public static class Pendencias
     private static string? ChaveDe(Artifact a) => a.Kind switch
     {
         ArtifactKind.FileWritten => "arquivo|" + a.Value,
+        ArtifactKind.CommandRun when a.Tool == Ferramentas.Habilidade => "skill|" + EstadoDoTrecho.ChaveDeSkill(a.Value),
         ArtifactKind.CommandRun => "comando|" + ComandoDeShell.Assinatura(a.Value),
         _ => null
     };
 
+    // Skill casa com os parâmetros em qualquer ordem (EstadoDoTrecho.ChaveDeSkill). A pendência
+    // gravada antes do campo Ferramenta segue pela assinatura de comando, como era.
     private static string? ChaveDe(Pendencia p) => p.Kind switch
     {
         ArtifactKind.FileWritten => "arquivo|" + p.Alvo,
+        ArtifactKind.CommandRun when p.Ferramenta == Ferramentas.Habilidade => "skill|" + EstadoDoTrecho.ChaveDeSkill(p.Alvo),
         ArtifactKind.CommandRun => "comando|" + ComandoDeShell.Assinatura(p.Alvo),
         _ => null
     };

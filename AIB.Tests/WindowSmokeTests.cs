@@ -219,6 +219,81 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public void FalaDaIA_ComTodosOsBlocosDeMarkdown_Desenha()
+        {
+            // Para conferir no PNG: título, divisória, tabela, citação, código e link nas cores
+            // do tema (o Markdig.Wpf vinha com preto de página branca).
+            EmSta(() =>
+            {
+                GarantirRecursos();
+                var fala = new AIB.Ui.TextoDaIA
+                {
+                    Texto = "# Resumo\n\n## Retiradas\n\nTexto com `CPS-DTP-5752` e **negrito**.\n\n---\n\n" +
+                            "| Item | Qtd |\n|---|---|\n| Mouse | 2 |\n| Monitor 19\" | 1 |\n\n> Aprovado pelo setor.\n\n" +
+                            "```\nGet-Item x\n```\n\n[Abrir no Bitrix](https://exemplo.com)"
+                };
+                var janela = new Window { Content = fala, Width = 460, Height = 520, ShowActivated = false };
+                janela.Show();
+                janela.Content = null;
+                DesenharSolto(fala, "fala-markdown", 460, 520);
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void CartaoDeHabilidade_Desenha()
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+                const string extra = "-Acao tarefa -Id \"418113,418114,418120,418121,418133,418140,418152,418160,418161,418177,418180,418199\" -Comentarios";
+                string script = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                                             @".AIB\skills\bitrix\bitrix.ps1");
+                var card = new ConfirmCardView();
+                card.Preencher(new CommandConfirmationContext
+                {
+                    Tool = Ferramentas.Habilidade,
+                    Command = script + " " + extra,
+                    Habilidade = new AIB.Services.Tools.UsoDaHabilidade("bitrix",
+                        "Consulta tarefas no Bitrix24 da CPAPS (só leitura).", script,
+                        AIB.Services.Tools.ExecuteSkillTool.Pares(extra)),
+                    Cofre = new[] { new AIB.Services.Tools.UsoDoCofre("bitrix", "webhook do bitrix",
+                        new[] { "cpaps.bitrix24.com.br" }) }
+                });
+                card.ParaFlutuante(shadow: true);
+                // Na janela flutuante, com a largura da barra do Shadow: o card ocupa a janela
+                // toda, e não só a metade esquerda (visto no uso, 21/10/2026).
+                Desenhar(new ConfirmacaoDoOrbeWindow(card, shadow: true), "cartao-habilidade", 684, 560);
+            });
+        }
+
+        [Fact]
+        public void PaginaDoCofre_MontaEDesenha_FechadaEComOFormulario()
+        {
+            EmSta(() =>
+            {
+                GarantirRecursos();
+                var janela = new SettingsWindow(ServicoDescartavel());
+                var cofre = new Cofre(Path.Combine(Path.GetTempPath(), "aib-ensaio-cofre-" + Guid.NewGuid().ToString("N")));
+                cofre.Guardar("bitrix", "https://cpaps.bitrix24.com.br/rest/1/exemplo123456/", "Webhook REST do Bitrix da CPAPS",
+                              new[] { "cpaps.bitrix24.com.br" }, shell: false);
+                cofre.Guardar("sankhya-leitura", "senha-exemplo", "Senha do usuário só leitura do Oracle do Sankhya", Array.Empty<string>());
+
+                var pagina = (PaginaDoCofre)janela.FindName("CofrePagina");
+                pagina.Cofre = cofre;
+                janela.IrPara(PaginaDeConfiguracoes.Cofre);
+                pagina.Atualizar();
+                Desenhar(janela, "config-cofre");
+
+                ((System.Windows.Controls.Button)pagina.FindName("AdicionarButton")).RaiseEvent(
+                    new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                Desenhar(janela, "config-cofre-novo");
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
         public void TelaDeChat_MontaEDesenha()
         {
             EmSta(() =>
@@ -373,6 +448,32 @@ namespace AIB.Tests
                 cadeia.TemAcaoEmCurso.Should().BeTrue();
 
                 DesenharSolto(cadeia, "cadeia-acoes", 640, 70);
+            });
+        }
+
+        [Fact]
+        public void CadeiaReposta_DesenhaNaHora_SemSpinnerNemFila()
+        {
+            // Caso real, 15/10: ao reabrir a conversa do Bitrix, cada ação do histórico passava
+            // por Iniciar/Concluir e ganhava o meio segundo de "Executando" do ao vivo — as
+            // cadeias ficavam minutos girando, uma ação de cada vez. Reposta, ela já entra pronta.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                var cadeia = new ToolChainView();
+                for (int i = 0; i < 5; i++)
+                    cadeia.Repor("t" + i, "browser", "abrir tarefa", falhou: false, recusada: false, artefato: null, detalhe: null);
+
+                cadeia.Concluidas.Should().Be(5, "sem drenar a fila: nada ficou esperando o ritmo");
+                cadeia.TemAcaoEmCurso.Should().BeFalse();
+
+                cadeia.Repor("f", "browser", "clicar", falhou: true, recusada: false, artefato: null, detalhe: "ref não existe");
+                cadeia.TemAcaoEmCurso.Should().BeTrue("a falha fica à vista, como ao vivo");
+
+                cadeia.Repor("g", "browser", "ler", falhou: false, recusada: false, artefato: null, detalhe: null);
+                cadeia.Concluidas.Should().Be(7, "a seguinte recolhe a falha para a trilha");
+                cadeia.TemAcaoEmCurso.Should().BeFalse();
             });
         }
 
@@ -592,6 +693,34 @@ namespace AIB.Tests
                     "o card mostra o comando EXATO que vai rodar");
 
                 DesenharSolto(card, "card-confirmacao", 620, 260);
+            });
+        }
+
+        [Fact]
+        public void CardDeConfirmacao_AnotacaoLonga_QuebraLinha_ENaoEstica()
+        {
+            // Caso real, 15/10: a anotação do navegador saía numa linha cortada com "…", e o
+            // texto inteiro só no tooltip — uma linha sem fim que atravessava a tela. O usuário
+            // precisa ler o que autoriza: o alvo vai inteiro, quebrando dentro do cartão.
+            EmSta(() =>
+            {
+                GarantirRecursos();
+
+                string nota = "ANOTAR na página /workgroups/group/{n}/tasks/task/edit/{n}/ de cpaps.bitrix24.com: \""
+                    + string.Concat(Enumerable.Repeat("para trocar o responsável, abra o campo Assignee, digite o nome e espere a lista; ", 6))
+                    + "\"";
+                var card = new ConfirmCardView();
+                card.Preencher(new CommandConfirmationContext { Tool = "browser", Command = nota, Level = 5 });
+
+                card.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                card.DesiredSize.Width.Should().BeLessThanOrEqualTo(560, "a janela do orbe se ajusta ao conteúdo: sem limite, ela esticava");
+
+                var alvo = (System.Windows.Controls.TextBlock)card.FindName("AlvoText");
+                alvo.Text.Should().Be(nota, "o texto exato, sem corte");
+                alvo.TextWrapping.Should().Be(TextWrapping.Wrap);
+                alvo.ToolTip.Should().BeNull("o tooltip era a linha sem fim");
+
+                DesenharSolto(card, "card-anotacao-longa", 620, 420);
             });
         }
 

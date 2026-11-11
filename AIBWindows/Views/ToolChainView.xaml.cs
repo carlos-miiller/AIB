@@ -150,6 +150,26 @@ public partial class ToolChainView : System.Windows.Controls.UserControl
         GarantirRitmo();
     }
 
+    /// <summary>
+    /// Põe na cadeia uma ação que JÁ aconteceu, de uma vez: sem spinner e sem a fila de
+    /// <see cref="TempoMinimoVisivel"/>. É o desenho da conversa reaberta.
+    /// <para>
+    /// Passar por <see cref="Iniciar"/> e <see cref="Concluir"/> dava a cada ação do histórico o
+    /// meio segundo de "Executando" do ao vivo: ao reabrir a conversa do Bitrix, todas as cadeias
+    /// ficaram minutos girando, uma ação de cada vez.
+    /// </para>
+    /// </summary>
+    public void Repor(string id, string ferramenta, string argumento, bool falhou, bool recusada, Artifact? artefato, string? detalhe)
+    {
+        RecolherFalhaPendente();
+
+        _emCurso[id] = ferramenta;
+        if (!string.IsNullOrWhiteSpace(argumento)) _argumentos[id] = argumento;
+
+        _aguardandoDesenho.Enqueue((id, ferramenta, falhou, recusada, artefato, detalhe));
+        DesenharProxima();
+    }
+
     private void GarantirRitmo()
     {
         if (_ritmo != null) return;

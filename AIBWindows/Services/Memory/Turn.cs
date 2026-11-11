@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using OpenAI.Chat;
@@ -34,6 +35,70 @@ public sealed record Turn(int Index, IReadOnlyList<ChatMessage> Messages)
                 .LastOrDefault(m => m.ToolCalls == null || m.ToolCalls.Count == 0);
             return ultima == null ? "" : ThinkBlockStripper.Strip(TextOf(ultima));
         }
+    }
+
+    /// <summary>
+    /// O turno com <see cref="Segredos.Redigir(string?)"/> aplicado às falas, aos resultados e aos
+    /// ARGUMENTOS das ferramentas. A redação do <see cref="ToolRegistry"/> só limpa resultados; o
+    /// que o próprio agente escreveu num comando passava cru. Caso real: um webhook do Bitrix, com
+    /// o token no endereço, testado pela agente num <c>Invoke-RestMethod</c>, foi para o Estado da
+    /// memória e para uma lição do ato. Sem nada a redigir, devolve o próprio turno.
+    /// </summary>
+    public Turn SemSegredos()
+    {
+        var mensagens = new List<ChatMessage>(Messages.Count);
+        bool mudou = false;
+
+        foreach (var msg in Messages)
+        {
+            string texto = TextOf(msg);
+            string limpo = Segredos.Redigir(texto);
+
+            switch (msg)
+            {
+                case UserChatMessage when limpo != texto:
+                    mensagens.Add(ChatMessage.CreateUserMessage(limpo));
+                    mudou = true;
+                    break;
+
+                case ToolChatMessage t when limpo != texto:
+                    mensagens.Add(ChatMessage.CreateToolMessage(t.ToolCallId, limpo));
+                    mudou = true;
+                    break;
+
+                case AssistantChatMessage a when a.ToolCalls is { Count: > 0 }:
+                {
+                    bool trocou = limpo != texto;
+                    var chamadas = a.ToolCalls.Select(c =>
+                    {
+                        string args = c.FunctionArguments?.ToString() ?? "";
+                        string semSegredo = Segredos.Redigir(args);
+                        if (semSegredo == args) return c;
+                        trocou = true;
+                        return ChatToolCall.CreateFunctionToolCall(c.Id, c.FunctionName, BinaryData.FromString(semSegredo));
+                    }).ToList();
+
+                    if (!trocou) { mensagens.Add(msg); break; }
+
+                    var nova = new AssistantChatMessage(chamadas);
+                    if (limpo.Length > 0) nova.Content.Add(ChatMessageContentPart.CreateTextPart(limpo));
+                    mensagens.Add(nova);
+                    mudou = true;
+                    break;
+                }
+
+                case AssistantChatMessage when limpo != texto:
+                    mensagens.Add(ChatMessage.CreateAssistantMessage(limpo));
+                    mudou = true;
+                    break;
+
+                default:
+                    mensagens.Add(msg);
+                    break;
+            }
+        }
+
+        return mudou ? this with { Messages = mensagens } : this;
     }
 
     /// <summary>Concatena as partes de texto de uma mensagem. Partes não textuais são ignoradas.</summary>

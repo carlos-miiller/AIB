@@ -485,20 +485,156 @@ namespace AIB.Tests
         }
 
         [Fact]
-        public void VigiaVENCIDA_MORRE_Sozinha()
+        public void VigiaVENCIDA_FICA_AteVoceDecidir_MasNaoAbreOFunil()
         {
-            // Sem prazo a lista so cresce, e em um mes toda a caixa estaria vigiada — que e o
-            // mesmo que nenhuma estar.
+            // Decisão do usuário (16/10/2026): a conversa que venceu sem resposta continua em
+            // "Aguardando retorno", em vermelho, até ele estender ou dispensar. Antes ela morria
+            // sozinha — e a proposta sem resposta sumia sem ninguém notar.
             var agora = new DateTime(2026, 9, 20, 12, 0, 0, DateTimeKind.Utc);
 
             var velha = new VigiaDeThread
             {
                 Thrid = "antiga",
+                RespondidaEm = new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc),
                 Ate = new DateTime(2026, 9, 10, 0, 0, 0, DateTimeKind.Utc)
             };
 
-            VigiasDoEmail.Atualizar(new[] { velha }, Array.Empty<ThreadRespondida>(), agora)
+            var vigias = VigiasDoEmail.Atualizar(new[] { velha }, Array.Empty<ThreadRespondida>(), agora);
+
+            vigias.Should().ContainSingle();
+            vigias[0].Ativa(agora).Should().BeFalse("vencida não fura mais o filtro");
+        }
+
+        [Fact]
+        public void AMesmaMensagemRELIDA_NaoDESFAZ_OQueVoceDecidiu()
+        {
+            // A pasta de enviados é relida a cada passada. Antes, cada releitura regravava a
+            // vigia do zero — o "+7 dias" e o "Parar de vigiar" durariam vinte minutos.
+            var agora = new DateTime(2026, 9, 4, 12, 0, 0, DateTimeKind.Utc);
+            var enviada = agora.AddDays(-2);
+
+            var parada = new VigiaDeThread
+            {
+                Thrid = "17ab", RespondidaEm = enviada, Ate = enviada.AddDays(14), Parada = true
+            };
+
+            var vigias = VigiasDoEmail.Atualizar(
+                new[] { parada }, new[] { new ThreadRespondida("17ab", enviada) }, agora);
+
+            vigias.Should().ContainSingle();
+            vigias[0].Parada.Should().BeTrue();
+            vigias[0].Ate.Should().Be(enviada.AddDays(14));
+
+            // Uma mensagem sua NOVA é outra espera.
+            var nova = VigiasDoEmail.Atualizar(
+                vigias, new[] { new ThreadRespondida("17ab", agora) }, agora);
+
+            nova[0].Parada.Should().BeFalse();
+            nova[0].RespondidaEm.Should().Be(agora);
+        }
+
+        [Fact]
+        public void APARADA_SaiDoArquivo_QuandoAMensagemSaiDaJanelaDosEnviados()
+        {
+            // Dali em diante nada a ressuscita, e a marca não tem mais o que impedir.
+            var agora = new DateTime(2026, 9, 30, 12, 0, 0, DateTimeKind.Utc);
+
+            var parada = new VigiaDeThread
+            {
+                Thrid = "17ab", RespondidaEm = agora.AddDays(-20), Ate = agora.AddDays(-13), Parada = true
+            };
+
+            VigiasDoEmail.Atualizar(new[] { parada }, Array.Empty<ThreadRespondida>(), agora)
                 .Should().BeEmpty();
+        }
+
+        [Fact]
+        public void ESTENDER_UmaVencida_ContaDeHoje()
+        {
+            string pasta = Path.Combine(Path.GetTempPath(), "aib-vigias-" + Guid.NewGuid().ToString("N"));
+            var vigias = new VigiasDoEmail(pasta);
+            var agora = new DateTime(2026, 9, 30, 12, 0, 0, DateTimeKind.Utc);
+
+            vigias.Gravar(new[]
+            {
+                new VigiaDeThread { Thrid = "17ab", RespondidaEm = agora.AddDays(-10), Ate = agora.AddDays(-3) }
+            });
+
+            vigias.Estender("17ab", 7, agora).Should().BeTrue();
+            vigias.Ler().Single().Ate.Should().Be(agora.AddDays(7), "estender o passado não daria prazo nenhum");
+
+            vigias.Parar("17ab").Should().BeTrue();
+            vigias.Ler().Single().Parada.Should().BeTrue();
+
+            vigias.Estender("nao-existe", 7, agora).Should().BeFalse();
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // A seção "Aguardando retorno"
+        // ─────────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task APropostaEnviada_ENTRA_EmAguardandoRetorno_ESAI_QuandoRespondem()
+        {
+            // Caso real (16/10/2026): duas propostas de parceria enviadas. Elas só existiam
+            // como vigias invisíveis — não havia lista onde o usuário as visse esperando.
+            var (vigia, _, email, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), "[]");
+
+            email.Respondidas = new[]
+            {
+                new ThreadRespondida("77", DateTime.UtcNow.AddHours(-2),
+                    "Proposta de Parceria - Google Workspace", "ana@parceiro.com", Abriu: true)
+            };
+
+            await vigia.ExecutarAsync(comModelo: false, CancellationToken.None);
+
+            var espera = vigia.Esperas().Should().ContainSingle().Subject;
+            espera.Assunto.Should().Be("Proposta de Parceria - Google Workspace");
+            espera.Para.Should().Be("ana@parceiro.com");
+            espera.Conta.Should().Be("eu@empresa.com");
+            espera.Iniciada.Should().BeTrue();
+
+            JaTriado(pasta, "77", "Re: Proposta de Parceria - Google Workspace", "Media", DateTime.UtcNow);
+
+            vigia.Esperas().Should().BeEmpty("a última palavra agora é deles: vai para Para você responder");
+        }
+
+        [Fact]
+        public void PARAR_TiraDaSecao_EESTENDER_DaMaisUmaSemana()
+        {
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+            var enviada = DateTime.UtcNow.AddDays(-2);
+
+            new VigiasDoEmail(pasta).Gravar(new[]
+            {
+                new VigiaDeThread { Thrid = "a", RespondidaEm = enviada, Ate = enviada.AddDays(7) },
+                new VigiaDeThread { Thrid = "b", RespondidaEm = enviada, Ate = enviada.AddDays(7) }
+            });
+
+            vigia.EstenderEspera("a").Should().BeTrue();
+            vigia.PararEspera("b").Should().BeTrue();
+
+            var espera = vigia.Esperas().Should().ContainSingle().Subject;
+            espera.ThreadId.Should().Be("a");
+            espera.Ate.Should().Be(enviada.AddDays(14));
+        }
+
+        [Fact]
+        public void AsEsperas_VENCIDA_EVENCENDO_VemPrimeiro()
+        {
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+            var agora = new DateTime(2026, 10, 22, 15, 0, 0, DateTimeKind.Utc);
+
+            new VigiasDoEmail(pasta).Gravar(new[]
+            {
+                new VigiaDeThread { Thrid = "recente", RespondidaEm = agora.AddHours(-1), Ate = agora.AddDays(7) },
+                new VigiaDeThread { Thrid = "vencendo", RespondidaEm = agora.AddDays(-6), Ate = agora.AddDays(1) },
+                new VigiaDeThread { Thrid = "vencida", RespondidaEm = agora.AddDays(-9), Ate = agora.AddDays(-2) },
+                new VigiaDeThread { Thrid = "parada", RespondidaEm = agora.AddDays(-1), Ate = agora.AddDays(6), Parada = true }
+            });
+
+            vigia.Esperas(agora).Select(e => e.ThreadId)
+                .Should().Equal("vencida", "vencendo", "recente");
         }
 
         [Fact]
@@ -619,6 +755,31 @@ namespace AIB.Tests
 
             new VigiasDoEmail(pasta).Ler()
                 .Should().ContainSingle(v => v.Thrid == "17ab");
+        }
+
+        [Fact]
+        public async Task OEnviado_VaiAoHistorico_ComAssuntoDestinatarioEQuemIniciou()
+        {
+            // Caso real (16/10/2026): duas propostas enviadas no mesmo dia viraram duas entradas
+            // sem nome no histórico — a pasta de enviados só descia thread e data.
+            var (vigia, _, email, pasta) = MontarComPasta(
+                lidas: Array.Empty<MensagemDeEmail>(), resposta: "[]");
+
+            email.Respondidas = new[]
+            {
+                new ThreadRespondida("17ab", DateTime.UtcNow.AddHours(-1),
+                    "Proposta de Parceria - Google Workspace", "ana@parceiro.com", Abriu: true)
+            };
+
+            await vigia.ExecutarAsync(comModelo: false, CancellationToken.None);
+
+            var estado = new ArquivoDeConversas(pasta)
+                .EstadoDe(ArquivoDeConversas.Chave("eu@empresa.com", "17ab", 0))!;
+
+            estado.Assunto.Should().Be("Proposta de Parceria - Google Workspace");
+            estado.Para.Should().Be("ana@parceiro.com");
+            estado.Iniciada.Should().BeTrue();
+            estado.EsperandoVoce.Should().BeFalse();
         }
 
         [Fact]
@@ -963,6 +1124,34 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task ASondagem_NaoMARCA_ComoTriado_OQueSoLeu()
+        {
+            // Defeito real (16/10/2026, achado ao ler o código): a sondagem de vinte em vinte
+            // minutos lia as mensagens novas, gravava o ponteiro da triagem e voltava sem chamar
+            // o modelo. O digest seguinte partia desse ponteiro — às 12:55 só se triava o que
+            // chegara depois das 12:40, e o resto da manhã ficava "triado" sem nunca ter sido.
+            var (vigia, provider, _, pasta) = MontarComPasta(
+                lidas: new[] { Msg(uid: 500, assunto: "Proposta") },
+                resposta: "[{\"uid\":500,\"urgencia\":\"media\",\"resumo\":\"responder\"}]");
+
+            var estado = new EstadoDasCaixas(pasta);
+            estado.Gravar("eu@empresa.com", new EstadoDaCaixa
+            {
+                UidValidity = 1, LastUid = 9999, LastTriagedUid = 400
+            });
+
+            await vigia.ExecutarAsync(comModelo: false, CancellationToken.None);
+
+            provider.Chamadas.Should().Be(0, "a sondagem não tria");
+            estado.Ler("eu@empresa.com")!.LastTriagedUid.Should().Be(400,
+                "o que a sondagem só leu continua por triar para o digest");
+
+            await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            estado.Ler("eu@empresa.com")!.LastTriagedUid.Should().Be(500, "o digest triou");
+        }
+
+        [Fact]
         public void MarketingENDERECADO_AVoce_CONTINUA_Marketing()
         {
             // Defeito real: um e-mail da Wellhub, de no-reply@, endereçado diretamente ao
@@ -1202,6 +1391,112 @@ namespace AIB.Tests
         }
 
         private static readonly DateTime Ontem = new(2026, 9, 3, 9, 0, 0, DateTimeKind.Utc);
+
+        // ─────────────────────────────────────────────────────────────────
+        // A resposta a uma conversa que VOCÊ começou
+        // ─────────────────────────────────────────────────────────────────
+
+        /// <summary>A proposta que o usuário enviou e abriu a conversa — como a pasta de enviados a grava.</summary>
+        private static void PropostaEnviada(string pasta, string thrid, DateTime quandoUtc) =>
+            new ArquivoDeConversas(pasta).Anotar(
+                ArquivoDeConversas.Chave("eu@empresa.com", thrid, 0),
+                new EntradaDaConversa(
+                    ArquivoDeConversas.Agora(quandoUtc), 0, "eu@empresa.com",
+                    "Proposta de Parceria - Google Workspace", Minha: true, Origem: "enviados",
+                    Para: "ana@parceiro.com", Abriu: true));
+
+        private static MensagemDeEmail Resposta(uint uid, string thrid) =>
+            Msg(uid: uid, de: "ana@parceiro.com", assunto: "Re: Proposta de Parceria - Google Workspace",
+                thread: thrid) with { Conta = "eu@empresa.com" };
+
+        [Theory]
+        [InlineData(MailUrgency.Baixa, true, MailUrgency.Media)]
+        [InlineData(MailUrgency.Maxima, true, MailUrgency.Maxima)]
+        [InlineData(MailUrgency.Baixa, false, MailUrgency.Baixa)]
+        public void OPiso_SoSobe_AConversaQueVoceIniciou(MailUrgency veio, bool iniciada, MailUrgency fica) =>
+            MailDigestService.Piso(veio, iniciada).Should().Be(fica);
+
+        [Fact]
+        public async Task ARespostaBANAL_AUmaPropostaSua_NaoSomeDaTela()
+        {
+            // Caso real (16/10/2026): duas propostas de parceria "extremamente importantes".
+            // Um "recebido, vamos analisar" seria lido pelo modelo como sem pedido, marcado
+            // Baixa — e Baixa não vai para a tela. Sumiria justamente a resposta esperada.
+            var (vigia, _, _, pasta) = MontarComPasta(
+                lidas: new[] { Resposta(700, "77") },
+                resposta: "[{\"uid\":700,\"urgencia\":\"baixa\",\"resumo\":\"agradece e diz que vai analisar\"}]");
+
+            PropostaEnviada(pasta, "77", DateTime.UtcNow.AddDays(-1));
+
+            await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            var item = vigia.Ultimo.Itens.Should().ContainSingle().Subject;
+            item.Urgency.Should().Be(MailUrgency.Media, "o modelo pode subir, nunca descer abaixo de Média");
+            item.Iniciada.Should().BeTrue();
+            item.Description.Should().Be("agradece e diz que vai analisar");
+        }
+
+        [Fact]
+        public async Task ARespostaAUmaPropostaSua_APARECE_NaSondagem_SemEsperarODigest()
+        {
+            // Sem isto, a resposta que chega às 10h esperava o digest das 12:55 para aparecer.
+            var (vigia, provider, _, pasta) = MontarComPasta(
+                lidas: new[] { Resposta(700, "77"), Msg(uid: 701, assunto: "Outro assunto") },
+                resposta: "[]");
+
+            PropostaEnviada(pasta, "77", DateTime.UtcNow.AddDays(-1));
+
+            var avisos = new List<DigestoDeEmail>();
+            vigia.Pronto += d => avisos.Add(d);
+
+            await vigia.ExecutarAsync(comModelo: false, CancellationToken.None);
+
+            provider.Chamadas.Should().Be(0, "a sondagem não chama o modelo");
+
+            var item = vigia.Ultimo.Itens.Should().ContainSingle(
+                "só a resposta à conversa iniciada sobe antes do digest").Subject;
+            item.Description.Should().Be(MailDigestService.RespostaPendente);
+            item.Urgency.Should().Be(MailUrgency.Media);
+            item.Iniciada.Should().BeTrue();
+            item.AwaitingMe.Should().BeTrue("a resposta é sua de novo");
+            avisos.Should().ContainSingle().Which.Itens.Should().ContainSingle();
+
+            // A sondagem seguinte relê o mesmo trecho (o ponteiro só anda no digest): não
+            // pode anunciar a mesma resposta a cada 20 minutos.
+            await vigia.ExecutarAsync(comModelo: false, CancellationToken.None);
+            avisos.Should().HaveCount(1);
+        }
+
+        [Fact]
+        public async Task ODigest_SUBSTITUI_OResumoPendente_SemContarAMensagemDuasVezes()
+        {
+            var (vigia, _, _, pasta) = MontarComPasta(
+                lidas: new[] { Resposta(700, "77") },
+                resposta: "[{\"uid\":700,\"urgencia\":\"maxima\",\"resumo\":\"aceita a reunião e pede a tabela até quarta\"}]");
+
+            PropostaEnviada(pasta, "77", DateTime.UtcNow.AddDays(-1));
+
+            await vigia.ExecutarAsync(comModelo: false, CancellationToken.None);
+            await vigia.ExecutarAsync(comModelo: true, CancellationToken.None);
+
+            var item = vigia.Ultimo.Itens.Should().ContainSingle().Subject;
+            item.Description.Should().Be("aceita a reunião e pede a tabela até quarta");
+            item.Urgency.Should().Be(MailUrgency.Maxima);
+            item.MessageCount.Should().Be(2, "a proposta e a resposta — a resposta não conta duas vezes");
+        }
+
+        [Fact]
+        public void AoVoltarDoDisco_ARespostaAUmaPropostaSua_MANTEM_OPisoEOSelo()
+        {
+            var (vigia, _, _, pasta) = MontarComPasta(Array.Empty<MensagemDeEmail>(), null);
+
+            PropostaEnviada(pasta, "77", Ontem.AddDays(-1));
+            JaTriado(pasta, "77", "Re: Proposta", "Baixa", Ontem);
+
+            vigia.Reconstituir().Should().Be(1, "Baixa só some quando a conversa não é sua");
+            vigia.Ultimo.Itens.Single().Iniciada.Should().BeTrue();
+            vigia.Ultimo.Itens.Single().Urgency.Should().Be(MailUrgency.Media);
+        }
 
         [Fact]
         public void AoLigar_ACaixaVOLTA_DoDisco()

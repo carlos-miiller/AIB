@@ -114,10 +114,21 @@ public interface ITool
     bool PassaPelaFloorList => false;
 
     /// <summary>
-    /// Se a chamada só vale quando o pedido só pode ter vindo do usuário: com texto de terceiros
-    /// no contexto (e-mail, página), o registry recusa. Ver <see cref="Tools.LembrarTool"/>.
+    /// Se a chamada só vale quando o pedido veio do usuário: com texto de terceiros no contexto
+    /// (e-mail, página), o registry leva a chamada ao cartão, mesmo que a ferramenta não peça
+    /// confirmação — é o usuário quem diz se o pedido foi dele. Ver <see cref="Tools.LembrarTool"/>.
     /// </summary>
     bool SoComFalaDoUsuario => false;
+
+    /// <summary>
+    /// Se o schema vai ao modelo agora. Default verdadeiro. O <c>web_search</c> responde pelo
+    /// provedor: no Ollama, que não tem busca, ele custaria tokens em toda requisição para só
+    /// responder erro.
+    /// </summary>
+    bool Oferecida => true;
+
+    /// <summary>A mesma pergunta, para ESTA chamada: ler o que já existe não precisa de cartão.</summary>
+    bool PedeFalaDoUsuario(string argumentsJson) => SoComFalaDoUsuario;
 
     /// <summary>
     /// A mesma pergunta, para uma operação já descrita. É o que o registry consulta.
@@ -148,4 +159,20 @@ public interface ITool
     /// descrever o que vai fazer, o usuário não tem como autorizar com conhecimento de causa.
     /// </summary>
     CommandConfirmationContext? BuildConfirmationContext(string argumentsJson, int userLevel) => null;
+
+    /// <summary>
+    /// Chamadas desta ferramenta pedidas no MESMO lote paralelo e com a mesma chave dividem um
+    /// cartão (<see cref="VagaNoCartao"/>). Default null: cada chamada, o seu cartão. A
+    /// <c>skill</c> junta pelo nome da habilidade — 27 chamadas ao bitrix, uma por tarefa, eram
+    /// 27 cartões.
+    /// </summary>
+    string? ChaveDoCartao(string argumentsJson) => null;
+
+    /// <summary>
+    /// O cartão único das chamadas que <see cref="ChaveDoCartao"/> juntou, na ordem em que foram
+    /// pedidas. Tem de mostrar TODAS: um "Permitir" vale para cada uma. Quem dá chave sobrescreve;
+    /// o default recusa, e exceção aqui nega o lote inteiro.
+    /// </summary>
+    CommandConfirmationContext JuntarNoCartao(System.Collections.Generic.IReadOnlyList<CommandConfirmationContext> contextos) =>
+        throw new System.NotSupportedException($"'{Name}' não sabe juntar cartões.");
 }

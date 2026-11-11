@@ -14,6 +14,11 @@ namespace AIB.Services.Memory;
 /// <summary>
 /// Persistência da memória de uma sessão em <c>~/.AIB/memory/sessions/{id}/</c>.
 /// <para>
+/// Os arquivos são cifrados por linha (<see cref="ArquivoCifrado"/>): guardam a conversa do
+/// usuário, inclusive o que as ferramentas leram. Linha em texto claro, de antes da cifra, é
+/// lida como está.
+/// </para>
+/// <para>
 /// <c>raw.jsonl</c> NUNCA é apagado. Resumo é perda irreversível, e resumo ruim aqui não gera
 /// inconsistência de enredo — gera agente agindo sobre informação errada com shell na
 /// mão. O cru fora do contexto é a rede de segurança: sai do prompt, não sai do disco.
@@ -30,7 +35,7 @@ public sealed class SessionMemory
     private static readonly JsonSerializerOptions Json = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        // Sem escapar acentos: o arquivo é para o usuário abrir e ler, não só para a máquina.
+        // Sem escapar acentos: é o que a exportação em texto claro entrega para o usuário ler.
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         WriteIndented = false,
         Converters = { new JsonStringEnumConverter() }
@@ -108,7 +113,7 @@ public sealed class SessionMemory
             lock (_gate)
             {
                 Directory.CreateDirectory(SessionDir);
-                File.AppendAllText(RawPath, linha + Environment.NewLine, SemBom);
+                ArquivoCifrado.Acrescentar(RawPath, linha);
             }
 
             return true;
@@ -148,7 +153,7 @@ public sealed class SessionMemory
             {
                 Directory.CreateDirectory(SessionDir);
                 string temporario = TurnoAbertoPath + ".tmp";
-                File.WriteAllText(temporario, json, SemBom);
+                File.WriteAllText(temporario, ArquivoCifrado.Cifrar(json), SemBom);
                 File.Move(temporario, TurnoAbertoPath, overwrite: true);
             }
         }
@@ -164,7 +169,8 @@ public sealed class SessionMemory
         try
         {
             if (!File.Exists(TurnoAbertoPath)) return null;
-            return JsonSerializer.Deserialize<TurnRecord>(File.ReadAllText(TurnoAbertoPath, SemBom), Json);
+            string? json = ArquivoCifrado.Ler(TurnoAbertoPath);
+            return json == null ? null : JsonSerializer.Deserialize<TurnRecord>(json, Json);
         }
         catch (Exception ex)
         {
@@ -246,7 +252,7 @@ public sealed class SessionMemory
             lock (_gate)
             {
                 Directory.CreateDirectory(SessionDir);
-                File.AppendAllText(ChaptersPath, linha + Environment.NewLine, SemBom);
+                ArquivoCifrado.Acrescentar(ChaptersPath, linha);
             }
 
             return true;
@@ -276,7 +282,7 @@ public sealed class SessionMemory
             lock (_gate)
             {
                 Directory.CreateDirectory(SessionDir);
-                File.AppendAllText(ActsPath, linha + Environment.NewLine, SemBom);
+                ArquivoCifrado.Acrescentar(ActsPath, linha);
             }
 
             return true;
@@ -298,7 +304,7 @@ public sealed class SessionMemory
 
         try
         {
-            foreach (var linha in File.ReadLines(caminho, SemBom))
+            foreach (var linha in ArquivoCifrado.Linhas(caminho))
             {
                 if (string.IsNullOrWhiteSpace(linha)) continue;
                 try

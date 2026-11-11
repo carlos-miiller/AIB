@@ -44,4 +44,28 @@ public interface IChatProvider
     /// aquecimento seguir rodando durante o encerramento do app.
     /// </summary>
     Task WarmupAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Tokens que o provedor manda JUNTO com <paramref name="messages"/> sem que estejam nelas: o
+    /// raciocínio guardado das voltas com ferramenta, que ele devolve ao modelo. Zero onde não há.
+    /// <para>
+    /// O contador e a compactação contam o histórico; sem isto não viam esse raciocínio. Visto
+    /// em 15/10: o OpenRouter cobrou 239.393 tokens de entrada numa volta em que a conta da AIB
+    /// dava ~190 mil.
+    /// </para>
+    /// </summary>
+    int RaciocinioReenviado(IReadOnlyList<ChatMessage> messages, System.Func<string, int> contar) => 0;
+
+    /// <summary>
+    /// Se o provedor tem busca na internet própria. Falso no Ollama, que roda local e não tem.
+    /// Sem ela, a ferramenta <c>web_search</c> não é oferecida ao modelo.
+    /// </summary>
+    bool TemPesquisa => false;
+
+    /// <summary>
+    /// Uma pesquisa na internet pela busca do provedor, numa chamada à parte da conversa. Ver
+    /// <see cref="Ai.Pesquisa"/>. Só é chamada quando <see cref="TemPesquisa"/> é verdadeiro.
+    /// </summary>
+    Task<ResultadoDaPesquisa> PesquisarAsync(string consulta, CancellationToken ct) =>
+        throw new System.NotSupportedException($"{Name} não tem busca na internet.");
 }

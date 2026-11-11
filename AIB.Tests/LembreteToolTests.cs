@@ -56,6 +56,31 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task OLembrete_GUARDA_DeQueEmailEDeQueConversaVeio()
+        {
+            // Caso real (16/10/2026): o lembrete do chamado da VipPhone, criado numa conversa de
+            // e-mail, chegaria sozinho, sem caminho de volta ao e-mail. O aviso agora oferece
+            // "Abrir o e-mail" — e para isso o lembrete tem de saber de onde nasceu.
+            ContextoDoTurno.Atual = new ContextoDoTurno("eu@cpaps.com.br|thr:1879", Shadow: false);
+            try
+            {
+                await _tool.ExecuteAsync("""{"action":"create","in_minutes":30,"text":"Checar a VipPhone"}""");
+            }
+            finally
+            {
+                ContextoDoTurno.Atual = null;
+            }
+
+            var l = _lembretes.Listar().Should().ContainSingle().Subject;
+            l.ChaveDoEmail.Should().Be("eu@cpaps.com.br|thr:1879");
+            l.Shadow.Should().BeFalse();
+
+            var adiado = _lembretes.Adiar(l, TimeSpan.FromHours(1), DateTime.UtcNow);
+            adiado!.ChaveDoEmail.Should().Be(l.ChaveDoEmail, "adiar não perde o caminho de volta");
+            adiado.Texto.Should().Be("Checar a VipPhone");
+        }
+
+        [Fact]
         public async Task Criar_Listar_Cancelar()
         {
             string criado = await _tool.ExecuteAsync(
@@ -104,8 +129,41 @@ namespace AIB.Tests
             Lembretes.Atrasado(l, era.AddHours(2)).Should().Be("(Era para 15:00.) Sua reunião começa agora.");
         }
 
+        private sealed class Prompt : IConfirmationPrompt
+        {
+            public System.Collections.Generic.List<CommandConfirmationContext> Vistos { get; } = new();
+
+            public Task<(bool Allowed, bool AlwaysAllow)> AskAsync(CommandConfirmationContext context)
+            {
+                Vistos.Add(context);
+                return Task.FromResult((true, false));
+            }
+        }
+
         [Fact]
-        public async Task ComTextoDeTerceirosNoContexto_ORegistryRecusa()
+        public async Task ComTextoDeTerceirosNoContexto_AgendarVaiAoCartao_ListarNao()
+        {
+            // O mesmo bloqueio do remember: recusava também o lembrete que o usuário pediu,
+            // se a conversa já tinha navegado. Agora ele vê a hora e a fala e decide.
+            var prompt = new Prompt();
+            var registry = new ToolRegistry(prompt) { ConteudoDeEmailNoContexto = () => true };
+            registry.Registrar(_tool);
+
+            (await registry.ExecuteToolAsync(Ferramentas.Lembrete, """{"action":"list"}""", userLevel: 1))
+                .Should().NotStartWith("ACESSO NEGADO");
+            prompt.Vistos.Should().BeEmpty("listar só lê");
+
+            (await registry.ExecuteToolAsync(Ferramentas.Lembrete,
+                """{"action":"create","in_minutes":5,"text":"Hora da reunião."}""", userLevel: 1))
+                .Should().StartWith("Agendado");
+
+            var cartao = prompt.Vistos.Should().ContainSingle().Subject;
+            cartao.Command.Should().StartWith("AGENDAR LEMBRETE para ").And.EndWith(": \"Hora da reunião.\"");
+            cartao.SemSempre.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task ComTextoDeTerceirosNoContexto_SemInterface_ORegistryRecusa()
         {
             // Um e-mail com "me lembre de pagar o boleto X" agendaria a fala de um estranho.
             var registry = new ToolRegistry { ConteudoDeEmailNoContexto = () => true };
