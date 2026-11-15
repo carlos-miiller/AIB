@@ -24,7 +24,7 @@ namespace AIB.Services.Documentos;
 public static class ManualDoDoc
 {
     /// <summary>Onde o exemplo se aplica, para o teste saber como rodá-lo.</summary>
-    public enum Uso { Ops, OpsDoWord, Consulta, CriarPlanilha, CriarWord }
+    public enum Uso { Ops, OpsDoWord, Consulta, CriarPlanilha, CriarWord, CriarComOps }
 
     public sealed record Exemplo(string Legenda, string Json, Uso Uso);
 
@@ -162,6 +162,13 @@ public static class ManualDoDoc
     {
         new("Planilha nova (action='create', path terminando em .xlsx ou .csv); a linha 1 sai em negrito:", Vendas, Uso.CriarPlanilha),
         new("Word novo (path terminando em .docx):", Proposta, Uso.CriarWord),
+        new("Planilha nova já formatada, num cartão só: 'content' e 'ops' (as do edit) no MESMO create:",
+            """
+            {"content":{"sheets":[{"name":"Custos","rows":[["Item","Valor"],["Aluguel",3200],["Luz",410.9]]},{"name":"Resumo","rows":[["Total","=SUM(Custos!B2:B3)"]]}]},
+             "ops":[{"sheet":"Custos","range":"A1:B1","style":{"fill":"azul escuro","color":"branco"}},
+                    {"sheet":"Custos","range":"B2:B3","style":{"number_format":"moeda"}},
+                    {"sheet":"Custos","freeze":"A2"}]}
+            """, Uso.CriarComOps),
     };
 
     private static readonly Exemplo[] DoWord =
@@ -212,25 +219,51 @@ public static class ManualDoDoc
     public static IEnumerable<(string Assunto, Exemplo Exemplo)> Exemplos =>
         Todos.SelectMany(a => a.Exemplos.Select(e => (a.Nome, e)));
 
-    /// <summary>O manual de um assunto; sem assunto (ou com um que não existe), o índice.</summary>
+    /// <summary>
+    /// O manual de um assunto, ou de vários separados por vírgula ("estilo,abas"); sem assunto
+    /// (ou só com os que não existem), o índice.
+    /// <para>
+    /// Vários de uma vez: pedido do usuário (11/11/2026). A Ellen consultava o manual entre uma
+    /// edição e outra, um assunto por chamada, e as gravações deixavam de sair juntas num cartão.
+    /// </para>
+    /// </summary>
     public static string Texto(string? pedido)
     {
         string p = (pedido ?? "").Trim().ToLowerInvariant();
         if (p is "tudo" or "all" or "todos")
             return string.Join("\n\n", Todos.Select(Montar));
 
-        var achado = Todos.FirstOrDefault(a => a.Nome == p || a.Apelidos.Contains(p));
-        if (achado != null) return Montar(achado);
+        var achado = Achar(p);
+        if (achado != null) return Montar(achado) + "\n\n" + DeUmaVez;
+
+        var partes = p.Split(new[] { ',', ';', '+', '/', '|', ' ' }, StringSplitOptions.RemoveEmptyEntries).Distinct().ToList();
+        if (partes.Count > 1)
+        {
+            var achados = partes.Select(x => (Pedido: x, Assunto: Achar(x))).ToList();
+            var conhecidos = achados.Where(a => a.Assunto != null).Select(a => a.Assunto!).Distinct().ToList();
+            if (conhecidos.Count > 0)
+            {
+                var faltam = achados.Where(a => a.Assunto == null).Select(a => $"\"{a.Pedido}\"").ToList();
+                string aviso = faltam.Count == 0 ? ""
+                    : $"Não há o(s) assunto(s) {string.Join(", ", faltam)}. Os assuntos: {string.Join(", ", Assuntos)}.\n\n";
+                return aviso + string.Join("\n\n", conhecidos.Select(Montar));
+            }
+        }
 
         var sb = new StringBuilder();
         if (p.Length > 0) sb.Append("Não há o assunto \"").Append(pedido!.Trim()).Append("\". ");
-        sb.AppendLine("MANUAL DA FERRAMENTA doc. Peça um assunto: action='help', topic='<assunto>' (ou topic='tudo' para o manual inteiro).");
+        sb.AppendLine("MANUAL DA FERRAMENTA doc. Peça os assuntos de que precisa numa chamada só: action='help', "
+                      + "topic='<assunto>' ou topic='estilo,abas,layout' (ou topic='tudo' para o manual inteiro).");
         sb.AppendLine();
         foreach (var a in Todos) sb.Append("- ").Append(a.Nome).Append(": ").AppendLine(a.Resumo);
         sb.AppendLine();
         sb.Append(Gerais);
         return sb.ToString().TrimEnd();
     }
+
+    private static Assunto? Achar(string p) => Todos.FirstOrDefault(a => a.Nome == p || a.Apelidos.Contains(p));
+
+    private const string DeUmaVez = "Precisa de outro assunto? Peça junto: topic='estilo,abas,layout'.";
 
     private static string Montar(Assunto a)
     {
@@ -243,7 +276,7 @@ public static class ManualDoDoc
             sb.AppendLine(a.Exemplos[0].Uso switch
             {
                 Uso.Consulta => "Exemplos (o objeto 'query' de action='query'):",
-                Uso.CriarPlanilha or Uso.CriarWord => "Exemplos (o objeto 'content' de action='create'):",
+                Uso.CriarPlanilha or Uso.CriarWord or Uso.CriarComOps => "Exemplos (o objeto 'content' de action='create'):",
                 _ => "Exemplos (a lista 'ops' de action='edit'):"
             });
             foreach (var e in a.Exemplos)
@@ -266,6 +299,10 @@ public static class ManualDoDoc
         - 'path' é sempre o caminho absoluto do arquivo.
         - Gravar (create, edit) mostra ao usuário um cartão com o antes e o depois, e só grava se ele permitir.
           O original vai para uma cópia de segurança antes (as 5 últimas versões, por 3 meses).
+        - Cada chamada que grava é um cartão para o usuário. Junte numa chamada só TUDO o que muda num arquivo
+          (valores, abas novas, formatação, larguras): uma lista 'ops' no edit, ou 'content' e 'ops' no create.
+          Leia e consulte o manual ANTES de começar a gravar, não entre uma gravação e outra; gravações em
+          arquivos diferentes na mesma resposta dividem um cartão.
         - Um 'edit' é tudo ou nada: se UMA operação da lista tem erro, nada é gravado, e o erro diz qual
           (operação N, contando de 1). Corrija aquela e mande a lista de novo.
         - .xlsx com gráfico, tabela dinâmica, macro ou segmentação é recusado: regravar apagaria essas partes.
@@ -324,6 +361,8 @@ public static class ManualDoDoc
 
     private static string Celulas() => """
         action='edit' com 'ops': uma LISTA de operações, aplicadas em ordem e gravadas de uma vez.
+        Ponha na mesma lista TUDO o que muda no arquivo — valores, abas novas, formatação, larguras: cada
+        'edit' é um cartão que o usuário precisa permitir.
         Cada objeto da lista é UMA operação. 'sheet' (em cada operação, ou no topo do pedido) escolhe a aba;
         sem ela, a primeira visível.
 
@@ -496,10 +535,11 @@ public static class ManualDoDoc
         - Valores como no edit (topic='celulas'): número JSON, texto, true/false, data 'dd/mm/aaaa',
           fórmula começando com '=' (em inglês, com vírgula).
         - A linha 1 de cada aba sai em negrito e as colunas se ajustam ao texto. Para mais formatação
-          (cores, moeda, congelar), crie e depois faça um 'edit' no mesmo arquivo.
+          (cores, moeda, congelar, larguras, regras), ponha 'ops' — as mesmas do edit — no MESMO create:
+          a planilha nasce formatada, com um cartão só. Não crie para depois editar.
         - .csv tem uma aba só.
 
-        Word (.docx): {blocks:[...]}, um bloco por item, em ordem:
+        Word (.docx): {blocks:[...]}, um bloco por item, em ordem (Word novo não aceita 'ops': tudo vai em blocks):
         - {style, text}: parágrafo. style: Heading1, Heading2, Heading3 ou Normal (sem style, Normal).
         - {list:['item', 'item']}: lista com marcadores.
         - {table:[['Cab 1','Cab 2'],['a','b']]}: tabela; a primeira linha é o cabeçalho.

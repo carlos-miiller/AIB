@@ -42,17 +42,41 @@ public static class EditorDePlanilha
     /// arquivo, as ops se aplicam sobre ele, e o resultado vai para <paramref name="caminho"/>. O
     /// modelo não muda.
     /// </param>
-    public static Gravacao Planejar(string caminho, JsonElement ops, string? abaPadrao, string? modelo = null)
-    {
-        string origem = modelo ?? caminho;
-        var formato = Formatos.De(origem);
-        RecusarOQueSePerderia(origem, formato);
-        if (modelo != null && formato != Formato.Xlsx)
-            throw new ErroDeDocumento("o modelo de planilha precisa ser .xlsx ou .xlsm.");
+    public static Gravacao Planejar(string caminho, JsonElement ops, string? abaPadrao, string? modelo = null) =>
+        Planejar(caminho, ops, abaPadrao, modelo, null);
 
+    /// <summary>
+    /// A planilha que um <c>create</c> com <c>content</c> acabou de montar, para as <c>ops</c> do
+    /// mesmo pedido se aplicarem sobre ela.
+    /// </summary>
+    private sealed record Criada(XLWorkbook Wb, string Resumo);
+
+    private static Gravacao Planejar(string caminho, JsonElement ops, string? abaPadrao, string? modelo, Criada? criada)
+    {
         bool existe = File.Exists(caminho);
-        string? impressao = modelo == null || existe ? Gravacao.Impressao(caminho) : null;
-        var (wb, csv) = Abrir(origem, formato);
+        Formato formato;
+        string? impressao;
+        XLWorkbook wb;
+        FormatoCsv? csv;
+
+        if (criada != null)
+        {
+            formato = existe ? Formatos.De(caminho) : Formatos.PelaExtensao(caminho);
+            impressao = existe ? Gravacao.Impressao(caminho) : null;
+            wb = criada.Wb;
+            csv = formato == Formato.Csv ? new FormatoCsv(';', new UTF8Encoding(true)) : null;
+        }
+        else
+        {
+            string origem = modelo ?? caminho;
+            formato = Formatos.De(origem);
+            RecusarOQueSePerderia(origem, formato);
+            if (modelo != null && formato != Formato.Xlsx)
+                throw new ErroDeDocumento("o modelo de planilha precisa ser .xlsx ou .xlsm.");
+
+            impressao = modelo == null || existe ? Gravacao.Impressao(caminho) : null;
+            (wb, csv) = Abrir(origem, formato);
+        }
 
         var antes = formato == Formato.Csv ? new Dictionary<string, string>() : ValoresDasFormulas(wb);
         var refsAntes = FormulasComRef(wb);
@@ -506,7 +530,8 @@ public static class EditorDePlanilha
         }
         else
         {
-            efeitos = estrutural || formato == Formato.Csv ? new List<string>() : Efeitos(wb, antes, mudancas, grupos);
+            // Arquivo novo não tem fórmula "que já existia" para mudar de valor.
+            efeitos = estrutural || formato == Formato.Csv || criada != null ? new List<string>() : Efeitos(wb, antes, mudancas, grupos);
         }
 
         string abaTexto = string.Join(", ", abasTocadas.Select(a => $"\"{a}\""));
@@ -593,11 +618,25 @@ public static class EditorDePlanilha
             resultadoMensagem = $"planilha criada a partir do modelo '{nome}'" + (lista.Count > 0 ? $" ({resultadoMensagem})" : "");
         }
 
+        // Criar com conteúdo e mudanças: o cartão mostra a planilha nova e, abaixo, o que as
+        // mudanças fazem nela.
+        PreviaDeArquivo? previa = null;
+        if (criada != null)
+        {
+            titulo = existe ? "Substituir esta planilha inteira?" : "Criar esta planilha?";
+            consequencia = (existe ? "O arquivo existe: TODO o conteúdo atual é trocado por este" : "Arquivo novo; nada que já existe é tocado")
+                + ", com as mudanças abaixo já aplicadas.";
+            resumo = criada.Resumo + (resumo.Length > 0 ? " · " + resumo : "");
+            resultadoMensagem = (existe ? "planilha substituída" : "planilha criada") + $" ({resultadoMensagem})";
+            previa = Previa(wb);
+        }
+
         var plano = new PlanoDeGravacao
         {
             Arquivo = Path.GetFullPath(caminho),
-            Criar = modelo != null && !existe,
-            SoAparencia = soAparencia && modelo == null,
+            Criar = (modelo != null || criada != null) && !existe,
+            SoAparencia = soAparencia && modelo == null && criada == null,
+            Previa = previa,
             Titulo = titulo,
             Consequencia = consequencia.Trim(),
             Resumo = resumo,
@@ -654,7 +693,12 @@ public static class EditorDePlanilha
     // Criar
     // ─────────────────────────────────────────────────────────────────────────
 
-    public static Gravacao PlanejarCriacao(string caminho, JsonElement conteudo)
+    /// <param name="ops">
+    /// Mudanças que se aplicam sobre a planilha nova no MESMO cartão: formatação, abas, larguras.
+    /// Pedido do usuário (11/11/2026): a Ellen criava a planilha e depois a formatava em outras
+    /// chamadas, e cada uma abria o seu cartão.
+    /// </param>
+    public static Gravacao PlanejarCriacao(string caminho, JsonElement conteudo, JsonElement? ops = null, string? abaPadrao = null)
     {
         var formato = Formatos.PelaExtensao(caminho);
         bool existe = File.Exists(caminho);
@@ -695,18 +739,12 @@ public static class EditorDePlanilha
 
         Recalcular(wb);
 
-        var primeira = wb.Worksheet(1);
-        var usada = primeira.RangeUsed();
-        var previa = new List<IEnumerable<string>>();
-        if (usada != null)
-        {
-            int ultimaL = usada.LastRow().RowNumber(), ultimaC = Math.Min(usada.LastColumn().ColumnNumber(), 8);
-            var indices = Enumerable.Range(1, ultimaL).ToList();
-            foreach (int r in indices.Take(5).Concat(indices.Count > 5 ? new[] { ultimaL } : Array.Empty<int>()))
-                previa.Add(Enumerable.Range(1, ultimaC).Select(c => Apresentacao.Curto(Mostrar(primeira.Cell(r, c)) ?? "", 30)));
-        }
+        int colunas = wb.Worksheet(1).RangeUsed()?.ColumnCount() ?? 0;
+        string resumo = $"{nomes.Count} aba(s) · {linhasTotal} linhas · {colunas} colunas";
 
-        int colunas = usada?.ColumnCount() ?? 0;
+        if (ops is { ValueKind: JsonValueKind.Array } mudancas && mudancas.GetArrayLength() > 0)
+            return Planejar(caminho, mudancas, abaPadrao, null, new Criada(wb, resumo));
+
         var plano = new PlanoDeGravacao
         {
             Arquivo = Path.GetFullPath(caminho),
@@ -715,15 +753,32 @@ public static class EditorDePlanilha
             Consequencia = existe
                 ? "O arquivo existe: TODO o conteúdo atual é trocado por este."
                 : "Arquivo novo; nada que já existe é tocado.",
-            Resumo = $"{nomes.Count} aba(s) · {linhasTotal} linhas · {colunas} colunas",
-            Previa = new PreviaDeArquivo(nomes, previa.Select(l => (IReadOnlyList<string>)l.ToList()).ToList(),
-                                         Math.Max(0, (usada?.RowCount() ?? 0) - previa.Count)),
+            Resumo = resumo,
+            Previa = Previa(wb),
             Copia = existe ? CopiasDeDocumento.Descricao(caminho) : null,
             Impressao = existe ? Gravacao.Impressao(caminho) : null
         };
 
         return new GravacaoDePlanilha(plano, wb, formato == Formato.Csv ? new FormatoCsv(';', new UTF8Encoding(true)) : null,
                                       existe ? "planilha substituída" : "planilha criada");
+    }
+
+    /// <summary>A prévia de planilha nova: as abas e as primeiras linhas da primeira.</summary>
+    private static PreviaDeArquivo Previa(XLWorkbook wb)
+    {
+        var primeira = wb.Worksheet(1);
+        var usada = primeira.RangeUsed();
+        var linhas = new List<IReadOnlyList<string>>();
+        if (usada != null)
+        {
+            int ultimaL = usada.LastRow().RowNumber(), ultimaC = Math.Min(usada.LastColumn().ColumnNumber(), 8);
+            var indices = Enumerable.Range(1, ultimaL).ToList();
+            foreach (int r in indices.Take(5).Concat(indices.Count > 5 ? new[] { ultimaL } : Array.Empty<int>()))
+                linhas.Add(Enumerable.Range(1, ultimaC).Select(c => Apresentacao.Curto(Mostrar(primeira.Cell(r, c)) ?? "", 30)).ToList());
+        }
+
+        return new PreviaDeArquivo(wb.Worksheets.Select(w => w.Name).ToList(), linhas,
+                                   Math.Max(0, (usada?.RowCount() ?? 0) - linhas.Count));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

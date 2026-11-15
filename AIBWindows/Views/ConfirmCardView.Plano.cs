@@ -137,8 +137,10 @@ public partial class ConfirmCardView
             });
         }
 
+        // Planilha criada já com mudanças (create com content e ops): a tabela do que muda e,
+        // abaixo dela, a prévia da planilha nova.
         if (plano.Mudancas.Count > 0) MontarTabela(plano, p);
-        else if (plano.Previa != null) MontarPrevia(plano.Previa, p);
+        if (plano.Previa != null) MontarPrevia(plano.Previa, p);
 
         if (plano.Efeitos.Count > 0)
         {
@@ -413,7 +415,16 @@ public partial class ConfirmCardView
         if (previa.Omitidas > 0)
             painel.Children.Add(Linha($"+ {previa.Omitidas} linhas", "TextMutedBrush"));
 
-        p.Tabela.Children.Add(painel);
+        // Abaixo da tabela de mudanças, a prévia ocupa uma linha inteira da grade.
+        var g = p.Tabela;
+        if (g.RowDefinitions.Count > 0)
+        {
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(painel, g.RowDefinitions.Count - 1);
+            Grid.SetColumnSpan(painel, System.Math.Max(1, g.ColumnDefinitions.Count));
+            painel.Margin = new Thickness(0, 10, 0, 0);
+        }
+        g.Children.Add(painel);
     }
 
     /// <summary>

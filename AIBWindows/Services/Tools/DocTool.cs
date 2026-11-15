@@ -188,6 +188,11 @@ public class DocTool : ITool
             {
                 return "ERRO: 'create' precisa de 'content' (ou de 'from', o caminho de um modelo: action='models' lista os modelos).";
             }
+            else if (a.Acao == "create" && formato == Formato.Docx && a.Ops is { } opsDoWord && opsDoWord.GetArrayLength() > 0)
+            {
+                // Antes, as 'ops' de um Word novo sumiam sem aviso: o create só lia 'content'.
+                return "ERRO: Word novo não aceita 'ops'. Ponha tudo em 'content' (títulos, listas e tabelas são blocos com 'style').";
+            }
 
             // A imagem é um segundo arquivo lido pelo pedido: da pasta de dados do AIB ela levaria
             // memória, log ou cofre para dentro de um documento que o usuário repassa.
@@ -461,7 +466,7 @@ public class DocTool : ITool
             ("create", _) when a.Modelo != null => EditorDePlanilha.Planejar(caminho, a.Ops ?? SemOps, a.Aba, Path.GetFullPath(a.Modelo)),
             ("create", Formato.Docx) => EditorDeDocx.PlanejarCriacao(caminho, a.Conteudo!.Value),
             ("edit", Formato.Docx) => EditorDeDocx.Planejar(caminho, a.Ops!.Value, Autor()),
-            ("create", _) => EditorDePlanilha.PlanejarCriacao(caminho, a.Conteudo!.Value),
+            ("create", _) => EditorDePlanilha.PlanejarCriacao(caminho, a.Conteudo!.Value, a.Ops, a.Aba),
             _ => EditorDePlanilha.Planejar(caminho, a.Ops!.Value, a.Aba)
         };
     }

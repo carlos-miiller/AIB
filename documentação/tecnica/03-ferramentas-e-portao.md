@@ -828,9 +828,19 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   esta planilha a partir do modelo?"; Word é cópia exata (`ModelosDoDoc.Copiar`), sem ops. O
   modelo precisa ser legível sem cartão, existir e ter a extensão do arquivo novo; `from` com
   `content` é recusado. A `Description` manda partir de um modelo e usar o `layout`.
+- **`create` com `content` e `ops`** (pedido do usuário, 11/11/2026): a planilha montada do
+  `content` recebe as `ops` do mesmo pedido (`EditorDePlanilha.PlanejarCriacao(…, ops, aba)` →
+  `Planejar` com a `Criada`), num cartão só: "Criar esta planilha?", a tabela do que as ops fazem
+  e, abaixo dela, a prévia da planilha nova (abas e primeiras linhas, já com as ops). Sem "efeito
+  nas fórmulas que já existem": o arquivo é novo. Antes as `ops` de um create com `content` eram
+  ignoradas sem aviso; Word novo com `ops` agora é recusado ("ponha tudo em `content`"). A Ellen
+  criava e depois formatava em outras chamadas, cada uma com o seu cartão.
 - **`help`** (`ManualDoDoc`): o manual sob pedido, por `topic` (`ler`, `consulta`, `celulas`,
   `estilo`, `condicional`, `abas`, `layout`, `modelos`, `criar`, `word`, `tudo`; apelidos em inglês e português valem;
-  sem topic, o índice). Não precisa de `path`, não abre arquivo e não pergunta. Existe porque a
+  sem topic, o índice; vários de uma vez separados por vírgula, `topic='estilo,abas'`, e o que não
+  existe é avisado no topo). Não precisa de `path`, não abre arquivo e não pergunta. O índice e as
+  regras gerais pedem para juntar num pedido tudo o que muda num arquivo e para consultar o manual
+  antes de gravar, não entre uma gravação e outra: cada chamada que grava é um cartão (11/11/2026). Existe porque a
   descrição e o esquema dizem QUAIS chaves há, não o que cabe nelas: em 26/10/2026, para montar um
   painel, a Ellen abriu o código-fonte da formatação umas 15 vezes atrás de nome de cor, atalho de
   `number_format` e forma do `conditional`. As listas (cores, atalhos, chaves de estilo, escalas,
