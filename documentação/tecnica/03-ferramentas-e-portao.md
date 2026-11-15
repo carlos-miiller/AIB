@@ -866,9 +866,20 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
      AIB, e qualquer plano que não se monta (célula inválida, trecho do Word ambíguo ou ausente).
      Arquivo travado pelo Excel/Word (abrir para escrita dá `ERROR_SHARING_VIOLATION`) só é
      recusado aqui quando não há interface (`DocTool.AoTravar` nulo, nos ensaios).
-  2. **Planilha com gráfico, tabela dinâmica, macro, segmentação ou linha do tempo não se edita**
+  2. **Planilha com gráfico, tabela dinâmica, segmentação, linha do tempo, controle de formulário
+     (`xl/ctrlProps`), ActiveX, faixa de opções personalizada ou macro assinada não se edita**
      (`RecusarOQueSePerderia`): o ClosedXML abre, mas regrava sem essas partes. A recusa sugere
      criar um arquivo novo.
+     **Macros se editam** desde 15/11/2026 (pedido do usuário): o ClosedXML 0.105 mantém o
+     `vbaProject.bin` byte a byte e o tipo `.xlsm`, mas descarta as formas desenhadas (o botão que
+     roda a macro) e o `codeName` das abas. `RestauroDePlanilha` guarda os bytes do original no
+     plano e, depois do `SaveAs`, devolve pelo Open XML SDK o `codeName` de cada aba e o desenho
+     inteiro de cada aba que tinha forma (pelo nome original, mesmo se a edição renomeou). Vale
+     para .xlsx comum com forma, que antes a perdia sem aviso. Como o desenho volta nas posições
+     de antes, inserir/apagar linhas ou pôr imagem numa aba com forma é recusado. A consequência
+     do cartão diz que as macros e os botões ficam e que o AIB não executa macros. Conferido numa
+     cópia do inventário de TI do usuário: o Excel abriu com o VBA, o botão "SALVAR" ligado à
+     macro e os seis codeNames, e o validador do SDK não achou erro.
   3. O plano (`PlanoDeGravacao`) é calculado sem tocar o disco: célula, antes e depois (fórmula
      com o resultado); faixa com a mesma fórmula vira grupo com 3 exemplos e a contagem de erros;
      linhas que saem e entram inteiras; "efeito nas fórmulas que já existem" (recalcula e compara,

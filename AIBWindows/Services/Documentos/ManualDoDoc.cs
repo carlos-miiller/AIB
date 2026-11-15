@@ -305,8 +305,10 @@ public static class ManualDoDoc
           arquivos diferentes na mesma resposta dividem um cartão.
         - Um 'edit' é tudo ou nada: se UMA operação da lista tem erro, nada é gravado, e o erro diz qual
           (operação N, contando de 1). Corrija aquela e mande a lista de novo.
-        - .xlsx com gráfico, tabela dinâmica, macro ou segmentação é recusado: regravar apagaria essas partes.
-          Ofereça criar um arquivo novo com o resultado.
+        - .xlsx com gráfico, tabela dinâmica, segmentação, controle de formulário ou ActiveX é recusado: regravar
+          apagaria essas partes. Ofereça criar um arquivo novo com o resultado.
+        - .xlsm se edita: as macros e os botões desenhados ficam como estão (macro assinada é recusada). Na aba
+          que tem botão ou forma, escreva nas linhas que existem: inserir ou apagar linhas, ou pôr imagem, ali é recusado.
         - Arquivo aberto no Excel ou no Word: o usuário escolhe na hora entre fechar e tentar de novo, salvar
           uma cópia ou desistir.
         - Não use o shell nem o código-fonte do AIB para planilha e Word: o que esta ferramenta faz está neste manual.

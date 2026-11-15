@@ -58,6 +58,7 @@ public static class EditorDePlanilha
         string? impressao;
         XLWorkbook wb;
         FormatoCsv? csv;
+        RestauroDePlanilha? restauro = null;
 
         if (criada != null)
         {
@@ -75,8 +76,15 @@ public static class EditorDePlanilha
                 throw new ErroDeDocumento("o modelo de planilha precisa ser .xlsx ou .xlsm.");
 
             impressao = modelo == null || existe ? Gravacao.Impressao(caminho) : null;
-            (wb, csv) = Abrir(origem, formato);
+            byte[]? bytes;
+            (wb, csv, bytes) = Abrir(origem, formato);
+            if (bytes != null) restauro = RestauroDePlanilha.Ler(bytes);
         }
+
+        // Cada aba pelo nome que tinha no original: a gravação devolve a ela o que o ClosedXML
+        // descarta, mesmo que a edição a tenha renomeado.
+        var abasOriginais = wb.Worksheets.Select(w => (Nome: w.Name, Aba: w)).ToList();
+        var abasMexidas = new HashSet<IXLWorksheet>();
 
         var antes = formato == Formato.Csv ? new Dictionary<string, string>() : ValoresDasFormulas(wb);
         var refsAntes = FormulasComRef(wb);
@@ -134,6 +142,7 @@ public static class EditorDePlanilha
             // A imagem usa 'cell' como canto; vem antes de a operação ser lida como de célula.
             if (op.TryGetProperty("image", out _) && LayoutDePlanilha.Processar(ws, op, i) is { } figura)
             {
+                abasMexidas.Add(ws);
                 formatacoes.Add(figura);
                 ajustes++;
             }
@@ -348,6 +357,7 @@ public static class EditorDePlanilha
                 var linhas = Linhas(op, "rows", i);
                 if (linhas.Count == 0) throw new ErroDeDocumento($"operação {i}: 'insert_rows' precisa de 'rows' com as linhas novas.");
 
+                abasMexidas.Add(ws);
                 ws.Row(antesDe).InsertRowsAbove(linhas.Count);
                 for (int k = 0; k < linhas.Count; k++)
                 {
@@ -361,6 +371,7 @@ public static class EditorDePlanilha
             else if (op.TryGetProperty("delete_rows", out _))
             {
                 var (de, ate) = LinhasDe(op, i);
+                abasMexidas.Add(ws);
                 for (int r = de; r <= ate; r++)
                 {
                     var conteudo = ws.Row(r).CellsUsed().Select(Formatado).Where(t => t.Length > 0);
@@ -383,6 +394,16 @@ public static class EditorDePlanilha
                     + "rows+height, merge, unmerge, gridlines, filter, print ou image.");
             }
         }
+
+        // O desenho do original volta inteiro na gravação, nas posições de antes: linha inserida
+        // ou apagada deixaria o botão fora do lugar, e imagem nova dividiria o desenho com ele.
+        if (restauro != null)
+            foreach (var (nomeOriginal, aba) in abasOriginais)
+                if (abasMexidas.Contains(aba) && restauro.Formas.ContainsKey(nomeOriginal))
+                    throw new ErroDeDocumento(
+                        $"a aba \"{aba.Name}\" tem botões ou formas desenhadas, que esta ferramenta mantém nas posições de antes; "
+                        + "inserir ou apagar linhas (ou pôr imagem) nessa aba os deixaria fora do lugar. Nada foi gravado. "
+                        + "Escreva nas linhas que já existem, ou peça ao usuário para fazer essa mudança no Excel.");
 
         bool temValores = mudancas.Count > 0 || grupos.Count > 0 || entram.Count > 0 || saem.Count > 0 || outras.Count > 0;
         bool soAparencia = !temValores && formatacoes.Count > 0;
@@ -618,6 +639,16 @@ public static class EditorDePlanilha
             resultadoMensagem = $"planilha criada a partir do modelo '{nome}'" + (lista.Count > 0 ? $" ({resultadoMensagem})" : "");
         }
 
+        if (restauro is { TemMacros: true } || restauro?.TotalDeFormas > 0)
+        {
+            int formas = restauro.TotalDeFormas;
+            var mantidos = new List<string>();
+            if (restauro.TemMacros) mantidos.Add("as macros");
+            if (formas > 0) mantidos.Add(formas == 1 ? "o botão (ou forma) desenhado" : $"os {formas} botões e formas desenhados");
+            consequencia = consequencia.TrimEnd() + $" {Primeira(string.Join(" e ", mantidos))} ficam como estão"
+                           + (restauro.TemMacros ? "; o AIB não executa macros." : ".");
+        }
+
         // Criar com conteúdo e mudanças: o cartão mostra a planilha nova e, abaixo, o que as
         // mudanças fazem nela.
         PreviaDeArquivo? previa = null;
@@ -648,7 +679,7 @@ public static class EditorDePlanilha
             Impressao = impressao
         };
 
-        return new GravacaoDePlanilha(plano, wb, csv, resultadoMensagem);
+        return new GravacaoDePlanilha(plano, wb, csv, resultadoMensagem, restauro, abasOriginais);
     }
 
     private static (int C1, int C2) ParseColunas(string colsStr, int opIndex)
@@ -786,9 +817,15 @@ public static class EditorDePlanilha
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Recusa editar o que o ClosedXML não sabe regravar: gráficos, tabela dinâmica, macros,
-    /// segmentações. Ele abre o arquivo, mas grava SEM essas partes — a edição de uma célula
-    /// apagaria o gráfico do usuário sem aviso.
+    /// Recusa editar o que o ClosedXML não sabe regravar: gráficos, tabela dinâmica,
+    /// segmentações, controles de formulário e ActiveX. Ele abre o arquivo, mas grava SEM essas
+    /// partes — a edição de uma célula apagaria o gráfico do usuário sem aviso.
+    /// <para>
+    /// Macros deixaram de ser recusadas em 15/11/2026 (pedido do usuário): o ClosedXML mantém o
+    /// vbaProject.bin, e os botões desenhados e os nomes internos das abas voltam pelo
+    /// <see cref="RestauroDePlanilha"/>. Macro ASSINADA continua recusada: a assinatura é outra
+    /// parte, que não se confere aqui.
+    /// </para>
     /// </summary>
     internal static void RecusarOQueSePerderia(string caminho, Formato formato)
     {
@@ -803,7 +840,10 @@ public static class EditorDePlanilha
 
             if (tem("xl/charts/")) perderia.Add("gráficos");
             if (tem("xl/pivotTables/") || tem("xl/pivotCache/")) perderia.Add("tabelas dinâmicas");
-            if (tem("xl/vbaProject")) perderia.Add("macros");
+            if (tem("xl/vbaProjectSignature")) perderia.Add("macros assinadas");
+            if (tem("xl/ctrlProps/")) perderia.Add("controles de formulário");
+            if (tem("xl/activeX/")) perderia.Add("controles ActiveX");
+            if (tem("customUI/") || tem("customUi/")) perderia.Add("faixa de opções personalizada");
             if (tem("xl/slicers/") || tem("xl/slicerCaches/")) perderia.Add("segmentações");
             if (tem("xl/timelines/")) perderia.Add("linhas do tempo");
         }
@@ -823,7 +863,8 @@ public static class EditorDePlanilha
     // Abrir e gravar
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static (XLWorkbook, FormatoCsv?) Abrir(string caminho, Formato formato)
+    /// <summary>A planilha aberta e, em .xlsx/.xlsm, os bytes do original (ver <see cref="RestauroDePlanilha"/>).</summary>
+    private static (XLWorkbook, FormatoCsv?, byte[]?) Abrir(string caminho, Formato formato)
     {
         if (formato == Formato.Csv)
         {
@@ -833,7 +874,7 @@ public static class EditorDePlanilha
             for (int r = grade.PrimeiraLinha; r <= grade.Linhas; r++)
                 for (int c = 1; c <= grade.Colunas; c++)
                     if (grade[r, c].Texto is { Length: > 0 } t) ws.Cell(r, c).Value = t;
-            return (wb, new FormatoCsv(separador, codificacao));
+            return (wb, new FormatoCsv(separador, codificacao), null);
         }
 
         if (formato != Formato.Xlsx) throw new ErroDeDocumento("só .xlsx, .xlsm e .csv se editam.");
@@ -841,8 +882,9 @@ public static class EditorDePlanilha
         using var fs = new FileStream(caminho, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var mem = new MemoryStream();
         fs.CopyTo(mem);
+        byte[] bytes = mem.ToArray();
         mem.Position = 0;
-        return (new XLWorkbook(mem), null);
+        return (new XLWorkbook(mem), null, bytes);
     }
 
     private static string SemCaracteresProibidos(string nome)
@@ -857,12 +899,17 @@ public static class EditorDePlanilha
     {
         private readonly XLWorkbook _wb;
         private readonly FormatoCsv? _csv;
+        private readonly RestauroDePlanilha? _restauro;
+        private readonly IReadOnlyList<(string Nome, IXLWorksheet Aba)> _abas;
 
-        public GravacaoDePlanilha(PlanoDeGravacao plano, XLWorkbook wb, FormatoCsv? csv, string resultado) : base(plano)
+        public GravacaoDePlanilha(PlanoDeGravacao plano, XLWorkbook wb, FormatoCsv? csv, string resultado,
+                                  RestauroDePlanilha? restauro = null, IReadOnlyList<(string Nome, IXLWorksheet Aba)>? abas = null) : base(plano)
         {
             _wb = wb;
             _csv = csv;
             Resultado = resultado;
+            _restauro = restauro;
+            _abas = abas ?? Array.Empty<(string, IXLWorksheet)>();
         }
 
         public override string Resultado { get; }
@@ -872,6 +919,7 @@ public static class EditorDePlanilha
             if (_csv == null)
             {
                 _wb.SaveAs(caminho);
+                _restauro?.Aplicar(caminho, _abas.ToDictionary(a => a.Nome, a => a.Aba.Name, StringComparer.OrdinalIgnoreCase));
                 return;
             }
 
