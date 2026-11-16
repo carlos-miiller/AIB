@@ -15,6 +15,9 @@ public static class DirectoryService
     public static string LogsDir => Path.Combine(DataDir, "logs");
     public static string CharactersDir => Path.Combine(DataDir, "character");
 
+    /// <summary>Os modelos de documento do usuário, que a ferramenta doc lista ao lado dos que vêm com o AIB.</summary>
+    public static string ModelosDir => Path.Combine(DataDir, "modelos");
+
     // Arquivos específicos
     public static string SettingsPath => Path.Combine(DataDir, "profile.dat");
 
@@ -31,8 +34,10 @@ public static class DirectoryService
 
             Directory.CreateDirectory(DataDir);
             Directory.CreateDirectory(SkillsDir);
+            SkillsPadrao.Sincronizar(SkillsPadrao.Origem(), Path.Combine(SkillsDir, SkillsPadrao.Pasta));
             Directory.CreateDirectory(MemoryDir);
             Directory.CreateDirectory(LogsDir);
+            Directory.CreateDirectory(ModelosDir);
 
             Directory.CreateDirectory(CharactersDir);
             SeedMissingCharacters();

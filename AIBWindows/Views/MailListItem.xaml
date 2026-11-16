@@ -26,64 +26,6 @@
         <ui:UrgenciaConverter x:Key="FundoDaUrgencia"  Modo="Fundo"/>
         <ui:UrgenciaConverter x:Key="RotuloDaUrgencia" Modo="Rotulo"/>
         <ui:MaiusculaConverter x:Key="EmMaiuscula"/>
-
-        <!-- AÇÃO DO CORPO. Duas, com a mesma geometria: a primária em lilás traz o
-             e-mail para dentro do chat; a secundária, apagada, leva para fora do app.
-             A hierarquia de cor é o que diz qual é o caminho principal. -->
-        <Style x:Key="AcaoDoCorpo" TargetType="Button">
-            <Setter Property="Height" Value="30"/>
-            <Setter Property="Padding" Value="13,0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource AccentLilacBrush}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Casca" CornerRadius="9"
-                                Background="Transparent"
-                                BorderBrush="{StaticResource AccentBorderStrongBrush}"
-                                BorderThickness="1"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Casca" Property="Background"
-                                        Value="{StaticResource AccentFill12Brush}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="AcaoSecundariaDoCorpo" TargetType="Button" BasedOn="{StaticResource AcaoDoCorpo}">
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Casca" CornerRadius="9"
-                                Background="Transparent"
-                                BorderBrush="{StaticResource BorderCardBrush}"
-                                BorderThickness="1"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Casca" Property="Background"
-                                        Value="{StaticResource SurfaceHoverSoftBrush}"/>
-                                <Setter Property="Foreground"
-                                        Value="{StaticResource TextBodyBrush}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </UserControl.Resources>
 
     <Border x:Name="Casca"
@@ -221,24 +163,51 @@
                 </TextBlock.Style>
             </TextBlock>
 
-            <!-- A12 — a cor é o sinal de relance, mas o rótulo de texto fica junto:
-                 daltonismo e captura de tela em tons de cinza. -->
-            <Border Grid.Column="2" Grid.Row="0"
-                    Margin="10,0,0,0"
-                    Padding="6,3,8,3"
-                    VerticalAlignment="Top"
-                    CornerRadius="{StaticResource RadiusPill}"
-                    Background="{Binding Urgency, Converter={StaticResource FundoDaUrgencia}}">
-                <StackPanel Orientation="Horizontal">
-                    <Ellipse Width="5" Height="5"
-                             VerticalAlignment="Center"
-                             Fill="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
-                    <TextBlock Margin="5,0,0,0"
-                               Text="{Binding Urgency, Converter={StaticResource RotuloDaUrgencia}}"
-                               FontSize="10" FontWeight="SemiBold"
-                               Foreground="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
-                </StackPanel>
-            </Border>
+            <StackPanel Grid.Column="2" Grid.Row="0" Orientation="Horizontal"
+                        Margin="10,0,0,0" VerticalAlignment="Top">
+
+                <!-- "VOCÊ INICIOU": a conversa começou com uma mensagem sua. Azul, e não
+                     lilás nem cor de urgência: lilás já é "Nova mensagem", e as cores de
+                     urgência dizem outra coisa. Fica ao lado do selo, e não do nome, porque
+                     o nome é o que encolhe com reticências — colado nele, o selo seria
+                     empurrado para fora num assunto longo. -->
+                <Border x:Name="SeloIniciou"
+                        Margin="0,0,6,0" Padding="5,2,7,2"
+                        VerticalAlignment="Center"
+                        CornerRadius="{StaticResource RadiusPill}"
+                        Background="{StaticResource AccentBlueFill14Brush}"
+                        BorderBrush="{StaticResource AccentBlueEdge38Brush}"
+                        BorderThickness="1"
+                        Visibility="Collapsed"
+                        ToolTip="Você começou esta conversa">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="M3,9 L9,3 M4.5,3 H9 V7.5"
+                              Stroke="{StaticResource AccentBlueBrush}"
+                              StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              Width="9" Height="9" Stretch="Uniform" VerticalAlignment="Center"/>
+                        <TextBlock Margin="4,0,0,0" Text="Você iniciou"
+                                   FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentBlueBrush}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- A12 — a cor é o sinal de relance, mas o rótulo de texto fica junto:
+                     daltonismo e captura de tela em tons de cinza. -->
+                <Border Padding="6,3,8,3"
+                        VerticalAlignment="Top"
+                        CornerRadius="{StaticResource RadiusPill}"
+                        Background="{Binding Urgency, Converter={StaticResource FundoDaUrgencia}}">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="5" Height="5"
+                                 VerticalAlignment="Center"
+                                 Fill="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+                        <TextBlock Margin="5,0,0,0"
+                                   Text="{Binding Urgency, Converter={StaticResource RotuloDaUrgencia}}"
+                                   FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{Binding Urgency, Converter={StaticResource CorDaUrgencia}}"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
 
             <!-- ── O CORPO DO ACORDEÃO (§3.10) ──────────────────────────────
                  Cursor de seta: aqui dentro não se clica para fechar, se lê. -->

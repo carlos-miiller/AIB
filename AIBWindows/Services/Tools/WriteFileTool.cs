@@ -28,6 +28,9 @@ public class WriteFileTool : ITool
 
     public bool RequiresConfirmation => true;
 
+    /// <summary>Motor da <see cref="FileTool"/> (action=write): registrado, fora do schema.</summary>
+    public bool Oferecida => false;
+
     /// <summary>
     /// Gravar dentro de uma pasta dispensada não para no card. Fora dela, o card aparece como
     /// sempre. Ver <see cref="PastasSemConfirmacao"/>.

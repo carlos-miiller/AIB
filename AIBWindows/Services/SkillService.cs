@@ -37,6 +37,13 @@ public class LocalSkill
     /// </para>
     /// </summary>
     public List<string> Accepts { get; set; } = new();
+
+    /// <summary>
+    /// Segredos do <see cref="Cofre"/> que a habilidade usa, declarados em <c>cofre:</c>. O
+    /// executor entrega cada um como <c>$env:COFRE_NOME</c>, e só se o segredo libera ESTA
+    /// habilidade (ver <see cref="Tools.ExecuteSkillTool"/>).
+    /// </summary>
+    public List<string> Cofre { get; set; } = new();
 }
 
 /// <summary>
@@ -62,12 +69,19 @@ public static class SkillService
 
     public static string Raiz => SkillsDirectoryOverride ?? DirectoryService.SkillsDir;
 
+    /// <summary>As skills que vêm com o AIB (<see cref="SkillsPadrao"/>).</summary>
+    public static string Padrao => Path.Combine(Raiz, SkillsPadrao.Pasta);
+
     public static int GetSkillCount() => ListLocalSkills().Count;
 
     /// <summary>
-    /// Todas as skills legíveis, em ordem alfabética. Uma pasta quebrada é ignorada em
-    /// silêncio: uma skill malformada não pode impedir as outras de existirem, e muito menos
-    /// derrubar a montagem do prompt de sistema.
+    /// Todas as skills legíveis, em ordem alfabética: as do AIB (<c>default/</c>) e as do
+    /// usuário. Uma pasta quebrada é ignorada em silêncio: uma skill malformada não pode impedir
+    /// as outras de existirem, e muito menos derrubar a montagem do prompt de sistema.
+    /// <para>
+    /// Nome repetido: vale a do AIB. O cofre libera segredo pelo NOME da skill, então uma skill
+    /// do usuário com o mesmo nome — escrita até pela própria IA — herdaria o segredo da original.
+    /// </para>
     /// </summary>
     public static List<LocalSkill> ListLocalSkills()
     {
@@ -77,10 +91,27 @@ public static class SkillService
         {
             if (!Directory.Exists(Raiz)) return skills;
 
+            if (Directory.Exists(Padrao))
+                foreach (var pasta in Directory.GetDirectories(Padrao))
+                {
+                    var skill = Ler(pasta);
+                    if (skill != null) skills.Add(skill);
+                }
+
             foreach (var pasta in Directory.GetDirectories(Raiz))
             {
+                if (Path.GetFileName(pasta).Equals(SkillsPadrao.Pasta, StringComparison.OrdinalIgnoreCase)) continue;
+
                 var skill = Ler(pasta);
-                if (skill != null) skills.Add(skill);
+                if (skill == null) continue;
+
+                if (skills.Any(s => s.Name.Equals(skill.Name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Console.WriteLine($"[SKILLS] '{pasta}' ignorada: o AIB já tem uma skill '{skill.Name}'.");
+                    continue;
+                }
+
+                skills.Add(skill);
             }
         }
         catch (Exception ex)
@@ -134,7 +165,12 @@ public static class SkillService
                 ScriptPath = File.Exists(caminhoScript) ? caminhoScript : "",
                 Folder = pasta,
                 Instructions = corpo.Trim(),
-                Accepts = Extensoes(Valor(cabecalho, "accepts"))
+                Accepts = Extensoes(Valor(cabecalho, "accepts")),
+                Cofre = Valor(cabecalho, "cofre")
+                    .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(n => n.Trim().ToLowerInvariant())
+                    .Distinct()
+                    .ToList()
             };
         }
         catch (Exception ex)

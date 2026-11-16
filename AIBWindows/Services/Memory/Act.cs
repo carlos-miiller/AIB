@@ -42,6 +42,9 @@ namespace AIB.Services.Memory;
 /// <param name="Aprendido">Versão 2: causa e contorno de falhas e decisões, só com evidência no trecho.</param>
 /// <param name="Combinado">Versão 2: pedidos do usuário com valor, copiados literalmente.</param>
 /// <param name="Estado">Versão 2: como os arquivos e comandos terminaram o trecho.</param>
+/// <param name="Resumo">Versão 2: a história do arco inteiro, pelo resumidor do ato.</param>
+/// <param name="Frases">Versão 2: as frases memoráveis do arco, escolhidas entre as dos capítulos.</param>
+/// <param name="Dinamica">Versão 2: como o usuário e o agente mudaram um com o outro no arco, com os trechos citados.</param>
 public sealed record Act(
     int Index,
     string AtUtc,
@@ -60,7 +63,10 @@ public sealed record Act(
     string? Objetivo = null,
     IReadOnlyList<string>? Aprendido = null,
     IReadOnlyList<FalaCombinada>? Combinado = null,
-    EstadoDoTrecho? Estado = null)
+    EstadoDoTrecho? Estado = null,
+    string? Resumo = null,
+    IReadOnlyList<string>? Frases = null,
+    IReadOnlyList<string>? Dinamica = null)
 {
     /// <summary>Quanto o ato tira do prompt em relação ao CRU. Nunca negativo.</summary>
     public int Economia => TokensDosTurnos > TokensDoAto
@@ -87,7 +93,8 @@ public sealed record Act(
     {
         if (Versao >= BlocoEstruturado.Versao)
             return BlocoEstruturado.Render(TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido,
-                                           EstadoDoTrecho.TetoDeItensDoAto);
+                                           EstadoDoTrecho.TetoDeItensDoAto,
+                                           resumo: Resumo, frases: Frases, dinamica: Dinamica);
 
         var texto = new StringBuilder();
 
@@ -120,7 +127,8 @@ public sealed record Act(
     public string Render(int maxTokens, TokenCounter counter) =>
         Versao >= BlocoEstruturado.Versao
             ? BlocoEstruturado.Fit(maxTokens, counter, TituloV2, Objetivo, Combinado, Estado, FimDe, Aprendido,
-                                   EstadoDoTrecho.TetoDeItensDoAto)
+                                   EstadoDoTrecho.TetoDeItensDoAto,
+                                   resumo: Resumo, frases: Frases, dinamica: Dinamica)
             : MemoryRender.Fit(Render(), Summary, maxTokens, counter);
 
     private string TituloV2 => FirstChapter == LastChapter

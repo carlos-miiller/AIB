@@ -41,6 +41,9 @@ public sealed class FsTool : ITool
 
     public bool RequiresConfirmation => true;
 
+    /// <summary>Motor da <see cref="FileTool"/> (mkdir, copy, move, rename, delete): registrado, fora do schema.</summary>
+    public bool Oferecida => false;
+
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
         functionName: Name,
         functionDescription: Description,
@@ -257,14 +260,26 @@ public sealed class FsTool : ITool
     }
 
     /// <summary>
-    /// Só CRIAR PASTA é dispensado dentro das pastas sem confirmação. Copiar, mover, renomear e
-    /// apagar sempre perguntam: a dispensa foi pensada para gravar e editar, onde o estrago é o
-    /// conteúdo de um arquivo; aqui o estrago é a árvore inteira, e o usuário quer ver.
+    /// Dentro das pastas sem confirmação, criar pasta, copiar, mover e renomear não perguntam,
+    /// desde que a ORIGEM e o DESTINO estejam nelas. Apagar sempre pergunta.
+    /// <para>
+    /// Antes só CRIAR PASTA era dispensado. Caso real: o usuário pôs C:\Users\Carlo\Ellen na
+    /// lista e pediu para organizar a pasta; a agente criou 4 subpastas sem perguntar e depois
+    /// abriu um cartão para CADA um dos ~30 arquivos movidos para elas. Reorganizar não perde
+    /// nada: o destino nunca existe (o pré-voo recusa sobrescrever), então o pior caso é um
+    /// arquivo no lugar errado, ainda dentro da pasta de confiança.
+    /// </para>
+    /// <para>
+    /// As duas pontas contam: tirar um arquivo da pasta, ou trazer um de fora para ela, mexe em
+    /// lugar que o usuário não marcou, e pergunta.
+    /// </para>
     /// </summary>
     public bool DispensaConfirmacao(string argumentsJson)
     {
         var (p, _) = Ler(argumentsJson);
-        return p?.Acao == "mkdir" && PastasSemConfirmacao.Dispensa(p.Alvo);
+        if (p == null || p.Acao == "delete") return false;
+        if (!PastasSemConfirmacao.Dispensa(p.Alvo)) return false;
+        return p.Destino == null || PastasSemConfirmacao.Dispensa(p.Destino);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

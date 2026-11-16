@@ -33,28 +33,23 @@ namespace AIB.Tests
             xp.Should().Be(expectedXp);
         }
 
-        // Escala DERIVADA da janela: um quarto no piso, três quartos no topo. Os valores abaixo
-        // são os de num_ctx = 32768 e mudam junto com ele, de propósito.
+        // Escala geométrica, de 24.000 a 256.000. Pedido do usuário, 27/10/2026: com a escala
+        // derivada da janela, o Gemini (132.768) ia de 33.192 a 99.576 em degraus de 8.298 —
+        // pouca distância entre os níveis. Janela grande o bastante para nada ser cortado.
         [Theory]
-        [InlineData(1,  8192)]
-        [InlineData(2, 10240)]
-        [InlineData(3, 12288)]
-        [InlineData(4, 14336)]
-        [InlineData(5, 16384)]
-        [InlineData(6, 18432)]
-        [InlineData(7, 20480)]
-        [InlineData(8, 22528)]
-        [InlineData(9, 24576)]
-        [InlineData(10, 24576)]
+        [InlineData(1,  24000)]
+        [InlineData(2,  32264)]
+        [InlineData(3,  43373)]
+        [InlineData(4,  58307)]
+        [InlineData(5,  78384)]
+        [InlineData(6, 105373)]
+        [InlineData(7, 141655)]
+        [InlineData(8, 190430)]
+        [InlineData(9, 256000)]
+        [InlineData(10, 256000)]
         public void GetMaxTokensForLevel_ShouldReturnCorrectTokens(int level, int expectedTokens)
         {
-            // Os valores de uma janela de 32768: um quarto no piso, três quartos no topo, oito
-            // passos de 2048. O piso segue 8192, que é onde uma alma grande cabe com folga de
-            // conversa; o topo dobrou, porque a tabela anterior parou em 12288 quando a janela
-            // ainda era 16384 e não acompanhou a mudança.
-            int tokens = LevelService.GetMaxTokensForLevel(level);
-
-            tokens.Should().Be(expectedTokens);
+            LevelService.GetMaxTokensForLevel(level, 1_048_576).Should().Be(expectedTokens);
         }
 
         [Theory]
@@ -76,38 +71,38 @@ namespace AIB.Tests
         {
             // Eram +512 por nível: chegar ao topo rendia 4096 tokens, metade de um nível 1.
             // Progressão que o usuário não sente não é progressão, é decoração.
-            int primeiro = LevelService.GetMaxTokensForLevel(1);
-            int ultimo = LevelService.GetMaxTokensForLevel(LevelService.NivelMaximo);
-
-            ultimo.Should().BeGreaterThanOrEqualTo(primeiro * 2,
-                "o topo tem de valer pelo menos o dobro do piso");
-
             for (int n = 2; n <= LevelService.NivelMaximo; n++)
-                LevelService.GetMaxTokensForLevel(n)
-                    .Should().BeGreaterThan(LevelService.GetMaxTokensForLevel(n - 1),
-                        $"o nível {n} tem de valer mais que o {n - 1}");
+                LevelService.Escala(n).Should().BeGreaterThan(LevelService.Escala(n - 1) * 13 / 10,
+                    $"o nível {n} tem de valer pelo menos 30% a mais que o {n - 1}");
+        }
+
+        [Theory]
+        [InlineData(32768)]
+        [InlineData(132768)]
+        public void ONivel_NUNCA_PassaDeTresQuartosDaJanela(int janela)
+        {
+            // A geração também consome a janela, e a poda corta em janela - 2048. Sem o limite,
+            // o nível 9 pediria 256.000 a um modelo local de 32.768.
+            for (int n = 1; n <= LevelService.NivelMaximo; n++)
+                LevelService.GetMaxTokensForLevel(n, janela).Should().BeLessThanOrEqualTo(janela * 3 / 4);
+
+            LevelService.GetMaxTokensForLevel(LevelService.NivelMaximo, janela).Should().Be(janela * 3 / 4);
         }
 
         [Fact]
-        public void OTopoDaEscala_CABE_AbaixoDoTetoDaPoda()
+        public void NaJanelaMaxima_ONivel9_ValeInteiro()
         {
-            // A geração também consome a janela. Se o orçamento do nível 9 encostasse no teto da
-            // poda, o nível mais alto seria o único em que a poda de emergência dispararia
-            // sozinha — o prêmio virava defeito.
-            LevelService.GetMaxTokensForLevel(LevelService.NivelMaximo)
-                .Should().BeLessThan(ConversationService.TetoDaPoda);
+            // A janela máxima era 262.144 e cortava o nível 9 em 196.608: o topo da escala não
+            // existia para ninguém.
+            LevelService.GetMaxTokensForLevel(LevelService.NivelMaximo, AIB.Services.PerfilDeProvedor.JanelaMaxima)
+                .Should().Be(LevelService.Topo);
         }
 
         [Fact]
-        public void AEscala_SEGUE_AJanelaDoModelo()
+        public void NumModeloLocal_ONivel1_CabeInteiro()
         {
-            // O ponto da mudança. A tabela antiga era literal e o comentário dela dizia "teto
-            // amarrado ao num_ctx de 16384"; a janela virou 32768 e a tabela ficou. Uma
-            // dependência escrita em prosa quebra em silêncio — esta é aritmética.
-            int janela = AIB.Services.Ai.ChatRequestOptions.Default.NumCtx;
-
-            LevelService.GetMaxTokensForLevel(1).Should().Be(janela / 4);
-            LevelService.GetMaxTokensForLevel(LevelService.NivelMaximo).Should().Be(janela * 3 / 4);
+            // 24.000 foi escolhido para caber abaixo dos três quartos de 32.768 (24.576).
+            LevelService.GetMaxTokensForLevel(1, 32768).Should().Be(24000);
         }
 
         [Theory]

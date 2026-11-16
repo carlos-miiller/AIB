@@ -85,10 +85,10 @@ namespace AIB.Tests
             public LeituraDaPagina? Atual { get; private set; }
             public List<string> Acoes { get; } = new();
 
-            private LeituraDaPagina Nova(string url = "https://cpaps.bitrix24.com/workgroups/group/223/tasks/")
+            private LeituraDaPagina Nova(string url = "https://cpaps.bitrix24.com/workgroups/group/223/tasks/", IEnumerable<NoDaPagina>? mais = null)
             {
                 _v++;
-                Atual = new LeituraDaPagina(_v, url, "Tarefas", PaginaDeTarefas(_v));
+                Atual = new LeituraDaPagina(_v, url, "Tarefas", PaginaDeTarefas(_v).Concat(mais ?? Enumerable.Empty<NoDaPagina>()));
                 return Atual;
             }
 
@@ -96,6 +96,9 @@ namespace AIB.Tests
             public Task<LeituraDaPagina> LerAsync() { Acoes.Add("ler"); return Task.FromResult(Nova(Atual?.Url ?? "https://x/")); }
             public Task<LeituraDaPagina> ClicarAsync(string r) { Acoes.Add("clicar " + r); return Task.FromResult(Nova(Atual!.Url)); }
             public Task<LeituraDaPagina> DigitarAsync(string r, string t, bool e) { Acoes.Add($"digitar {r} {t} {e}"); return Task.FromResult(Nova(Atual!.Url)); }
+            public string Dica { get; set; } = "";
+            public Func<int, IEnumerable<NoDaPagina>>? Janela { get; set; }
+            public Task<(LeituraDaPagina, string)> PassarMouseAsync(string r) { Acoes.Add("passar " + r); return Task.FromResult((Nova(Atual!.Url, Janela?.Invoke(_v + 1)), Dica)); }
             public bool Rola { get; set; } = true;
             public Task<(LeituraDaPagina, bool)> RolarAsync(bool c, string? r) { Acoes.Add("rolar " + r); return Task.FromResult((Nova(Atual!.Url), Rola)); }
             public Task<LeituraDaPagina> VoltarAsync() { Acoes.Add("voltar"); return Task.FromResult(Nova(Atual?.Url ?? "https://x/")); }
@@ -173,6 +176,63 @@ namespace AIB.Tests
         }
 
         [Fact]
+        public async Task PassarOMouse_NaoPergunta_EADicaVemDentroDoEmbrulho()
+        {
+            // Pedido do usuário em 15/10/2026: hover no navegador. Menu que só abre com o mouse
+            // em cima entra na leitura; a dica do atributo title o Edge desenha fora da página,
+            // então volta à parte — e é texto da página, portanto dentro do embrulho.
+            _nav.JaAberta();
+            _nav.Dica = "Mais ações da tarefa";
+            var (registry, prompt) = Registry();
+
+            string r = await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "hover", @ref = "s1e5" }), 2);
+
+            prompt.Vistos.Should().BeEmpty("passar o mouse não muda nada");
+            _nav.Acoes.Should().Contain("passar s1e5");
+            r.Should().StartWith(ConteudoDeTerceiros.InicioDaPagina)
+             .And.Contain("(dica do elemento [s1e5]: \"Mais ações da tarefa\")")
+             .And.Contain("(nada novo apareceu com o mouse em [s1e5])")
+             .And.EndWith(ConteudoDeTerceiros.FimDaPagina);
+        }
+
+        [Fact]
+        public async Task AJanelaQueOHoverAbre_VemNoTopo_ComRefsClicaveis()
+        {
+            // Lembrado pelo usuário: no Bitrix, o mouse em cima abre uma janela com vários itens,
+            // alguns clicáveis. Ela é acrescentada no FIM do documento, e numa página cheia a
+            // vista (teto de 8000 caracteres) a cortaria — por isso vem à parte, no topo.
+            _nav.JaAberta();
+            _nav.Janela = v => new NoDaPagina[]
+            {
+                new($"s{v}e50", "texto", "Fernando Caetano", 0, true, true, 0),
+                new($"s{v}e51", "link", "Enviar mensagem", 0, true, true, 0),
+                new($"s{v}e52", "botão", "Ver perfil", 0, true, true, 0),
+                new($"s{v}e53", "link", "Escondido", 0, false, false, 0)
+            };
+            var (registry, _) = Registry();
+
+            string r = await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "hover", @ref = "s1e5" }), 2);
+
+            int topo = r.IndexOf("apareceu com o mouse em [s1e5]", StringComparison.Ordinal);
+            topo.Should().BeGreaterThan(0);
+            r.IndexOf("[s2e51] link \"Enviar mensagem\"", StringComparison.Ordinal)
+             .Should().BeGreaterThan(topo).And.BeLessThan(r.IndexOf("página s2", StringComparison.Ordinal), "antes da vista");
+            r.Should().Contain("[s2e52] botão \"Ver perfil\"").And.NotContain("Escondido");
+            r.Should().NotContain("apareceu com o mouse em [s1e5] (clicável pela ref, sem passar o mouse de novo):\n  [s2e1]",
+                "o que já estava na página não é novo");
+
+            await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "s2e52" }), 2);
+            _nav.Acoes.Should().Contain("clicar s2e52");
+        }
+
+        [Fact]
+        public void PassarOMouse_PrecisaDeRef()
+        {
+            _nav.JaAberta();
+            Ferramenta().Validar(Args(new { action = "hover" })).Should().Be("ERRO: 'hover' precisa de 'ref'.");
+        }
+
+        [Fact]
         public void SemPaginaAberta_LerEhRecusadoComOCaminho()
         {
             Ferramenta().Validar(Args(new { action = "view" })).Should().Contain("action=open");
@@ -221,11 +281,39 @@ namespace AIB.Tests
             await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "e2" }), 2);
             prompt.Vistos.Should().HaveCount(1);
 
-            // "Concluir tarefa" decide algo: pergunta toda vez.
+            // "Concluir tarefa" decide algo: o "sempre" do site não o cobre.
             await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "e3" }), 2);
+            prompt.Vistos.Should().HaveCount(2);
+        }
+
+        // Caso real: um ciclo de Analisar → "Aprovar solicitação" → "Aprovar" num sistema interno,
+        // 120+ cliques. "Analisar" aceitava "sempre"; os dois "Aprovar" perguntavam toda vez.
+        [Fact]
+        public async Task BotaoQueDecide_AceitaSempre_SoParaAqueleBotao_ESoSegurando()
+        {
+            _nav.JaAberta();
+            var (registry, prompt) = Registry(sempre: true);
+
+            await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "s1e3" }), 2);
+            var cartao = prompt.Vistos.Should().ContainSingle().Subject;
+            cartao.SemSempre.Should().BeFalse();
+            cartao.SempreSegurando.Should().BeTrue("decisão só entra no sempre com o gesto de 5 s");
+            cartao.ChaveDeSempre.Should().Be("site:cpaps.bitrix24.com|botão Concluir tarefa");
+
+            // O mesmo botão de novo: já foi liberado.
+            await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "e3" }), 2);
+            prompt.Vistos.Should().HaveCount(1);
+
+            // Outro botão do site NÃO foi: o sempre era daquele rótulo.
+            await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "e2" }), 2);
+            prompt.Vistos.Should().HaveCount(2);
+            prompt.Vistos[^1].SempreSegurando.Should().BeFalse();
+
+            // Com e-mail no contexto, nem o botão liberado passa.
+            registry.ConteudoDeEmailNoContexto = () => true;
+            registry.EmailNoContexto = () => true;
             await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "click", @ref = "e3" }), 2);
             prompt.Vistos.Should().HaveCount(3);
-            prompt.Vistos[^1].SemSempre.Should().BeTrue();
         }
 
         [Fact]
@@ -420,6 +508,47 @@ namespace AIB.Tests
             // Mesma página: não repete.
             (await registry.ExecuteToolAsync(Ferramentas.Navegador, Args(new { action = "view" }), 2))
                 .Should().StartWith(ConteudoDeTerceiros.InicioDaPagina);
+        }
+
+        [Fact]
+        public async Task ApagarAnotacao_PedeCartaoComALinha_EApagaSoEla()
+        {
+            // Pedido do usuário em 15/10/2026: só havia inclusão; se ela anotar algo errado,
+            // tem de poder apagar. O resto do arquivo, inclusive a edição à mão, fica como estava.
+            const string lista = "https://cpaps.bitrix24.com/workgroups/group/223/tasks/";
+            _nav.JaAberta(lista);
+            _notas.Adicionar(lista, doSite: false, "Filtrar por responsável: campo Assignee.");
+            _notas.Adicionar(lista, doSite: false, "O botão Filtrar fica no topo.");
+            _notas.Adicionar(lista, doSite: true, "Tarefas do time ficam no projeto TI.");
+            string caminho = _notas.Caminho(lista, doSite: false);
+            File.AppendAllText(caminho, "linha escrita à mão pelo usuário\n");
+            var (registry, prompt) = Registry(sempre: true);
+            string apagar = Args(new { action = "unnote", text = "campo  ASSIGNEE" });
+
+            string r = await registry.ExecuteToolAsync(Ferramentas.Navegador, apagar, 2);
+
+            r.Should().StartWith("SUCESSO");
+            prompt.Vistos.Should().ContainSingle().Which.Command.Should().StartWith(
+                "APAGAR ANOTAÇÃO da página /workgroups/group/{n}/tasks/ de cpaps.bitrix24.com: \"- Filtrar por responsável: campo Assignee.");
+            prompt.Vistos[0].SemSempre.Should().BeTrue("uma página poderia induzi-la a apagar o que o usuário ensinou");
+
+            string arquivo = File.ReadAllText(caminho);
+            arquivo.Should().NotContain("Assignee").And.Contain("O botão Filtrar fica no topo.")
+                   .And.Contain("linha escrita à mão pelo usuário").And.StartWith("# cpaps.bitrix24.com");
+            _notas.Ler(lista).Site.Should().Contain("projeto TI");
+        }
+
+        [Fact]
+        public void ApagarAnotacao_TrechoQueNaoAchaOuQueAchaVarias_EhRecusado()
+        {
+            const string lista = "https://cpaps.bitrix24.com/workgroups/group/223/tasks/";
+            _nav.JaAberta(lista);
+            _notas.Adicionar(lista, doSite: false, "Filtrar por responsável: campo Assignee.");
+            _notas.Adicionar(lista, doSite: true, "Filtrar por data: campo Deadline.");
+
+            Ferramenta().Validar(Args(new { action = "unnote", text = "Excluir" })).Should().StartWith("ERRO: nenhuma");
+            Ferramenta().Validar(Args(new { action = "unnote", text = "Filtrar por" })).Should().StartWith("ERRO: 2 anotações");
+            Ferramenta().Validar(Args(new { action = "unnote", text = "Deadline" })).Should().BeNull("do site também vale");
         }
 
         [Theory]

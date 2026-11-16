@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -64,6 +65,36 @@ namespace AIB.Tests
                 janela.ResizeMode.Should().Be(ResizeMode.NoResize);
                 janela.WindowStyle.Should().Be(WindowStyle.None);
                 janela.AllowsTransparency.Should().BeTrue();
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void FalasRestauradas_FicamEscondidasAteABarraAbrir_ENaoDuplicam()
+        {
+            // Bug: reiniciado o AIB, a barra do orbe abria vazia, embora a conversa estivesse
+            // inteira em memory/shadow. As falas voltam à pilha no arranque, sem balão solto
+            // sobre o desktop: só aparecem quando a barra abre.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+                var falas = new[] { (true, "meu servidor caiu"), (false, "Qual deles?"), (true, "  ") };
+
+                janela.RestaurarFalas(falas);
+
+                janela.Falas.Select(f => f.Texto).Should().Equal("meu servidor caiu", "Qual deles?");
+                janela.Falas[0].Should().BeOfType<AIB.Ui.FalaDoUsuario>();
+                janela.Falas[1].Should().BeOfType<AIB.Ui.FalaDaIA>();
+                janela.BalaoVisivel.Should().BeFalse("a barra está fechada");
+                janela.Pulsando.Should().BeFalse("fala antiga não é aviso novo");
+
+                janela.AbrirBarra();
+                janela.BalaoVisivel.Should().BeTrue();
+
+                janela.RestaurarFalas(falas);
+                janela.Falas.Should().HaveCount(2, "religar o orbe não duplica a pilha");
 
                 janela.Close();
             });
@@ -366,6 +397,136 @@ namespace AIB.Tests
                 janela.FecharBarra();
 
                 janela.BalaoVisivel.Should().BeFalse();
+
+                janela.Close();
+            });
+        }
+
+        [Theory]
+        [InlineData(1, 52)]
+        [InlineData(2, 71)]
+        [InlineData(5, 128)]
+        [InlineData(9, 128)]   // passando de cinco linhas o campo rola, a barra não cresce mais
+        [InlineData(0, 52)]
+        public void ABarraCresceUmaLinhaPorLinha_AteOTeto(int linhas, double esperada)
+        {
+            ShadowAssistantWindow.AlturaDaBarra(linhas, 19).Should().Be(esperada);
+        }
+
+        [Fact]
+        public void OCampoQuebraOTexto_EABarraCresceComEle()
+        {
+            // Visto no uso: o campo do orbe era de uma linha só, sem quebra. Um texto maior que
+            // a barra corria para fora da vista, e não havia como quebrar a linha.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+                var campo = (TextBox)janela.FindName("Campo");
+
+                campo.TextWrapping.Should().Be(TextWrapping.Wrap);
+                campo.AcceptsReturn.Should().BeTrue("Shift+Enter quebra a linha");
+
+                janela.AbrirBarra();
+                janela.AjustarAltura();
+                janela.AlturaPedidaDaBarra.Should().Be(52);
+
+                campo.Text = "primeira linha\nsegunda linha\nterceira";
+                janela.AjustarAltura();
+                janela.AlturaPedidaDaBarra.Should().BeGreaterThan(52 + 2 * 14, "três linhas");
+
+                // A cápsula não vira um ovo: o raio para no do orbe.
+                Raio(janela.AlturaPedidaDaBarra).TopLeft.Should().Be(AlturaParaRaioConverter.RaioMaximo);
+
+                campo.Text = "curto";
+                janela.AjustarAltura();
+                janela.AlturaPedidaDaBarra.Should().Be(52);
+
+                // Fechada, a altura volta a ser do morph; o rascunho de várias linhas faz a
+                // barra crescer de novo ao reabrir.
+                campo.Text = "um\ndois";
+                janela.AjustarAltura();
+                janela.FecharBarra();
+                janela.AlturaPedidaDaBarra.Should().Be(52);
+
+                janela.AbrirBarra();
+                janela.AjustarAltura();
+                janela.AlturaPedidaDaBarra.Should().BeGreaterThan(52);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void AbrirEFecharABarra_NaoMudamAAlturaDoPalco()
+        {
+            // Visto no uso: ao abrir, as bolhas apareciam todas de uma vez; ao fechar, o desenho
+            // inteiro ficava espremido na base até a barra terminar de encolher. A janela é
+            // SizeToContent, e duas coisas mudavam a altura dela no meio do morph: a linha da
+            // casca (Auto, com a casca animando de 56 para 52) e a pilha, que sumia Collapsed.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+                var palco = (Grid)janela.FindName("Palco");
+                var casca = (Border)janela.FindName("Casca");
+                var rolo = (ScrollViewer)janela.FindName("RoloDasFalas");
+                var infinito = new Size(double.PositiveInfinity, double.PositiveInfinity);
+
+                double Altura() { palco.Measure(infinito); return palco.DesiredSize.Height; }
+
+                // A casca na altura da barra não encolhe a linha.
+                double orbe = Altura();
+                casca.BeginAnimation(FrameworkElement.HeightProperty, null);
+                casca.Height = 52;
+                Altura().Should().Be(orbe);
+                casca.Height = 56;
+
+                janela.AbrirBarra();
+                janela.MostrarFala("o ramal é 4275");
+                double aberta = Altura();
+                aberta.Should().BeGreaterThan(orbe);
+
+                janela.FecharBarra();
+
+                janela.BalaoVisivel.Should().BeFalse();
+                rolo.Visibility.Should().NotBe(Visibility.Collapsed, "fechada, a pilha guarda o lugar");
+                Altura().Should().Be(aberta);
+
+                janela.AbrirBarra();
+
+                janela.BalaoVisivel.Should().BeTrue();
+                rolo.Visibility.Should().Be(Visibility.Visible);
+                Altura().Should().Be(aberta);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void FecharABarra_GuardaOQueFoiDigitadoENaoEnviado()
+        {
+            // Visto no uso: digitar algo no orbe, clicar fora (ou Esc) e abrir de novo dava um
+            // campo vazio. O texto curto era descartado de propósito ao fechar a barra.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = new ShadowAssistantWindow();
+                var campo = (TextBox)janela.FindName("Campo");
+
+                janela.AbrirBarra();
+                campo.Text = "lembra de";
+                janela.FecharBarra();
+                janela.AbrirBarra();
+
+                campo.Text.Should().Be("lembra de");
+
+                // Enviar continua esvaziando: o que foi mandado não volta ao campo.
+                janela.Enviar();
+                janela.FecharBarra();
+                janela.AbrirBarra();
+
+                campo.Text.Should().BeEmpty();
 
                 janela.Close();
             });

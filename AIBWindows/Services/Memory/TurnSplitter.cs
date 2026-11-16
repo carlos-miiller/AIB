@@ -55,4 +55,17 @@ public static class TurnSplitter
         var ultima = turn.Messages[^1];
         return ultima is AssistantChatMessage a && (a.ToolCalls == null || a.ToolCalls.Count == 0);
     }
+
+    /// <summary>
+    /// O turno <paramref name="i"/> não muda mais: fechou, ou o usuário já mandou outra mensagem
+    /// depois dele. É o que a compactação pergunta — não se ele terminou bem.
+    /// <para>
+    /// Um turno que morreu aberto no meio da conversa (erro do provedor antes de existir a marca
+    /// para isso) nunca vai receber a fala final. Exigir <see cref="IsClosed"/> dele fazia a
+    /// compactação parar ali para sempre: visto em 15/10, 172 mil tokens vivos e "nada a
+    /// compactar" a cada /compact.
+    /// </para>
+    /// </summary>
+    public static bool Acabou(IReadOnlyList<Turn> turnos, int i) =>
+        IsClosed(turnos[i]) || i < turnos.Count - 1;
 }

@@ -38,23 +38,28 @@ O AIB não usa pasta temporária.
 ```
 ~/.AIB/
 ├── profile.dat                      configurações (JSON cifrado com DPAPI)
-├── chat_history.json                conversas arquivadas, para o painel
-├── lembretes.json                   lembretes únicos pendentes (ferramenta remind)
-├── iniciativa.json                  ritmo da iniciativa e contagens do dia
+├── chat_history.json                conversas arquivadas, para o painel (cifrado)
+├── lembretes.json                   lembretes únicos pendentes (ferramenta remind; cifrado)
+├── iniciativa.dat                   iniciativa: faixas de horário e contagens do dia (DPAPI)
 ├── credentials/
 │   ├── openrouter.bin               chave do OpenRouter (DPAPI)
-│   └── mail/<sha256>.bin            senha de app de cada caixa (DPAPI)
-├── character/<Nome>/                personagens: SOUL.MD, info.json
-├── skills/<skill>/SKILL.md          skills instaladas
+│   ├── mail/<sha256>.bin            senha de app de cada caixa (DPAPI)
+│   └── cofre/aliases.bin            cofre de aliases: segredos que a IA usa pelo nome no shell (DPAPI)
+├── character/<Nome>/                personagens: SOUL.MD, info.json, vinculo.dat (o vínculo com ele, DPAPI)
+├── skills/<skill>/SKILL.md          skills do usuário
+├── skills/default/<skill>/          skills do AIB, espelhadas de skills/ ao lado do exe a cada arranque (SkillsPadrao): mudança feita aqui some
+├── modelos/                         modelos de documento do usuário (.xlsx, .xlsm, .docx; um .txt de mesmo nome descreve) — a doc os lista (action='models'); leitura livre
 ├── memory/
-│   ├── facts.md                     fatos duráveis (do usuário)
-│   ├── facts.index.jsonl            registro do que já foi promovido (da máquina)
+│   ├── facts.md                     fatos duráveis (do usuário; cifrado por linha, editado na aba Memória)
+│   ├── facts.index.jsonl            registro do que já foi promovido (da máquina; cifrado por linha)
 │   ├── shadow/                      a conversa do orbe, uma só para sempre (mesmos arquivos de uma sessão)
+│   │   ├── status.json              atributos dos personagens como estão agora; nasce vazio, ganha cada um quando aparece
+│   │   └── habitos/<Nome>.dat       hábitos que o personagem pegou na convivência (cifrado; ver "Hábitos" em 06-interface.md)
 │   └── sessions/<id>/
-│       ├── raw.jsonl                todos os turnos, crus — nunca apagado
-│       ├── chapters.jsonl           capítulos (resumos de turnos)
-│       ├── acts.jsonl               atos (resumos de capítulos)
-│       ├── turno-aberto.json        o turno em curso, regravado a cada passo
+│       ├── raw.jsonl                todos os turnos, crus — nunca apagado (cifrado por linha)
+│       ├── chapters.jsonl           capítulos (resumos de turnos; cifrado por linha)
+│       ├── acts.jsonl               atos (resumos de capítulos; cifrado por linha)
+│       ├── turno-aberto.json        o turno em curso, regravado a cada passo (cifrado)
 │       └── compactacao.log          diário da compactação (opt-in)
 ├── email/
 │   ├── estado.json                  por caixa: validade, último UID, quando
@@ -79,6 +84,7 @@ Detalhes que importam:
 - **`memory/sessions/<id>/`** (`SessionMemory`). O id é o instante de abertura, `yyyyMMdd-HHmmss-fff`; os milissegundos existem porque duas sessões no mesmo segundo misturariam dois `raw.jsonl`. O id passa por `Path.GetFileName`, para não virar caminho fora da pasta. Os JSONL são UTF-8 **sem BOM** (o BOM estragaria a primeira linha para qualquer parser) e sem escapar acentos. Gravar nunca lança: falha de disco vira `false` e linha no console, porque a memória é um acréscimo e não pode derrubar a conversa. O formato e o papel de cada arquivo estão em [04-memoria.md](04-memoria.md).
 - **`raw.jsonl` nunca é apagado.** Resumo é perda irreversível, e um resumo errado aqui não gera só incoerência: gera um agente agindo sobre informação errada com shell na mão. O cru sai do prompt, não sai do disco. Nenhum código do uso normal apaga esse arquivo. A única exceção é o reset de fábrica, que por decisão do usuário é total e apaga `~/.AIB` inteira.
 - **`compactacao.log`** (`RegistroDaCompactacao`) só é escrito com `CompactionLogging` ligado. Guarda contagens e tempos, não o texto dos resumos. A pasta é resolvida a cada escrita, porque a sessão troca quando a conversa é zerada ou restaurada.
+- **`logs/iniciativa.log`** (`RegistroDaIniciativa`) só é escrito com `IniciativaLogging` ligado (nasce ligado). Guarda sorteios, impedimentos e o que a iniciativa aprendeu, em números; não guarda o texto das mensagens. Passando de 1 MB, vira `iniciativa.anterior.log`.
 - **`facts.md`** é do usuário: a AIB só acrescenta linhas no fim, nunca reescreve nem apaga (só o reset de fábrica o leva, com todo o resto). `facts.index.jsonl` é append-only e impede que um fato apagado pelo usuário volte na próxima promoção.
 - **`chat_history.json`** (`ChatHistoryService`) é regravado a cada turno, com a conversa viva por cima da própria entrada. Guarda até 50 conversas do usuário e, num teto à parte, até 50 conversas nascidas de e-mail — com um teto só, uma caixa movimentada expulsava as conversas que o usuário começou. Cada `ChatSession` guarda `MemorySessionId`, que liga a entrada à pasta da sessão, e `MailThreadKey` quando nasceu de um e-mail.
 - **`email/`**: o corpo de uma mensagem **nunca** é gravado. O diário guarda remetente, assunto e o resumo de uma frase; `MailJournalDays` controla a retenção e em zero desliga o diário. A pasta de cada conversa de e-mail tem nome de hash, para o assunto não vazar em listagens. Ver [05-email.md](05-email.md).
@@ -86,6 +92,39 @@ Detalhes que importam:
 - **`logs/audit-*.jsonl`** (`AuditLogService`): append-only, um arquivo por dia (data UTC), sem BOM, gravado **antes** da execução da ação auditada. Falha ao auditar vai para o console e não derruba a conversa. Nos testes, `AuditLogService.LogDirectoryOverride` desvia tudo para uma pasta temporária.
 - **`logs/execucao-*.log`** (`RegistroDeExecucao`): só com `ExecutionLogging` ligado. Espelha o console, que inclui os prompts inteiros — e o da triagem leva assunto e remetente dos e-mails. O **corpo, não**: ele desce para o prompt embrulhado por `ConteudoDeTerceiros` e `RegistroDeExecucao.Redigir` o troca pelo aviso de omissão antes de a linha chegar ao arquivo (era a última exceção documentada à regra 3, e deixou de ser). Ainda assim nasce desligado, e o cabeçalho do arquivo diz o que ele contém. Guarda os 20 mais recentes e só apaga arquivos com o próprio prefixo, porque a pasta também guarda a auditoria.
 - **`logs/prompt-*.txt`** (`RetratoDoEnvio.Gravar`): prefixo diferente de propósito, para a poda do registro de execução não apagá-lo.
+
+### Cifra dos dados (`ArquivoCifrado`, `CifraDaMemoria`)
+
+Conversas, fatos e lembretes são gravados cifrados pelo DPAPI da conta do Windows, como o
+`profile.dat` e os cofres. Protege do disco copiado, do backup e do outro usuário da máquina;
+**não** protege de programa rodando na mesma conta.
+
+- **Binário** (`ArquivoCifrado.Gravar`): arquivo novo, extensão `.dat` — `iniciativa.dat`,
+  `character/<Nome>/vinculo.dat`.
+- **Por linha** (`ArquivoCifrado.Cifrar`/`Acrescentar`/`Linhas`): cada linha vira
+  `aib1:<base64>`. É o dos arquivos em que só se acrescenta (`raw.jsonl`, `chapters.jsonl`,
+  `acts.jsonl`, `facts.md`, `facts.index.jsonl`): continuam arquivos de linhas, e linha em texto
+  claro (de antes da cifra) convive com linha cifrada. Linha que não abre — outra conta, ou
+  cortada — é pulada.
+- **Inteiro** (`ArquivoCifrado.GravarTexto`): o arquivo todo numa linha cifrada, por temporário —
+  `chat_history.json`, `lembretes.json`, `turno-aberto.json`.
+- `ArquivoCifrado.Ler` abre os três e o texto claro.
+
+**Migração** (`CifraDaMemoria.Migrar`, no arranque, antes de qualquer serviço abrir a memória):
+regrava cifrado o que ainda tem texto claro. É a única vez que o AIB reescreve um `raw.jsonl`:
+escreve num `.cifrando`, confere que ele aberto dá as mesmas linhas do original e só então troca;
+se não der, o original fica. Depois da primeira vez, só confere.
+
+**Exportação** (`CifraDaMemoria.Exportar`, botão "Exportar em texto claro…" na aba Memória): a
+cifra é da conta do Windows e **não sobrevive a reinstalação nem a troca de máquina**. A
+exportação copia tudo em texto claro, com a mesma árvore, para a pasta escolhida; é o backup.
+
+`read` e `grep` abrem a linha cifrada (a leitura dentro de `~/.AIB/memory` já passou pelo cartão
+de `DadosProtegidos`). O `facts.md` deixou de ser editável no bloco de notas: a edição é o campo
+"Fatos guardados" da aba Memória (`FactStore.Texto`/`Regravar`).
+
+Continuam em texto claro: os logs e a auditoria, as anotações de site do navegador, os arquivos
+de e-mail e o `compactacao.log`.
 
 ### Reset de fábrica
 
@@ -134,11 +173,12 @@ Os campos `AiProvider`, `ApiUrl`, `ModelName`, `KeepAlive`, `ContextWindow` e `R
 | `UserAppSettings.PerfilDe(provedor)` | O perfil do ativo, o guardado, ou o de fábrica (`ProvedoresDeIa.PerfilPadrao`). |
 | `UserAppSettings.Ativar(provedor, perfil)` | Guarda o perfil do ativo anterior e torna `provedor` o ativo. |
 | `UserAppSettings.AplicarPerfis(escolhido, perfis)` | O "Salvar" da tela: **ativa primeiro**, depois grava os outros perfis. Na ordem inversa, `Ativar` guardava o perfil do anterior a partir dos campos antigos e passava por cima do que a tela acabara de gravar — mudar o modelo do Ollama e trocar para o OpenRouter no mesmo Salvar perdia o modelo novo. |
-| `UserAppSettings.ParaTriagem` | Uma cópia com o provedor e o modelo **da triagem de e-mail** no lugar dos da conversa. A triagem tem provedor próprio (`MailTriageProvider`, `MailTriageModel`) para poder conversar pelo OpenRouter e manter a leitura dos e-mails no Ollama. |
+| `UserAppSettings.ParaTriagem` | Uma cópia com o provedor e o modelo **da triagem de e-mail** no lugar dos da conversa. A triagem tem provedor próprio (`MailTriageProvider`, `MailTriageModel`) para poder conversar pelo OpenRouter e manter a leitura dos e-mails no Ollama. A conversa aberta sobre um e-mail também a usa (`ConversationService.UsaTriagem`). |
+| `UserAppSettings.Janela()` | `ContextWindow`, ou a `JanelaAtual` quando zero. Método para não ir ao arquivo. |
 
 `PerfilDeProvedor` não tem chave de API: o perfil vai para o arquivo de configurações, a chave vai para o cofre.
 
-`PerfilDeProvedor.Sanear(provedor)`: janela entre 8.192 e 262.144 (padrão 32.768); raciocínio só entre as opções do provedor (`ProvedoresDeIa.OpcoesDeRaciocinio`), senão `off`; no OpenRouter a URL é fixa e não há keep-alive; no Ollama o keep-alive é `1m`, `5m`, `30m` ou `-1` (padrão `-1`, sempre carregado).
+`PerfilDeProvedor.Sanear(provedor)`: janela entre 8.192 e 344.064 (padrão 32.768; o máximo é o que o nível 9 pede); raciocínio só entre as opções do provedor (`ProvedoresDeIa.OpcoesDeRaciocinio`), senão `off`; no OpenRouter a URL é fixa e não há keep-alive; no Ollama o keep-alive é `1m`, `5m`, `30m` ou `-1` (padrão `-1`, sempre carregado).
 
 ### `Sanear`: números dentro de faixas
 
@@ -149,7 +189,9 @@ Os campos `AiProvider`, `ApiUrl`, `ModelName`, `KeepAlive`, `ContextWindow` e `R
 | `MaxTurnIterations` | 1–60 | 18 |
 | `CompactionTrigger` | 0,50–0,99 | 0,85 |
 | `MemoryFraction` | 0,05–0,60 | 0,25 |
-| `TurnosPorCapitulo` | 2–20 (≤ 0 volta ao padrão) | 15 |
+| `TurnosSoltos` | 4–200 (≤ 0 volta ao padrão) | 20 |
+| `TokensSoltos` | 8.000–1.000.000 (≤ 0 volta ao padrão) | 135.000 |
+| `TurnosPorCapitulo` | 2–40 (≤ 0 volta ao padrão) | 15 |
 | `TokensPorCapitulo` | 4.000–60.000 (≤ 0 volta ao padrão) | 20.000 |
 | `CapitulosPorAto` | 0 = automático; senão 2–24 | 0 |
 | `EsconderResultadosDepoisDe` | 0 = desligado; senão 2–50 | 0 |
@@ -178,7 +220,7 @@ Além disso, `LoadSettings` e `SaveSettings` chamam `PastasSemConfirmacao.Config
 
 ### Chaves que nascem desligadas
 
-Várias opções nascem desligadas por decisão registrada no comentário de cada uma: `ShadowAssistantEnabled` e `ShadowHandlesMail` (ninguém ganha um programa lendo o próprio e-mail por ter atualizado; e querer o orbe não é querer que ele abra a caixa), `ModelThinking` (medido: em CPU, turnos inteiros terminavam só pensando), `ThinkingInHistory`, `MailTriageThinking`, `ExecutionLogging`, `CompactionLogging`, `EsconderResultadosDepoisDe`. `OpenRouterSemColetaDeDados` nasce **ligada**, porque o prompt leva arquivos e e-mails. `KeepAssistantSpeech` nasce ligada porque o contrário é defeito.
+Várias opções nascem desligadas por decisão registrada no comentário de cada uma: `ShadowAssistantEnabled` e `ShadowHandlesMail` (ninguém ganha um programa lendo o próprio e-mail por ter atualizado; e querer o orbe não é querer que ele abra a caixa), `ModelThinking` (medido: em CPU, turnos inteiros terminavam só pensando), `ThinkingInHistory`, `MailTriageThinking`, `EmailSoLocal` (com a conversa na nuvem, perguntar pela caixa passa a ser negado), `ExecutionLogging`, `CompactionLogging`, `EsconderResultadosDepoisDe`. `OpenRouterSemColetaDeDados` nasce **ligada**, porque o prompt leva arquivos e e-mails. `KeepAssistantSpeech` nasce ligada porque o contrário é defeito. `IniciativaLogging` nasce ligada porque o diário só tem números e, sem ele, não há como saber por que a persona não puxou assunto. `AprenderHabitos` nasce ligada a pedido do usuário: a pergunta pelo jeito vai na chamada de resumo que já é paga, e o prompt só muda quando um hábito se firma.
 
 ## Credenciais
 
@@ -189,6 +231,7 @@ Várias opções nascem desligadas por decisão registrada no comentário de cad
 - Hoje só o OpenRouter usa chave: `ProvedoresDeIa.SistemaDaChave` devolve `"openrouter"` para ele e `null` para o Ollama; o nome da chave é `ProvedoresDeIa.NomeDaChave` (`"ApiKey"`).
 - `CredentialService.StoreCredentialAsync` grava; devolve texto começando com `ERRO` em falha, e quem chama confere.
 - `CredentialService.LerDoSistema(sistema, chave)` lê **só o arquivo daquele sistema**. Uma busca global devolveria a chave de mesmo nome de outro serviço (por exemplo, uma chave da OpenAI gravada por versão antiga) e mandaria a requisição com a credencial errada.
+- Cada provedor de nuvem tem o seu cofre: `openrouter` e `google` (`ProvedoresDeIa.SistemaDaChave`).
 - `ChatProviderFactory.ChaveDe(provedor)` é quem o app usa para obter a chave de um provedor; devolve vazio se não há chave, e a requisição sai sem autorização até o 401 explicar onde configurar. A **credencial efetiva** entra na chave do cache da fábrica: sem isso, trocar a chave no cofre continuava usando o cliente com a chave velha até reiniciar.
 - A chave é gravada no cofre na hora em que o usuário a confirma (`SettingsWindow.GuardarChave_Click`, `FirstRunWindow`), sem esperar o "Salvar". O formato é checado por `ProvedoresDeIa.ChaveValida` (`sk-or-` e ao menos 20 caracteres), o mesmo critério nas duas telas.
 
@@ -202,6 +245,18 @@ Várias opções nascem desligadas por decisão registrada no comentário de cad
 - `MailVault.Remover` é chamado pelo mesmo comando que tira a conta da lista, para não deixar credencial órfã.
 - `UserAppSettings.MailAccounts` guarda endereço, host, porta, SSL e conta principal — **sem senha**, e sem o status de conexão, que é de tempo de execução.
 - O construtor aceita uma raiz alternativa para os testes.
+
+### Cofre de aliases: `Cofre`
+
+`AIBWindows/Services/Cofre.cs`. Webhooks, tokens e senhas que a IA usa **sem ler**: uma lista JSON (nome, valor, descrição, hosts permitidos, "Permite uso no shell", criado, último uso, usos) num único arquivo `~/.AIB/credentials/cofre/aliases.bin`, cifrado com DPAPI e gravado por temporário.
+
+- O nome (`[a-z0-9-]`, até 40) vira a variável `COFRE_<NOME>` (hífen → sublinhado), que o shell injeta no processo (ver 03, `shell`).
+- `Listar`/`Achar` devolvem `Alias`, **sem o valor**. Só `Variaveis` (chamado pelo shell na execução) e `Redigir` tocam o valor.
+- `Guardar` valida nome, valor e descrição, normaliza os hosts (URL colada vira host) e recusa webhook cujo host não está na lista. Guardar com nome existente substitui e mantém criação e contagem; com valor vazio, mantém o valor guardado (a tela edita o resto sem pedir o segredo de novo). `TrocarValor` mantém descrição, hosts e a flag.
+- `Shell` ("Permite uso no shell"): desligado, o shell recusa o alias e só uma habilidade o usa. Arquivo de antes da flag vale como ligado.
+- `Habilidades`: as habilidades que recebem o valor (ver 03, `skill`). `Guardar` com `habilidades` nulo mantém as de antes.
+- Arquivo que não decifra (outra máquina, outro usuário) é cofre vazio.
+- Fica dentro de `credentials/`: as ferramentas de leitura já o negam (`DadosProtegidos`) e o reset de fábrica o leva junto. Não usa o `CredentialService` pela mesma razão do `MailVault`.
 
 ### Regras invioláveis
 
@@ -224,12 +279,12 @@ O que o nível libera:
 | Nível | O que muda |
 |---|---|
 | 1 | `read`, `glob`, `grep`, `mail` e `mail_read` (esta só na conversa de um e-mail) — `RequiredLevel => 1`. |
-| 2 | `write`, `edit`, `shell` e `skill` — `RequiredLevel => 2`. Todas pedem confirmação; `skill` só existe com alguma skill instalada. |
+| 2 | `file` (e os motores dela, `write`, `edit` e `fs`), `shell` e `skill` — `RequiredLevel => 2`. Todas pedem confirmação; `skill` só existe com alguma skill instalada. |
 | 7 | A floor list de comandos destrutivos (`CommandFloorList.Match`) deixa de barrar `shell` e `skill`; o cartão de confirmação passa a ser a única autoridade. Abaixo de 7, com `ConfirmDangerousCommands` ligado (padrão), deleção recursiva, formatação, desligamento, registro destrutivo e `-EncodedCommand` são recusados antes do cartão. |
 
 `ToolRegistry.GetActiveTools` só oferece ao modelo as ferramentas do nível, e `ToolRegistry.ExecuteToolAsync` recusa com `ACESSO NEGADO` a que estiver acima dele. Detalhes em [03-ferramentas-e-portao.md](03-ferramentas-e-portao.md).
 
-O nível também dimensiona a memória: `LevelService.GetMaxTokensForLevel(nivel, janela)` vai de um quarto da janela (nível 1) a três quartos (nível 9), em oito passos iguais. É **derivado** da janela, e não uma tabela, porque a tabela antiga ficou para trás quando a janela subiu e o nível 9 passou a usar 37% do que o modelo aguentava. O teto de 75% deixa espaço para a geração. Mudar `num_ctx` no meio da sessão faz o Ollama recarregar o modelo e perder o cache — medido: prefill de 343 ms voltou a 204 s.
+O nível também dimensiona a memória: `LevelService.GetMaxTokensForLevel(nivel, janela)` vai de 24.000 (nível 1) a 256.000 (nível 9) em escala geométrica, e nunca passa de três quartos da janela, que deixam espaço para a geração. Com a janela de um modelo local (32.768), todo nível fica em 24.576; para o nível 9 valer inteiro, a janela precisa de 341.334 (detalhes em `04-memoria.md` §2.1). Mudar `num_ctx` no meio da sessão faz o Ollama recarregar o modelo e perder o cache — medido: prefill de 343 ms voltou a 204 s.
 
 O comando `/unlock_level N` no chat ajusta `MessageCount` para o piso do nível `N` (1 a 9).
 
@@ -238,7 +293,7 @@ O comando `/unlock_level N` no chat ajusta `MessageCount` para o piso do nível 
 Cada personagem é uma pasta `character/<Nome>/` com:
 
 - `SOUL.MD` — a persona, em texto. O marcador `{{usuario}}` é trocado pelo nome de usuário do Windows ao carregar.
-- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`).
+- `info.json` — o cartão da tela de escolha, desserializado em `AgentProfile`: `Name`, `Description`, `Personality`, `Sample-speech` e `Stats` (`Assertiveness`, `Usefulness`, `Humanity`), e `Atributos` (`Iniciativa`, `Resiliencia`, `Constancia`, `Curiosidade`, de 1 a 5, e `Afeto`, de -5 a 5). As estrelas são só da tela de escolha; os atributos são os padrões de fábrica do personagem, copiados para o `memory/shadow/status.json` quando ele aparece (ver "Iniciativa" em `06-interface.md`).
 
 Os de fábrica estão em `AIBWindows/character/` (`Ayano`, `Ellen`, `Kai`, `Sora`). O ativo é `UserAppSettings.ActiveCharacter` (padrão `Ayano`).
 

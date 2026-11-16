@@ -11,6 +11,11 @@ fatos duráveis (facts.md) — atravessam conversas
 
 O que sai do prompt **não sai do disco**: `raw.jsonl` guarda todos os turnos, para sempre.
 
+Os arquivos da memória são **cifrados por linha** (`ArquivoCifrado`, DPAPI da conta do Windows):
+`raw.jsonl`, `chapters.jsonl`, `acts.jsonl`, `facts.md`, `facts.index.jsonl` e o
+`turno-aberto.json`. Ver "Cifra dos dados" em `07-configuracoes-e-dados.md`, inclusive a
+exportação em texto claro, que é o backup.
+
 Arquivos (todos em `AIBWindows/Services/Memory/`, salvo indicação):
 
 | Papel | Arquivo |
@@ -46,7 +51,9 @@ Arquivos (todos em `AIBWindows/Services/Memory/`, salvo indicação):
 
 ### 2.1 Orçamento do nível (`LevelService.GetMaxTokensForLevel`)
 
-Derivado da janela em vigor (`ChatRequestOptions.JanelaAtual`), nunca digitado: nível 1 recebe 1/4 da janela, nível 9 recebe 3/4, em oito passos iguais. Com a janela padrão de 32.768: nível 1 = 8.192, passo de 2.048, nível 9 = 24.576.
+Escala geométrica fixa, de 24.000 no nível 1 a 256.000 no nível 9, multiplicando por ~1,344 a cada nível: 24.000, 32.264, 43.373, 58.307, 78.384, 105.373, 141.655, 190.430, 256.000. Nunca passa de 3/4 da janela em vigor (`ChatRequestOptions.JanelaAtual`): com a janela padrão de 32.768, todo nível para em 24.576 (o nível 1, 24.000, cabe inteiro); com 132.768, para em 99.576 a partir do nível 6. Para o nível 9 valer inteiro, a janela precisa de 341.334.
+
+Era derivado da janela, de 1/4 a 3/4 em passos iguais; com a janela do Gemini os degraus eram de 8.298 tokens, e o usuário pediu mais distância entre os níveis.
 
 Esse orçamento é **de compactação**, não limite do modelo. A poda de emergência age em outro teto (`TetoDaPoda` = janela − 2.048).
 
@@ -67,12 +74,15 @@ viva      = disponível − memória
 
 Só a **primeira** mensagem de sistema conta como prefixo. A segunda é o próprio bloco de memória; contá-la encolheria a cota a cada capítulo, num aperto que se realimenta (`ConversationService.CurrentQuota`).
 
-Exemplo: nível 1, janela 32.768, prefixo de 3.000 tokens → disponível 5.192; memória 1.298 (fatos 259, atos 389, capítulos 650); conversa viva 3.894.
+Exemplo: nível 1 (24.000), prefixo de 3.000 tokens → disponível 21.000; memória 5.250 (fatos 1.050, atos 1.575, capítulos 2.625); conversa viva 15.750.
 
 ### 2.3 Gatilho e alvo
 
 - **Gatilho** (`MemoryBudget.CompactionThreshold`): `viva × CompactionTrigger`, padrão 0,85 (saneado entre 0,50 e 0,99). Não é 1,0 de propósito: tem de disparar antes de a poda de emergência entrar e comer as mensagens que o capítulo iria resumir. No exemplo acima: 3.309.
-- **Alvo** (`LimitesDoProvedor.AlvoDepoisDeCompactar`): depois de compactar, a conversa viva cai para 0,5 da cota viva no Ollama e 0,3 no OpenRouter. Compactar só até encostar no gatilho faria a próxima compactação disparar quase junto — e cada compactação reescreve o começo do prompt (prefill frio no Ollama, cache perdido e pago no OpenRouter).
+- **Teto de tokens soltos** (`TokensSoltos`, padrão 135.000 — era 100.000 —, saneado 8.000–1.000.000): o gatilho de tokens é o MENOR entre a fração acima e este teto (`CompactionThreshold(quota, fração, tokensSoltos)`). A fração protege a janela pequena; o teto, o custo em janela grande — num modelo de 1 M de janela os 85% nunca chegavam, e uma sessão de navegador reenviou 165 mil tokens a cada requisição.
+- **Turnos soltos** (`TurnosSoltos`, padrão 20, saneado 4–200): com este tanto de turnos fechados fora de capítulo (`TurnosSoltosAgora`), fecha UM capítulo, mesmo com a conversa leve.
+- **Aviso** (`AvisoDeCompactacao`, chamado no fim do turno, depois de `CompactIfNeededAsync`): quando faltam até 3 turnos soltos (`TurnosDeAviso`) ou a conversa viva passa de 85% do gatilho de tokens (`FracaoDeAviso`), o evento `CompactacaoSeAproxima` leva à faixa de sistema a frase "a memória compacta sozinha em N turno(s)" ou "está em X mil de Y mil tokens soltos", com a sugestão do `/compact`. Uma vez por aproximação: só volta a avisar depois que um capítulo fechar ou a conversa trocar. Existe porque cada compactação reescreve o começo do prompt, e quem quer escolher a hora precisa saber que ela está perto.
+- **Alvo** (`LimitesDoProvedor.AlvoDepoisDeCompactar`): depois de compactar por tokens, a conversa viva cai para 0,5 (Ollama) ou 0,3 (OpenRouter) do menor entre a cota viva e `TokensSoltos`. Compactar só até encostar no gatilho faria a próxima compactação disparar quase junto — e cada compactação reescreve o começo do prompt (prefill frio no Ollama, cache perdido e pago no OpenRouter).
 
 ---
 
@@ -81,14 +91,14 @@ Exemplo: nível 1, janela 32.768, prefixo de 3.000 tokens → disponível 5.192;
 ### 3.1 Automática (`CompactIfNeededAsync`)
 
 - No `finally` de `StreamResponseAsync`, ainda com o portão do turno, **só se o turno não foi cancelado**. Nunca no meio de uma cadeia de ferramentas.
-- Em laço: enquanto `LiveTokens()` (tudo menos as mensagens de sistema do começo) passar do gatilho, seleciona turnos e fecha um capítulo. Até `MaxCapitulosPorPassada` = 10 por passada (cada capítulo é uma chamada ao modelo); o que sobra fica para o fim do turno seguinte, e o diário registra.
+- Em laço: enquanto `LiveTokens()` (tudo menos as mensagens de sistema do começo) passar do gatilho, seleciona turnos e fecha um capítulo. Disparado o gatilho de tokens, a passada continua até o **alvo**, e não só até ficar abaixo do gatilho: um capítulo que fecha no teto de turnos ou de tokens deixaria a conversa encostada no gatilho e o turno seguinte compactaria de novo, perdendo o cache do prompt a cada vez. O gatilho de turnos soltos fecha um capítulo só e tem linha própria no diário (`GatilhoDeTurnos`). Até `MaxCapitulosPorPassada` = 10 por passada (cada capítulo é uma chamada ao modelo); o que sobra fica para o fim do turno seguinte, e o diário registra.
 - Sem turno elegível: registra `PULOU` com a causa ("os recentes curtos ficam fora…").
 - **Falha ou cancelamento** põe a compactação em descanso por `CompactionCooldownTurns` = 3 turnos. A compactação segura o portão, então uma compactação lenta que falha a cada turno transformaria toda mensagem numa espera de minutos. Enquanto isso, a poda de emergência cuida do contexto.
 - A chamada de resumo **não tem prazo**. Já teve (quatro minutos) e cortava trabalho válido. Quem desiste é o usuário: `InterromperCompactacao` cancela `_desistencia`, e os eventos `CompactacaoAndou`/`CompactacaoAcabou` alimentam a faixa de sistema. Interromper não perde nada: os turnos só saem do contexto **depois** de o capítulo existir.
 
 ### 3.2 A pedido: `/compact` (`ForcarCompactacaoAsync`)
 
-- Fecha **todos** os capítulos que couberem (até 10), cada um via `ForcarCapituloAsync` (que pega o portão e usa `SelectTurnsToCompact(…, forcado: true)`, ignorando o alvo de tokens).
+- Fecha **todos** os capítulos que couberem, **sem o teto de 10** da passada automática (o usuário pediu, vê o andamento e pode interromper; para refazer a memória de uma conversa longa, o teto pediria o comando várias vezes), cada um via `ForcarCapituloAsync` (que pega o portão e usa `SelectTurnsToCompact(…, forcado: true)`, ignorando o alvo de tokens).
 - Depois promove atos pela **mesma regra de cota** da passada automática (`CapitulosParaAto`). Já foi "de dois em dois", e numa sessão real quatro capítulos viraram dois atos que economizaram 119 e 570 tokens com 21 mil tokens de cota sobrando — dois resumos de resumos pagos por nada.
 - Devolve a frase que a interface mostra, inclusive a de recusa.
 - `/memoria` mostra a conta (`MemoriaEmTexto`): capítulo por capítulo, atos, Pendente, cru resumido, memória no prompt, economia, descartado ao reabrir, custo e linhas do cache.
@@ -105,8 +115,8 @@ Pedido explícito, sem regra de cota. Mínimo `max(2, minimoParaOAto ?? 2)`: ato
 2. **Recentes que ficam** (`RecentesQueFicam`): até `KeepRecentTurns` = 2 turnos do fim, e só enquanto somados cabem em `FracaoDosRecentes` = 15% da cota viva. Era "os dois últimos, sempre": um turno de 18 ferramentas com 19 mil tokens não saía do contexto e o `/compact` respondia "nada a compactar". Turno grande recente vira capítulo; o que ele deixou por fazer segue na seção Pendente.
 3. Percorre do mais antigo, parando quando:
    - atingiu o alvo de tokens (a não ser que `forcado`);
-   - chegou em `TurnosPorCapitulo` (padrão 15, era 8; saneado 2–20);
-   - encontrou um turno **não fechado** (para; não pula);
+   - chegou em `TurnosPorCapitulo` (padrão 15, era 8; saneado 2–40 — era 2–20, subiu para capítulos maiores, de 35–50 mil tokens crus, a pedido do usuário);
+   - encontrou um turno que ainda pode mudar (para; não pula): não fechado **e** o último. Um aberto com outro turno depois dele morreu sem marca e não muda mais, então entra (`TurnSplitter.Acabou`) — sem isso uma conversa ficou com 172 mil tokens vivos e "nada a compactar";
    - somar o próximo turno passaria do teto de tokens do capítulo.
 4. **Teto de tokens** (`TetoDeTokensDoCapitulo`): `TokensPorCapitulo` (padrão 20.000, saneado 4.000–60.000). No **Ollama** é limitado a `FracaoDaJanelaPorCapitulo` = 60% da janela, porque um prompt maior que o `num_ctx` é **truncado em silêncio pelo começo** — o resumidor perderia as instruções. Com a janela padrão de 32.768 isso dá 19.660, abaixo dos 20.000. No OpenRouter vale o número da tela (estourar dá erro, não corte calado).
 5. **O primeiro turno sempre entra**, mesmo sozinho maior que o teto: cortar dentro de um turno quebraria o par tool_call/resultado. Motivo do teto de tokens: oito turnos com saídas de `docker exec` somaram 95.164 tokens e viraram um capítulo de 171 tokens.
@@ -135,26 +145,33 @@ Sem os tetos, uma compactação que falha volta na seguinte com mais turnos (5, 
 
 - Lista de ferramentas **vazia**: resumir não é agir. Um resumidor com ferramentas acaba "verificando" o que resume e executando comandos.
 - Opções `ChatRequestOptions.DeServico(...)`: temperatura 0, **`Think: false`**, janela do Ollama em vigor. O raciocínio desligado vem de medição: cinco turnos no qwen3.5:4b levavam 286,6 s, dos quais 226,7 s eram 1.738 tokens de raciocínio para um resumo de 117 — que o `ThinkBlockStripper` jogava fora. Sem raciocínio: 14,7 s.
-- **`NumPredict`** é a rede contra modelo que ignora o formato: `MaxSummaryTokens` = 400 no capítulo; `LimitesDoProvedor.TetoDoResumoDoAto` no ato (400 Ollama, 700 OpenRouter).
+- **`NumPredict`** é a rede contra modelo que ignora o formato: `MaxSummaryTokens` = 1.500 no capítulo (resumo de até 400 palavras, frases, lições, pendências, Combinado e jeito); `LimitesDoProvedor.TetoDoResumoDoAto` no ato (1.000 Ollama, 2.600 nuvem: o resumo do arco, as frases e a dinâmica cabem).
 - A persona não participa: quem resume é o sistema.
 - Um compactor novo a cada uso (`NovoCompactor`), com provedor, modo e limites **desta** conversa — qualquer um pode ter mudado nas configurações.
-- **Modo só código** (`MemoriaComModelo` desligado): nenhuma chamada ao modelo. O capítulo fecha na hora com Objetivo tirado da fala do usuário (`ObjetivoDaFala`: `pedido do turno N: "…"`, até 160 caracteres) e sem lições. Existe pelo modelo local lento; o que o código monta (Estado, Combinado, pendências detectáveis) fica igual.
+- **Modo só código** (`MemoriaComModelo` desligado): nenhuma chamada ao modelo. O capítulo fecha na hora com Objetivo tirado da fala do usuário (`ObjetivoDaFala`: `pedido do turno N: "…"`, até 160 caracteres, sem o carimbo do orbe) e sem lições. Existe pelo modelo local lento; o que o código monta (Estado, Combinado, pendências detectáveis) fica igual.
 
 ### 6.2 Capítulo (`SummarizeAsync`)
 
-O **código** monta: artefatos (`ArtifactExtractor.Extract`), `EstadoDoTrecho.Montar`, `Combinados.Extrair`, `Pendencias.Extrair`. O **modelo** escreve só Objetivo, Aprendido e pendências de assunto.
+Antes de tudo, os turnos passam por `Turn.SemSegredos()`: `Segredos.Redigir` nas falas, nos resultados e nos **argumentos** das ferramentas (a redação do `ToolRegistry` só pega resultados; um webhook do Bitrix escrito pela agente num comando ia para o Estado e para uma lição do ato). Tudo o que o capítulo guarda sai desses turnos limpos; o resumo e as lições que o modelo devolve também passam pela redação. O **código** monta: artefatos (`ArtifactExtractor.Extract`), `EstadoDoTrecho.Montar`, `Combinados.Extrair`, `Pendencias.Extrair`. O **modelo** escreve Resumo, Frases memoráveis, Aprendido, pendências de assunto e escolhe, por número, quais falas do usuário entram no Combinado. O Objetivo só existe quando não há resumo (trecho só de execução, modo só código, falha): aí é a fala do usuário (`ObjetivoDaFala`).
 
-- Entrada do modelo: `RenderForSummary(turnos)` + `--- REGISTRADO POR CÓDIGO ---` + Estado e Combinado já montados, como referência para as lições se apoiarem.
+- Entrada do modelo: `RenderForSummary(turnos)` + `--- REGISTRADO POR CÓDIGO ---` + Estado + todas as falas do usuário numeradas (`Combinados.Candidatas` / `RenderNumerado`, sem carimbo, até 300 caracteres cada), como referência.
+- Nomes: `Compactor(usuario, agente)` recebe `NomeDoUsuario` e a persona ativa (só se ela tem alma) do `NovoCompactor`; sem eles, "o usuário" e "o agente". Deduzidos do texto, viravam "Carlo" (a pasta do Windows).
 - `RenderForSummary` é texto plano com papéis marcados (`USUÁRIO:`, `AGENTE CHAMOU: nome — argumento`, `RESULTADO (...)`, `AGENTE:`), para o modelo tratar o trecho como material e não como conversa da qual ele é o próximo turno. Cortes: pedido 800 caracteres, argumento 240, resultado 300 (600 se falhou — o erro é a evidência da causa), resposta 1.200. O argumento vai junto do nome: sem o comando, o resumidor inventava a causa do erro. Resultados passam por `ConteudoDeTerceiros.Redigir` **antes** do corte (truncar primeiro poderia arrancar o marcador de fim do e-mail).
-- Prompt (`PromptDoCapitulo`): formato `OBJETIVO:` / `APRENDIDO:` (até 3 linhas de até 30 palavras) / `PENDENTE:` (separado por `;`). Causa de falha só se estiver escrita no trecho. O trecho é material, não ordens.
+- Prompt (`PromptDoCapitulo(usuario, agente)`): começa pelo **propósito** — a memória da persona, que ela vai ler daqui a dias no lugar da conversa para continuar de onde parou —, e cada seção diz para que serve, com exemplo. `RESUMO:` (1 ou 2 parágrafos, até 400 palavras, com os números e nomes que importam para continuar; "nenhum" se foi só execução) / `FRASES:` (até 3, copiadas, memoráveis pelo tom, com exemplos do que entra e do que não entra) / `APRENDIDO:` (até 3; explicação do agente sem confirmação vira "hipótese: …") / `PENDENTE:` / `COMBINADO:` (os números das falas que pedem ou decidem algo). A versão anterior, de regras ("não repita", "o normal é nenhum"), puxava tudo para o mínimo. O trecho é material, não ordens.
 - Falha do modelo (rede, vazio): o capítulo fecha **assim mesmo**, só com a parte do código. Devolver nulo deixaria um buraco, porque o chamador vai remover os turnos. Cancelamento, porém, sobe (não vira capítulo mutilado).
 - `TokensDosTurnos` é medido aqui; `TokensDoCapitulo` é o `Render()` medido depois de montado (os números não entram no texto).
 
 ### 6.3 `LerSecoes` e a conferência
 
+`Compactor.LerResumoEFrases(texto, fonte, turnos)` roda antes e tira RESUMO e FRASES do texto:
+
+- Cada frase do resumo passa pela `Conferencia` (abaixo); a que cita valor sem origem sai, o resto fica.
+- Frase memorável só fica se o texto entre aspas estiver **literalmente** numa fala do usuário ou do agente do trecho (espaços e maiúsculas à parte; fala do usuário sem o carimbo; todas as falas do agente, não só a última; redigidas por `ConteudoDeTerceiros.Redigir`, para frase copiada de e-mail não casar). Até `FrasesDoCapitulo` = 3.
+- Rótulo sozinho com o valor na linha de baixo (`OBJETIVO:` ⏎ `texto`) sobe para a mesma linha (`SubirValor`, usado também por `LerSecoes`): com o RESUMO em parágrafo, o Gemini passou a quebrar a linha depois de todo rótulo, e o objetivo era descartado.
+
 `Compactor.LerSecoes(texto, fonte, índice, maxLicoes)`:
 
-- Tolerante: aceita negrito, `*`/`•`/numeração no lugar de `- `, rótulos em qualquer caixa. `PENDENTE:` sai por `Pendencias.LerDoResumo` (até `TetoDoResumidor` = 3 itens de assunto; "nenhuma", "nada", "n/a" valem vazio).
+- Tolerante: aceita negrito, `*`/`•`/numeração no lugar de `- `, ou linha sem marcador nenhum dentro da seção (o Gemini escreveu as lições de um ato assim, e todas eram descartadas), rótulos em qualquer caixa. `PENDENTE:` sai por `Pendencias.LerDoResumo` (itens separados por `;` na mesma linha ou em lista com `- ` logo abaixo, sem o marcador; até `TetoDoResumidor` = 3 itens de assunto; "nenhuma", "nada", "n/a" valem vazio).
 - `maxLicoes`: `LicoesDoCapitulo` = 5 no capítulo (o prompt pede 3; 5 é folga); `LimitesDoProvedor.LinhasDoAto` no ato (5 Ollama, 10 OpenRouter).
 - **`Conferencia`**: cada lição e o objetivo passam por `Conferencia.Confere(texto, fonte)`. Ela extrai os **valores** citados (caminho absoluto, texto entre aspas, nome de arquivo com extensão, horário `hh:mm`, número com dois ou mais dígitos) e exige que cada um apareça no material. Lição com valor sem origem é descartada; objetivo com valor sem origem vira nulo e cai na fala do usuário. É cega ao sentido — não pega causa inventada em palavras comuns —, mas pega a que cita arquivo ou número que não existe. Uma segunda chamada de revisão custaria minutos no modelo local.
 
@@ -164,8 +181,8 @@ O **código** monta: artefatos (`ArtifactExtractor.Extract`), `EstadoDoTrecho.Mo
   - Estado: `EstadoDoTrecho.Fundir` (código).
   - Combinado: `Combinados.Juntar` (código; até `TetoNoAto` = 16, os mais recentes).
   - Artefatos: `ArtifactDigest.Condense` (um por chave, até 12, falhas primeiro).
-  - Pendências: `Pendencias.Resolver` sobre os capítulos; as de assunto são trocadas pelas que o modelo apontar, se ele escrever a linha `PENDENTE:`.
-  - Objetivo e Aprendido: o modelo recebe `RenderChaptersForSummary` (objetivo, lições e pendências de cada trecho) e o `PromptDoAto(linhas)` pede a versão atualizada — juntar lições repetidas, manter a mais recente, tirar pendência resolvida. Sem modelo (ou em falha): objetivo do capítulo mais recente e as últimas `LinhasDoAto` lições distintas.
+  - Pendências: `Pendencias.Resolver` sobre os capítulos; se o modelo escrever a linha `PENDENTE:`, as de assunto são trocadas pelas dele e, das falhas de código, ficam só as do último capítulo (`FalhasDoUltimo`): as antigas ele viu no registro e mantém como assunto se ainda importarem. No ato 5 do shadow refeito, cinco comandos que falharam e nunca foram refeitos seguiam no Pendente, com o assunto já andado. Sem a linha (falha do modelo), nada sai.
+  - Resumo do arco, Frases, Dinâmica, Aprendido e pendências de assunto: o modelo recebe `RenderChaptersForSummary` (de cada trecho: resumo, frases, objetivo se houver, lições, pendências) **e o registro do código do arco** (`RegistroDoArco`: Combinado e Estado fundidos e as pendências herdadas), com `PromptDoAto(linhas, palavras, usuario, agente)`, que começa pelo propósito como o do capítulo. Resumo do arco entre `PalavrasDoArco`/2 e `PalavrasDoArco` palavras (400–800 na nuvem, a medir; até 300 no Ollama). `LerDoAto` confere: frase do resumo com valor sem origem sai; frase memorável só se estiver numa frase de algum capítulo do arco (até 6); linha de **Dinâmica** só se citar trechos, todos dentro do arco, "(trechos 12, 15)" (até 4). Com resumo, o ato não tem Objetivo. Sem modelo (ou em falha): objetivo do capítulo mais recente e as últimas `LinhasDoAto` lições distintas. No teste do ato 5 do shadow, sem o registro do código o ato manteve um cadastro já feito como pendente, e sem a exigência de trechos inventou duas linhas de dinâmica vagas.
   - Motivo: foi no parágrafo sobre parágrafos que horários pedidos pelo usuário sumiram e a causa inventada de um capítulo virou fato.
 - **Algum capítulo v1 → caminho antigo**: `ActPrompt` pede um parágrafo de até 150 palavras + `PENDENTE:`; em falha, o resumo vira `[resumo indisponível: …]`.
 - `TokensDosTurnos` do ato é o cru herdado dos capítulos (economia total); `TokensDosCapitulos` separa a economia da promoção (`EconomiaDaPromocao`).
@@ -181,16 +198,17 @@ O **código** monta: artefatos (`ArtifactExtractor.Extract`), `EstadoDoTrecho.Mo
 Ordenadas pela **confiança**, não pela narrativa:
 
 1. Título: `### Capítulo N (turnos a–b)` ou `### Ato N (capítulos a–b, turnos x–y)`. Numeração a partir de 1, pela numeração do registro.
-2. `Objetivo:` — curto, para situar.
-3. `Combinado com o usuário (palavras dele):` — literal, código.
-4. `Estado ao fim do capítulo N (pasta …):` + `Consultados:` — literal, código.
-5. `Aprendido:` — o que o modelo concluiu; a parte que pode estar errada vai por último.
+2. `Resumo:` e `Frases memoráveis:` — quando o resumidor escreveu; situam a conversa. No ato, depois delas, `Dinâmica entre agente e usuário:`.
+3. `Objetivo:` — no capítulo, só quando não há resumo — curto, para situar.
+4. `Combinado com o usuário (palavras dele):` — literal, código.
+5. `Estado ao fim do capítulo N (pasta …):` + `Consultados:` — literal, código.
+6. `Aprendido:` — o que o modelo concluiu; a parte que pode estar errada vai por último.
 
 A seção **Pendente não mora no bloco**: é uma só, no fim da memória, já resolvida entre os trechos.
 
 ### 7.2 Encolher para caber (`BlocoEstruturado.Fit`)
 
-Quando o bloco não cabe na cota, cede do menos valioso para o mais, tentando em sequência: sem a linha Consultados → Estado com 10 itens → 5 itens → sem Aprendido → só os 4 pedidos mais recentes do Combinado → só 2 → Estado com 3 itens e sem Combinado → só título e objetivo → e por fim o Objetivo aparado (`MemoryRender.Fit`). A primeira tentativa usa o mesmo teto de itens do `Render` inteiro, para o bloco que cabe não sair menor do que o que foi medido. **Um bloco nunca pode sumir inteiro**: já aconteceu de o Combinado de um ato passar da cota sozinho e a memória toda sair do prompt.
+Quando o bloco não cabe na cota, cede do menos valioso para o mais, tentando em sequência: sem a linha Consultados → Estado com 10 itens → 5 itens → sem Aprendido nem Frases → só os 4 pedidos mais recentes do Combinado → só 2 → sem Resumo → Estado com 3 itens e sem Combinado → só título e objetivo → e por fim o Objetivo aparado (`MemoryRender.Fit`). A primeira tentativa usa o mesmo teto de itens do `Render` inteiro, para o bloco que cabe não sair menor do que o que foi medido. **Um bloco nunca pode sumir inteiro**: já aconteceu de o Combinado de um ato passar da cota sozinho e a memória toda sair do prompt.
 
 ### 7.3 Exemplo (inventado, realista) de capítulo renderizado
 
@@ -219,7 +237,7 @@ Substitui, no prompt, a lista cronológica de artefatos. A lista dizia "gravou X
 
 ### 8.1 `Montar(turnos)`
 
-Pareia chamada e resultado por id e dobra cada ação no seu alvo (`ItemDeEstado`: alvo, tipo arquivo/pasta/comando, situação, detalhe, turno, vezes):
+Pareia chamada e resultado por id — a `file` aberta nas operações dela (`FileTool.Abrir`), cada uma com o seu resultado — e dobra cada ação no seu alvo (`ItemDeEstado`: alvo, tipo arquivo/pasta/comando, situação, detalhe, turno, vezes):
 
 | Ferramenta | Efeito |
 |---|---|
@@ -228,9 +246,12 @@ Pareia chamada e resultado por id e dobra cada ação no seu alvo (`ItemDeEstado
 | `write` | "criado pelo agente" / "recriado pelo agente" (se estava apagado) / "reescrito pelo agente" |
 | `edit` | "editado pelo agente"; editar o que o agente criou continua "criado pelo agente" (a origem é o que importa) |
 | `write`/`edit` falhou ou recusado | mantém a situação anterior e anota no detalhe |
+| `doc` `create` / `edit` | igual a `write` / `edit`; o `edit` anota "N alterações" (tamanho de `ops`) |
+| `doc` `info`/`read`/`find`/`query`/`layout` | igual a `read`; `help` e `models` não entram |
 | `shell` que apaga (`ComandoQueApaga.Eh`) | ver §8.3 |
 | `shell` só leitura (`ComandoDeShell.SoLeitura`) | conta como consulta; só entra no Estado se **falhou** ("consulta falhou") |
-| outro `shell`, `skill` | comando **opaco**: "ok — efeitos em disco não rastreados" ou "FALHOU", com contagem de vezes |
+| outro `shell` | comando **opaco**: "ok — efeitos em disco não rastreados" ou "FALHOU", com contagem de vezes |
+| `skill` | agrupada por skill + ação + alvo (`SepararChamada`: os pares `-Acao` e `-Id` pelo nome, em qualquer ordem; sem eles, os dois primeiros): uma linha com as vezes, a última situação, recusas e falhas contadas e o resto da última chamada (`última: -Texto "…"`). Sem "efeitos em disco": skill fala com API. No shadow, 20 linhas de checklist viraram 2. Comando e chamada vão numa linha só (quebra vira ` ⏎ `) |
 | `glob`, `grep`, `mail`, `mail_read` | só contam consultas |
 
 O que o Estado **não afirma** é tão importante quanto o que afirma: comando arbitrário não diz o que mudou no disco; apagar só conta com alvo literal e absoluto. Tudo vale "no fim do capítulo": o disco pode ter mudado depois, e conferir na hora de montar mudaria o texto a cada turno e quebraria o cache.
@@ -273,12 +294,12 @@ Pontas soltas que um "continue" precisa. Existem para a compactação poder leva
 Tipos (`Pendencia.Tipo`):
 
 - **`falha`** (código): `write`/`edit` ou comando que falhou e **não** teve sucesso depois no mesmo alvo, dentro do trecho. Leitura que falhou não entra (procurar e não achar é rotina); comando só-leitura também não; recusa do usuário também não (é decisão, e listá-la convidaria a tentar de novo). Cada chave entra uma vez na ordem, mesmo que falhe, dê certo e falhe de novo.
-- **`interrompido`** (código): só o **último** turno do trecho, quando termina com a marca de turno morto (`MotivoDaInterrupcao`). Leva o pedido (até 120 caracteres) e a última ação.
+- **`interrompido`** (código): só o **último** turno do trecho, quando termina com a marca de turno morto (`MotivoDaInterrupcao`). Leva o pedido (até 120 caracteres, sem o carimbo do orbe) e a última ação.
 - **`assunto`** (modelo): o que o resumidor apontou na linha `PENDENTE:` como pedido e não feito.
 
 `Extrair(turnos)` produz as de código. `Resolver(trechos)` decide as que valem sobre a sequência de atos e capítulos soltos:
 
-- Falha some quando um trecho **posterior** tem sucesso no mesmo alvo. O casamento é pela chave: `arquivo|caminho` ou `comando|Assinatura` — **pela assinatura, não pelo texto**. Pelo texto exato, uma sessão fechou com oito pendências já resolvidas, porque a segunda tentativa tinha um `| Select-Object -Last 10` a mais.
+- Falha some quando um trecho **posterior** tem sucesso no mesmo alvo. O casamento é pela chave: `arquivo|caminho` ou `comando|Assinatura` — **pela assinatura, não pelo texto**. Pelo texto exato, uma sessão fechou com oito pendências já resolvidas, porque a segunda tentativa tinha um `| Select-Object -Last 10` a mais. Skill casa por `skill|ChaveDeSkill` (os pares `-Nome valor` em ordem alfabética, pelo campo `Ferramenta` da pendência): no shadow, a falha do Nordeste refeita com `-Grupo` na frente ficou viva no Pendente.
 - Interrupção e assunto só valem do trecho mais recente.
 - Pendência de assunto que repete uma falha de comando (o resumidor do ato lê o Pendente dos capítulos e às vezes devolve as mesmas falhas) é descartada quando o texto contém a assinatura (de 12 caracteres ou mais).
 - Sem repetição entre trechos.
@@ -289,9 +310,12 @@ Tipos (`Pendencia.Tipo`):
 
 ## 10. Combinados (`Combinados`)
 
-Os pedidos do usuário que carregam **valor**, copiados por código. Motivo: o usuário pediu "Sábados: 12:00 ~ 14:00" e o ato virou "modificações nos horários".
+Com modelo, o resumidor **escolhe por número** entre todas as falas do usuário do trecho (`Candidatas`, linha `COMBINADO: 1, 4`, lida por `LerEscolha`); o texto é copiado pelo código, nunca reescrito. Sem a linha (falha, modo só código), vale a regra abaixo, por valor. Pedido do usuário: o Combinado guarda só fala que pede ou decide.
+
+Por valor (`Extrair`): os pedidos do usuário que carregam **valor**, copiados por código. Motivo: o usuário pediu "Sábados: 12:00 ~ 14:00" e o ato virou "modificações nos horários".
 
 - `TemValor`: dígito, texto entre aspas, caminho `X:\`, UNC, URL, e-mail, extensão de arquivo.
+- O carimbo do orbe (`[terça-feira - 27/10/2026 | 11:42]`) sai antes (`ConversaDoOrbe.SemCarimbo`): ele sempre tem dígito, e fazia toda fala passar no filtro e ocupar uma vaga da fala longa.
 - Fala com valor de até `FalaCurta` = 280 caracteres entra inteira (quebras de linha viram ` / `). Fala longa contribui com até `LinhasPorFala` = 3 linhas com valor, cada uma até `TetoDaLinha` = 240.
 - `TetoNoCapitulo` = 8 (os mais recentes); `TetoNoAto` = 16 via `Juntar` (sem repetir, em ordem de turno).
 - Erra para o lado de copiar. "leia os arquivos" e "continue" não entram.
@@ -321,8 +345,8 @@ Os pedidos do usuário que carregam **valor**, copiados por código. Motivo: o u
 - **Fatos sobre o usuário** (`remember`, `LembrarTool`): a persona grava na hora, pelo mesmo
   `Promote`, o que o usuário contou sobre si — `- sobre o usuário: …`, chave `usuario|<frase em
   minúsculas>`. Passam pelo mesmo índice (apagado não volta), têm teto de 60 linhas para não
-  empurrar os fatos de trabalho para fora da cota, e são recusados com texto de terceiros no
-  contexto. Entram no prompt na próxima montagem da memória (capítulo ou ato novo, ou conversa
+  empurrar os fatos de trabalho para fora da cota, e com texto de terceiros no
+  contexto só entram pelo cartão de confirmação, que mostra o fato inteiro. Entram no prompt na próxima montagem da memória (capítulo ou ato novo, ou conversa
   nova); na conversa em que foram ditos, o modelo já os tem no histórico.
 - No prompt (`FactStore.Render`): só linhas que começam com `- `, relidas do disco a cada montagem; corte **do fim para o começo** (a ordem é a do usuário, o topo é o que ele quer garantir), dentro de `quota.Facts`.
 

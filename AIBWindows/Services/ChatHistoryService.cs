@@ -103,7 +103,9 @@ namespace AIB.Services
             if (!File.Exists(HistoryFilePath)) return new List<ChatSession>();
             try
             {
-                var json = File.ReadAllText(HistoryFilePath);
+                // Cifrado (ArquivoCifrado): são as mesmas conversas do raw.jsonl. O arquivo em
+                // texto claro de antes é lido como está e sai cifrado na gravação seguinte.
+                var json = ArquivoCifrado.Ler(HistoryFilePath) ?? "[]";
                 return JsonSerializer.Deserialize<List<ChatSession>>(json) ?? new List<ChatSession>();
             }
             catch
@@ -165,7 +167,7 @@ namespace AIB.Services
                 history = Podar(history);
 
                 var json = JsonSerializer.Serialize(history, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(HistoryFilePath, json);
+                ArquivoCifrado.GravarTexto(HistoryFilePath, json);
             }
             catch { }
         }

@@ -6,7 +6,7 @@ using AIB.Services;
 namespace AIB.Services.Ai;
 
 /// <summary>
-/// Fábrica única de providers: Ollama ou OpenRouter, pelo <c>AiProvider</c> das configurações que
+/// Fábrica única de providers: Ollama, OpenRouter ou Google, pelo <c>AiProvider</c> das configurações que
 /// recebe. Reaproveita a instância enquanto provedor, modelo, URL e CREDENCIAL efetiva não mudarem.
 /// <para>
 /// Guarda UMA instância por combinação, e não só a última: a conversa e a triagem de e-mail podem
@@ -87,6 +87,14 @@ public sealed class ChatProviderFactory : IChatProviderFactory
                 _httpClient, ProvedoresDeIa.UrlDoOpenRouter, credencial, modelo, _healer,
                 settings.VerboseConsoleLogging, settings.OpenRouterSemColetaDeDados,
                 settings.OpenRouterProvedorFixo);
+        }
+
+        if (provedor == ProvedoresDeIa.Google)
+        {
+            Console.WriteLine($"[AI] Cliente inicializado: {modelo} @ {ProvedoresDeIa.UrlDoGoogle}"
+                              + (credencial.Length == 0 ? " (SEM CHAVE configurada)" : ""));
+            return new GoogleProvider(
+                _httpClient, ProvedoresDeIa.UrlDoGoogle, credencial, modelo, _healer, settings.VerboseConsoleLogging);
         }
 
         // Sem /v1 e sem "localhost" — ver NormalizarUrlDoOllama, que diz por quê.

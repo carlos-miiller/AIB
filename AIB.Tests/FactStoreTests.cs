@@ -40,7 +40,7 @@ namespace AIB.Tests
         {
             _store.Promote(new[] { Fato("arquivo|C:\\a.cs", "- arquivo relevante: C:\\a.cs") });
 
-            string texto = File.ReadAllText(_store.FactsPath);
+            string texto = Claro.Texto(_store.FactsPath);
 
             texto.Should().Contain("# Fatos duráveis");
             texto.Should().Contain("- arquivo relevante: C:\\a.cs");
@@ -77,7 +77,7 @@ namespace AIB.Tests
             // apagasse ressuscitaria na promoção seguinte — a memória discutindo com o dono.
             _store.Promote(new[] { Fato("a", "- fato errado") });
 
-            var restantes = File.ReadAllLines(_store.FactsPath)
+            var restantes = Claro.Linhas(_store.FactsPath)
                 .Where(l => !l.Contains("fato errado"));
             File.WriteAllLines(_store.FactsPath, restantes);
 
@@ -91,7 +91,7 @@ namespace AIB.Tests
         {
             _store.Promote(new[] { Fato("a", "- original") });
 
-            string editado = File.ReadAllText(_store.FactsPath).Replace("- original", "- corrigido à mão");
+            string editado = Claro.Texto(_store.FactsPath).Replace("- original", "- corrigido à mão");
             File.WriteAllText(_store.FactsPath, editado);
 
             _store.Promote(new[] { Fato("b", "- novo") });

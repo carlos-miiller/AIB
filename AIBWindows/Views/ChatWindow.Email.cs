@@ -45,6 +45,31 @@ public partial class ChatWindow
     public Func<IReadOnlyList<MailSummary>>? FonteDeEmails { get; set; }
 
     /// <summary>
+    /// De onde sai a seção "Aguardando retorno": as conversas em que a última palavra é sua.
+    /// Delegado pelo mesmo motivo de <see cref="FonteDeEmails"/>.
+    /// </summary>
+    public Func<IReadOnlyList<EsperaDeRetorno>>? FonteDeEsperas { get; set; }
+
+    /// <summary>
+    /// Quantas esperas aparecem antes do "Mostrar mais". Decisão do usuário (16/10/2026): com
+    /// a seção no topo, uma dúzia de conversas em espera empurraria para baixo da dobra o que
+    /// pede ação dele.
+    /// </summary>
+    public const int EsperasVisiveis = 3;
+
+    /// <summary>"+7 dias" de uma espera. Delegado: quem guarda as vigias é o vigia.</summary>
+    public Action<EsperaDeRetorno>? EstenderEspera { get; set; }
+
+    /// <summary>"Parar de vigiar" e "Dispensar". Delegado, como <see cref="EstenderEspera"/>.</summary>
+    public Action<EsperaDeRetorno>? PararEspera { get; set; }
+
+    /// <summary>A espera aberta no acordeão, pela thread. Uma por vez, como na lista.</summary>
+    private string? _esperaAberta;
+
+    /// <summary>O "Mostrar mais" da seção foi clicado.</summary>
+    private bool _esperasTodas;
+
+    /// <summary>
     /// O "Ignorar" de §3.10. Delegado, como <see cref="FonteDeEmails"/>: quem guarda o que foi
     /// ignorado é o vigia. Sem ele o botão não aparece — um "Ignorar" que não esconde nada
     /// ensinaria que o botão não funciona.
@@ -216,8 +241,11 @@ public partial class ChatWindow
         // JÁ vem ordenada do vigia — urgência decrescente, mais recente no topo dentro do
         // nível. Reordenar aqui seria a segunda cópia da regra, e foi assim que a ordem se
         // perdeu quando a aba do painel saiu: ela morava na View que morreu junto.
-        var conversas = FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>();
+        var todas = FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>();
+        var esperas = FonteDeEsperas?.Invoke() ?? Array.Empty<EsperaDeRetorno>();
         var agora = DateTime.Now;
+
+        var conversas = ForaDaEspera(todas, esperas);
 
         // As threads que já têm conversa com a IA, lidas UMA vez: perguntar item por item
         // releria o arquivo do histórico uma vez por e-mail da caixa.
@@ -231,13 +259,22 @@ public partial class ChatWindow
         int tokens = TokensDaCaixa(conversas);
 
         MedidasDaCaixa.Text =
-            $"{conversas.Count} e-mail(s) · {urgentes} urgente(s) · {tokens:N0} tokens";
+            $"{conversas.Count} e-mail(s) · {urgentes} urgente(s) · {tokens:N0} tokens"
+            + (esperas.Count > 0 ? $" · {esperas.Count} aguardando" : "");
 
         // Urgente em danger quando HÁ urgente, e apagado quando não há: uma contagem em
         // vermelho dizendo zero treina a pessoa a ignorar o vermelho.
         MedidasDaCaixa.Foreground = urgentes > 0
             ? (System.Windows.Media.Brush)FindResource("DangerTextBrush")
             : (System.Windows.Media.Brush)FindResource("TextMutedBrush");
+
+        // As duas seções só ganham rótulo quando há o que separar: sem nenhuma espera, a caixa
+        // fica exatamente como era.
+        if (esperas.Count > 0)
+        {
+            MontarEsperas(esperas, agora);
+            ListaDaCaixa.Children.Add(RotuloDeSecao($"PARA VOCÊ RESPONDER · {conversas.Count}", icone: false));
+        }
 
         foreach (var conversa in conversas)
         {
@@ -283,6 +320,226 @@ public partial class ChatWindow
 
             ListaDaCaixa.Children.Add(item);
         }
+    }
+
+    /// <summary>
+    /// O que fica em "Para você responder". Uma conversa só aparece num lugar: se a última
+    /// palavra é sua e ela está vigiada, ela mora em "Aguardando retorno" e sai daqui.
+    /// Respondida pelo outro lado, ela volta.
+    /// </summary>
+    public static IReadOnlyList<MailSummary> ForaDaEspera(
+        IReadOnlyList<MailSummary> todas, IReadOnlyList<EsperaDeRetorno> esperas)
+    {
+        var esperando = new HashSet<string>(
+            esperas.Select(e => e.ThreadId).Where(t => t.Length > 0), StringComparer.Ordinal);
+
+        return todas
+            .Where(c => c.AwaitingMe || !esperando.Contains(c.ThreadId ?? ""))
+            .ToList();
+    }
+
+    /// <summary>
+    /// A seção "Aguardando retorno", no topo da caixa — o cenário A escolhido pelo usuário em
+    /// 16/10/2026. No máximo <see cref="EsperasVisiveis"/> antes do "Mostrar mais"; a ordem já
+    /// vem do vigia (vencida, vencendo, mais recente).
+    /// </summary>
+    private void MontarEsperas(IReadOnlyList<EsperaDeRetorno> esperas, DateTime agora)
+    {
+        ListaDaCaixa.Children.Add(RotuloDeSecao($"AGUARDANDO RETORNO · {esperas.Count}", icone: true));
+
+        var visiveis = _esperasTodas ? esperas : esperas.Take(EsperasVisiveis).ToList();
+
+        foreach (var espera in visiveis)
+        {
+            var item = new EsperaItem
+            {
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+
+            item.Preencher(espera, agora);
+            item.Aberto = string.Equals(espera.ThreadId, _esperaAberta, StringComparison.Ordinal);
+            item.NomeDaInteligencia = NomeDaInteligencia();
+
+            // Sem conta (conversa sem histórico em disco) não há caixa onde abrir nem de onde
+            // ler: os dois botões somem em vez de falhar.
+            bool temConta = espera.Conta.Length > 0;
+            item.RotuloDoCliente = temConta && LinkDoEmail.Para(espera.Conta, espera.ThreadId).Length > 0
+                ? LinkDoEmail.Rotulo(espera.Conta, espera.ThreadId)
+                : "";
+            item.BotaoAbrirComIA.Visibility = temConta ? Visibility.Visible : Visibility.Collapsed;
+
+            var alvo = espera;
+
+            item.PediuAbrirComIA += (_, _) => AbrirEmailNoChat(ComoEmail(alvo));
+            item.PediuAbrirNoCliente += (_, _) =>
+                MailListItem.AbrirNoNavegador(LinkDoEmail.Para(alvo.Conta, alvo.ThreadId));
+
+            item.PediuEstender += (_, _) =>
+            {
+                EstenderEspera?.Invoke(alvo);
+                MontarCaixaDeEntrada();
+            };
+
+            item.PediuParar += (_, _) => PararDeEsperar(alvo);
+            item.PediuAlternar += (_, _) =>
+            {
+                _esperaAberta = string.Equals(alvo.ThreadId, _esperaAberta, StringComparison.Ordinal)
+                    ? null
+                    : alvo.ThreadId;
+                MontarCaixaDeEntrada();
+            };
+
+            ListaDaCaixa.Children.Add(item);
+        }
+
+        string? rotulo = RotuloDoAlternar(esperas.Count, _esperasTodas);
+        if (rotulo == null) return;
+
+        var alternar = new System.Windows.Controls.Button
+        {
+            Content = rotulo,
+            Style = (Style)FindResource("CaminhoDeVolta"),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            Margin = new Thickness(2, 0, 0, 8)
+        };
+
+        alternar.Click += (_, _) =>
+        {
+            _esperasTodas = !_esperasTodas;
+            MontarCaixaDeEntrada();
+        };
+
+        ListaDaCaixa.Children.Add(alternar);
+    }
+
+    /// <summary>
+    /// O botão no fim da seção: "Mostrar mais N ▾" com ela recolhida, "Mostrar menos ▴" com ela
+    /// aberta, e nenhum quando cabe tudo em <see cref="EsperasVisiveis"/>.
+    /// <para>
+    /// Pedido do usuário (16/10/2026): só existia o "Mostrar mais", e depois de abrir não havia
+    /// como recolher de novo — a seção ficava inteira empurrando a caixa para baixo.
+    /// </para>
+    /// </summary>
+    public static string? RotuloDoAlternar(int total, bool todas)
+    {
+        int escondidas = total - EsperasVisiveis;
+        if (escondidas <= 0) return null;
+
+        return todas ? "Mostrar menos ▴" : $"Mostrar mais {escondidas} ▾";
+    }
+
+    /// <summary>
+    /// Uma espera vista como e-mail, para "Abrir com &lt;NOME&gt;" seguir o MESMO caminho da
+    /// lista — mesma chave de conversa (<c>conta|thr:id</c>), então a conversa aberta aqui é
+    /// reencontrada quando a resposta chegar e o item passar para "Para você responder".
+    /// <para>
+    /// O resumo diz o que se sabe e nada mais: quem escreveu foi você, e não houve triagem. O
+    /// texto da mensagem o modelo lê com <c>mail_read</c>, que agora procura também na pasta
+    /// de enviados.
+    /// </para>
+    /// </summary>
+    public static MailSummary ComoEmail(EsperaDeRetorno e)
+    {
+        string para = e.Para.Length > 0 ? " para " + e.Para : "";
+        string quando = e.EnviadaEm.ToLocalTime().ToString("dd/MM/yyyy, HH:mm");
+
+        return new MailSummary(
+            Name: EsperaItem.Assunto(e),
+            Description: $"Conversa sua aguardando retorno: você escreveu{para} em {quando}, "
+                         + $"e ainda não houve resposta. Prazo da espera: {e.Ate.ToLocalTime():dd/MM}.",
+            Urgency: MailUrgency.Media,
+            Url: LinkDoEmail.Para(e.Conta, e.ThreadId),
+            Account: e.Conta,
+            LastMessageAt: e.EnviadaEm.ToLocalTime(),
+            MessageCount: e.Mensagens,
+            AwaitingMe: false,
+            ThreadId: e.ThreadId,
+            De: e.Conta,
+            Iniciada: e.Iniciada);
+    }
+
+    /// <summary>
+    /// "Parar de vigiar" (ou "Dispensar", vencida), depois de confirmar. Não há desfazer pela
+    /// tela: a conversa só volta com uma mensagem sua nova nela, e a pergunta diz isso.
+    /// </summary>
+    private void PararDeEsperar(EsperaDeRetorno alvo)
+    {
+        if (PararEspera == null) return;
+
+        bool confirmado;
+        using (ModalGuard.Enter())
+        {
+            confirmado = ConfirmDialog.Perguntar(
+                this,
+                "Parar de esperar retorno desta conversa?",
+                "Ela sai de \"Aguardando retorno\". Se responderem, a resposta aparece na caixa como "
+                + "qualquer outra. Nada é apagado no servidor, e ela volta se você escrever de novo nela.",
+                ferramenta: "e-mail",
+                alvo: EsperaItem.Assunto(alvo),
+                acao: "Parar de vigiar",
+                temVolta: true,
+                pill: "Volta se você escrever de novo");
+        }
+
+        if (!confirmado) return;
+
+        PararEspera(alvo);
+        if (string.Equals(_esperaAberta, alvo.ThreadId, StringComparison.Ordinal)) _esperaAberta = null;
+        MontarCaixaDeEntrada();
+    }
+
+    /// <summary>
+    /// O rótulo de uma seção: texto em caixa alta, apagado, e uma linha até a borda. O relógio
+    /// só na de espera, que é a seção nova — a outra é a caixa de sempre.
+    /// </summary>
+    private FrameworkElement RotuloDeSecao(string texto, bool icone)
+    {
+        var grade = new Grid { Margin = new Thickness(0, 6, 0, 8) };
+        grade.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grade.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var rotulo = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+        if (icone)
+        {
+            var relogio = new System.Windows.Shapes.Path
+            {
+                Data = System.Windows.Media.Geometry.Parse("M10,2.5 A7.5,7.5 0 1 1 9.99,2.5 Z M10,5.5 V10 L13,12"),
+                StrokeThickness = 1.6,
+                Width = 11,
+                Height = 11,
+                Stretch = System.Windows.Media.Stretch.Uniform,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            relogio.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "AccentLilacBrush");
+            rotulo.Children.Add(relogio);
+        }
+
+        var tb = new TextBlock
+        {
+            Text = texto,
+            FontSize = 10,
+            FontWeight = FontWeights.Bold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        tb.SetResourceReference(TextBlock.ForegroundProperty, "TextMutedBrush");
+        rotulo.Children.Add(tb);
+
+        var linha = new System.Windows.Shapes.Rectangle
+        {
+            Height = 1,
+            Margin = new Thickness(10, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        linha.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "DividerBrush");
+
+        Grid.SetColumn(rotulo, 0);
+        Grid.SetColumn(linha, 1);
+        grade.Children.Add(rotulo);
+        grade.Children.Add(linha);
+
+        return grade;
     }
 
     /// <summary>
@@ -365,21 +622,31 @@ public partial class ChatWindow
     /// </summary>
     private bool RetomarConversaDoEmail(ChatSession sessao, MailSummary alvo)
     {
+        if (_abrindo) return true;
+
         var falas = ChatHistoryService.Parse(sessao.Content);
         if (falas.Count == 0) return false;
 
+        _ = RetomarAsync(sessao, falas, alvo);
+        return true;
+    }
+
+    /// <summary>
+    /// O resto da retomada, depois que a conversa carregou: o vínculo com a thread só depois do
+    /// <c>LoadConversation</c>, que zera o anterior.
+    /// </summary>
+    private async Task RetomarAsync(ChatSession sessao, IReadOnlyList<ChatTurn> falas, MailSummary alvo)
+    {
         // O CARTÃO entra no lugar da PRIMEIRA fala, que foi o enquadramento — e não algo que o
         // usuário tenha escrito. Mostrá-la como bolha aqui seria pôr na boca dele um texto
         // montado pelo programa.
-        RestaurarConversaGravada(sessao, falas, () => CartaoDoEmail(alvo));
+        await RestaurarConversaGravadaAsync(sessao, falas, () => CartaoDoEmail(alvo));
         _conversation.VincularAEmail(sessao.MailThreadKey);
 
         EntrarNaLeitura(alvo);
 
         AtualizarEstadoVazio();
         ChatScrollViewer.ScrollToEnd();
-
-        return true;
     }
 
     /// <summary>
@@ -525,6 +792,65 @@ public partial class ChatWindow
         ModoEmail.IsChecked = true;
 
         AbrirEmailNoChat(alvo);
+    }
+
+    /// <summary>
+    /// "Ver na caixa" de um aviso: a janela vem à frente no modo e-mail, com o item aberto no
+    /// acordeão quando o aviso era sobre um e-mail só. Nenhum turno é enviado.
+    /// </summary>
+    public void MostrarCaixa(MailSummary? item)
+    {
+        if (Visibility != Visibility.Visible) ToggleWindow();
+        else Activate();
+
+        _emailEmLeitura = null;
+
+        // Pela CHAVE, e não pela referência: o aviso pode ter sido montado antes de a lista ser
+        // recarregada do vigia.
+        string? chave = item == null ? null : ArquivoDeConversas.ChaveDaConversa(item);
+        _emailAberto = chave == null
+            ? null
+            : (FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>())
+                .FirstOrDefault(i => ArquivoDeConversas.ChaveDaConversa(i) == chave);
+
+        if (ModoEmail.IsChecked == true)
+        {
+            AplicarEstadoDoModo();
+            MontarCaixaDeEntrada();
+        }
+        else
+        {
+            ModoEmail.IsChecked = true;
+        }
+    }
+
+    /// <summary>
+    /// "Abrir o e-mail" de um lembrete: volta à conversa de e-mail em que ele nasceu.
+    /// <para>
+    /// Procura o e-mail na caixa e nas esperas pela chave; sem achar (a triagem já esqueceu a
+    /// conversa), monta um item mínimo com a conta e a thread da chave — o que basta para
+    /// RETOMAR a conversa havida, que é o caso de um lembrete criado nela.
+    /// </para>
+    /// </summary>
+    public void AbrirConversaDoEmail(string chave, string assunto)
+    {
+        if (string.IsNullOrWhiteSpace(chave)) return;
+
+        var item = (FonteDeEmails?.Invoke() ?? Array.Empty<MailSummary>())
+                       .FirstOrDefault(i => ArquivoDeConversas.ChaveDaConversa(i) == chave)
+                   ?? (FonteDeEsperas?.Invoke() ?? Array.Empty<EsperaDeRetorno>())
+                       .Where(e => ArquivoDeConversas.Chave(e.Conta, e.ThreadId, 0) == chave)
+                       .Select(ComoEmail)
+                       .FirstOrDefault()
+                   ?? new MailSummary(
+                       string.IsNullOrWhiteSpace(assunto) ? "(e-mail do lembrete)" : assunto,
+                       "",
+                       MailUrgency.Media,
+                       Account: ArquivoDeConversas.ContaDaChave(chave),
+                       ThreadId: ArquivoDeConversas.ThreadDaChave(chave),
+                       AwaitingMe: false);
+
+        AbrirEmailDoOrbe(item);
     }
 
     /// <summary>
@@ -719,7 +1045,7 @@ public partial class ChatWindow
                 + "memory/sessions continua onde está.",
                 ferramenta: "histórico",
                 alvo: alvo.Name,
-                dica: "não há desfazer");
+                acao: "Descartar");
         }
     }
 
@@ -771,7 +1097,9 @@ public partial class ChatWindow
                 + "IA, se houver, continua no histórico.",
                 ferramenta: "e-mail",
                 alvo: alvo.Name,
-                dica: "não há desfazer pela tela");
+                acao: "Ignorar",
+                temVolta: true,
+                pill: "Volta com mensagem nova");
         }
 
         if (!confirmado) return;

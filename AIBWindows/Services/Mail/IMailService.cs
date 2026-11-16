@@ -142,13 +142,20 @@ public interface IMailService
     /// Quanto do corpo, já limpo, desce por mensagem. O padrão é o da triagem; a leitura do
     /// e-mail pela conversa (<c>mail_read</c>) pede mais, porque lê uma conversa e não um lote.
     /// </param>
+    /// <param name="comEnviados">
+    /// Lê também a pasta de enviados. É o que <c>mail_read</c> pede: uma conversa que você
+    /// começou e ninguém respondeu não tem NADA na caixa de entrada, e "Abrir com" sobre ela
+    /// não teria o que ler. O "Recarregar" não pede — ele tria, e não há o que triar no que
+    /// você mesmo escreveu.
+    /// </param>
     Task<IReadOnlyList<MensagemDeEmail>> LerConversaAsync(
         string endereco,
         string senhaDeApp,
         ImapEndpoint endpoint,
         string threadId,
         CancellationToken ct,
-        int tetoDoCorpo = MensagemDeEmail.TetoDoCorpo)
+        int tetoDoCorpo = MensagemDeEmail.TetoDoCorpo,
+        bool comEnviados = false)
         => Task.FromResult<IReadOnlyList<MensagemDeEmail>>(Array.Empty<MensagemDeEmail>());
 }
 

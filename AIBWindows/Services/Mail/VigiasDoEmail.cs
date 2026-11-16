@@ -24,8 +24,19 @@ public sealed class VigiaDeThread
     /// <summary>Por que esta conversa está sendo vigiada. Legível, para o arquivo ser auditável.</summary>
     public string Porque { get; set; } = "";
 
-    /// <summary>Até quando. Passou a data, a vigia morre sozinha.</summary>
+    /// <summary>
+    /// Até quando. Passou a data, ela deixa de valer para o funil, mas CONTINUA na lista
+    /// "Aguardando retorno", em vermelho, até você decidir (+7 dias ou dispensar). Sumir em
+    /// silêncio é o que a regra 6 do vigia proíbe.
+    /// </summary>
     public DateTime Ate { get; set; }
+
+    /// <summary>
+    /// Você mandou parar ("Parar de vigiar" ou "Dispensar"). Fica gravada para a passada
+    /// seguinte não a ressuscitar a partir da mesma mensagem na pasta de enviados; uma
+    /// mensagem sua NOVA na conversa abre outra vigia.
+    /// </summary>
+    public bool Parada { get; set; }
 
     // Houve aqui um "acorda9b": vigiar esta conversa acordaria o modelo na hora, em vez de
     // esperar o digest. Nunca acordou ninguém — quem escreve as vigias é o Atualizar, e ele
@@ -40,6 +51,9 @@ public sealed class VigiaDeThread
     public DateTime RespondidaEm { get; set; }
 
     public bool Vencida(DateTime agoraUtc) => agoraUtc.Date > Ate.Date;
+
+    /// <summary>Vale para o funil: nem parada, nem vencida.</summary>
+    public bool Ativa(DateTime agoraUtc) => !Parada && !Vencida(agoraUtc);
 }
 
 /// <summary>
@@ -90,6 +104,33 @@ public sealed class VigiasDoEmail
 
     public string Caminho => _caminho;
 
+    /// <summary>"+7 dias": estende o prazo, contado de hoje se ela já venceu. Devolve false se não achou.</summary>
+    public bool Estender(string thrid, int dias, DateTime agoraUtc) =>
+        Mudar(thrid, v =>
+        {
+            v.Ate = (v.Vencida(agoraUtc) ? agoraUtc : v.Ate).AddDays(dias);
+            v.Porque += $"; estendida em {agoraUtc.ToLocalTime():dd/MM}";
+        });
+
+    /// <summary>"Parar de vigiar" e "Dispensar": sai da lista e do funil. Devolve false se não achou.</summary>
+    public bool Parar(string thrid) =>
+        Mudar(thrid, v =>
+        {
+            v.Parada = true;
+            v.Porque += "; parada por você";
+        });
+
+    private bool Mudar(string thrid, Action<VigiaDeThread> mudanca)
+    {
+        var vigias = Ler().ToList();
+        var alvo = vigias.FirstOrDefault(v => string.Equals(v.Thrid, thrid, StringComparison.Ordinal));
+        if (alvo == null) return false;
+
+        mudanca(alvo);
+        Gravar(vigias);
+        return true;
+    }
+
     public IReadOnlyList<VigiaDeThread> Ler()
     {
         try
@@ -124,11 +165,19 @@ public sealed class VigiasDoEmail
     }
 
     /// <summary>
-    /// Junta as conversas recém-respondidas às que já estavam vigiadas e joga fora as vencidas.
+    /// Junta as conversas recém-respondidas às que já estavam vigiadas.
     /// <para>
     /// Função pura sobre o que entra, para poder ser testada sem disco nem relógio da máquina.
-    /// Reencontrar uma conversa já vigiada RENOVA o prazo em vez de duplicá-la: continuar
-    /// respondendo é continuar esperando retorno.
+    /// Uma mensagem sua MAIS NOVA que a vigiada RENOVA o prazo em vez de duplicá-la: continuar
+    /// respondendo é continuar esperando retorno. A MESMA mensagem, relida da pasta de enviados
+    /// a cada passada, não mexe em nada — antes ela regravava a vigia, e isso desfaria o "+7
+    /// dias" e o "Parar de vigiar" na passada seguinte.
+    /// </para>
+    /// <para>
+    /// A VENCIDA FICA: ela é a conversa que ficou sem resposta, e é exatamente o que a lista
+    /// "Aguardando retorno" mostra em vermelho até você decidir. Sai a PARADA cuja mensagem já
+    /// passou da janela da pasta de enviados — dali em diante não há o que a ressuscite, e a
+    /// marca não tem mais o que impedir.
     /// </para>
     /// </summary>
     public static IReadOnlyList<VigiaDeThread> Atualizar(
@@ -140,13 +189,15 @@ public sealed class VigiasDoEmail
 
         foreach (var v in existentes ?? Array.Empty<VigiaDeThread>())
         {
-            if (string.IsNullOrWhiteSpace(v.Thrid) || v.Vencida(agoraUtc)) continue;
+            if (string.IsNullOrWhiteSpace(v.Thrid)) continue;
+            if (v.Parada && v.RespondidaEm < agoraUtc.AddDays(-(DiasDeVigia + 1))) continue;
             porThread[v.Thrid] = v;
         }
 
         foreach (var r in respondidas ?? Array.Empty<ThreadRespondida>())
         {
             if (string.IsNullOrWhiteSpace(r.Thrid)) continue;
+            if (porThread.TryGetValue(r.Thrid, out var ja) && r.QuandoUtc <= ja.RespondidaEm) continue;
 
             porThread[r.Thrid] = new VigiaDeThread
             {
@@ -164,4 +215,11 @@ public sealed class VigiasDoEmail
 /// <summary>Uma conversa em que o usuário escreveu, vinda de <c>[Gmail]/Sent</c>.</summary>
 /// <param name="Thrid">X-GM-THRID.</param>
 /// <param name="QuandoUtc">Quando ele escreveu.</param>
-public readonly record struct ThreadRespondida(string Thrid, DateTime QuandoUtc);
+/// <param name="Assunto">Do envelope. Sem ele a tela não tem como nomear a conversa que espera retorno.</param>
+/// <param name="Para">O primeiro destinatário, com "+N" quando há mais.</param>
+/// <param name="Abriu">
+/// Esta mensagem COMEÇOU a conversa: no Gmail, o X-GM-THRID é o X-GM-MSGID da primeira
+/// mensagem da thread. É o que dá o selo "Você iniciou".
+/// </param>
+public readonly record struct ThreadRespondida(
+    string Thrid, DateTime QuandoUtc, string Assunto = "", string Para = "", bool Abriu = false);

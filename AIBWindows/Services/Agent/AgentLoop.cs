@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AIB.Services.Ai;
+using AIB.Services.Tools;
 using OpenAI.Chat;
 
 namespace AIB.Services.Agent;
@@ -71,6 +72,16 @@ public sealed class AgentLoop
         _prefixTracker = new PromptPrefixTracker(_tokenCounter);
     }
 
+    /// <summary>
+    /// As configurações DESTE turno: as da conversa, ou — na conversa sobre um e-mail — as da
+    /// triagem. Ver <see cref="AgentTurnRequest.UsaTriagem"/>.
+    /// </summary>
+    private UserAppSettings Config(AgentTurnRequest request)
+    {
+        var settings = _settingsService.LoadSettings();
+        return request.UsaTriagem ? settings.ParaTriagem() : settings;
+    }
+
     public async IAsyncEnumerable<AgentEvent> RunAsync(
         AgentTurnRequest request,
         [EnumeratorCancellation] CancellationToken ct)
@@ -78,12 +89,14 @@ public sealed class AgentLoop
         if (request == null) throw new ArgumentNullException(nameof(request));
 
         var store = request.Store;
-        int maxTokens = LevelService.GetMaxTokensForLevel(request.UserLevel);
 
         // O teto é lido UMA vez, antes do laço. Reler a cada iteração deixaria o limite mudar
         // no meio de um turno se o usuário salvasse as configurações — um turno com regra
         // trocada na metade é pior de depurar que um turno com a regra velha.
-        int teto = _settingsService.LoadSettings().MaxTurnIterations;
+        var inicial = Config(request);
+        int teto = inicial.MaxTurnIterations;
+        int maxTokens = LevelService.GetMaxTokensForLevel(
+            request.UserLevel, request.UsaTriagem ? inicial.Janela() : ChatRequestOptions.JanelaAtual);
 
         // Chamadas que já falharam NESTE turno, e o erro de cada uma. Vive fora do laço porque
         // a repetição acontece ENTRE iterações: o modelo lê o erro, raciocina, e pede
@@ -101,7 +114,7 @@ public sealed class AgentLoop
             ct.ThrowIfCancellationRequested();
 
             // Uma leitura de settings por iteração, servida do cache do SettingsService.
-            var settings = _settingsService.LoadSettings();
+            var settings = Config(request);
             var provider = _providerFactory.GetProvider(settings);
 
             // Setting "EnableIntelligentTools": desliga todas as tool defs quando o usuário
@@ -284,13 +297,24 @@ public sealed class AgentLoop
                 {
                     pulso.FerramentaComecou(tc.Name);
                     yield return new AgentEvent.Technical($"[FERRAMENTA] Nome: {tc.Name} | Args: {tc.ArgumentsOrEmpty()}\n");
-                    yield return new AgentEvent.ToolStarted(tc.Id, tc.Name, tc.ArgumentsOrEmpty());
+                    // Uma operação do 'file' aparece na tela como a ferramenta antiga dela (ícone,
+                    // rótulo, cartão); o lote aparece como 'file'.
+                    var (naTela, argsNaTela) = FileTool.Simples(tc.Name, tc.ArgumentsOrEmpty());
+                    yield return new AgentEvent.ToolStarted(tc.Id, naTela, argsNaTela);
                 }
 
                 // EXECUÇÃO PARALELA: dispara todas e espera o conjunto. Em CPU lenta, três
                 // leituras de arquivo independentes rodam concorrentes em vez de seriadas.
+                //
+                // Task.Run: depois de um yield, o laço retoma na thread de quem pediu o próximo
+                // evento — a da interface. Ferramenta síncrona (grep, glob, o plano da doc) rodava
+                // ali: em 19/10/2026 o Shadow congelou ~10 s num grep em C:\Users\Carlo\CPAPS.
+                //
+                // Chamadas que dividem cartão (27 vezes a mesma habilidade, uma por tarefa) recebem
+                // a vaga ANTES de disparar: o grupo precisa saber quantas vão chegar.
+                var vagas = _toolRegistry.Agrupar(calls.Select(tc => (tc.Name, tc.ArgumentsOrEmpty())).ToList());
                 var results = await Task.WhenAll(
-                    calls.Select(tc => ExecuteToolPairedAsync(tc, request.UserLevel, pulso, jaFalharam, repeticoes)))
+                    calls.Select((tc, i) => Task.Run(() => ExecuteToolPairedAsync(tc, request.UserLevel, provider.Name, pulso, jaFalharam, repeticoes, request.Contexto, vagas[i]))))
                     .ConfigureAwait(false);
 
                 // Resultados na ordem original, mesmo que tenham terminado fora de ordem.
@@ -305,9 +329,10 @@ public sealed class AgentLoop
 
                     // O fracasso vem do resultado, não do artefato: ferramenta sem extrator
                     // próprio devolve artefato nulo mesmo quando deu erro.
+                    var (feita, argsFeita) = FileTool.Simples(tc.Name, tc.ArgumentsOrEmpty());
                     yield return new AgentEvent.ToolFinished(
-                        tc.Id, tc.Name, Memory.ArtifactExtractor.Falhou(result), artefato, result,
-                        tc.ArgumentsOrEmpty(), duracaoMs, esperaMs, decisao);
+                        tc.Id, feita, Memory.ArtifactExtractor.Falhou(result), artefato, result,
+                        argsFeita, duracaoMs, esperaMs, decisao);
 
                     // O modelo lê o erro com o recado no fim; a tela e o registro de ações, não.
                     // Leitura repetida no turno vai como aviso, e não como o texto de novo.
@@ -325,7 +350,7 @@ public sealed class AgentLoop
                 // antes pode dar certo agora — rodar o script de novo depois de recriar o template
                 // é exatamente o conserto, e não repetição. Desde que o shell passou a dizer
                 // quando falha, sem isto o bloqueio barraria a segunda execução.
-                if (results.Any(r => r.Tc.Name is Ferramentas.Gravar or Ferramentas.Editar or Ferramentas.Shell
+                if (results.Any(r => r.Tc.Name is Ferramentas.Gravar or Ferramentas.Editar or Ferramentas.Arquivo or Ferramentas.Shell
                                      && !Memory.ArtifactExtractor.Falhou(r.Result)))
                     jaFalharam.Clear();
 
@@ -444,7 +469,8 @@ public sealed class AgentLoop
     private static readonly HashSet<string> TrazemConteudo = new(StringComparer.Ordinal)
     {
         Ferramentas.Ler, Ferramentas.Buscar, Ferramentas.Procurar, Ferramentas.Shell,
-        Ferramentas.Habilidade, Ferramentas.Email, Ferramentas.LerEmail, Ferramentas.Navegador
+        Ferramentas.Habilidade, Ferramentas.Email, Ferramentas.LerEmail, Ferramentas.Navegador,
+        Ferramentas.Documento, Ferramentas.Pesquisar
     };
 
     /// <summary>
@@ -567,9 +593,17 @@ public sealed class AgentLoop
         + "Nada foi executado. Pare e responda ao usuário com o que já sabe, ou peça orientação.";
 
     private async Task<(ToolCallAccumulator Tc, string Result, string? Decisao, long DuracaoMs, long EsperaMs)> ExecuteToolPairedAsync(
-        ToolCallAccumulator tc, int userLevel, PulsoDoTurno pulso,
-        Dictionary<string, string> jaFalharam, Dictionary<string, int> repeticoes)
+        ToolCallAccumulator tc, int userLevel, string provedor, PulsoDoTurno pulso,
+        Dictionary<string, string> jaFalharam, Dictionary<string, int> repeticoes,
+        ContextoDoTurno? contexto = null, VagaNoCartao? vaga = null)
     {
+        // A repetição bloqueada volta antes do registry: a vaga sai aqui, ou o cartão do grupo
+        // esperaria por ela para sempre.
+        using var saida = vaga;
+
+        // Antes de tudo: segue pelos await até a ferramenta e o portão (ver ContextoDoTurno).
+        ContextoDoTurno.Atual = contexto;
+
         var relogio = System.Diagnostics.Stopwatch.StartNew();
         // REPETIÇÃO. Visto em produção: quatro chamadas idênticas a ler-planilha com o mesmo
         // caminho inexistente, cada uma custando um modal e um turno inteiro. O prompt de
@@ -580,19 +614,25 @@ public sealed class AgentLoop
         // .xls para .csv — e bloquear ali impediria a tentativa que agora daria certo.
         string assinatura = Assinatura(tc.Name, tc.ArgumentsOrEmpty());
 
-        if (jaFalharam.TryGetValue(assinatura, out string? antes))
+        // As chamadas do lote correm de verdade em paralelo (Task.Run no laço): os dois
+        // dicionários do turno são compartilhados, e a trava é a do jaFalharam.
+        string? aviso;
+        lock (jaFalharam)
         {
-            Console.WriteLine($"[REGISTRY] {tc.Name}: repetição bloqueada.");
-            return (tc, RecadoDeRepeticao(tc.Name, antes), "repeticao_bloqueada", relogio.ElapsedMilliseconds, 0);
-        }
+            if (jaFalharam.TryGetValue(assinatura, out string? antes))
+            {
+                Console.WriteLine($"[REGISTRY] {tc.Name}: repetição bloqueada.");
+                return (tc, RecadoDeRepeticao(tc.Name, antes), "repeticao_bloqueada", relogio.ElapsedMilliseconds, 0);
+            }
 
-        var (bloquear, aviso) = ContarRepeticao(repeticoes, assinatura);
-        if (bloquear)
-        {
-            Console.WriteLine($"[REGISTRY] {tc.Name}: teto de repetição no turno.");
-            string recado = RecadoDeTetoDeRepeticao(tc.Name, TetoDeRepeticao);
-            jaFalharam[assinatura] = Resumir(recado);
-            return (tc, recado, "repeticao_bloqueada", relogio.ElapsedMilliseconds, 0);
+            (bool bloquear, aviso) = ContarRepeticao(repeticoes, assinatura);
+            if (bloquear)
+            {
+                Console.WriteLine($"[REGISTRY] {tc.Name}: teto de repetição no turno.");
+                string recado = RecadoDeTetoDeRepeticao(tc.Name, TetoDeRepeticao);
+                jaFalharam[assinatura] = Resumir(recado);
+                return (tc, recado, "repeticao_bloqueada", relogio.ElapsedMilliseconds, 0);
+            }
         }
 
         string? decisao = null;
@@ -603,10 +643,10 @@ public sealed class AgentLoop
         string result = await _toolRegistry
             .ExecuteToolAsync(tc.Name, tc.ArgumentsOrEmpty(), userLevel,
                               ms => { esperaMs += ms; pulso.EsperaHumana(tc.Name, ms); },
-                              d => decisao = d)
+                              d => decisao = d, provedor, vaga)
             .ConfigureAwait(false);
 
-        if (Memory.ArtifactExtractor.Falhou(result)) jaFalharam[assinatura] = Resumir(result);
+        if (Memory.ArtifactExtractor.Falhou(result)) { lock (jaFalharam) jaFalharam[assinatura] = Resumir(result); }
         else if (aviso != null) result += aviso;
 
         return (tc, result, decisao, relogio.ElapsedMilliseconds, esperaMs);
@@ -638,22 +678,34 @@ public sealed class AgentLoop
     /// </summary>
     private static void TrackRecentFile(ToolCallAccumulator tc, string resultado)
     {
-        if (tc.Name is not (Ferramentas.Ler or Ferramentas.Gravar or Ferramentas.Editar)) return;
-        if (Memory.ArtifactExtractor.Falhou(resultado)) return;
-
-        try
+        // O 'file' aberto nas operações dela: num lote, cada gravação e edição que deu certo conta.
+        foreach (var (nome, args, deu) in FileTool.Abrir(tc.Name, tc.ArgumentsOrEmpty(), resultado))
         {
-            var dict = System.Text.Json.JsonSerializer
-                .Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(tc.ArgumentsOrEmpty());
+            if (nome is not (Ferramentas.Ler or Ferramentas.Gravar or Ferramentas.Editar or Ferramentas.Arquivos)) continue;
+            if (Memory.ArtifactExtractor.Falhou(deu)) continue;
 
-            string? path = dict != null && dict.TryGetValue("path", out var p)
-                           && p.ValueKind == System.Text.Json.JsonValueKind.String
-                ? p.GetString()
-                : null;
+            try
+            {
+                string path = Memory.ArtifactExtractor.StringDe(args, "path");
 
-            if (!string.IsNullOrEmpty(path)) ContextService.AddRecentFile(path);
+                // Mover, copiar e renomear: o arquivo agora está no destino. É por ele que a fala
+                // seguinte o cita, e é ele que o link da bolha procura (Ui.LinksDeArquivo).
+                if (nome == Ferramentas.Arquivos)
+                {
+                    string acao = Memory.ArtifactExtractor.StringDe(args, "action");
+                    string novo = Memory.ArtifactExtractor.StringDe(args, "new_name");
+                    path = acao switch
+                    {
+                        "copy" or "move" => Memory.ArtifactExtractor.StringDe(args, "destination"),
+                        "rename" when novo.Length > 0 => System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path) ?? "", novo),
+                        _ => ""
+                    };
+                }
+
+                if (path.Length > 0) ContextService.AddRecentFile(path);
+            }
+            catch { }
         }
-        catch { }
     }
 
     /// <summary>

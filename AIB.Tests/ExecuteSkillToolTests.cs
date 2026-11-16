@@ -292,6 +292,90 @@ namespace AIB.Tests
             prompt.Perguntas.Should().BeEmpty("ler um manual não executa nada");
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        // Várias chamadas, um cartão
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static string Chamada(string nome, string extra) =>
+            System.Text.Json.JsonSerializer.Serialize(new { skill_name = nome, arguments = extra });
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task AMesmaHabilidade_VariasVezesNoLote_PerguntaUmaVezSo(bool permitir)
+        {
+            // Visto no uso (21/10/2026): a Ellen pediu "-Acao tarefa -Id X" 27 vezes no mesmo
+            // turno, uma por tarefa, e vieram 27 cartões. Agora é um, com todos os IDs, e a
+            // resposta vale para as 27.
+            Instalar("bitrix", "powershell", script: "Write-Output \"ok $args\"");
+            var prompt = new PromptQueConta(permitir);
+            var registry = new ToolRegistry(prompt);
+
+            var chamadas = new[] { "419073", "419109", "417959" }
+                .Select(id => ("skill", Chamada("bitrix", $"-Acao tarefa -Id {id}")))
+                .Append(("read", "{\"path\":\"C:\\\\x.txt\"}"))
+                .ToList();
+            var vagas = registry.Agrupar(chamadas);
+            vagas.Count(v => v != null).Should().Be(3, "o read não divide cartão com ninguém");
+            vagas[3]?.Dispose();
+
+            var resultados = await Task.WhenAll(Enumerable.Range(0, 3).Select(i => Task.Run(() =>
+                registry.ExecuteToolAsync("skill", chamadas[i].Item2, 9, vaga: vagas[i]))));
+
+            prompt.Perguntas.Should().ContainSingle();
+            var uso = prompt.Perguntas[0].Habilidade!;
+            uso.Vezes.Should().Be(3);
+            uso.Pares.Should().Equal(("Acao", "tarefa"), ("Id", "419073,419109,417959"));
+
+            if (permitir)
+                resultados.Should().OnlyContain(r => r.Contains("ok -Acao tarefa -Id"));
+            else
+                resultados.Should().OnlyContain(r => r == ToolRegistry.RecusaDoUsuario);
+        }
+
+        [Fact]
+        public async Task QuemSaiDoGrupoSemPerguntar_NaoPrendeOCartaoDasOutras()
+        {
+            // A chamada barrada pelo piso, recusada no pré-voo ou bloqueada por repetição não
+            // chega ao cartão. Se o grupo esperasse por ela, o turno travava para sempre.
+            Instalar("bitrix", "powershell", script: "Write-Output 'ok'");
+            var prompt = new PromptQueConta(permitir: true);
+            var registry = new ToolRegistry(prompt);
+
+            var vagas = registry.Agrupar(new[]
+            {
+                ("skill", Chamada("bitrix", "-Id 1")), ("skill", Chamada("bitrix", "-Id 2"))
+            });
+            vagas[1]!.Dispose();
+
+            var r = await registry.ExecuteToolAsync("skill", Chamada("bitrix", "-Id 1"), 9, vaga: vagas[0])
+                .WaitAsync(TimeSpan.FromSeconds(30));
+
+            r.Should().Contain("ok");
+            prompt.Perguntas.Should().ContainSingle().Which.Habilidade!.Vezes.Should().Be(1);
+        }
+
+        [Fact]
+        public void ChamadasQueMudamEmMaisDeUmArgumento_ViramUmaLinhaCada()
+        {
+            // Juntar "-Acao tarefa -Id 1" e "-Acao comentarios -Id 2" em pares daria Acao "tarefa,
+            // comentarios" e Id "1,2" — o cartão não diria qual ação vai com qual tarefa.
+            var usos = new[] { "-Acao tarefa -Id 1", "-Acao comentarios -Id 2" }
+                .Select(l => new UsoDaHabilidade("bitrix", "", "s.ps1", ExecuteSkillTool.Pares(l)))
+                .ToList();
+
+            var junto = UsoDaHabilidade.Juntar(usos, new[] { "-Acao tarefa -Id 1", "-Acao comentarios -Id 2" });
+
+            junto.Vezes.Should().Be(2);
+            junto.Chamadas.Should().Equal("-Acao tarefa -Id 1", "-Acao comentarios -Id 2");
+
+            // Com a edição liberada (21/10/2026): dois títulos novos juntados por vírgula virariam
+            // um texto só, sem dizer onde um acaba.
+            var titulos = new[] { "-Id 1 -Titulo \"Trocar switch\"", "-Id 1 -Titulo \"Trocar cabo, rack\"" };
+            var usosT = titulos.Select(l => new UsoDaHabilidade("bitrix", "", "s.ps1", ExecuteSkillTool.Pares(l))).ToList();
+            UsoDaHabilidade.Juntar(usosT, titulos).Chamadas.Should().Equal(titulos);
+        }
+
         [Fact]
         public async Task SkillDeDocumentacao_ComEmailNoContexto_Pergunta()
         {

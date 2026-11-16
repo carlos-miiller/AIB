@@ -23,6 +23,7 @@ O AIB tem duas formas de verificação, com papéis diferentes:
 | Sessão e fatos | `new SessionMemory(id, raiz)`, `new FactStore(raiz)` |
 | E-mail | parâmetro `raizDeDados` de `MailVault`, `DiarioDeTriagem`, `ArquivoDeConversas`, `ConversasIgnoradas`, `EstadoDasCaixas`, `MarcoDoVigia`, `VigiasDoEmail`, `RegrasDoVigia.CaminhoPadrao` |
 | Chave do provedor | parâmetro `chaveDe` de `ChatProviderFactory` (não toca o cofre) |
+| Cofre de aliases | `Cofre.RaizPadrao` (desviado no `TestAuditRedirect`: todo `ToolRegistry` redige com ele); `new Cofre(raiz)` e `ToolRegistry { Cofre = … }` |
 | Registro de execução | parâmetro `pastaDeLogs` de `RegistroDeExecucao.Iniciar` |
 
 Os dois primeiros são desviados **antes de qualquer teste rodar**, por `[ModuleInitializer]` em `AIB.Tests/TestAuditRedirect.cs`. Não é fixture porque o xUnit roda classes em paralelo e um desvio por classe deixaria janelas em que outra classe ainda escreve no caminho real. O histórico entra junto porque fechar uma `ChatWindow` de teste arquiva a conversa.
@@ -55,6 +56,9 @@ Ao escrever uma classe nova que grava em disco, dê a ela a mesma porta — e us
   dotnet test AIB.Tests --filter Categoria=Integracao -l "console;verbosity=detailed"
   ```
 
+- **Modelos de documento.** Com `AIB_MODELOS=<caminho de AIBWindows\modelos>`, `GeradorDeModelos` refaz os
+  modelos que vêm com o AIB pela própria ferramenta doc (os `.txt` de descrição são à mão). Sem a
+  variável, não faz nada. `ModelosDoDocTests.ModelosDoAib_AbremEEnsinam` confere os arquivos do repositório.
 - **Imagens das telas.** Com `AIB_UI_PNG=1`, `WindowSmokeTests` salva um PNG de cada tela montada, em `AIB_UI_PNG_DIR` (padrão: a pasta temporária). Sem a variável, as telas são medidas e arranjadas, mas nada é gravado.
 
 ### Como rodar
@@ -103,10 +107,12 @@ dotnet run --project AIB.Avaliacao -- <rótulo> AIB.Avaliacao\resultados [opçõ
 | `--num-ctx N` | Outra janela, só nesta execução. |
 | `--sem-recado-de-falha` | Casos `falha-*` sem o recado que o laço acrescenta ao erro (`AgentLoop.RecadoDeFalha`) — a linha de base. |
 | `--sem-pendencias` | Caso `continuar` sem a seção de pendências na memória. |
+| `--afeto N` | O desvio do afeto (agora menos o de fábrica), para medir a linha "Convivência" do prompt: 0.75, 1.5, -0.75, -1.5. Sem a opção, zero: a linha não entra. |
+| `--habitos "faz X;-manda Y"` | Os hábitos firmes, para medir a linha "Jeitos da convivência" do prompt; `-` na frente é o que o usuário não gosta. Sem a opção, nenhum — e não os que o personagem tem hoje. |
 | `--conversa <pasta>` | Acrescenta os casos `mem-*`, sobre a memória gravada daquela sessão (`chapters.jsonl` e `acts.jsonl`, lidos de uma cópia). Para antes de chamar o modelo se a memória renderizar vazia. |
 | `--mostrar-memoria` | Com `--conversa`: imprime o bloco de memória e sai, sem chamar o modelo. |
 
-Os casos cobrem saudação, identidade da persona, data, conta, cada ferramenta (`write`, `read`, `glob`, `grep`, `skill`, `mail`, `shell`, `edit`), honestidade quando não há ferramenta (`sem-envio`, `sem-lembrete`), a segunda volta depois de uma falha ou recusa (`falha-edit`, `falha-recusa`), retomar depois da compactação (`continuar`) e obediência a ordem escondida num arquivo lido (`injecao-arquivo`). Alguns casos apontam para caminhos da máquina do dono (por exemplo, a pasta do repositório e uma planilha em Downloads) — como nada é executado, basta o modelo pedir a chamada certa.
+As chamadas `file` são abertas nas operações delas (`FileTool.Abrir`) antes da conferência: o caso que procura `write` passa com `file` `action=write`. Os casos cobrem saudação, identidade da persona, data, conta, cada ferramenta (`write`, `read`, `glob`, `grep`, `skill`, `mail`, `shell`, `edit`, e `doc` em planilha, soma, edição e formatação de planilha, Word e PDF — `planilha*`, `word`, `pdf`; na primeira rodada da formatação, 6/6, sempre começando por `info`), honestidade quando não há ferramenta (`sem-envio`, `sem-lembrete`), a segunda volta depois de uma falha ou recusa (`falha-edit`, `falha-recusa`), retomar depois da compactação (`continuar`), lote (`lote`: mover três arquivos numa resposta só, em `ops` ou em paralelo) e obediência a ordem escondida num arquivo lido (`injecao-arquivo`). Alguns casos apontam para caminhos da máquina do dono (por exemplo, a pasta do repositório e uma planilha em Downloads) — como nada é executado, basta o modelo pedir a chamada certa.
 
 Antes dos casos há um aquecimento fora da conta, que carrega o modelo e o prefixo e mede o custo frio do prompt. Cada caso tem teto de 12 minutos. O relatório traz casos aprovados, tokens do prompt, prefill, geração, caracteres de raciocínio e tempo de cada caso, e as respostas.
 

@@ -23,8 +23,9 @@ são invioláveis; o mecanismo está em `documentação/tecnica/03-ferramentas-e
   `fs`, `shell`, `skill`; o `browser` decide por ação (`ITool.PedeConfirmacao`): ler não pergunta,
   clicar, digitar, abrir site novo e anotar perguntam.
 - **"Sempre permitir"** vale só na sessão (em memória), e só para `shell` (casa o comando exato) e
-  `browser` (vale para o site, e nunca para ação decisiva: envio de formulário, abrir site novo,
-  anotar).
+  `browser` (vale para o site). Botão do navegador que decide algo (aprovar, salvar, enviar,
+  apagar…) fica fora do "sempre" do site: só entra num "sempre" próprio, daquele botão naquele
+  site, marcado segurando a caixa por 5 s. Abrir site novo e anotar perguntam sempre.
 - **Nível**: ferramenta acima do nível do usuário some do schema (`GetActiveTools`) e é negada na
   execução. Ferramenta nova e perigosa pede `RequiredLevel` alto.
 
@@ -87,6 +88,11 @@ são invioláveis; o mecanismo está em `documentação/tecnica/03-ferramentas-e
 ## 5. Dados e registros
 
 - Todo dado do usuário fica em `~/.AIB` (`DirectoryService.DataDir`).
+- **Conversa, fato e lembrete só vão para o disco cifrados** (`ArquivoCifrado`, DPAPI da conta):
+  `raw.jsonl`, capítulos, atos, `facts.md` e seu índice, `chat_history.json`, `lembretes.json`,
+  `turno-aberto.json`, e o estado da iniciativa. Arquivo novo com esse tipo de conteúdo grava e lê
+  por `ArquivoCifrado`, nunca por `File.WriteAllText`. A cifra não sobrevive a reinstalação do
+  Windows: o backup é a exportação em texto claro da aba Memória (`CifraDaMemoria.Exportar`).
 - **Ler dentro de `~/.AIB` não é livre** (`DadosProtegidos`, valendo para `read`, `grep` e `glob`):
   `credentials/`, `profile.dat` e `navegador/perfil/` são **negados**, sem cartão; `skills/`,
   `character/` e `navegador/notas/` são livres; todo o resto (memória, logs, e-mail) **pede

@@ -365,7 +365,8 @@ namespace AIB.Tests
                 janela.Falas.Should().HaveCount(12, "nada e descartado");
                 janela.Falas[0].Texto.Should().Be("pergunta 1", "a mais antiga continua la");
 
-                rolo.MaxHeight.Should().Be(450, "o limite e de altura, nao de contagem");
+                // Era 450; o usuário pediu uns 35% a mais: "está muito pequeno".
+                rolo.MaxHeight.Should().Be(608, "o limite e de altura, nao de contagem");
                 rolo.VerticalScrollBarVisibility.Should().Be(ScrollBarVisibility.Hidden,
                     "a rolagem e invisivel: a roda do mouse basta");
 
@@ -470,6 +471,29 @@ namespace AIB.Tests
                 palco.Measure(infinito);
 
                 palco.DesiredSize.Height.Should().Be(parado);
+
+                janela.Close();
+            });
+        }
+
+        [Fact]
+        public void ABarraEAsBolhas_SaoVintePorCentoMaisLargas()
+        {
+            // Pedido: "deixe ele 20% mais largo também (a caixa de texto também)". Eram 520 de
+            // barra, 380 e 440 de bolha. O palco tem a largura da barra; a janela tem de
+            // acompanhar, e isso quem confere é o ensaio seguinte.
+            WpfHost.EmSta(() =>
+            {
+                WpfHost.GarantirRecursos();
+                var janela = Nova();
+
+                ((Grid)janela.FindName("Palco")).Width.Should().Be(624);
+
+                janela.AbrirBarra();
+                janela.RestaurarFalas(new[] { (true, "pergunta"), (false, "resposta") });
+                janela.MostrarFala("outra");
+                janela.UpdateLayout();
+                janela.ElementoDaFala(1, "Balao")!.MaxWidth.Should().Be(528, "a bolha dela");
 
                 janela.Close();
             });

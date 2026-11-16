@@ -119,8 +119,10 @@ namespace AIB.Tests
             var prompt = new PromptFalso(permitir: false);
             var registry = new ToolRegistry(prompt);
 
+            // "..\": relativo, mas fora da pasta do programa (a do binário de teste), que as
+            // ferramentas não gravam (PastasDoAib). O cartão é negado: nada é gravado.
             await registry.ExecuteToolAsync(
-                "write", "{\"path\":\"arquivo.txt\",\"content\":\"oi\"}", userLevel: 9);
+                "write", "{\"path\":\"..\\\\arquivo.txt\",\"content\":\"oi\"}", userLevel: 9);
 
             prompt.Perguntas.Should().HaveCount(1);
             prompt.Perguntas[0].Command.Should().MatchRegex(@"^(CRIAR|SOBRESCREVER) [A-Za-z]:\\",

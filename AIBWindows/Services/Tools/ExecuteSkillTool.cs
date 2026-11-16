@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -53,6 +55,45 @@ public class ExecuteSkillTool : ITool
         new(StringComparer.OrdinalIgnoreCase);
 
     public string Name => Ferramentas.Habilidade;
+
+    private readonly Func<Cofre> _cofre;
+
+    /// <param name="cofre">De onde vêm os segredos que a habilidade declara em <c>cofre:</c>. Por
+    /// padrão, o do usuário (que os testes desviam).</param>
+    public ExecuteSkillTool(Func<Cofre>? cofre = null)
+    {
+        _cofre = cofre ?? (() => new Cofre());
+    }
+
+    /// <summary>
+    /// Os segredos que a habilidade declara e, quando não pode rodar, o porquê.
+    /// <para>
+    /// Pedido do usuário (20/10/2026): uma habilidade do Bitrix "para ela não ter acesso
+    /// irrestrito à API". O webhook vai para a habilidade, que só faz as operações dela, e não
+    /// para o shell. Declarar <c>cofre: bitrix</c> não basta: o segredo tem de liberar a
+    /// habilidade pelo nome (Configurações › Cofre), senão uma habilidade nova, escrita até pela
+    /// própria IA, herdaria a chave.
+    /// </para>
+    /// </summary>
+    private (IReadOnlyList<Alias> Usados, string? Recusa) CofreDaHabilidade(LocalSkill skill)
+    {
+        if (skill.Cofre.Count == 0) return (Array.Empty<Alias>(), null);
+
+        var cofre = _cofre();
+        var usados = new List<Alias>();
+        foreach (string nome in skill.Cofre)
+        {
+            var a = cofre.Achar(nome);
+            if (a == null)
+                return (usados, $"ERRO: a habilidade '{skill.Name}' usa o segredo '{nome}', que não está no cofre. "
+                                + "Diga ao usuário para guardá-lo em Configurações › Cofre; não peça o valor no chat.");
+            if (!a.Libera(skill.Name))
+                return (usados, $"ACESSO NEGADO: o segredo '{nome}' não libera a habilidade '{skill.Name}' "
+                                + "(Configurações › Cofre › Habilidades). Nada foi executado. Diga isso ao usuário.");
+            usados.Add(a);
+        }
+        return (usados, null);
+    }
 
     public string Description =>
         "Executa uma habilidade instalada, pelo nome exato da lista do prompt de sistema; "
@@ -138,13 +179,57 @@ public class ExecuteSkillTool : ITool
                 Tool = Name,
                 Command = ComandoDoScript(skill, extra),
                 Level = userLevel,
-                Cwd = skill.Folder
+                Cwd = skill.Folder,
+                Habilidade = new UsoDaHabilidade(skill.Name, PrimeiraFrase(skill.Description),
+                                                 skill.ScriptPath, Pares(extra)),
+                Cofre = CofreDaHabilidade(skill).Usados.Select(u => new UsoDoCofre(u.Nome, u.Descricao, u.Hosts)).ToList()
             };
         }
         catch (JsonException)
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// As chamadas à mesma habilidade no mesmo lote dividem um cartão. Visto no uso (21/10/2026):
+    /// a Ellen pediu o bitrix 27 vezes no mesmo turno, uma por tarefa, em vez de uma chamada com
+    /// os 27 IDs, e vieram 27 cartões. Habilidade só de manual não pede cartão: fica de fora.
+    /// </summary>
+    public string? ChaveDoCartao(string argumentsJson)
+    {
+        var skill = SkillService.Find(Argumentos(argumentsJson)?.Nome);
+        return skill == null || SoManual(skill) ? null : skill.Name;
+    }
+
+    /// <summary>
+    /// Um cartão para as N chamadas: o nome com a contagem e os argumentos de todas (ver
+    /// <see cref="UsoDaHabilidade.Juntar"/>). Cada chamada continua autorizada pelo SEU contexto
+    /// na execução; este só vai à tela.
+    /// </summary>
+    public CommandConfirmationContext JuntarNoCartao(IReadOnlyList<CommandConfirmationContext> contextos)
+    {
+        var primeiro = contextos[0];
+        var usos = contextos.Select(c => c.Habilidade
+            ?? throw new InvalidOperationException("Chamada de habilidade sem a descrição para o cartão.")).ToList();
+        string script = usos[0].Script;
+        var linhas = contextos.Select(c => c.Command ?? "")
+            .Select(l => l.StartsWith(script, StringComparison.Ordinal) ? l[script.Length..].Trim() : l)
+            .ToList();
+
+        return new CommandConfirmationContext
+        {
+            Tool = Name,
+            Command = string.Join("\n", contextos.Select(c => c.Command)),
+            Level = primeiro.Level,
+            Cwd = primeiro.Cwd,
+            Habilidade = UsoDaHabilidade.Juntar(usos, linhas),
+            Cofre = contextos.SelectMany(c => c.Cofre).GroupBy(u => u.Nome).Select(g => g.First()).ToList(),
+            Aviso = string.Join("\n", contextos.Select(c => c.Aviso).Where(a => a.Length > 0).Distinct()),
+            ConteudoDeEmailNoContexto = contextos.Any(c => c.ConteudoDeEmailNoContexto),
+            EmailNoContexto = contextos.Any(c => c.EmailNoContexto),
+            SemSempre = contextos.Any(c => c.SemSempre)
+        };
     }
 
     public ChatTool ChatToolDefinition => ChatTool.CreateFunctionTool(
@@ -197,6 +282,7 @@ public class ExecuteSkillTool : ITool
 
         var skill = SkillService.Find(a.Value.Nome);
         if (skill == null) return NaoEncontrada(a.Value.Nome);
+        if (!SoManual(skill) && CofreDaHabilidade(skill).Recusa is string recusa) return recusa;
 
         // O manual não recebe argumento nenhum: não há caminho a conferir.
         if (SoManual(skill) || a.Value.Extra.Length == 0) return null;
@@ -216,6 +302,60 @@ public class ExecuteSkillTool : ITool
     }
 
     /// <summary><c>skill_name</c> e <c>arguments</c>, ou null quando o JSON é ilegível.</summary>
+    /// <summary>
+    /// A frase de abertura da descrição: o que a habilidade faz. O resto costuma ser o manual
+    /// dos argumentos, escrito para o modelo, e não cabe num cartão.
+    /// </summary>
+    public static string PrimeiraFrase(string descricao)
+    {
+        string d = (descricao ?? "").Trim();
+        int fim = d.IndexOf(". ", StringComparison.Ordinal);
+        return fim < 0 ? d : d[..(fim + 1)];
+    }
+
+    /// <summary>
+    /// Os argumentos da linha de comando em pares, para o cartão: <c>-Acao listar -Id 7</c>
+    /// vira (Acao, listar), (Id, 7). Chave sem valor é uma chave; valor sem chave fica com a
+    /// chave vazia. Aspas agrupam. Só leitura para a tela: o que roda é a linha original.
+    /// </summary>
+    public static IReadOnlyList<(string Chave, string Valor)> Pares(string extra)
+    {
+        var termos = new List<string>();
+        var atual = new StringBuilder();
+        char? aspa = null;
+        bool tem = false;
+        foreach (char c in extra ?? "")
+        {
+            if (aspa != null)
+            {
+                if (c == aspa) aspa = null; else atual.Append(c);
+            }
+            else if (c is '"' or '\'') { aspa = c; tem = true; }
+            else if (char.IsWhiteSpace(c))
+            {
+                if (tem || atual.Length > 0) termos.Add(atual.ToString());
+                atual.Clear();
+                tem = false;
+            }
+            else atual.Append(c);
+        }
+        if (tem || atual.Length > 0) termos.Add(atual.ToString());
+
+        // "-7" é número, não chave.
+        static bool Chave(string t) => t.Length > 1 && t[0] == '-' && !char.IsDigit(t.TrimStart('-').FirstOrDefault());
+
+        var pares = new List<(string, string)>();
+        for (int i = 0; i < termos.Count; i++)
+        {
+            if (!Chave(termos[i])) { pares.Add(("", termos[i])); continue; }
+
+            string chave = termos[i].TrimStart('-');
+            if (i + 1 < termos.Count && !Chave(termos[i + 1])) pares.Add((chave, termos[++i]));
+            else pares.Add((chave, ""));
+        }
+        return pares;
+    }
+
     private static (string Nome, string Extra)? Argumentos(string argumentsJson)
     {
         try
@@ -385,6 +525,18 @@ public class ExecuteSkillTool : ITool
         // "Recepção São José" voltou de uma skill de planilha como "Recep��o S�o Jos�".
         inicio.Environment["PYTHONIOENCODING"] = "utf-8";
 
+        // Os segredos entram só neste processo, depois da autorização. Conferido de novo: o
+        // usuário pode ter tirado a habilidade do segredo com o cartão aberto.
+        var (usados, recusa) = CofreDaHabilidade(skill);
+        if (recusa != null) return recusa;
+        if (usados.Count > 0)
+        {
+            var cofre = _cofre();
+            foreach (var (variavel, valor) in cofre.Variaveis(usados.Select(u => u.Nome)))
+                inicio.Environment[variavel] = valor;
+            cofre.RegistrarUso(usados.Select(u => u.Nome));
+        }
+
         Console.WriteLine($"[SKILL] Executando '{skill.Name}': {inicio.FileName} {inicio.Arguments}");
 
         try
@@ -450,5 +602,55 @@ public class ExecuteSkillTool : ITool
         {
             return $"ERRO ao executar a habilidade '{skill.Name}': {ex.Message}";
         }
+    }
+}
+
+/// <summary>
+/// A habilidade que o cartão descreve: o nome, o que ela faz, o script que roda e os argumentos
+/// em pares. Antes o cartão mostrava só a linha de comando, como num comando de shell qualquer.
+/// </summary>
+/// <param name="Vezes">Quantas chamadas o cartão autoriza (ver <see cref="Juntar"/>).</param>
+/// <param name="Chamadas">A linha de cada chamada, quando os pares não se deixam juntar sem
+/// ambiguidade. Null: os <see cref="Pares"/> dizem tudo.</param>
+public sealed record UsoDaHabilidade(
+    string Nome,
+    string Descricao,
+    string Script,
+    IReadOnlyList<(string Chave, string Valor)> Pares,
+    int Vezes = 1,
+    IReadOnlyList<string>? Chamadas = null)
+{
+    /// <summary>
+    /// As N chamadas num cartão. Quando só UM argumento muda de uma para outra (o caso do lote:
+    /// <c>-Acao tarefa -Id 1</c>, <c>-Acao tarefa -Id 2</c>...), os pares se juntam e o que muda
+    /// vira lista — o cartão fica igual ao de uma chamada com todos os IDs. Mudando mais de um,
+    /// ou com vírgula ou espaço dentro do valor (um título, uma descrição), juntar perderia qual
+    /// valor vai com qual: aí o cartão lista as chamadas, uma por linha.
+    /// </summary>
+    public static UsoDaHabilidade Juntar(IReadOnlyList<UsoDaHabilidade> usos, IReadOnlyList<string> linhas)
+    {
+        var primeiro = usos[0];
+        var chaves = primeiro.Pares.Select(p => p.Chave).ToList();
+
+        if (usos.All(u => u.Pares.Select(p => p.Chave).SequenceEqual(chaves)))
+        {
+            var mudam = Enumerable.Range(0, chaves.Count)
+                .Where(i => usos.Select(u => u.Pares[i].Valor).Distinct().Count() > 1)
+                .ToList();
+
+            if (mudam.Count == 0
+                || (mudam.Count == 1 && usos.All(u => u.Pares[mudam[0]].Valor is var v
+                                                      && !v.Contains(',') && !v.Any(char.IsWhiteSpace))))
+            {
+                var pares = primeiro.Pares
+                    .Select((p, i) => mudam.Contains(i)
+                        ? (p.Chave, string.Join(",", usos.Select(u => u.Pares[i].Valor)))
+                        : p)
+                    .ToList();
+                return primeiro with { Pares = pares, Vezes = usos.Count };
+            }
+        }
+
+        return primeiro with { Vezes = usos.Count, Chamadas = linhas };
     }
 }
