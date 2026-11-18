@@ -350,6 +350,18 @@ public sealed class FileTool : ITool
         };
     }
 
+    /// <summary>
+    /// As chamadas <c>file</c> pedidas na mesma resposta dividem um cartão, com um Permitir e um
+    /// Recusar por chamada, como as gravações da doc. Pedido do usuário (18/11/2026). Elas
+    /// continuam rodando ao mesmo tempo, sem ordem entre si; a ordem é a do <c>ops</c>, dentro de
+    /// uma chamada (que entra no cartão como um item só: o lote se aprova inteiro).
+    /// </summary>
+    public string? ChaveDoCartao(string argumentsJson) => "arquivo";
+
+    /// <summary>Um bloco por chamada; cada uma continua autorizada pelo SEU contexto na execução.</summary>
+    public CommandConfirmationContext JuntarNoCartao(IReadOnlyList<CommandConfirmationContext> contextos) =>
+        CommandConfirmationContext.Juntar(Name, contextos);
+
     /// <summary>As linhas de um cartão de lote, sem o "N. " da frente.</summary>
     public static IReadOnlyList<string> LinhasDoLote(string? comando) =>
         (comando ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries)

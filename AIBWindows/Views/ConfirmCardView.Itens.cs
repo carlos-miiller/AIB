@@ -13,7 +13,8 @@ namespace AIB.Views;
 /// Várias gravações de documento num cartão só, cada arquivo com o seu Permitir e Recusar —
 /// mockup "Edição de documentos do AIB", cena "Várias mudanças de uma vez" (11/11/2026). Pedido do
 /// usuário: a Ellen editava a mesma planilha em várias chamadas seguidas, e cada uma abria o seu
-/// cartão (8 num dia na planilha de comparação).
+/// cartão (8 num dia na planilha de comparação). Desde 18/11/2026, também os comandos do shell e
+/// as chamadas da file da mesma resposta, com título e texto próprios.
 /// <para>
 /// O botão de baixo confirma o que ficou marcado: arquivo sem marca vai junto, e "Recusar tudo"
 /// recusa todos. As posições recusadas vão para <see cref="CommandConfirmationContext.Recusados"/>
@@ -35,10 +36,21 @@ public partial class ConfirmCardView
         _juntado = juntado;
         _marcas = new bool?[itens.Count];
 
-        TituloText.Text = $"Gravar em {itens.Count} documentos?";
-        ConsequenciaText.Text = "Cada arquivo tem o seu Permitir e Recusar; o botão de baixo confirma o que ficou "
-                                + "marcado, e arquivo sem marca vai junto. Em cada arquivo é tudo ou nada: se uma "
-                                + "mudança falhar, aquele arquivo fica como estava.";
+        (TituloText.Text, ConsequenciaText.Text) = juntado.Tool switch
+        {
+            Ferramentas.Shell => ($"Rodar {itens.Count} comandos?",
+                "Cada comando tem o seu Permitir e Recusar; o botão de baixo confirma o que ficou marcado, e "
+                + "comando sem marca vai junto. Os permitidos rodam AO MESMO TEMPO, no seu PowerShell, com as "
+                + "suas permissões: nenhum espera o outro. O AIB não desfaz o que eles fizerem."),
+            Ferramentas.Arquivo => ($"Fazer {itens.Count} mudanças em arquivos?",
+                "Cada item tem o seu Permitir e Recusar; o botão de baixo confirma o que ficou marcado, e item "
+                + "sem marca vai junto. Os permitidos rodam ao mesmo tempo; um lote roda na ordem dele e para "
+                + "na primeira falha. Mover e copiar nunca sobrescrevem, apagar vai para a Lixeira."),
+            _ => ($"Gravar em {itens.Count} documentos?",
+                "Cada arquivo tem o seu Permitir e Recusar; o botão de baixo confirma o que ficou marcado, e "
+                + "arquivo sem marca vai junto. Em cada arquivo é tudo ou nada: se uma mudança falhar, aquele "
+                + "arquivo fica como estava.")
+        };
 
         // Cada bloco mostra o seu caminho; a lista de comandos fica para o histórico e a auditoria.
         AlvoBorder.Visibility = Visibility.Collapsed;
@@ -47,10 +59,7 @@ public partial class ConfirmCardView
         for (int i = 0; i < itens.Count; i++)
         {
             var item = itens[i];
-            string comando = item.Command ?? "";
-            int espaco = comando.IndexOf(' ');
-            string verbo = espaco > 0 ? comando[..espaco] : "";
-            string caminho = espaco > 0 ? comando[(espaco + 1)..] : comando;
+            var (verbo, caminho, detalhe) = Cabecalho(juntado.Tool, item);
 
             var topo = new Grid();
             topo.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -87,8 +96,9 @@ public partial class ConfirmCardView
             }
             else
             {
-                var previa = Texto(item.ScriptBody ?? "", "TextBodyBrush", mono: true);
+                var previa = Texto(detalhe, "TextBodyBrush", mono: true);
                 previa.Margin = new Thickness(0, 6, 0, 0);
+                if (detalhe.Length == 0) previa.Visibility = Visibility.Collapsed;
                 corpo = previa;
             }
 
@@ -108,6 +118,32 @@ public partial class ConfirmCardView
 
         RecusarButton.Content = "Recusar tudo";
         Atualizar();
+    }
+
+    /// <summary>
+    /// O rótulo, a linha de cima e o que vai embaixo de um item. Comando: a primeira linha em cima,
+    /// e o comando inteiro embaixo quando não cabe nela. Lote do <c>file</c>: as operações em ordem,
+    /// e as prévias. Operação ou documento: o verbo ("CRIAR", "EDITAR") e o caminho.
+    /// </summary>
+    private static (string Verbo, string Alvo, string Detalhe) Cabecalho(string ferramenta, CommandConfirmationContext item)
+    {
+        string comando = item.Command ?? "";
+        string previa = item.ScriptBody ?? "";
+
+        if (ferramenta == Ferramentas.Shell)
+        {
+            string primeira = comando.Split('\n')[0].TrimEnd('\r');
+            return ("PS", primeira, primeira.Length == comando.Length && comando.Length <= 70 ? "" : comando);
+        }
+
+        if (comando.Contains('\n'))
+        {
+            int n = comando.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
+            return ("LOTE", $"{n} operações, em ordem", previa.Length > 0 ? comando + "\n\n" + previa : comando);
+        }
+
+        int espaco = comando.IndexOf(' ');
+        return espaco > 0 ? (comando[..espaco], comando[(espaco + 1)..], previa) : ("", comando, previa);
     }
 
     private static Button Mini(string texto, Action aoClicar)
