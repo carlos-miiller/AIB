@@ -26,8 +26,7 @@ public static class LeitorDePlanilha
     private static Pasta AbrirXlsx(string caminho)
     {
         // Compartilhando leitura e escrita: o Excel aberto com o arquivo não impede a leitura.
-        using var fs = new FileStream(caminho, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using var wb = new XLWorkbook(fs);
+        using var wb = AberturaDePlanilha.Abrir(caminho);
 
         var abas = new List<Grade>();
         long celulas = 0;

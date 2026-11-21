@@ -72,7 +72,8 @@ commit**. `Regras de Identidade/` (SEGURANCA, CODIGO_LIMPO, VISUAL) são regras,
   confere (SHA-256); o original vai para `~/.AIB/doc-backups` (5 versões, 3 meses). Word se edita
   como controle de alterações. O ClosedXML regrava xlsx SEM gráfico,
   tabela dinâmica e macro (por isso a recusa) e, ao apagar linha, desloca referências em vez de
-  `#REF!` (por isso `AnularReferencias`).
+  `#REF!` (por isso `AnularReferencias`). Também não regrava a regra condicional de texto
+  (containsText), por isso planilha se abre por `AberturaDePlanilha`.
 - **Shell e senhas** (`Services/Terminal/`): o PowerShell roda sem console e com a entrada
   fechada; ssh/scp/git pedem senha pelo askpass, que é o próprio `AIB.exe` (detectado no topo de
   `OnStartup`) falando por pipe nomeado com a instância que rodou o comando.

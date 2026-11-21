@@ -943,7 +943,13 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   escala de cores, barra de dados, ícones) e `clear_conditional`. Regra nova na mesma faixa
   substitui a que o arquivo JÁ tinha, nunca uma criada no mesmo pedido (`Processar(…, criadas)`):
   "verde se < 0" e "vermelho se > 0" na mesma faixa, num edit só, ficam as duas — antes a segunda
-  apagava a primeira (26/10/2026). Cor em `#RRGGBB` ou nome em
+  apagava a primeira (26/10/2026). O "texto contém" grava uma regra de **fórmula**
+  (`NOT(ISERROR(SEARCH("texto",H2)))`, a mesma busca do Excel), e não a containsText do
+  `WhenContains`: o ClosedXML regrava o texto da containsText como fórmula, e "contém 'Crítica
+  (P0)'" fazia a edição seguinte do arquivo falhar ("The formula … wasn't parsed correctly",
+  21/11/2026). Arquivo que já tem regra de texto (contém, não contém, começa, termina com), feito
+  pela doc antes ou pelo Excel, abre por `AberturaDePlanilha`, que a troca em memória pela regra de
+  fórmula que vem junto; o leitor, o `layout` e o editor abrem por ali. Cor em `#RRGGBB` ou nome em
   português; cor desconhecida é erro, sem cartão. Uma linha do plano por faixa, com a amostra
   (`Aparencia`: a primeira célula como o Excel vai mostrá-la) e a descrição em palavras; a regra
   condicional diz quais células ela atinge hoje. Só aparência → sem recálculo nem efeito nas
