@@ -210,6 +210,17 @@ trecho para fora da mensagem fecha o alerta. O turno do orbe (janela escondida) 
 e-mail só ganham a troca silenciosa: um não tem onde mostrar o alerta, e o texto do outro é de
 terceiros. Senha solta, sem formato nem nome por perto, passa.
 
+### Corretor ortográfico
+
+`ChatWindow.Ortografia.cs`. A caixa de mensagem usa o `SpellCheck` do WPF em pt-BR, que chama o
+corretor do próprio Windows: sem rede e sem modelo. Sem o pacote de idioma pt-BR no Windows,
+nada fica sublinhado. O botão direito monta um menu próprio, porque o do WPF não tem
+"adicionar". Se houver uma palavra sublinhada no ponto clicado (ou no cursor, pelo Shift+F10), o
+menu mostra até cinco sugestões em negrito, que trocam a palavra, e "Adicionar ao dicionário".
+Recortar, Copiar e Colar aparecem sempre. Adicionar grava a palavra em `~/.AIB/dicionario.lex` e
+registra o arquivo de novo na caixa: o WPF só lê o arquivo ao registrar, e sem isso a palavra
+continuaria sublinhada.
+
 ### Cartão de confirmação na conversa
 
 `App` conecta `ChatConfirmationPrompt` a `ChatWindow.PerguntarConfirmacaoAsync`. Antes dessa

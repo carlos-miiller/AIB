@@ -48,6 +48,7 @@ public partial class ChatWindow : Window
     public ChatWindow(ConversationService conversation, SettingsService settingsService)
     {
         InitializeComponent();
+        LigarOrtografia();
         _settingsService = settingsService;
         _conversation = conversation;
         _conversation.OnTokenCountChanged += UpdateTokenCounterUI;
