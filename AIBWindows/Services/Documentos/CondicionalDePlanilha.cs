@@ -102,7 +102,7 @@ public static class CondicionalDePlanilha
             "between" => val1 is double d1 && val2 is double d2
                 ? cf.WhenBetween(d1, d2)
                 : cf.WhenBetween(val1?.ToString() ?? "", val2?.ToString() ?? ""),
-            "contains" => cf.WhenContains(val1?.ToString() ?? ""),
+            "contains" => cf.WhenIsTrue(BuscaDeTexto(faixa, val1?.ToString() ?? "")),
             "duplicates" => cf.WhenIsDuplicate(),
             "unique" => cf.WhenIsUnique(),
             _ => throw new ErroDeDocumento($"operação {opIndex}: 'when' desconhecido: '{when}'. Use >, <, >=, <=, =, !=, between, contains, duplicates ou unique.")
@@ -167,6 +167,24 @@ public static class CondicionalDePlanilha
         var mudanca = new Mudanca(TipoDeMudanca.Valor, faixa.RangeAddress.ToString() ?? "", antes, depois, AmostraDepois: amostraDepois);
         return (mudanca, cf);
     }
+
+    /// <summary>
+    /// O "contém" como regra de fórmula, com a mesma busca que o Excel grava no dele:
+    /// <c>NOT(ISERROR(SEARCH("texto",H2)))</c>, a partir da primeira célula da faixa.
+    /// <para>
+    /// Não é <c>WhenContains</c> porque o ClosedXML não relê o que ele grava: o texto vai no
+    /// atributo <c>text</c> da regra containsText, e na leitura vira fórmula. Visto em 21/11/2026:
+    /// "contém 'Crítica (P0)'" gravou, e a edição seguinte do checklist da Ellen falhou ao abrir
+    /// ("The formula `Crítica (P0)` wasn't parsed correctly").
+    /// </para>
+    /// </summary>
+    private static string BuscaDeTexto(IXLRange faixa, string texto) =>
+        $"NOT(ISERROR(SEARCH(\"{texto.Replace("\"", "\"\"")}\",{faixa.FirstCell().Address.ToStringRelative()})))";
+
+    // A busca acima, lida de volta: o texto procurado, para o cartão dizer "texto contém".
+    private static readonly System.Text.RegularExpressions.Regex BuscaGravada =
+        new(@"^=?NOT\(ISERROR\(SEARCH\(""((?:[^""]|"""")*)"",\s*\$?[A-Z]{1,3}\$?\d+\)\)\)$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     private static (Mudanca, IXLConditionalFormat) ProcessarScale(
         IXLRange faixa, string scale, string antes, IXLConditionalFormat cf, int opIndex)
@@ -356,6 +374,13 @@ public static class CondicionalDePlanilha
         if (cf.ConditionalFormatType == XLConditionalFormatType.ContainsText)
         {
             string val = cf.Values.Count > 0 ? cf.Values[1].Value : "";
+            string estilo = DescreverEstiloRegra(cf.Style);
+            return estilo.Length > 0 ? $"texto contém \"{val}\" → {estilo}" : $"texto contém \"{val}\"";
+        }
+        if (cf.ConditionalFormatType == XLConditionalFormatType.Expression && cf.Values.Count > 0
+            && BuscaGravada.Match(cf.Values[1].Value ?? "") is { Success: true } busca)
+        {
+            string val = busca.Groups[1].Value.Replace("\"\"", "\"");
             string estilo = DescreverEstiloRegra(cf.Style);
             return estilo.Length > 0 ? $"texto contém \"{val}\" → {estilo}" : $"texto contém \"{val}\"";
         }

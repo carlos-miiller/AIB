@@ -41,6 +41,7 @@ O AIB não usa pasta temporária.
 ├── chat_history.json                conversas arquivadas, para o painel (cifrado)
 ├── lembretes.json                   lembretes únicos pendentes (ferramenta remind; cifrado)
 ├── iniciativa.dat                   iniciativa: faixas de horário e contagens do dia (DPAPI)
+├── dicionario.lex                   palavras que o usuário adicionou ao corretor da caixa de mensagem (UTF-16, uma por linha)
 ├── credentials/
 │   ├── openrouter.bin               chave do OpenRouter (DPAPI)
 │   ├── mail/<sha256>.bin            senha de app de cada caixa (DPAPI)

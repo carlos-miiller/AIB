@@ -883,8 +883,7 @@ public static class EditorDePlanilha
         var mem = new MemoryStream();
         fs.CopyTo(mem);
         byte[] bytes = mem.ToArray();
-        mem.Position = 0;
-        return (new XLWorkbook(mem), null, bytes);
+        return (AberturaDePlanilha.Abrir(bytes), null, bytes);
     }
 
     private static string SemCaracteresProibidos(string nome)

@@ -1,4 +1,7 @@
-﻿namespace AIB.Services {
+﻿using System.Collections.Generic;
+using System.Linq;
+
+namespace AIB.Services {
     public class CommandConfirmationContext {
         public string Command { get; set; } = "";
         public string Tool { get; set; } = "";
@@ -83,5 +86,34 @@
         /// cartão preenche antes de responder; o grupo lê depois, e recusa só essas chamadas.
         /// </summary>
         public System.Collections.Generic.ISet<int> Recusados { get; } = new System.Collections.Generic.HashSet<int>();
+
+        /// <summary>
+        /// O cartão de várias chamadas da mesma ferramenta, cada uma com a sua decisão
+        /// (<see cref="Itens"/>). Os avisos de todas sobem para o cartão: o do cofre, o do piso, o de
+        /// caminho fora das pastas de confiança, o de texto de terceiros. Sem "sempre permitir":
+        /// uma marca valeria para chamadas que o usuário pode ter recusado uma a uma.
+        /// </summary>
+        public static CommandConfirmationContext Juntar(string ferramenta, IReadOnlyList<CommandConfirmationContext> contextos)
+        {
+            static string Unir(IEnumerable<string?> textos) =>
+                string.Join("\n", textos.Where(t => !string.IsNullOrWhiteSpace(t)).Distinct());
+
+            return new CommandConfirmationContext
+            {
+                Tool = ferramenta,
+                Command = string.Join("\n", contextos.Select(c => c.Command)),
+                Level = contextos[0].Level,
+                Cwd = contextos[0].Cwd,
+                ScriptBody = string.Join("\n\n", contextos.Select(c => c.ScriptBody)),
+                Itens = contextos,
+                DenylistHit = contextos.Any(c => c.DenylistHit),
+                DenylistReason = Unir(contextos.Where(c => c.DenylistHit).Select(c => c.DenylistReason)),
+                Aviso = Unir(contextos.Select(c => c.Aviso)),
+                Cofre = contextos.SelectMany(c => c.Cofre).GroupBy(u => u.Nome).Select(g => g.First()).ToList(),
+                ConteudoDeEmailNoContexto = contextos.Any(c => c.ConteudoDeEmailNoContexto),
+                EmailNoContexto = contextos.Any(c => c.EmailNoContexto),
+                SemSempre = true
+            };
+        }
     }
 }

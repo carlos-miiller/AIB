@@ -280,19 +280,8 @@ public class DocTool : ITool
     /// O cartão das N gravações: cada uma com o seu plano (<see cref="CommandConfirmationContext.Itens"/>)
     /// e a sua decisão. Cada chamada continua autorizada pelo SEU contexto na execução.
     /// </summary>
-    public CommandConfirmationContext JuntarNoCartao(IReadOnlyList<CommandConfirmationContext> contextos) => new()
-    {
-        Tool = Name,
-        Command = string.Join("\n", contextos.Select(c => c.Command)),
-        Level = contextos[0].Level,
-        Cwd = contextos[0].Cwd,
-        ScriptBody = string.Join("\n\n", contextos.Select(c => c.ScriptBody)),
-        Itens = contextos,
-        Aviso = string.Join("\n", contextos.Select(c => c.Aviso).Where(a => a.Length > 0).Distinct()),
-        ConteudoDeEmailNoContexto = contextos.Any(c => c.ConteudoDeEmailNoContexto),
-        EmailNoContexto = contextos.Any(c => c.EmailNoContexto),
-        SemSempre = true
-    };
+    public CommandConfirmationContext JuntarNoCartao(IReadOnlyList<CommandConfirmationContext> contextos) =>
+        CommandConfirmationContext.Juntar(Name, contextos);
 
     // ─────────────────────────────────────────────────────────────────────────
     // A execução

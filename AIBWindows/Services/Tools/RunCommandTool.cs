@@ -77,6 +77,18 @@ public class RunCommandTool : ITool
     }
 
     /// <summary>
+    /// Os comandos pedidos na mesma resposta dividem um cartão, com um Permitir e um Recusar por
+    /// comando, como as gravações da doc. Pedido do usuário (18/11/2026): cada comando de um lote
+    /// paralelo abria o seu cartão. Continuam rodando ao mesmo tempo; quem precisa de ordem
+    /// encadeia num comando só (<c>a; b</c> ou <c>a &amp;&amp; b</c>).
+    /// </summary>
+    public string? ChaveDoCartao(string argumentsJson) => "comando";
+
+    /// <summary>Um bloco por comando; cada um continua autorizado pelo SEU contexto na execução.</summary>
+    public CommandConfirmationContext JuntarNoCartao(IReadOnlyList<CommandConfirmationContext> contextos) =>
+        CommandConfirmationContext.Juntar(Name, contextos);
+
+    /// <summary>
     /// Teto de tempo do comando. Constante porque a descrição, a mensagem de interrupção e o
     /// relógio têm de dizer o mesmo número.
     /// </summary>

@@ -35,8 +35,7 @@ public static class ReceitaDePlanilha
         if (Formatos.De(caminho) != Formato.Xlsx)
             throw new ErroDeDocumento("'layout' lê .xlsx e .xlsm. Para .xls ou .csv não há formatação a mostrar.");
 
-        using var fs = new FileStream(caminho, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using var wb = new XLWorkbook(fs);
+        using var wb = AberturaDePlanilha.Abrir(caminho);
         var ws = string.IsNullOrWhiteSpace(aba)
             ? wb.Worksheets.FirstOrDefault(w => w.Visibility == XLWorksheetVisibility.Visible) ?? wb.Worksheet(1)
             : wb.Worksheets.FirstOrDefault(w => string.Equals(w.Name, aba.Trim(), StringComparison.OrdinalIgnoreCase))

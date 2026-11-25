@@ -31,10 +31,10 @@ Renomear uma ferramenta é mudar só a constante.
 | `read` (`Ler`) | `ReadFileTool` | 1 | não | Lê arquivo por faixa (`offset`/`limit`) com número de linha; se o caminho é pasta, lista a pasta. |
 | `glob` (`Procurar`) | `GlobTool` | 1 | não | Acha arquivos por padrão de nome (`**` entra em subpastas), mais recente primeiro, teto de 100 e prazo de 10 s. |
 | `grep` (`Buscar`) | `GrepTool` | 1 | não | Regex dentro dos arquivos; devolve `arquivo:linha: trecho`. Tetos de 60 linhas, 2000 arquivos e 10 s. |
-| `file` (`Arquivo`) | `FileTool` | 2 | sim — dispensável quando **todas** as operações seriam; um cartão por chamada (lote incluído); piso do `fs` por operação | Grava (`write`), edita (`edit`), cria pasta, copia, move, renomeia e apaga, uma operação ou um **lote** (`ops`), em ordem, parando na primeira falha (§7). |
+| `file` (`Arquivo`) | `FileTool` | 2 | sim — dispensável quando **todas** as operações seriam; as chamadas da mesma resposta dividem um cartão, com decisão por chamada (o lote é um item); piso do `fs` por operação | Grava (`write`), edita (`edit`), cria pasta, copia, move, renomeia e apaga, uma operação ou um **lote** (`ops`), em ordem, parando na primeira falha (§7). |
 | `write` (`Gravar`) | `WriteFileTool` | 2 | sim — dispensável por pasta | **Motor da `file`, fora do schema** (`Oferecida = false`). Cria ou substitui todo o conteúdo de um arquivo, **criando as pastas que faltarem**. |
 | `edit` (`Editar`) | `EditFileTool` | 2 | sim — dispensável por pasta | **Motor da `file`, fora do schema.** Troca um trecho de um arquivo; o fim de linha do trecho não precisa bater com o do arquivo (§7). |
-| `shell` (`Shell`) | `RunCommandTool` | 2 | sim — nunca dispensado; passa pela floor list | Roda um comando PowerShell (30 s). |
+| `shell` (`Shell`) | `RunCommandTool` | 2 | sim — nunca dispensado; passa pela floor list; os comandos da mesma resposta dividem um cartão, com decisão por comando | Roda um comando PowerShell (30 s). |
 | `skill` (`Habilidade`) | `ExecuteSkillTool` | 2 | sim — a skill só-manual é dispensada; passa pela floor list | Roda uma habilidade instalada, ou entrega o manual dela. |
 | `fs` (`Arquivos`) | `FsTool` | 2 | sim — **motor da `file`, fora do schema**; `mkdir`/`copy`/`move`/`rename` dispensáveis por pasta (origem e destino nela), `delete` sempre pergunta; apagar pasta com conteúdo tem piso tipado (Nível 7) | Cria pasta, copia, move, renomeia e apaga (para a **Lixeira**). Nunca sobrescreve. |
 | `browser` (`Navegador`) | `BrowserTool` | 2 | **por ação** (`PedeConfirmacao`) — ler não pergunta; clicar e digitar perguntam, com "sempre" por site; site novo pergunta uma vez | Navegador (Edge, perfil próprio, logado pelo usuário): abre, lê a vista, procura, lê tabela, clica, digita (§7). |
@@ -270,7 +270,13 @@ floor list **não** barrou antes — ou seja, com `ConfirmDangerousCommands` des
   arquivo** — o contexto juntado leva as chamadas em `Itens`, o cartão marca em `Recusados` as
   posições que o usuário recusou no botão de cada arquivo, e `GrupoDoCartao` recusa só essas
   (as outras recebem o "Permitir"). Pedido do usuário em 11/11/2026: a planilha de comparação
-  tinha pedido 8 cartões num dia. A posição vem de `PertoDoOrbe` (centrada na
+  tinha pedido 8 cartões num dia. Desde 18/11/2026 o `shell` (todo comando) e a `file` (toda
+  chamada; um `ops` entra como um item só) juntam do mesmo jeito, pelo mesmo
+  `CommandConfirmationContext.Juntar`: os avisos de todos os itens sobem para o cartão (cofre,
+  piso, caminho fora das pastas de confiança, texto de terceiros) e o "sempre permitir" some — uma
+  marca valeria para itens recusados um a um. O comando já liberado pelo "sempre" sai da vaga e
+  não entra. Os permitidos continuam rodando **ao mesmo tempo**; ordem é coisa de uma chamada só
+  (`ops` na `file`, `;`/`&&` no comando). A posição vem de `PertoDoOrbe` (centrada na
   casca do orbe, `ShadowAssistantWindow.RetanguloDoOrbe`; sem espaço acima, abaixo; sempre dentro
   da área de trabalho), que também posiciona a janela de senha do terminal. Sem orbe, as duas
   ficam como antes: card na conversa, senha no centro da tela.
@@ -937,7 +943,13 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   escala de cores, barra de dados, ícones) e `clear_conditional`. Regra nova na mesma faixa
   substitui a que o arquivo JÁ tinha, nunca uma criada no mesmo pedido (`Processar(…, criadas)`):
   "verde se < 0" e "vermelho se > 0" na mesma faixa, num edit só, ficam as duas — antes a segunda
-  apagava a primeira (26/10/2026). Cor em `#RRGGBB` ou nome em
+  apagava a primeira (26/10/2026). O "texto contém" grava uma regra de **fórmula**
+  (`NOT(ISERROR(SEARCH("texto",H2)))`, a mesma busca do Excel), e não a containsText do
+  `WhenContains`: o ClosedXML regrava o texto da containsText como fórmula, e "contém 'Crítica
+  (P0)'" fazia a edição seguinte do arquivo falhar ("The formula … wasn't parsed correctly",
+  21/11/2026). Arquivo que já tem regra de texto (contém, não contém, começa, termina com), feito
+  pela doc antes ou pelo Excel, abre por `AberturaDePlanilha`, que a troca em memória pela regra de
+  fórmula que vem junto; o leitor, o `layout` e o editor abrem por ali. Cor em `#RRGGBB` ou nome em
   português; cor desconhecida é erro, sem cartão. Uma linha do plano por faixa, com a amostra
   (`Aparencia`: a primeira célula como o Excel vai mostrá-la) e a descrição em palavras; a regra
   condicional diz quais células ela atinge hoje. Só aparência → sem recálculo nem efeito nas
