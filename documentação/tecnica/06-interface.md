@@ -212,14 +212,14 @@ terceiros. Senha solta, sem formato nem nome por perto, passa.
 
 ### Corretor ortográfico
 
-`ChatWindow.Ortografia.cs`. A caixa de mensagem usa o `SpellCheck` do WPF em pt-BR, que chama o
-corretor do próprio Windows: sem rede e sem modelo. Sem o pacote de idioma pt-BR no Windows,
+`Ui/Corretor.cs`, ligado à caixa de mensagem e à caixa do orbe (`Corretor.Ligar`). A caixa usa
+o `SpellCheck` do WPF em pt-BR, que chama o corretor do próprio Windows: sem rede e sem modelo. Sem o pacote de idioma pt-BR no Windows,
 nada fica sublinhado. O botão direito monta um menu próprio, porque o do WPF não tem
 "adicionar". Se houver uma palavra sublinhada no ponto clicado (ou no cursor, pelo Shift+F10), o
 menu mostra até cinco sugestões em negrito, que trocam a palavra, e "Adicionar ao dicionário".
 Recortar, Copiar e Colar aparecem sempre. Adicionar grava a palavra em `~/.AIB/dicionario.lex` e
-registra o arquivo de novo na caixa: o WPF só lê o arquivo ao registrar, e sem isso a palavra
-continuaria sublinhada.
+registra o arquivo de novo nas duas caixas: o WPF só lê o arquivo ao registrar, e sem isso a
+palavra continuaria sublinhada.
 
 ### Cartão de confirmação na conversa
 

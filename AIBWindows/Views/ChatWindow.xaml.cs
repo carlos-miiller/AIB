@@ -9,6 +9,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
 using AIB.Services;
+using AIB.Ui;
 using Markdig.Wpf;
 
 // Aliases para eliminar ambiguidade entre System.Drawing e System.Windows.Media
@@ -45,10 +46,13 @@ public partial class ChatWindow : Window
     /// <summary>Quanto o aviso de compactação fica na faixa.</summary>
     private const int SegundosDoAviso = 12;
 
+    /// <summary>O corretor ortográfico da caixa de mensagem.</summary>
+    public Corretor Ortografia { get; }
+
     public ChatWindow(ConversationService conversation, SettingsService settingsService)
     {
         InitializeComponent();
-        LigarOrtografia();
+        Ortografia = Corretor.Ligar(InputBox);
         _settingsService = settingsService;
         _conversation = conversation;
         _conversation.OnTokenCountChanged += UpdateTokenCounterUI;
