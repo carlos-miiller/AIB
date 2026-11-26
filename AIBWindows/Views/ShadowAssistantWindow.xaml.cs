@@ -215,9 +215,13 @@ public partial class ShadowAssistantWindow : Window
     /// <summary>Quantas falas esperam ser lidas. Diagnóstico e ensaio.</summary>
     public int FalasPendentes => _falasPendentes.Count;
 
+    /// <summary>O corretor ortográfico da caixa do orbe, o mesmo da conversa.</summary>
+    public Corretor Ortografia { get; }
+
     public ShadowAssistantWindow()
     {
         InitializeComponent();
+        Ortografia = Corretor.Ligar(Campo);
 
         IconeDeInbox.Data = Geometry.Parse(DesenhoDeInbox);
         PilhaDeFalas.ItemsSource = _falas;

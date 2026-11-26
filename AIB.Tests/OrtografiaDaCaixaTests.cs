@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Windows.Controls;
 using AIB.Views;
@@ -11,9 +10,10 @@ using Xunit;
 namespace AIB.Tests;
 
 /// <summary>
-/// O corretor ortográfico da caixa de mensagem. Pedido do usuário (24/11/2026): sublinhar a
+/// O corretor ortográfico das caixas de texto. Pedido do usuário (24/11/2026): sublinhar a
 /// palavra errada e, no botão direito, mostrar as sugestões e "Adicionar ao dicionário" — o menu
-/// padrão do WPF não tem o "adicionar", e o dicionário do usuário mora em ~/.AIB.
+/// padrão do WPF não tem o "adicionar", e o dicionário do usuário mora em ~/.AIB. Em 26/11: o
+/// orbe tinha ficado sem.
 /// </summary>
 [Collection("ContextoGlobal")]
 public class OrtografiaDaCaixaTests : IDisposable
@@ -27,12 +27,7 @@ public class OrtografiaDaCaixaTests : IDisposable
         try { Directory.Delete(_pasta, true); } catch { }
     }
 
-    private const BindingFlags Privados = BindingFlags.Instance | BindingFlags.NonPublic;
-
     private static TextBox Caixa(ChatWindow w) => (TextBox)w.FindName("InputBox");
-
-    private static void Chamar(ChatWindow w, string metodo, params object?[] args) =>
-        typeof(ChatWindow).GetMethod(metodo, Privados)!.Invoke(w, args);
 
     [Fact]
     public void Caixa_CorrigeEmPortugues()
@@ -47,6 +42,21 @@ public class OrtografiaDaCaixaTests : IDisposable
     }
 
     [Fact]
+    public void Orbe_TemOMesmoCorretor()
+    {
+        WpfHost.EmSta(() =>
+        {
+            WpfHost.GarantirRecursos();
+            var orbe = new ShadowAssistantWindow();
+            var campo = (TextBox)orbe.FindName("Campo");
+
+            SpellCheck.GetIsEnabled(campo).Should().BeTrue("o orbe tinha ficado sem o corretor");
+            campo.Language.IetfLanguageTag.Should().BeEquivalentTo("pt-BR");
+            campo.ContextMenu.Should().NotBeNull("sem ele o TextBox abre o menu do WPF, sem o 'adicionar'");
+        });
+    }
+
+    [Fact]
     public void Adicionar_GravaAPalavraERegistraODicionario_SemRepetir()
     {
         string lex = Path.Combine(_pasta, "dicionario.lex");
@@ -54,11 +64,11 @@ public class OrtografiaDaCaixaTests : IDisposable
         {
             WpfHost.GarantirRecursos();
             var w = JanelaDeEnsaio.Nova();
-            typeof(ChatWindow).GetProperty("Dicionario", Privados)!.SetValue(w, lex);
+            w.Ortografia.Dicionario = lex;
 
-            Chamar(w, "AdicionarAoDicionario", "Bitrix");
-            Chamar(w, "AdicionarAoDicionario", "Bitrix");
-            Chamar(w, "AdicionarAoDicionario", "duas palavras");
+            w.Ortografia.Adicionar("Bitrix");
+            w.Ortografia.Adicionar("Bitrix");
+            w.Ortografia.Adicionar("duas palavras");
 
             File.ReadAllLines(lex, Encoding.Unicode).Should().Equal("Bitrix");
             SpellCheck.GetCustomDictionaries(Caixa(w))
@@ -73,7 +83,7 @@ public class OrtografiaDaCaixaTests : IDisposable
         {
             WpfHost.GarantirRecursos();
             var w = JanelaDeEnsaio.Nova();
-            Chamar(w, "MontarMenu", null, "");
+            w.Ortografia.MontarMenu(null, "");
 
             Caixa(w).ContextMenu!.Items.OfType<MenuItem>().Select(m => (string)m.Header)
                 .Should().Equal("Recortar", "Copiar", "Colar");
@@ -82,32 +92,45 @@ public class OrtografiaDaCaixaTests : IDisposable
 
     /// <summary>
     /// O caminho inteiro com o corretor do Windows: "caza" sublinhada, com "casa" entre as
-    /// sugestões, e sem sublinhado logo depois de adicionada. Sem o corretor pt-BR instalado no
-    /// Windows não há o que medir, e o teste só confere o que der.
+    /// sugestões, e sem sublinhado logo depois de adicionada — também na caixa do orbe, que
+    /// divide o dicionário. Sem o corretor pt-BR instalado no Windows não há o que medir.
     /// </summary>
     [Fact]
-    public void Adicionar_TiraOSublinhadoNaHora()
+    public void Adicionar_TiraOSublinhadoNaHora_NasDuasCaixas()
     {
+        string lex = Path.Combine(_pasta, "d.lex");
         WpfHost.EmSta(() =>
         {
             WpfHost.GarantirRecursos();
             var w = JanelaDeEnsaio.Nova();
-            typeof(ChatWindow).GetProperty("Dicionario", Privados)!.SetValue(w, Path.Combine(_pasta, "d.lex"));
+            var orbe = new ShadowAssistantWindow();
+            w.Ortografia.Dicionario = lex;
+            orbe.Ortografia.Dicionario = lex;
             var c = Caixa(w);
+            var campo = (TextBox)orbe.FindName("Campo");
             w.Show();
+            orbe.Show();
             try
             {
-                c.Text = "eu quero uma caza bonita";
+                c.Text = campo.Text = "eu quero uma caza bonita";
                 c.UpdateLayout();
+                campo.UpdateLayout();
                 var erro = c.GetSpellingError(14);
                 if (erro == null) return;
                 erro.Suggestions.Should().Contain("casa");
+                campo.GetSpellingError(14).Should().NotBeNull();
 
-                Chamar(w, "AdicionarAoDicionario", "caza");
+                w.Ortografia.Adicionar("caza");
                 c.UpdateLayout();
+                campo.UpdateLayout();
                 c.GetSpellingError(14).Should().BeNull();
+                campo.GetSpellingError(14).Should().BeNull("o orbe usa o mesmo dicionário");
             }
-            finally { w.Close(); }
+            finally
+            {
+                w.Close();
+                orbe.Close();
+            }
         });
     }
 }
