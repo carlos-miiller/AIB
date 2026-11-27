@@ -14,16 +14,16 @@ namespace AIB.Services;
 /// o modelo tentando caminhos alternativos.
 /// </para>
 /// <para>
-/// Agora a lista só DISPENSA o portão: dentro dela, <c>write</c> e <c>edit</c> executam direto
-/// (e o <c>fs</c>, exceto apagar, quando origem e destino estão nela — ver <see cref="Tools.FsTool"/>);
-/// fora dela, o card de confirmação aparece como sempre apareceu. Nada é recusado por causa desta
-/// lista. Vazia — o padrão — tudo pergunta.
+/// Agora a lista só DISPENSA o portão: dentro dela, <c>write</c>, <c>edit</c>, <c>doc</c> (ao
+/// gravar) e <c>fs</c> (exceto apagar, quando origem e destino estão nela — ver
+/// <see cref="Tools.FsTool"/>) executam direto; fora dela, o card de confirmação aparece como
+/// sempre apareceu. Nada é recusado por causa desta lista. Vazia — o padrão — tudo pergunta.
 /// </para>
 /// <para>
-/// LIMITE conhecido: dispensar vale para <c>write</c> e <c>edit</c>, e NUNCA para <c>shell</c>.
-/// Um comando não tem alvo declarado: ele descobre o que vai tocar enquanto roda. O que o shell
-/// ganhou foi o aviso do card quando parece escrever fora destas pastas — ver
-/// <see cref="Tools.EscritaNoComando"/>.
+/// LIMITE conhecido: dispensar vale para <c>write</c>, <c>edit</c>, <c>fs</c> e <c>doc</c>, e
+/// NUNCA para <c>shell</c>. Um comando não tem alvo declarado: ele descobre o que vai tocar
+/// enquanto roda. O que o shell ganhou foi o aviso do card quando parece escrever fora destas
+/// pastas — ver <see cref="Tools.EscritaNoComando"/>.
 /// </para>
 /// </summary>
 public static class PastasSemConfirmacao

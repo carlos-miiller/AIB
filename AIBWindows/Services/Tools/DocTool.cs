@@ -18,10 +18,11 @@ namespace AIB.Services.Tools;
 /// espaço por "System.Xml.XmlElement", lia só a primeira aba e levava 51 s em 20 mil linhas.
 /// </para>
 /// <para>
-/// Ler não pergunta (a não ser dentro da pasta de dados do AIB). Gravar SEMPRE pergunta, sem
-/// "sempre permitir", e o cartão mostra o plano — célula por célula, trecho por trecho — que a
-/// execução confere antes de gravar (<see cref="PlanoDeGravacao.Impressao"/>). O original
-/// ganha uma cópia antes de ser tocado (<see cref="CopiasDeDocumento"/>).
+/// Ler não pergunta (a não ser dentro da pasta de dados do AIB). Gravar nunca entra no
+/// "sempre permitir": fora das pastas sem confirmação (<see cref="PastasSemConfirmacao"/>),
+/// pergunta no cartão com o plano — célula por célula, trecho por trecho — que a execução
+/// confere antes de gravar (<see cref="PlanoDeGravacao.Impressao"/>); dentro delas, segue
+/// direto com a mesma conferência de plano e cópia do original (<see cref="CopiasDeDocumento"/>).
 /// </para>
 /// <para>
 /// As contas são feitas aqui (<c>query</c>), e não pelo modelo: somar 300 linhas lidas como
@@ -226,7 +227,10 @@ public class DocTool : ITool
         return null;
     }
 
-    /// <summary>Ler não pergunta (fora da pasta de dados do AIB); gravar sempre pergunta.</summary>
+    /// <summary>
+    /// Ler não pergunta (fora da pasta de dados do AIB); gravar passa pelo portão (dispensado
+    /// dentro das pastas sem confirmação).
+    /// </summary>
     public bool PedeConfirmacao(string argumentsJson)
     {
         var a = Ler(argumentsJson);
@@ -235,6 +239,49 @@ public class DocTool : ITool
         if (a.Grava) return true;
         return AcessoDe(Resolver(a.Caminho)) == Acesso.Pergunta;
     }
+
+    /// <summary>
+    /// Gravar dentro de uma pasta dispensada não para no card, exceto dentro da pasta de dados
+    /// do AIB (<see cref="DirectoryService.DataDir"/>). Leitura continua como está.
+    /// Ver <see cref="PastasSemConfirmacao"/>.
+    /// </summary>
+    public bool DispensaConfirmacao(string argumentsJson) =>
+        PodeDispensar(argumentsJson, _dados, TipoDeUnidade);
+
+    /// <summary>Decisão da dispensa isolada para ensaio de unidade de rede sem mapear disco.</summary>
+    public static bool PodeDispensar(string argumentsJson, string? dados, Func<string, DriveType> unidade)
+    {
+        var a = Ler(argumentsJson);
+        if (a == null || !a.Grava || string.IsNullOrWhiteSpace(a.Caminho)) return false;
+
+        string caminho = Resolver(a.Caminho);
+        // Caminho de rede (UNC ou unidade mapeada) pode esconder ~/.AIB; na dúvida, pergunta.
+        if (EmRede(caminho, unidade) || EmRede(PastasDoAib.Real(caminho), unidade)) return false;
+        if (Sob(caminho, DirectoryService.DataDir)) return false;
+        if (dados != null && Sob(caminho, dados)) return false;
+
+        return PastasSemConfirmacao.Dispensa(caminho);
+    }
+
+    private static bool EmRede(string caminho, Func<string, DriveType> unidade)
+    {
+        if (caminho.StartsWith(@"\\", StringComparison.Ordinal)
+            || caminho.StartsWith("//", StringComparison.Ordinal))
+            return true;
+
+        try
+        {
+            string? raiz = Path.GetPathRoot(caminho);
+            if (string.IsNullOrEmpty(raiz)) return true;
+            return unidade(raiz) == DriveType.Network;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    private static DriveType TipoDeUnidade(string raiz) => new DriveInfo(raiz).DriveType;
 
     public bool PedeFalaDoUsuario(string argumentsJson) => Ler(argumentsJson)?.Grava ?? true;
 
@@ -357,8 +404,8 @@ public class DocTool : ITool
 
     private async Task<string> GravarAsync(Argumentos a, string caminho, CommandConfirmationContext? autorizado)
     {
-        // Gravar sem cartão não acontece: o registry sempre pergunta (PedeConfirmacao), e quem
-        // chegar aqui sem ele é recusado.
+        // Gravar sem autorização descrita não acontece: o registry sempre monta o plano antes
+        // (no cartão ou na dispensa por pasta), e quem chegar aqui sem ele é recusado.
         if (autorizado?.Plano is not { } pedido)
             return $"ACESSO NEGADO: gravar '{caminho}' exige a confirmação do usuário. Nada foi gravado.";
 
@@ -510,6 +557,21 @@ public class DocTool : ITool
         string raiz = Path.GetFullPath(_dados ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".AIB"));
         string c = Path.GetFullPath(caminho);
         return c.StartsWith(raiz.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool Sob(string caminho, string raiz)
+    {
+        try
+        {
+            string alvo = PastasDoAib.Real(caminho);
+            string tronco = PastasDoAib.Real(raiz);
+            return string.Equals(alvo, tronco, StringComparison.OrdinalIgnoreCase)
+                   || alvo.StartsWith(tronco + "\\", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     /// <summary>O que fazer com o arquivo travado por outro programa.</summary>
