@@ -245,24 +245,43 @@ public class DocTool : ITool
     /// do AIB (<see cref="DirectoryService.DataDir"/>). Leitura continua como está.
     /// Ver <see cref="PastasSemConfirmacao"/>.
     /// </summary>
-    public bool DispensaConfirmacao(string argumentsJson)
+    public bool DispensaConfirmacao(string argumentsJson) =>
+        PodeDispensar(argumentsJson, _dados, TipoDeUnidade);
+
+    /// <summary>Decisão da dispensa isolada para ensaio de unidade de rede sem mapear disco.</summary>
+    public static bool PodeDispensar(string argumentsJson, string? dados, Func<string, DriveType> unidade)
     {
         var a = Ler(argumentsJson);
         if (a == null || !a.Grava || string.IsNullOrWhiteSpace(a.Caminho)) return false;
 
         string caminho = Resolver(a.Caminho);
-        // Caminho de rede / UNC (inclui \\?\UNC\) pode ser alias da pasta local do usuário e
-        // esconder ~/.AIB na comparação com DirectoryService.DataDir; na dúvida, pergunta.
-        if (EhUnc(caminho) || EhUnc(PastasDoAib.Real(caminho))) return false;
+        // Caminho de rede (UNC ou unidade mapeada) pode esconder ~/.AIB; na dúvida, pergunta.
+        if (EmRede(caminho, unidade) || EmRede(PastasDoAib.Real(caminho), unidade)) return false;
         if (Sob(caminho, DirectoryService.DataDir)) return false;
-        if (_dados != null && Sob(caminho, _dados)) return false;
+        if (dados != null && Sob(caminho, dados)) return false;
 
         return PastasSemConfirmacao.Dispensa(caminho);
     }
 
-    private static bool EhUnc(string caminho) =>
-        caminho.StartsWith(@"\\", StringComparison.Ordinal)
-        || caminho.StartsWith("//", StringComparison.Ordinal);
+    private static bool EmRede(string caminho, Func<string, DriveType> unidade)
+    {
+        if (caminho.StartsWith(@"\\", StringComparison.Ordinal)
+            || caminho.StartsWith("//", StringComparison.Ordinal))
+            return true;
+
+        try
+        {
+            string? raiz = Path.GetPathRoot(caminho);
+            if (string.IsNullOrEmpty(raiz)) return true;
+            return unidade(raiz) == DriveType.Network;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    private static DriveType TipoDeUnidade(string raiz) => new DriveInfo(raiz).DriveType;
 
     public bool PedeFalaDoUsuario(string argumentsJson) => Ler(argumentsJson)?.Grava ?? true;
 

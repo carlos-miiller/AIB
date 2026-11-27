@@ -989,7 +989,7 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
   sincronia, para a ferramenta nunca ficar com a lista velha.
 - **Só DISPENSAM o cartão** de `write` e `edit` cujo alvo está dentro de uma das pastas, do `doc`
   ao gravar (`create`/`edit`, fora de `DirectoryService.DataDir`; com `from`, basta o destino estar
-  na pasta; caminho de rede (UNC) sempre pergunta), e do `fs` sem `delete` com origem e destino
+  na pasta; caminho de rede (UNC ou unidade mapeada) sempre pergunta), e do `fs` sem `delete` com origem e destino
   dentro delas. Na `file`, o lote é dispensado quando todas as operações seriam. **Nada é
   recusado por estar fora**: fora, o cartão aparece como sempre. Antes a lista era confinamento, e o
   usuário recebia erro sem nunca ver a pergunta.

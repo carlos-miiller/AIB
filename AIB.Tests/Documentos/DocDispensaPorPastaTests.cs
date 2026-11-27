@@ -255,5 +255,19 @@ namespace AIB.Tests
             tool.DispensaConfirmacao(Editar(alvoSlash)).Should().BeFalse();
             tool.DispensaConfirmacao(Editar(alvoExtendedUnc)).Should().BeFalse();
         }
+
+        [Fact]
+        public void UnidadeDeRedeMapeada_NuncaDispensa_EUnidadeFixaSegueRegraNormal()
+        {
+            // Unidade mapeada (ex.: Z:\ -> \\localhost\C$) também esconde ~/.AIB na comparação
+            // com DirectoryService.DataDir; falha ao consultar o tipo também nega (fail-closed).
+            string alvo = Path.Combine(_confiavel, "planilha.xlsx");
+
+            PastasSemConfirmacao.Configurar(_confiavel);
+
+            DocTool.PodeDispensar(Editar(alvo), _dados, _ => DriveType.Network).Should().BeFalse();
+            DocTool.PodeDispensar(Editar(alvo), _dados, _ => throw new IOException("falha")).Should().BeFalse();
+            DocTool.PodeDispensar(Editar(alvo), _dados, _ => DriveType.Fixed).Should().BeTrue();
+        }
     }
 }
