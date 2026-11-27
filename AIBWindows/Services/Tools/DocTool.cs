@@ -251,11 +251,18 @@ public class DocTool : ITool
         if (a == null || !a.Grava || string.IsNullOrWhiteSpace(a.Caminho)) return false;
 
         string caminho = Resolver(a.Caminho);
+        // Caminho de rede / UNC (inclui \\?\UNC\) pode ser alias da pasta local do usuário e
+        // esconder ~/.AIB na comparação com DirectoryService.DataDir; na dúvida, pergunta.
+        if (EhUnc(caminho) || EhUnc(PastasDoAib.Real(caminho))) return false;
         if (Sob(caminho, DirectoryService.DataDir)) return false;
         if (_dados != null && Sob(caminho, _dados)) return false;
 
         return PastasSemConfirmacao.Dispensa(caminho);
     }
+
+    private static bool EhUnc(string caminho) =>
+        caminho.StartsWith(@"\\", StringComparison.Ordinal)
+        || caminho.StartsWith("//", StringComparison.Ordinal);
 
     public bool PedeFalaDoUsuario(string argumentsJson) => Ler(argumentsJson)?.Grava ?? true;
 

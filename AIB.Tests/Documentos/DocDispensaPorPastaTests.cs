@@ -234,5 +234,26 @@ namespace AIB.Tests
             tool.DispensaConfirmacao("{}").Should().BeFalse();
             tool.DispensaConfirmacao(JsonSerializer.Serialize(new { action = "edit", path = "", ops = new[] { new { cell = "A1", value = 1 } } })).Should().BeFalse();
         }
+
+        [Fact]
+        public void CaminhoUnc_NaListaDePastas_NuncaDispensa()
+        {
+            // Um alias UNC (ex.: \\localhost\C$\Users\...) pode apontar para a pasta local do
+            // usuário e esconder ~/.AIB na comparação com DirectoryService.DataDir.
+            string raiz = Path.GetPathRoot(_dir) ?? @"C:\";
+            char letra = char.ToUpperInvariant(raiz[0]);
+            string semLetra = _dir[raiz.Length..];
+            string pastaUnc = $@"\\localhost\{letra}$\{semLetra}";
+            string alvoUnc = Path.Combine(pastaUnc, "planilha.xlsx");
+            string alvoSlash = $"//localhost/{letra}$/{semLetra.Replace('\\', '/')}/planilha.xlsx";
+            string alvoExtendedUnc = $@"\\?\UNC\localhost\{letra}$\{semLetra}\planilha.xlsx";
+
+            var tool = new DocTool(_dados);
+            PastasSemConfirmacao.Configurar(pastaUnc + Environment.NewLine + $@"\\?\UNC\localhost\{letra}$\{semLetra}");
+
+            tool.DispensaConfirmacao(Editar(alvoUnc)).Should().BeFalse();
+            tool.DispensaConfirmacao(Editar(alvoSlash)).Should().BeFalse();
+            tool.DispensaConfirmacao(Editar(alvoExtendedUnc)).Should().BeFalse();
+        }
     }
 }
