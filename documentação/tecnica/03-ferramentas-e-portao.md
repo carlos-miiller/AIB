@@ -41,7 +41,7 @@ Renomear uma ferramenta é mudar só a constante.
 | `mail` (`Email`) | `ConsultarEmailsTool` | 1 | não | Consulta o diário da triagem de e-mail (disco, não o servidor). |
 | `mail_read` (`LerEmail`) | `LerEmailTool` | 1 | não | Relê no servidor o e-mail da conversa aberta (somente leitura). |
 | `remember` (`Lembrar`) | `LembrarTool` | 1 | não — mas **com texto de terceiros no contexto vai ao cartão** (`SoComFalaDoUsuario`: `GUARDAR NA MEMÓRIA: "fato"`, sem "sempre"; sem interface, recusa) | Guarda no `facts.md` um fato que o usuário contou sobre si (`- sobre o usuário: …`). Sem segredo, uma frase (200), teto de 60. Na tela vira o aviso "<persona> lembrará disso…", fora da cadeia de ações. |
-| `doc` (`Documento`) | `DocTool` | 1 (gravar: piso tipado no Nível 2) | **por ação** — `info`/`read`/`find`/`query` não perguntam (fora de `~/.AIB`); `create`/`edit` **sempre** perguntam, sem "sempre", com o plano no cartão | Planilhas (.xlsx .xlsm .xls .csv), Word (.docx) e PDF: visão geral, trecho com endereço (célula, ¶, página), busca, contas em C# e gravação com cópia do original (§7). |
+| `doc` (`Documento`) | `DocTool` | 1 (gravar: piso tipado no Nível 2) | **por ação** — `info`/`read`/`find`/`query`/`layout` não perguntam (fora de `~/.AIB`); `create`/`edit` perguntam fora das pastas sem confirmação (nunca dispensados em `~/.AIB`), sem "sempre", com o plano no cartão | Planilhas (.xlsx .xlsm .xls .csv), Word (.docx) e PDF: visão geral, trecho com endereço (célula, ¶, página), busca, contas em C# e gravação com cópia do original (§7). |
 | `remind` (`Lembrete`) | `LembreteTool` | 1 | não — mas **com texto de terceiros no contexto, criar e cancelar vão ao cartão** (`PedeFalaDoUsuario`; listar não) | Lembrete único: `create` (`at` "HH:mm" — já passou, é amanhã — ou "yyyy-MM-dd HH:mm"; ou `in_minutes`; `text` é a fala da persona na hora), `list`, `cancel` por `id`. Grava em `~/.AIB/lembretes.json` (`Lembretes`, teto 50, até um ano). Quem entrega é a agenda do `App`, sem chamar o modelo. |
 | `web_search` (`Pesquisar`) | `PesquisaWebTool` | 1 | não — mas **com texto de terceiros no contexto vai ao cartão** (`SoComFalaDoUsuario`: `PESQUISAR NA INTERNET: "consulta"`, sem "sempre"; sem interface, recusa) | Pesquisa na internet pela busca do **provedor** e devolve resumo + fontes numeradas (§7). Registrada pelo `App` (`Registrar`), depois da fábrica de provedores. |
 
@@ -902,7 +902,11 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
      que só muda a aparência ("Muda a formatação", `PlanoDeGravacao.SoAparencia`, comando
      `FORMATAR`). Sem "sempre permitir" (`SemSempre`).
   5. Na execução, o plano é refeito e comparado com o autorizado — texto e SHA-256 do arquivo
-     (`Impressao`). Mudou entre a pergunta e o "Permitir", nada é gravado. Sem cartão, recusa.
+     (`Impressao`). Mudou entre a pergunta e o "Permitir", nada é gravado. Sem autorização descrita
+     (`Plano`), recusa. Em pastas sem confirmação (`PastasSemConfirmacao`), `create` (basta o
+     destino estar na pasta, mesmo com `from`) e `edit` dispensam o cartão — mantendo a
+     conferência do plano, a auditoria (`allow_pasta_dispensada`), a cópia em
+     `~/.AIB/doc-backups` e a não-dispensa dentro de `DirectoryService.DataDir`.
   6. **Travado** (aberto no Excel/Word): `DocTool.AoTravar` — ligado pelo App à janela de escolha
      (`AvisoWindow.EscolherAsync`, receita `Avisos.DeTrava`) — pergunta "Já fechei, tentar de
      novo" (confere de novo e repete), "Salvar como cópia" (grava em `nome (AIB).ext`, sem tocar
@@ -983,9 +987,10 @@ lia só a primeira aba, mostrava data como número de série e levava 51 s em 20
 - Configuração `UserAppSettings.PastasSemConfirmacao` (texto, uma pasta por linha). O
   `SettingsService` chama `PastasSemConfirmacao.Configurar` ao carregar e ao salvar — um ponto só de
   sincronia, para a ferramenta nunca ficar com a lista velha.
-- **Só DISPENSAM o cartão** de `write` e `edit` cujo alvo está dentro de uma das pastas, e do `fs`
-  sem `delete` com origem e destino dentro delas. Na `file`, o lote é dispensado quando todas as
-  operações seriam. **Nada é
+- **Só DISPENSAM o cartão** de `write` e `edit` cujo alvo está dentro de uma das pastas, do `doc`
+  ao gravar (`create`/`edit`, fora de `DirectoryService.DataDir`; com `from`, basta o destino estar
+  na pasta), e do `fs` sem `delete` com origem e destino dentro delas. Na `file`, o lote é
+  dispensado quando todas as operações seriam. **Nada é
   recusado por estar fora**: fora, o cartão aparece como sempre. Antes a lista era confinamento, e o
   usuário recebia erro sem nunca ver a pergunta.
 - Lista vazia (padrão) → tudo pergunta.
